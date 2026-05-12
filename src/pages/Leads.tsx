@@ -1,0 +1,157 @@
+import { useState, useEffect } from 'react'
+import type { ToastMessage, Lead, LeadStatus } from '../types'
+import type { ActivePanel } from '../App'
+import { db } from '../lib/db'
+import ScoreBar from '../components/ui/ScoreBar'
+import ViewLeadModal from '../components/modals/ViewLeadModal'
+
+interface Props {
+  showToast: (type: ToastMessage['type'], message: string) => void
+  setActivePanel: (panel: ActivePanel) => void
+}
+
+const LEAD_STATUS_CLASS: Record<LeadStatus, string> = {
+  new: 'lead-status-new',
+  contacted: 'lead-status-contacted',
+  qualified: 'lead-status-qualified',
+  proposal: 'lead-status-proposal',
+  converted: 'lead-status-converted',
+  lost: 'lead-status-lost',
+}
+
+export default function Leads({ showToast }: Props) {
+  const [leads, setLeads] = useState<Lead[]>([])
+  const [loading, setLoading] = useState(true)
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState<LeadStatus | 'all'>('all')
+  const [viewLead, setViewLead] = useState<Lead | null>(null)
+  const [scanning, setScanning] = useState(false)
+
+  useEffect(() => {
+    db.leads.list().then(({ data, error }) => {
+      if (error) showToast('error', 'Failed to load leads.')
+      else if (data) setLeads(data)
+      setLoading(false)
+    })
+  }, [showToast])
+
+  const filtered = leads.filter(l => {
+    const matchSearch = l.name.toLowerCase().includes(search.toLowerCase()) ||
+      l.phone.includes(search) || l.productInterest.toLowerCase().includes(search.toLowerCase())
+    const matchStatus = statusFilter === 'all' || l.status === statusFilter
+    return matchSearch && matchStatus
+  })
+
+  const statusCounts = {
+    all: leads.length,
+    new: leads.filter(l => l.status === 'new').length,
+    contacted: leads.filter(l => l.status === 'contacted').length,
+    qualified: leads.filter(l => l.status === 'qualified').length,
+    proposal: leads.filter(l => l.status === 'proposal').length,
+    converted: leads.filter(l => l.status === 'converted').length,
+    lost: leads.filter(l => l.status === 'lost').length,
+  }
+
+  const handleUpdate = async (updated: Lead) => {
+    const { data, error } = await db.leads.update(updated.id, updated)
+    if (error || !data) { showToast('error', 'Failed to update lead.'); return }
+    setLeads(prev => prev.map(l => l.id === data.id ? data : l))
+    showToast('success', `Lead ${data.name} updated.`)
+    setViewLead(null)
+  }
+
+  const runScan = () => {
+    setScanning(true)
+    setTimeout(() => {
+      const newLead: Lead = {
+        id: `l${Date.now()}`,
+        name: 'Fungai Mhiripiri',
+        phone: '+263 77 999 8888',
+        email: 'fungai.m@gmail.com',
+        source: 'AI Scan — Facebook',
+        productInterest: 'Funeral Cover Basic',
+        status: 'new',
+        intentScore: 76,
+        createdAt: new Date().toISOString(),
+        assignedTo: undefined,
+      }
+      setLeads(prev => [newLead, ...prev])
+      setScanning(false)
+      showToast('success', '1 new lead discovered via AI scan.')
+    }, 2000)
+  }
+
+  return (
+    <div className="panel">
+      <div className="info-banner info-banner-info">
+        🎯 AI Lead Scan monitors WhatsApp chatbot, USSD *907#, social media, and referrals for new prospects.
+      </div>
+
+      <div className="panel-toolbar">
+        <div className="filter-row">
+          <input
+            className="search-input"
+            placeholder="Search name, phone, product…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          <select title="Filter by status" className="filter-select" value={statusFilter} onChange={e => setStatusFilter(e.target.value as LeadStatus | 'all')}>
+            <option value="all">All ({statusCounts.all})</option>
+            <option value="new">New ({statusCounts.new})</option>
+            <option value="contacted">Contacted ({statusCounts.contacted})</option>
+            <option value="qualified">Qualified ({statusCounts.qualified})</option>
+            <option value="proposal">Proposal ({statusCounts.proposal})</option>
+            <option value="converted">Converted ({statusCounts.converted})</option>
+            <option value="lost">Lost ({statusCounts.lost})</option>
+          </select>
+        </div>
+        <button type="button" className="btn btn-primary" onClick={runScan} disabled={scanning}>
+          {scanning ? '⟳ Scanning…' : '🔍 Run AI Scan'}
+        </button>
+      </div>
+
+      <div className="card">
+        {loading ? (
+          <div className="empty-state">Loading leads…</div>
+        ) : (
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Phone</th>
+                <th>Source</th>
+                <th>Product Interest</th>
+                <th>Intent Score</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr><td colSpan={8} className="td-empty">No leads found.</td></tr>
+              ) : filtered.map(l => (
+                <tr key={l.id}>
+                  <td><strong>{l.name}</strong></td>
+                  <td>{l.phone}</td>
+                  <td>{l.source}</td>
+                  <td>{l.productInterest}</td>
+                  <td><ScoreBar score={l.intentScore} /></td>
+                  <td><span className={`pill ${LEAD_STATUS_CLASS[l.status]}`}>{l.status}</span></td>
+                  <td>{new Date(l.createdAt).toLocaleDateString()}</td>
+                  <td>
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => setViewLead(l)}>View</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {viewLead && (
+        <ViewLeadModal lead={viewLead} onClose={() => setViewLead(null)} onSave={handleUpdate} />
+      )}
+    </div>
+  )
+}

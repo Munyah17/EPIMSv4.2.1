@@ -1,0 +1,775 @@
+import { supabase } from './supabase'
+import { health } from './health'
+import { localStore } from './localStore'
+import type {
+  AppUser, Client, Product, Policy, Claim, Payment,
+  Ticket, EmailMessage, Lead, FraudCase, Reminder,
+  PolicyStatus, ClaimStatus, PaymentStatus, PaymentMethod,
+  TicketStatus, TicketPriority, LeadStatus, FraudCaseStatus,
+} from '../types'
+
+// ── helpers ───────────────────────────────────────────────────────
+function date(v: string | null | undefined): string { return v?.split('T')[0] ?? '' }
+function uid() { return `loc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}` }
+
+/** Try a Supabase query; record timing/health; return {ok, data}. */
+async function sb<T>(
+  table: string,
+  type: 'read' | 'write' | 'delete',
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  query: () => PromiseLike<{ data: any; error: any }>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  isListOk: (d: any) => boolean = (d) => d !== null,
+): Promise<{ ok: boolean; data: T | null }> {
+  const start = Date.now()
+  try {
+    const { data, error } = await query()
+    const duration = Date.now() - start
+    const ok = !error && isListOk(data)
+    health.record({ ts: Date.now(), type, table, success: ok, duration, source: 'supabase',
+      detail: error ? String(error) : undefined })
+    return { ok, data: ok ? data : null }
+  } catch (e) {
+    const duration = Date.now() - start
+    health.record({ ts: Date.now(), type, table, success: false, duration, source: 'supabase',
+      detail: String(e) })
+    return { ok: false, data: null }
+  }
+}
+
+function local(table: string, type: 'read' | 'write' | 'delete') {
+  health.record({ ts: Date.now(), type, table, success: true, duration: 0, source: 'local' })
+}
+
+// ── Row transformers ──────────────────────────────────────────────
+
+function toProfile(r: Record<string, unknown>): AppUser {
+  return {
+    id:          r.id as string,
+    name:        r.name as string,
+    email:       (r.email as string) ?? '',
+    role:        r.role as AppUser['role'],
+    department:  (r.department as string) ?? '',
+    phone:       r.phone as string | undefined,
+    active:      r.active as boolean,
+    permissions: (r.permissions as string[]) ?? [],
+    lastLogin:   r.last_login as string | undefined,
+  }
+}
+
+function toClient(r: Record<string, unknown>): Client {
+  return {
+    id:          r.id as string,
+    name:        r.name as string,
+    email:       (r.email as string) ?? '',
+    phone:       r.phone as string,
+    nationalId:  r.national_id as string,
+    dob:         date(r.dob as string),
+    address:     (r.address as string) ?? '',
+    occupation:  r.occupation as string | undefined,
+    insurer:     (r.insurer as string) ?? undefined,
+    createdAt:   date(r.created_at as string),
+    policyCount: (r.policy_count as number) ?? 0,
+    status:      r.status as Client['status'],
+  }
+}
+
+function toProduct(r: Record<string, unknown>): Product {
+  return {
+    id:                r.id as string,
+    name:              r.name as string,
+    code:              r.code as string,
+    category:          r.category as Product['category'],
+    premium:           r.premium as number,
+    coverAmount:       r.cover_amount as number,
+    waitingPeriodDays: r.waiting_period_days as number,
+    minAge:            r.min_age as number,
+    maxAge:            r.max_age as number,
+    commissionPct:     r.commission_pct as number,
+    active:            r.active as boolean,
+    features:          (r.features as string[]) ?? [],
+    description:       (r.description as string) ?? '',
+    policiesCount:     (r.policies_count as number) ?? 0,
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toPolicy(r: any): Policy {
+  return {
+    id:              r.id,
+    policyNumber:    r.policy_number,
+    clientId:        r.clients?.id ?? r.client_id ?? '',
+    clientName:      r.clients?.name ?? '',
+    productId:       r.products?.id ?? r.product_id ?? '',
+    productName:     r.products?.name ?? '',
+    premium:         r.premium,
+    coverAmount:     r.cover_amount,
+    startDate:       date(r.start_date),
+    endDate:         date(r.end_date),
+    status:          r.status as PolicyStatus,
+    beneficiaries:   r.beneficiaries ?? [],
+    paymentMethod:   r.payment_method,
+    insurer:         r.insurer ?? undefined,
+    agentId:         r.profiles?.id ?? r.agent_id,
+    agentName:       r.profiles?.name,
+    createdAt:       date(r.created_at),
+    nextPaymentDate: r.next_payment_date ? date(r.next_payment_date) : undefined,
+    lastPaymentDate: r.last_payment_date ? date(r.last_payment_date) : undefined,
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toClaim(r: any): Claim {
+  const pol = r.policies
+  return {
+    id:            r.id,
+    claimNumber:   r.claim_number,
+    policyId:      r.policy_id,
+    policyNumber:  pol?.policy_number ?? '',
+    clientId:      pol?.clients?.id ?? '',
+    clientName:    pol?.clients?.name ?? '',
+    productName:   pol?.products?.name ?? '',
+    claimType:     r.claim_type,
+    amount:        r.amount,
+    status:        r.status as ClaimStatus,
+    dateOfEvent:   date(r.date_of_event),
+    dateSubmitted: date(r.date_submitted),
+    description:   r.description ?? '',
+    fraudScore:    r.fraud_score,
+    assignedTo:    r.assigned_to ?? undefined,
+    documents:     r.documents ?? [],
+    notes:         r.notes ?? undefined,
+    resolvedAt:    r.resolved_at ?? undefined,
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toPayment(r: any): Payment {
+  const pol = r.policies
+  return {
+    id:            r.id,
+    reference:     r.reference,
+    policyId:      r.policy_id,
+    policyNumber:  pol?.policy_number ?? '',
+    clientName:    pol?.clients?.name ?? '',
+    amount:        r.amount,
+    method:        r.method as PaymentMethod,
+    status:        r.status as PaymentStatus,
+    date:          date(r.payment_date),
+    splitPayments: r.split_payments ?? undefined,
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toTicket(r: any): Ticket {
+  return {
+    id:           r.id,
+    ticketNumber: r.ticket_number,
+    clientId:     r.clients?.id ?? r.client_id ?? '',
+    clientName:   r.clients?.name ?? '',
+    subject:      r.subject,
+    description:  r.description ?? '',
+    status:       r.status as TicketStatus,
+    priority:     r.priority as TicketPriority,
+    category:     r.category,
+    assignedTo:   r.assigned_to ?? undefined,
+    assignedName: r.profiles?.name ?? undefined,
+    createdAt:    r.created_at,
+    updatedAt:    r.updated_at,
+    messages:     r.messages ?? [],
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toEmail(r: any): EmailMessage {
+  return {
+    id:          r.id,
+    from:        r.from_address,
+    fromName:    r.from_name ?? r.from_address,
+    to:          r.to_address,
+    cc:          r.cc ?? undefined,
+    subject:     r.subject,
+    body:        r.body ?? '',
+    timestamp:   r.created_at ?? r.timestamp,
+    read:        r.read,
+    starred:     r.starred ?? false,
+    folder:      r.folder,
+    linkedTo:    r.linked_to ?? undefined,
+    attachments: r.attachments ?? [],
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toLead(r: any): Lead {
+  return {
+    id:              r.id,
+    name:            r.name,
+    email:           r.email ?? undefined,
+    phone:           r.phone,
+    source:          r.source ?? '',
+    productInterest: r.product_interest ?? '',
+    status:          r.status as LeadStatus,
+    intentScore:     r.intent_score,
+    createdAt:       r.created_at,
+    lastContact:     r.last_contact ? date(r.last_contact) : undefined,
+    notes:           r.notes ?? undefined,
+    assignedTo:      r.assigned_to ?? undefined,
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toFraudCase(r: any): FraudCase {
+  return {
+    id:           r.id,
+    claimId:      r.claim_id,
+    claimNumber:  r.claims?.claim_number ?? '',
+    policyNumber: r.claims?.policies?.policy_number ?? '',
+    clientName:   r.claims?.policies?.clients?.name ?? '',
+    fraudScore:   r.fraud_score,
+    signals:      r.signals ?? [],
+    status:       r.status as FraudCaseStatus,
+    assignedTo:   r.assigned_to ?? undefined,
+    createdAt:    r.created_at,
+    resolvedAt:   r.resolved_at ?? undefined,
+    notes:        r.notes ?? undefined,
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toReminder(r: any): Reminder {
+  return {
+    id:           r.id,
+    type:         r.type,
+    clientId:     r.clients?.id ?? r.client_id ?? '',
+    clientName:   r.clients?.name ?? '',
+    policyId:     r.policy_id ?? undefined,
+    policyNumber: r.policies?.policy_number ?? undefined,
+    dueDate:      date(r.due_date),
+    message:      r.message ?? '',
+    sent:         r.sent,
+    channel:      r.channel,
+  }
+}
+
+// ── SELECT strings ────────────────────────────────────────────────
+const POLICY_SELECT = `
+  id, policy_number, client_id, product_id, premium, cover_amount,
+  start_date, end_date, status, beneficiaries, payment_method, insurer,
+  agent_id, next_payment_date, last_payment_date, created_at,
+  clients!client_id(id, name),
+  products!product_id(id, name),
+  profiles!agent_id(id, name)
+`
+const CLAIM_SELECT = `
+  id, claim_number, policy_id, claim_type, amount, status,
+  date_of_event, date_submitted, description, fraud_score,
+  assigned_to, documents, notes, resolved_at, created_at,
+  policies!policy_id(
+    id, policy_number,
+    clients!client_id(id, name),
+    products!product_id(name)
+  )
+`
+const PAYMENT_SELECT = `
+  id, reference, policy_id, amount, method, status, payment_date, split_payments, created_at,
+  policies!policy_id(
+    policy_number,
+    clients!client_id(name)
+  )
+`
+const TICKET_SELECT = `
+  id, ticket_number, client_id, subject, description,
+  status, priority, category, assigned_to, messages, created_at, updated_at,
+  clients!client_id(id, name),
+  profiles!assigned_to(id, name)
+`
+const FRAUD_SELECT = `
+  id, claim_id, fraud_score, signals, status, assigned_to, notes, resolved_at, created_at,
+  claims!claim_id(
+    claim_number,
+    policies!policy_id(
+      policy_number,
+      clients!client_id(name)
+    )
+  )
+`
+const REMINDER_SELECT = `
+  id, type, client_id, policy_id, due_date, message, sent, channel, created_at,
+  clients!client_id(id, name),
+  policies!policy_id(policy_number)
+`
+
+// ── POLICIES ──────────────────────────────────────────────────────
+export const policies = {
+  async list() {
+    const { ok, data } = await sb('policies', 'read',
+      () => supabase.from('policies').select(POLICY_SELECT).order('created_at', { ascending: false }),
+      d => Array.isArray(d) && d.length > 0,
+    )
+    if (ok && data) return { data: (data as unknown[]).map(toPolicy), error: null }
+    local('policies', 'read')
+    return { data: localStore.policies.list(), error: null }
+  },
+
+  async get(id: string) {
+    const { ok, data } = await sb('policies', 'read',
+      () => supabase.from('policies').select(POLICY_SELECT).eq('id', id).single(),
+    )
+    if (ok && data) return { data: toPolicy(data), error: null }
+    local('policies', 'read')
+    return { data: localStore.policies.list().find(p => p.id === id) ?? null, error: null }
+  },
+
+  async create(policy: Omit<Policy, 'id'>) {
+    const row = {
+      policy_number: policy.policyNumber, client_id: policy.clientId,
+      product_id: policy.productId, premium: policy.premium,
+      cover_amount: policy.coverAmount, start_date: policy.startDate,
+      end_date: policy.endDate, status: policy.status,
+      beneficiaries: policy.beneficiaries, payment_method: policy.paymentMethod,
+      insurer: policy.insurer ?? null,
+      agent_id: policy.agentId ?? null, next_payment_date: policy.nextPaymentDate ?? null,
+    }
+    const { ok, data } = await sb('policies', 'write',
+      () => supabase.from('policies').insert(row).select(POLICY_SELECT).single(),
+    )
+    if (ok && data) return { data: toPolicy(data), error: null }
+    local('policies', 'write')
+    const item = { ...policy, id: uid(), createdAt: new Date().toISOString().split('T')[0] } as Policy
+    return { data: localStore.policies.create(item), error: null }
+  },
+
+  async update(id: string, updates: Partial<Policy>) {
+    const row: Record<string, unknown> = {}
+    if (updates.status)                              row.status             = updates.status
+    if (updates.paymentMethod)                       row.payment_method     = updates.paymentMethod
+    if (updates.insurer !== undefined)               row.insurer            = updates.insurer ?? null
+    if (updates.nextPaymentDate !== undefined)        row.next_payment_date  = updates.nextPaymentDate ?? null
+    if (updates.beneficiaries)                       row.beneficiaries      = updates.beneficiaries
+    if (updates.premium !== undefined)               row.premium            = updates.premium
+    if (updates.coverAmount !== undefined)           row.cover_amount       = updates.coverAmount
+    if (updates.endDate !== undefined)               row.end_date           = updates.endDate
+    const { ok, data } = await sb('policies', 'write',
+      () => supabase.from('policies').update(row).eq('id', id).select(POLICY_SELECT).single(),
+    )
+    if (ok && data) return { data: toPolicy(data), error: null }
+    local('policies', 'write')
+    return { data: localStore.policies.update(id, updates), error: null }
+  },
+}
+
+// ── CLIENTS ───────────────────────────────────────────────────────
+export const clients = {
+  async list() {
+    const { ok, data } = await sb('clients', 'read',
+      () => supabase.from('clients').select('*, policies(count)').order('created_at', { ascending: false }),
+      d => Array.isArray(d) && d.length > 0,
+    )
+    if (ok && data) return {
+      data: (data as Record<string, unknown>[]).map(r =>
+        toClient({ ...r, policy_count: (r.policies as {count:number}[])?.[0]?.count ?? 0 })
+      ),
+      error: null,
+    }
+    local('clients', 'read')
+    return { data: localStore.clients.list(), error: null }
+  },
+
+  async create(client: Omit<Client, 'id' | 'policyCount'>) {
+    const row = {
+      name: client.name, email: client.email, phone: client.phone,
+      national_id: client.nationalId, dob: client.dob || null,
+      address: client.address, occupation: client.occupation ?? null,
+      insurer: client.insurer ?? null, status: client.status,
+    }
+    const { ok, data } = await sb('clients', 'write',
+      () => supabase.from('clients').insert(row).select().single(),
+    )
+    if (ok && data) return { data: toClient({ ...(data as Record<string,unknown>), policy_count: 0 }), error: null }
+    local('clients', 'write')
+    const item = { ...client, id: uid(), policyCount: 0, createdAt: new Date().toISOString().split('T')[0] } as Client
+    return { data: localStore.clients.create(item), error: null }
+  },
+
+  async update(id: string, updates: Partial<Client>) {
+    const row: Record<string, unknown> = {}
+    if (updates.name       !== undefined) row.name       = updates.name
+    if (updates.email      !== undefined) row.email      = updates.email
+    if (updates.phone      !== undefined) row.phone      = updates.phone
+    if (updates.address    !== undefined) row.address    = updates.address
+    if (updates.occupation !== undefined) row.occupation = updates.occupation
+    if (updates.insurer    !== undefined) row.insurer    = updates.insurer ?? null
+    if (updates.status     !== undefined) row.status     = updates.status
+    const { ok, data } = await sb('clients', 'write',
+      () => supabase.from('clients').update(row).eq('id', id).select().single(),
+    )
+    if (ok && data) return { data: toClient({ ...(data as Record<string,unknown>), policy_count: 0 }), error: null }
+    local('clients', 'write')
+    return { data: localStore.clients.update(id, updates), error: null }
+  },
+}
+
+// ── PRODUCTS ──────────────────────────────────────────────────────
+export const products = {
+  async list() {
+    const { ok, data } = await sb('products', 'read',
+      () => supabase.from('products').select('*').order('name'),
+      d => Array.isArray(d) && d.length > 0,
+    )
+    if (ok && data) return { data: (data as Record<string,unknown>[]).map(toProduct), error: null }
+    local('products', 'read')
+    return { data: localStore.products.list(), error: null }
+  },
+
+  async create(product: Omit<Product, 'id' | 'policiesCount'>) {
+    const row = {
+      name: product.name, code: product.code, category: product.category,
+      premium: product.premium, cover_amount: product.coverAmount,
+      waiting_period_days: product.waitingPeriodDays, min_age: product.minAge,
+      max_age: product.maxAge, commission_pct: product.commissionPct,
+      active: product.active, features: product.features, description: product.description,
+    }
+    const { ok, data } = await sb('products', 'write',
+      () => supabase.from('products').insert(row).select().single(),
+    )
+    if (ok && data) return { data: toProduct({ ...(data as Record<string,unknown>), policies_count: 0 }), error: null }
+    local('products', 'write')
+    const item = { ...product, id: uid(), policiesCount: 0 } as Product
+    return { data: localStore.products.create(item), error: null }
+  },
+
+  async update(id: string, updates: Partial<Product>) {
+    const row: Record<string, unknown> = {}
+    if (updates.name              !== undefined) row.name                = updates.name
+    if (updates.premium           !== undefined) row.premium             = updates.premium
+    if (updates.coverAmount       !== undefined) row.cover_amount        = updates.coverAmount
+    if (updates.commissionPct     !== undefined) row.commission_pct      = updates.commissionPct
+    if (updates.active            !== undefined) row.active              = updates.active
+    if (updates.features          !== undefined) row.features            = updates.features
+    if (updates.description       !== undefined) row.description         = updates.description
+    if (updates.waitingPeriodDays !== undefined) row.waiting_period_days = updates.waitingPeriodDays
+    const { ok, data } = await sb('products', 'write',
+      () => supabase.from('products').update(row).eq('id', id).select().single(),
+    )
+    if (ok && data) return { data: toProduct(data as Record<string,unknown>), error: null }
+    local('products', 'write')
+    return { data: localStore.products.update(id, updates), error: null }
+  },
+}
+
+// ── CLAIMS ────────────────────────────────────────────────────────
+export const claims = {
+  async list() {
+    const { ok, data } = await sb('claims', 'read',
+      () => supabase.from('claims').select(CLAIM_SELECT).order('created_at', { ascending: false }),
+      d => Array.isArray(d) && d.length > 0,
+    )
+    if (ok && data) return { data: (data as unknown[]).map(toClaim), error: null }
+    local('claims', 'read')
+    return { data: localStore.claims.list(), error: null }
+  },
+
+  async create(claim: Omit<Claim, 'id' | 'claimNumber' | 'policyNumber' | 'clientId' | 'clientName' | 'productName'>) {
+    const claimNumber = `CLM-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`
+    const row = {
+      claim_number: claimNumber, policy_id: claim.policyId,
+      claim_type: claim.claimType, amount: claim.amount, status: claim.status,
+      date_of_event: claim.dateOfEvent, date_submitted: claim.dateSubmitted,
+      description: claim.description, fraud_score: claim.fraudScore, documents: claim.documents,
+    }
+    const { ok, data } = await sb('claims', 'write',
+      () => supabase.from('claims').insert(row).select(CLAIM_SELECT).single(),
+    )
+    if (ok && data) return { data: toClaim(data), error: null }
+    local('claims', 'write')
+    const pol = localStore.policies.list().find(p => p.id === claim.policyId)
+    const item: Claim = {
+      ...claim, id: uid(), claimNumber,
+      policyNumber: pol?.policyNumber ?? '', clientId: pol?.clientId ?? '',
+      clientName: pol?.clientName ?? '', productName: pol?.productName ?? '',
+    }
+    return { data: localStore.claims.create(item), error: null }
+  },
+
+  async update(id: string, updates: Partial<Claim>) {
+    const row: Record<string, unknown> = {}
+    if (updates.status     !== undefined) row.status      = updates.status
+    if (updates.assignedTo !== undefined) row.assigned_to = updates.assignedTo ?? null
+    if (updates.notes      !== undefined) row.notes       = updates.notes ?? null
+    if (updates.resolvedAt !== undefined) row.resolved_at = updates.resolvedAt ?? null
+    const { ok, data } = await sb('claims', 'write',
+      () => supabase.from('claims').update(row).eq('id', id).select(CLAIM_SELECT).single(),
+    )
+    if (ok && data) return { data: toClaim(data), error: null }
+    local('claims', 'write')
+    return { data: localStore.claims.update(id, updates), error: null }
+  },
+}
+
+// ── PAYMENTS ──────────────────────────────────────────────────────
+export const payments = {
+  async list() {
+    const { ok, data } = await sb('payments', 'read',
+      () => supabase.from('payments').select(PAYMENT_SELECT).order('payment_date', { ascending: false }),
+      d => Array.isArray(d) && d.length > 0,
+    )
+    if (ok && data) return { data: (data as unknown[]).map(toPayment), error: null }
+    local('payments', 'read')
+    return { data: localStore.payments.list(), error: null }
+  },
+
+  async create(payment: Omit<Payment, 'id'>) {
+    const row = {
+      reference: payment.reference, policy_id: payment.policyId,
+      amount: payment.amount, method: payment.method, status: payment.status,
+      payment_date: payment.date, split_payments: payment.splitPayments ?? null,
+    }
+    const { ok, data } = await sb('payments', 'write',
+      () => supabase.from('payments').insert(row).select(PAYMENT_SELECT).single(),
+    )
+    if (ok && data) return { data: toPayment(data), error: null }
+    local('payments', 'write')
+    const item = { ...payment, id: uid() } as Payment
+    return { data: localStore.payments.create(item), error: null }
+  },
+}
+
+// ── TICKETS ───────────────────────────────────────────────────────
+export const tickets = {
+  async list() {
+    const { ok, data } = await sb('tickets', 'read',
+      () => supabase.from('tickets').select(TICKET_SELECT).order('created_at', { ascending: false }),
+      d => Array.isArray(d) && d.length > 0,
+    )
+    if (ok && data) return { data: (data as unknown[]).map(toTicket), error: null }
+    local('tickets', 'read')
+    return { data: localStore.tickets.list(), error: null }
+  },
+
+  async create(ticket: Omit<Ticket, 'id'>) {
+    const row = {
+      ticket_number: ticket.ticketNumber, client_id: ticket.clientId,
+      subject: ticket.subject, description: ticket.description,
+      status: ticket.status, priority: ticket.priority, category: ticket.category,
+      messages: ticket.messages,
+    }
+    const { ok, data } = await sb('tickets', 'write',
+      () => supabase.from('tickets').insert(row).select(TICKET_SELECT).single(),
+    )
+    if (ok && data) return { data: toTicket(data), error: null }
+    local('tickets', 'write')
+    const item = { ...ticket, id: uid() } as Ticket
+    return { data: localStore.tickets.create(item), error: null }
+  },
+
+  async update(id: string, updates: Partial<Ticket>) {
+    const row: Record<string, unknown> = {}
+    if (updates.status     !== undefined) row.status      = updates.status
+    if (updates.assignedTo !== undefined) row.assigned_to = updates.assignedTo ?? null
+    if (updates.messages   !== undefined) row.messages    = updates.messages
+    row.updated_at = new Date().toISOString()
+    const { ok, data } = await sb('tickets', 'write',
+      () => supabase.from('tickets').update(row).eq('id', id).select(TICKET_SELECT).single(),
+    )
+    if (ok && data) return { data: toTicket(data), error: null }
+    local('tickets', 'write')
+    return { data: localStore.tickets.update(id, updates), error: null }
+  },
+}
+
+// ── EMAILS ────────────────────────────────────────────────────────
+export const emails = {
+  async list(folder?: 'inbox' | 'sent') {
+    const { ok, data } = await sb('emails', 'read',
+      () => {
+        let q = supabase.from('emails').select('*').order('created_at', { ascending: false })
+        if (folder) q = q.eq('folder', folder)
+        return q
+      },
+      d => Array.isArray(d) && d.length > 0,
+    )
+    if (ok && data) return { data: (data as unknown[]).map(toEmail), error: null }
+    local('emails', 'read')
+    const rows = localStore.emails.list()
+    return { data: folder ? rows.filter(e => e.folder === folder) : rows, error: null }
+  },
+
+  async create(email: Omit<EmailMessage, 'id' | 'timestamp'>) {
+    const row = {
+      from_address: email.from, from_name: email.fromName, to_address: email.to,
+      subject: email.subject, body: email.body, read: email.read,
+      folder: email.folder, linked_to: email.linkedTo ?? null,
+    }
+    const { ok, data } = await sb('emails', 'write',
+      () => supabase.from('emails').insert(row).select().single(),
+    )
+    if (ok && data) return { data: toEmail(data), error: null }
+    local('emails', 'write')
+    const item = { ...email, id: uid(), timestamp: new Date().toISOString() } as EmailMessage
+    return { data: localStore.emails.create(item), error: null }
+  },
+
+  async update(id: string, updates: Partial<EmailMessage>) {
+    const row: Record<string, unknown> = {}
+    if (updates.read    !== undefined) row.read    = updates.read
+    if (updates.starred !== undefined) row.starred = updates.starred
+    if (updates.folder  !== undefined) row.folder  = updates.folder
+    await sb('emails', 'write', () => supabase.from('emails').update(row).eq('id', id))
+    localStore.emails.update(id, updates)
+    return { data: localStore.emails.list().find(e => e.id === id) ?? null, error: null }
+  },
+
+  async markRead(id: string) {
+    await sb('emails', 'write', () => supabase.from('emails').update({ read: true }).eq('id', id))
+    localStore.emails.update(id, { read: true } as Partial<EmailMessage>)
+  },
+
+  async delete(id: string) {
+    await sb('emails', 'delete', () => supabase.from('emails').delete().eq('id', id))
+    localStore.emails.delete(id)
+  },
+}
+
+// ── LEADS ─────────────────────────────────────────────────────────
+export const leads = {
+  async list() {
+    const { ok, data } = await sb('leads', 'read',
+      () => supabase.from('leads').select('*').order('created_at', { ascending: false }),
+      d => Array.isArray(d) && d.length > 0,
+    )
+    if (ok && data) return { data: (data as unknown[]).map(toLead), error: null }
+    local('leads', 'read')
+    return { data: localStore.leads.list(), error: null }
+  },
+
+  async create(lead: Omit<Lead, 'id'>) {
+    const row = {
+      name: lead.name, email: lead.email ?? null, phone: lead.phone,
+      source: lead.source, product_interest: lead.productInterest,
+      status: lead.status, intent_score: lead.intentScore, assigned_to: lead.assignedTo ?? null,
+    }
+    const { ok, data } = await sb('leads', 'write',
+      () => supabase.from('leads').insert(row).select().single(),
+    )
+    if (ok && data) return { data: toLead(data), error: null }
+    local('leads', 'write')
+    const item = { ...lead, id: uid() } as Lead
+    return { data: localStore.leads.create(item), error: null }
+  },
+
+  async update(id: string, updates: Partial<Lead>) {
+    const row: Record<string, unknown> = {}
+    if (updates.status      !== undefined) row.status       = updates.status
+    if (updates.notes       !== undefined) row.notes        = updates.notes ?? null
+    if (updates.lastContact !== undefined) row.last_contact = updates.lastContact ?? null
+    if (updates.assignedTo  !== undefined) row.assigned_to  = updates.assignedTo ?? null
+    const { ok, data } = await sb('leads', 'write',
+      () => supabase.from('leads').update(row).eq('id', id).select().single(),
+    )
+    if (ok && data) return { data: toLead(data), error: null }
+    local('leads', 'write')
+    return { data: localStore.leads.update(id, updates), error: null }
+  },
+}
+
+// ── STAFF / PROFILES ──────────────────────────────────────────────
+export const staff = {
+  async list() {
+    const { ok, data } = await sb('profiles', 'read',
+      () => supabase.from('profiles').select('*, users:id(email)').order('name'),
+      d => Array.isArray(d) && d.length > 0,
+    )
+    if (ok && data) return {
+      data: (data as Record<string,unknown>[]).map(r => {
+        const emailRows = r.users as Array<{ email?: string }> | undefined
+        return toProfile({ ...r, email: emailRows?.[0]?.email ?? '' })
+      }),
+      error: null,
+    }
+    local('profiles', 'read')
+    return { data: localStore.staff.list(), error: null }
+  },
+
+  async update(id: string, updates: Partial<AppUser>) {
+    const row: Record<string, unknown> = {}
+    if (updates.name        !== undefined) row.name        = updates.name
+    if (updates.role        !== undefined) row.role        = updates.role
+    if (updates.department  !== undefined) row.department  = updates.department
+    if (updates.phone       !== undefined) row.phone       = updates.phone ?? null
+    if (updates.active      !== undefined) row.active      = updates.active
+    if (updates.permissions !== undefined) row.permissions = updates.permissions
+    const { ok, data } = await sb('profiles', 'write',
+      () => supabase.from('profiles').update(row).eq('id', id).select().single(),
+    )
+    if (ok && data) return { data: toProfile(data as Record<string,unknown>), error: null }
+    local('profiles', 'write')
+    return { data: localStore.staff.update(id, updates), error: null }
+  },
+}
+
+// ── FRAUD CASES ───────────────────────────────────────────────────
+export const fraudCases = {
+  async list() {
+    const { ok, data } = await sb('fraud_cases', 'read',
+      () => supabase.from('fraud_cases').select(FRAUD_SELECT).order('created_at', { ascending: false }),
+      d => Array.isArray(d) && d.length > 0,
+    )
+    if (ok && data) return { data: (data as unknown[]).map(toFraudCase), error: null }
+    local('fraud_cases', 'read')
+    return { data: localStore.fraudCases.list(), error: null }
+  },
+
+  async update(id: string, updates: Partial<FraudCase>) {
+    const row: Record<string, unknown> = {}
+    if (updates.status     !== undefined) row.status      = updates.status
+    if (updates.assignedTo !== undefined) row.assigned_to = updates.assignedTo ?? null
+    if (updates.notes      !== undefined) row.notes       = updates.notes ?? null
+    if (updates.resolvedAt !== undefined) row.resolved_at = updates.resolvedAt ?? null
+    const { ok, data } = await sb('fraud_cases', 'write',
+      () => supabase.from('fraud_cases').update(row).eq('id', id).select(FRAUD_SELECT).single(),
+    )
+    if (ok && data) return { data: toFraudCase(data), error: null }
+    local('fraud_cases', 'write')
+    return { data: localStore.fraudCases.update(id, updates), error: null }
+  },
+}
+
+// ── REMINDERS ─────────────────────────────────────────────────────
+export const reminders = {
+  async list() {
+    const { ok, data } = await sb('reminders', 'read',
+      () => supabase.from('reminders').select(REMINDER_SELECT).order('due_date'),
+      d => Array.isArray(d) && d.length > 0,
+    )
+    if (ok && data) return { data: (data as unknown[]).map(toReminder), error: null }
+    local('reminders', 'read')
+    return { data: localStore.reminders.list(), error: null }
+  },
+
+  async markSent(id: string) {
+    await sb('reminders', 'write', () => supabase.from('reminders').update({ sent: true }).eq('id', id))
+    localStore.reminders.update(id, { sent: true } as Partial<Reminder>)
+  },
+
+  async markAllSent(ids: string[]) {
+    await sb('reminders', 'write', () => supabase.from('reminders').update({ sent: true }).in('id', ids))
+    ids.forEach(id => localStore.reminders.update(id, { sent: true } as Partial<Reminder>))
+  },
+}
+
+// ── REALTIME ──────────────────────────────────────────────────────
+export function subscribeToTable(table: string, callback: () => void) {
+  const channel = supabase
+    .channel(`rt:${table}`)
+    .on('postgres_changes', { event: '*', schema: 'public', table }, callback)
+    .subscribe()
+  return () => { supabase.removeChannel(channel) }
+}
+
+// ── EXPORT ────────────────────────────────────────────────────────
+export const db = {
+  policies, clients, products, claims, payments,
+  tickets, emails, leads, staff, fraudCases, reminders,
+  subscribeToTable,
+  resetLocalData: () => localStore.reset(),
+}

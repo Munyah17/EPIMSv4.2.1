@@ -1,0 +1,278 @@
+export type UserRole =
+  | 'super_admin'
+  | 'admin'
+  | 'claims_officer'
+  | 'policy_admin'
+  | 'finance'
+  | 'client_relations'
+  | 'policyholder'
+
+export type Insurer = 'Motions' | 'CBZ Life' | 'EcoSure' | 'ZB Life' | 'Nyaradzo Funeral' | 'Doves'
+
+export interface AppUser {
+  id: string
+  name: string
+  email: string
+  role: UserRole
+  department: string
+  phone?: string
+  active: boolean
+  permissions: string[]
+  lastLogin?: string
+  password?: string
+}
+
+export interface Client {
+  id: string
+  name: string
+  email: string
+  phone: string
+  nationalId: string
+  dob: string
+  address: string
+  occupation?: string
+  insurer?: Insurer
+  createdAt: string
+  policyCount: number
+  status: 'active' | 'inactive'
+}
+
+export interface Beneficiary {
+  name: string
+  relationship: string
+  percentage: number
+  phone?: string
+}
+
+export type PolicyStatus = 'active' | 'lapsed' | 'cancelled' | 'pending' | 'expired'
+
+export interface Policy {
+  id: string
+  policyNumber: string
+  clientId: string
+  clientName: string
+  productId: string
+  productName: string
+  premium: number
+  coverAmount: number
+  startDate: string
+  endDate: string
+  status: PolicyStatus
+  beneficiaries: Beneficiary[]
+  paymentMethod: string
+  insurer?: Insurer
+  agentId?: string
+  agentName?: string
+  createdAt: string
+  nextPaymentDate?: string
+  lastPaymentDate?: string
+}
+
+export interface Product {
+  id: string
+  name: string
+  code: string
+  category: 'life' | 'funeral' | 'health' | 'accident' | 'motor' | 'property'
+  premium: number
+  coverAmount: number
+  waitingPeriodDays: number
+  maxAge: number
+  minAge: number
+  commissionPct: number
+  active: boolean
+  features: string[]
+  description: string
+  policiesCount: number
+}
+
+export type ClaimStatus = 'pending' | 'under_review' | 'approved' | 'rejected' | 'paid'
+
+export interface Claim {
+  id: string
+  claimNumber: string
+  policyId: string
+  policyNumber: string
+  clientId: string
+  clientName: string
+  productName: string
+  claimType: string
+  amount: number
+  status: ClaimStatus
+  dateOfEvent: string
+  dateSubmitted: string
+  description: string
+  fraudScore: number
+  assignedTo?: string
+  documents: string[]
+  notes?: string
+  resolvedAt?: string
+}
+
+export type PaymentMethod = 'OneMoney' | 'InnBucks' | 'Airtime Balance' | 'Bank Transfer' | 'Cash' | 'Debit Order' | 'Paynow' | 'Zipit' | 'EcoCash'
+
+export type PaymentStatus = 'completed' | 'pending' | 'failed' | 'reversed'
+
+export interface SplitPayment {
+  method: PaymentMethod
+  amount: number
+}
+
+export interface Payment {
+  id: string
+  reference: string
+  policyId: string
+  policyNumber: string
+  clientName: string
+  amount: number
+  method: PaymentMethod
+  status: PaymentStatus
+  date: string
+  splitPayments?: SplitPayment[]
+}
+
+export type TicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed'
+export type TicketPriority = 'low' | 'medium' | 'high' | 'urgent'
+
+export interface TicketMessage {
+  id: string
+  senderId: string
+  senderName: string
+  message: string
+  timestamp: string
+  isStaff: boolean
+}
+
+export interface Ticket {
+  id: string
+  ticketNumber: string
+  clientId: string
+  clientName: string
+  subject: string
+  description: string
+  status: TicketStatus
+  priority: TicketPriority
+  category: string
+  assignedTo?: string
+  assignedName?: string
+  createdAt: string
+  updatedAt: string
+  messages: TicketMessage[]
+}
+
+export interface EmailMessage {
+  id: string
+  from: string
+  fromName: string
+  to: string
+  cc?: string
+  subject: string
+  body: string
+  timestamp: string
+  read: boolean
+  starred?: boolean
+  folder: 'inbox' | 'sent' | 'draft' | 'claims'
+  linkedTo?: string
+  attachments?: string[]
+}
+
+export type LeadStatus = 'new' | 'contacted' | 'qualified' | 'proposal' | 'converted' | 'lost'
+
+export interface Lead {
+  id: string
+  name: string
+  email?: string
+  phone: string
+  source: string
+  productInterest: string
+  status: LeadStatus
+  intentScore: number
+  createdAt: string
+  lastContact?: string
+  notes?: string
+  assignedTo?: string
+}
+
+export type FraudCaseStatus = 'open' | 'investigating' | 'confirmed' | 'cleared'
+
+export interface FraudCase {
+  id: string
+  claimId: string
+  claimNumber: string
+  policyNumber: string
+  clientName: string
+  fraudScore: number
+  signals: string[]
+  status: FraudCaseStatus
+  assignedTo?: string
+  createdAt: string
+  resolvedAt?: string
+  notes?: string
+}
+
+export interface Reminder {
+  id: string
+  type: 'payment_due' | 'policy_renewal' | 'claim_followup' | 'birthday' | 'document_expiry'
+  clientId: string
+  clientName: string
+  policyId?: string
+  policyNumber?: string
+  dueDate: string
+  message: string
+  sent: boolean
+  channel: 'sms' | 'whatsapp' | 'email' | 'ussd'
+}
+
+export interface CautionFlag {
+  policyId: string
+  policyNumber: string
+  clientId: string
+  clientName: string
+  agentId?: string
+  daysOverdue: number
+  flaggedAt: string
+  monthsDefaulted: number
+  cleared: boolean
+  clearedAt?: string
+}
+
+export interface GatewaySettings {
+  ecocashMerchantCode: string
+  ecocashMerchantPin: string
+  ecocashMerchantPhone: string
+  ecocashApiUrl: string
+  paynowIntegrationId: string
+  paynowIntegrationKey: string
+  paynowReturnUrl: string
+  paynowResultUrl: string
+  zipitBankName: string
+  zipitAccountName: string
+  zipitAccountNumber: string
+  zipitBranchCode: string
+  smsApiKey: string
+  smsUsername: string
+  smsSenderId: string
+  smsSandbox: boolean
+  smtpHost: string
+  smtpPort: number
+  smtpUser: string
+  smtpPass: string
+  smtpFrom: string
+  smtpFromName: string
+}
+
+export interface ToastMessage {
+  id: string
+  type: 'success' | 'error' | 'warning' | 'info'
+  message: string
+}
+
+export interface DashboardStats {
+  activePolicies: number
+  totalPremiumsThisMonth: number
+  pendingClaims: number
+  newLeadsThisWeek: number
+  openTickets: number
+  renewalsThisWeek: number
+  fraudAlerts: number
+  lapseRate: number
+}

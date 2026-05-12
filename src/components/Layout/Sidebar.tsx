@@ -1,0 +1,160 @@
+import { useAuth } from '../../contexts/AuthContext'
+import type { ActivePanel } from '../../App'
+
+interface SidebarProps {
+  activePanel: ActivePanel
+  setActivePanel: (panel: ActivePanel) => void
+  isOpen: boolean
+  onClose: () => void
+}
+
+interface NavItem {
+  id: ActivePanel
+  label: string
+  icon: string
+  badge?: number | string
+  roles?: string[]
+}
+
+interface NavSection {
+  label: string
+  items: NavItem[]
+}
+
+const STAFF_SECTIONS: NavSection[] = [
+  {
+    label: 'MAIN',
+    items: [
+      { id: 'dashboard', label: 'Dashboard', icon: '⊞' },
+      { id: 'policies', label: 'Policies', icon: '🛡', badge: '1,284' },
+      { id: 'claims', label: 'Claims', icon: '📋', badge: 7 },
+      { id: 'payments', label: 'Payments', icon: '💳' },
+      { id: 'products', label: 'Products', icon: '📦', roles: ['super_admin', 'admin', 'policy_admin'] },
+    ],
+  },
+  {
+    label: 'CLIENT MANAGEMENT',
+    items: [
+      { id: 'clients', label: 'Clients', icon: '👥', badge: 892 },
+      { id: 'leads', label: 'Leads & Marketing', icon: '🎯', badge: 'AI' },
+    ],
+  },
+  {
+    label: 'OPERATIONS',
+    items: [
+      { id: 'staff', label: 'Staff', icon: '✅', roles: ['super_admin', 'admin'] },
+      { id: 'reminders', label: 'Reminders', icon: '🔔', badge: '19 due' },
+      { id: 'reports', label: 'Reports', icon: '📊', roles: ['super_admin', 'admin', 'finance'] },
+      { id: 'email', label: 'Email', icon: '✉', badge: 9 },
+      { id: 'tickets', label: 'Tickets', icon: '💬', badge: 4 },
+      { id: 'mass_messaging', label: 'Mass Messaging', icon: '📱', roles: ['super_admin', 'admin'] },
+      { id: 'billing_reminders', label: 'Billing & Reminders', icon: '💳', roles: ['super_admin', 'admin', 'finance'] },
+    ],
+  },
+  {
+    label: 'INTEGRATIONS',
+    items: [
+      { id: 'mno_integration', label: 'NetOne Integration', icon: '📡', roles: ['super_admin', 'admin'] },
+      { id: 'fraud', label: 'Fraud Detection', icon: '⚠', roles: ['super_admin', 'admin', 'claims_officer'] },
+    ],
+  },
+  {
+    label: 'SYSTEM',
+    items: [
+      { id: 'system_health', label: 'System Health', icon: '🖥', roles: ['super_admin', 'admin'] },
+      { id: 'notification_settings', label: 'Notification Settings', icon: '🔔', roles: ['super_admin', 'admin'] },
+      { id: 'profile', label: 'My Profile', icon: '👤' },
+    ],
+  },
+]
+
+const CLIENT_NAV: NavItem[] = [
+  { id: 'my_policies', label: 'My Policies', icon: '🛡' },
+  { id: 'my_claims', label: 'My Claims', icon: '📋' },
+  { id: 'my_payments', label: 'My Payments', icon: '💳' },
+  { id: 'profile', label: 'My Profile', icon: '👤' },
+]
+
+export default function Sidebar({ activePanel, setActivePanel, isOpen, onClose }: SidebarProps) {
+  const { user, canAccess } = useAuth()
+  if (!user) return null
+
+  const isClient = user.role === 'policyholder'
+
+  if (isClient) {
+    const visible = CLIENT_NAV.filter(item => canAccess(item.id))
+    return (
+      <aside className={`sidebar${isOpen ? ' sidebar-open' : ''}`}>
+        <SidebarHeader onClose={onClose} />
+        <nav className="sidebar-nav">
+          {visible.map(item => (
+            <NavBtn key={item.id} item={item} active={activePanel === item.id} onClick={() => setActivePanel(item.id)} />
+          ))}
+        </nav>
+        <SidebarFooter user={user} />
+      </aside>
+    )
+  }
+
+  return (
+    <aside className={`sidebar${isOpen ? ' sidebar-open' : ''}`}>
+      <SidebarHeader onClose={onClose} />
+      <nav className="sidebar-nav">
+        {STAFF_SECTIONS.map(section => {
+          const visible = section.items.filter(item => {
+            if (item.roles && !item.roles.includes(user.role)) return false
+            return canAccess(item.id)
+          })
+          if (!visible.length) return null
+          return (
+            <div key={section.label}>
+              <span className="nav-sec">{section.label}</span>
+              {visible.map(item => (
+                <NavBtn key={item.id} item={item} active={activePanel === item.id} onClick={() => setActivePanel(item.id)} />
+              ))}
+            </div>
+          )
+        })}
+      </nav>
+      <SidebarFooter user={user} />
+    </aside>
+  )
+}
+
+function SidebarHeader({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="sidebar-logo">
+      <div className="sidebar-logo-mark">T</div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="sidebar-logo-name">TARIQIFY IMS</div>
+        <div className="sidebar-logo-sub">Enpassent Multiple Agents</div>
+      </div>
+      <button className="sidebar-close-btn" onClick={onClose} aria-label="Close sidebar">✕</button>
+    </div>
+  )
+}
+
+function SidebarFooter({ user }: { user: { name: string; role: string } }) {
+  return (
+    <div className="sidebar-user">
+      <div className="sidebar-user-avatar">{user.name.charAt(0)}</div>
+      <div className="sidebar-user-info">
+        <div className="sidebar-user-name">{user.name}</div>
+        <div className="sidebar-user-role">{user.role.replace(/_/g, ' ')}</div>
+      </div>
+    </div>
+  )
+}
+
+function NavBtn({ item, active, onClick }: { item: NavItem; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      className={`nav-item${active ? ' active' : ''}`}
+      onClick={onClick}
+    >
+      <span className="nav-icon">{item.icon}</span>
+      <span className="nav-label">{item.label}</span>
+      {item.badge !== undefined ? <span className="nav-badge">{item.badge}</span> : null}
+    </button>
+  )
+}
