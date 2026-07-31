@@ -21,7 +21,7 @@ The Supabase database was corrupted during user account changes. This rebuild re
 3. Go to **SQL Editor** → **New Query**
 
 ### 2. Run the rebuild script
-1. Open `my-app/rebuild_database.sql` in your code editor
+1. Open `database/rebuild_database.sql` in your code editor
 2. Copy the **entire** file contents
 3. Paste into the Supabase SQL Editor
 4. Click **Run**
@@ -91,10 +91,10 @@ UPDATE public.profiles SET role='admin', department='Operations', active=true WH
 ```
 
 ## Files changed
-- `my-app/rebuild_database.sql` — new complete rebuild script
-- `my-app/supabase_schema.sql` — updated to match rebuild
-- `my-app/reset_database.sql` — updated reset script
-- `my-app/create_profiles_first.sql` — updated profile trigger
+- `database/rebuild_database.sql` — new complete rebuild script
+- `database/supabase_schema.sql` — updated to match rebuild
+- `database/reset_database.sql` — updated reset script
+- `database/create_profiles_first.sql` — updated profile trigger
 
 ## Important: Do NOT run old scripts separately
 The old `reset_database.sql` + `create_profiles_first.sql` + `supabase_schema.sql` combination is **deprecated**. Always use `rebuild_database.sql` for a clean rebuild.
