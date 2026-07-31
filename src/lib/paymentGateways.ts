@@ -8,13 +8,30 @@
  * Configure credentials in Billing & Reminders → Gateway Settings.
  * All API keys are stored in localStorage under 'tqfy_gateway_settings'.
  *
- * ⚠ CORS NOTE: EcoCash and Paynow APIs require server-side calls in production.
- *   Deploy scripts/reminder-cron.js (which includes an Express proxy) or use
- *   Supabase Edge Functions for live transactions. Sandbox mode works in-browser.
+ * Live EcoCash/Paynow calls are routed through netlify/functions/gateway-proxy.ts
+ * server-side, since both APIs reject direct browser calls via CORS.
  */
 
 import md5 from 'md5'
 import type { GatewaySettings } from '../types'
+
+/** Relays a request through the Netlify gateway-proxy function to avoid browser CORS blocks. */
+async function proxyFetch(
+  url: string,
+  init: { method?: 'GET' | 'POST'; headers?: Record<string, string>; body?: string } = {},
+): Promise<{ ok: boolean; status: number; text: () => Promise<string>; json: () => Promise<unknown> }> {
+  const res = await fetch('/.netlify/functions/gateway-proxy', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url, method: init.method ?? 'POST', headers: init.headers, body: init.body }),
+  })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error((err as { error?: string })?.error ?? `Gateway proxy error (HTTP ${res.status})`)
+  }
+  const { status, ok, body } = await res.json() as { status: number; ok: boolean; body: string }
+  return { ok, status, text: async () => body, json: async () => JSON.parse(body) }
+}
 
 const GW_KEY = 'tqfy_gateway_settings'
 
@@ -131,12 +148,12 @@ export async function initiateEcoCash(req: PaymentRequest): Promise<PaymentRespo
   }
 
   try {
-    const res = await fetch(`${cfg.ecocashApiUrl}/transaction/initiate`, {
+    const res = await proxyFetch(`${cfg.ecocashApiUrl}/transaction/initiate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
       body: JSON.stringify(body),
     })
-    const data = await res.json()
+    const data = await res.json() as { status?: string; transactionId?: string; pollUrl?: string; message?: string }
     const success = data.status === 'Message' || res.ok
     const txnId = data.transactionId ?? data.pollUrl ?? `ECO${Date.now()}`
 
@@ -150,8 +167,8 @@ export async function initiateEcoCash(req: PaymentRequest): Promise<PaymentRespo
 export async function pollEcoCash(pollUrl: string): Promise<{ status: 'pending' | 'success' | 'failed'; message: string }> {
   const cfg = getGatewaySettings()
   try {
-    const res = await fetch(`${cfg.ecocashApiUrl}/transaction/check?pollUrl=${encodeURIComponent(pollUrl)}`)
-    const data = await res.json()
+    const res = await proxyFetch(`${cfg.ecocashApiUrl}/transaction/check?pollUrl=${encodeURIComponent(pollUrl)}`, { method: 'GET' })
+    const data = await res.json() as { status?: string }
     const status: 'pending' | 'success' | 'failed' =
       data.status === 'Transaction Successful' ? 'success'
       : data.status === 'Transaction Failed' ? 'failed'
@@ -198,7 +215,7 @@ export async function initiatePaynow(req: PaymentRequest, method: 'ecocash' | 'o
   fields.hash = paynowHash(fields, cfg.paynowIntegrationKey)
 
   try {
-    const res = await fetch('https://www.paynow.co.zw/interface/initiatetransaction', {
+    const res = await proxyFetch('https://www.paynow.co.zw/interface/initiatetransaction', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams(fields).toString(),
@@ -212,14 +229,13 @@ export async function initiatePaynow(req: PaymentRequest, method: 'ecocash' | 'o
     }
     return { success: false, status: 'failed', message: parsed.error ?? 'Paynow initiation failed', gateway: 'paynow' }
   } catch (e) {
-    // CORS likely — guide user to proxy
-    return { success: false, status: 'failed', message: `Paynow CORS error. In production, route via Supabase Edge Function or scripts/reminder-cron.js proxy. Error: ${e}`, gateway: 'paynow' }
+    return { success: false, status: 'failed', message: `Paynow request failed: ${e}`, gateway: 'paynow' }
   }
 }
 
 export async function pollPaynow(pollUrl: string): Promise<{ status: 'pending' | 'success' | 'failed'; message: string }> {
   try {
-    const res = await fetch(pollUrl)
+    const res = await proxyFetch(pollUrl, { method: 'GET' })
     const parsed = Object.fromEntries(new URLSearchParams(await res.text()))
     const s = (parsed.status ?? '').toLowerCase()
     if (s === 'paid') return { status: 'success', message: 'Payment successful' }
