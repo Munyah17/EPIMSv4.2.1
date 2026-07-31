@@ -13,8 +13,14 @@ dist-ssr
 *.local
 
 # Environment variables
+.env
 .env.local
 .env.*.local
+
+# One-off scripts containing DB credentials / seed passwords
+fix_auth.mjs
+setup_database.mjs
+seed-data.ts
 
 # Editor directories and files
 .vscode/*
