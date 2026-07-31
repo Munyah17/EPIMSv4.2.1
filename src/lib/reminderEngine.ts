@@ -152,7 +152,7 @@ function dispatchReminder(policy: Policy, type: ReminderType, dueDate: Date) {
 
   // Client email
   if (clientEmail) {
-    sendEmail({
+    void sendEmail({
       to: clientEmail,
       cc: allCc,
       subject: type === 'r4_post5'
@@ -167,8 +167,8 @@ function dispatchReminder(policy: Policy, type: ReminderType, dueDate: Date) {
   // Insurer + NetOne staff emails
   const staffBody = buildStaffEmail(policy, type, dueDate, sig)
   const staffSubject = `[Billing Alert] ${policy.policyNumber} — ${policy.clientName}`
-  if (cfg.insurerEmail) sendEmail({ to: cfg.insurerEmail, cc: cfg.netoneEmail, subject: staffSubject, body: staffBody, folder: 'inbox' })
-  if (cfg.netoneEmail) sendEmail({ to: cfg.netoneEmail, subject: staffSubject, body: staffBody, folder: 'inbox' })
+  if (cfg.insurerEmail) void sendEmail({ to: cfg.insurerEmail, cc: cfg.netoneEmail, subject: staffSubject, body: staffBody, folder: 'inbox' })
+  if (cfg.netoneEmail) void sendEmail({ to: cfg.netoneEmail, subject: staffSubject, body: staffBody, folder: 'inbox' })
 
   // SMS only on due date
   if (type === 'r3_due' && clientPhone) {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import type { Ticket, Client } from '../../types'
+import type { Ticket, Client, TicketPriority } from '../../types'
 import { db } from '../../lib/db'
 
 interface Props {
@@ -7,7 +7,7 @@ interface Props {
   onSave: (ticket: Ticket) => void
 }
 
-const PRIORITIES = ['low', 'medium', 'urgent', 'critical']
+const PRIORITIES: TicketPriority[] = ['low', 'medium', 'high', 'urgent']
 const CATEGORIES = ['Technical', 'Claims', 'Policy', 'Billing', 'Other']
 
 export default function NewTicketModal({ onClose, onSave }: Props) {
@@ -16,7 +16,7 @@ export default function NewTicketModal({ onClose, onSave }: Props) {
   const [clientId, setClientId] = useState('')
   const [subject, setSubject] = useState('')
   const [description, setDescription] = useState('')
-  const [priority, setPriority] = useState('medium')
+  const [priority, setPriority] = useState<TicketPriority>('medium')
   const [category, setCategory] = useState('Policy')
 
   useEffect(() => {
@@ -81,10 +81,7 @@ export default function NewTicketModal({ onClose, onSave }: Props) {
             <div className="form-group">
               <label>Priority</label>
               <select className="form-control" value={priority} onChange={e => setPriority(e.target.value as TicketPriority)}>
-                <option value="low">Low</option>
-                <option value="medium">Medium</option>
-                <option value="high">High</option>
-                <option value="urgent">Urgent</option>
+                {PRIORITIES.map(p => <option key={p} value={p}>{p[0].toUpperCase() + p.slice(1)}</option>)}
               </select>
             </div>
           </div>

@@ -37,8 +37,12 @@ async function sb<T>(
   }
 }
 
+/** Dispatched whenever a read/write falls back to browser-local storage, so the UI can warn the user. */
+export const DB_FALLBACK_EVENT = 'ims:db-fallback'
+
 function local(table: string, type: 'read' | 'write' | 'delete') {
   health.record({ ts: Date.now(), type, table, success: true, duration: 0, source: 'local' })
+  window.dispatchEvent(new CustomEvent(DB_FALLBACK_EVENT, { detail: { table, type } }))
 }
 
 // ── Row transformers ──────────────────────────────────────────────
@@ -67,7 +71,7 @@ function toClient(r: Record<string, unknown>): Client {
     dob:         date(r.dob as string),
     address:     (r.address as string) ?? '',
     occupation:  r.occupation as string | undefined,
-    insurer:     (r.insurer as string) ?? undefined,
+    insurer:     (r.insurer as Client['insurer']) ?? undefined,
     createdAt:   date(r.created_at as string),
     policyCount: (r.policy_count as number) ?? 0,
     status:      r.status as Client['status'],
@@ -304,7 +308,7 @@ export const policies = {
   async list() {
     const { ok, data } = await sb('policies', 'read',
       () => supabase.from('policies').select(POLICY_SELECT).order('created_at', { ascending: false }),
-      d => Array.isArray(d) && d.length > 0,
+      d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as unknown[]).map(toPolicy), error: null }
     local('policies', 'read')
@@ -363,7 +367,7 @@ export const clients = {
   async list() {
     const { ok, data } = await sb('clients', 'read',
       () => supabase.from('clients').select('*, policies(count)').order('created_at', { ascending: false }),
-      d => Array.isArray(d) && d.length > 0,
+      d => Array.isArray(d),
     )
     if (ok && data) return {
       data: (data as Record<string, unknown>[]).map(r =>
@@ -414,7 +418,7 @@ export const products = {
   async list() {
     const { ok, data } = await sb('products', 'read',
       () => supabase.from('products').select('*').order('name'),
-      d => Array.isArray(d) && d.length > 0,
+      d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as Record<string,unknown>[]).map(toProduct), error: null }
     local('products', 'read')
@@ -462,7 +466,7 @@ export const claims = {
   async list() {
     const { ok, data } = await sb('claims', 'read',
       () => supabase.from('claims').select(CLAIM_SELECT).order('created_at', { ascending: false }),
-      d => Array.isArray(d) && d.length > 0,
+      d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as unknown[]).map(toClaim), error: null }
     local('claims', 'read')
@@ -511,7 +515,7 @@ export const payments = {
   async list() {
     const { ok, data } = await sb('payments', 'read',
       () => supabase.from('payments').select(PAYMENT_SELECT).order('payment_date', { ascending: false }),
-      d => Array.isArray(d) && d.length > 0,
+      d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as unknown[]).map(toPayment), error: null }
     local('payments', 'read')
@@ -539,7 +543,7 @@ export const tickets = {
   async list() {
     const { ok, data } = await sb('tickets', 'read',
       () => supabase.from('tickets').select(TICKET_SELECT).order('created_at', { ascending: false }),
-      d => Array.isArray(d) && d.length > 0,
+      d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as unknown[]).map(toTicket), error: null }
     local('tickets', 'read')
@@ -586,7 +590,7 @@ export const emails = {
         if (folder) q = q.eq('folder', folder)
         return q
       },
-      d => Array.isArray(d) && d.length > 0,
+      d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as unknown[]).map(toEmail), error: null }
     local('emails', 'read')
@@ -635,7 +639,7 @@ export const leads = {
   async list() {
     const { ok, data } = await sb('leads', 'read',
       () => supabase.from('leads').select('*').order('created_at', { ascending: false }),
-      d => Array.isArray(d) && d.length > 0,
+      d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as unknown[]).map(toLead), error: null }
     local('leads', 'read')
@@ -677,7 +681,7 @@ export const staff = {
   async list() {
     const { ok, data } = await sb('profiles', 'read',
       () => supabase.from('profiles').select('*, users:id(email)').order('name'),
-      d => Array.isArray(d) && d.length > 0,
+      d => Array.isArray(d),
     )
     if (ok && data) return {
       data: (data as Record<string,unknown>[]).map(r => {
@@ -712,7 +716,7 @@ export const fraudCases = {
   async list() {
     const { ok, data } = await sb('fraud_cases', 'read',
       () => supabase.from('fraud_cases').select(FRAUD_SELECT).order('created_at', { ascending: false }),
-      d => Array.isArray(d) && d.length > 0,
+      d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as unknown[]).map(toFraudCase), error: null }
     local('fraud_cases', 'read')
@@ -739,7 +743,7 @@ export const reminders = {
   async list() {
     const { ok, data } = await sb('reminders', 'read',
       () => supabase.from('reminders').select(REMINDER_SELECT).order('due_date'),
-      d => Array.isArray(d) && d.length > 0,
+      d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as unknown[]).map(toReminder), error: null }
     local('reminders', 'read')

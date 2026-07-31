@@ -3,14 +3,17 @@ import type { Payment, PaymentMethod, SplitPayment, Policy } from '../../types'
 import { db } from '../../lib/db'
 
 interface Props {
-  policyId: string
+  /** When omitted, the modal lets the user pick a policy from a dropdown. */
+  policyId?: string
   onClose: () => void
   onSave: (payment: Payment) => void
 }
 
 const METHODS: PaymentMethod[] = ['OneMoney', 'InnBucks', 'Airtime Balance', 'Bank Transfer', 'Cash', 'Debit Order', 'EcoCash']
 
-export default function RecordPaymentModal({ policyId, onClose, onSave }: Props) {
+export default function RecordPaymentModal({ policyId: initialPolicyId, onClose, onSave }: Props) {
+  const [allPolicies, setAllPolicies] = useState<Policy[] | null>(null)
+  const [policyId, setPolicyId] = useState(initialPolicyId ?? '')
   const [policy, setPolicy] = useState<Policy | null>(null)
   const [amount, setAmount] = useState('')
   const [method, setMethod] = useState<PaymentMethod>('OneMoney')
@@ -21,10 +24,18 @@ export default function RecordPaymentModal({ policyId, onClose, onSave }: Props)
   ])
 
   useEffect(() => {
+    if (!initialPolicyId) {
+      db.policies.list().then(({ data }) => setAllPolicies(data ?? []))
+    }
+  }, [initialPolicyId])
+
+  useEffect(() => {
     if (policyId) {
       db.policies.get(policyId).then(({ data }) => {
         if (data) setPolicy(data)
       })
+    } else {
+      setPolicy(null)
     }
   }, [policyId])
 
@@ -58,13 +69,24 @@ export default function RecordPaymentModal({ policyId, onClose, onSave }: Props)
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
+          {!initialPolicyId && (
+            <div className="form-group">
+              <label>Policy *</label>
+              <select className="form-control" value={policyId} onChange={e => setPolicyId(e.target.value)} disabled={!allPolicies}>
+                <option value="">{allPolicies ? 'Select policy…' : 'Loading policies…'}</option>
+                {allPolicies?.map(p => (
+                  <option key={p.id} value={p.id}>{p.policyNumber} — {p.clientName}</option>
+                ))}
+              </select>
+            </div>
+          )}
           {policy && (
             <div className="info-banner info-banner-info" style={{ marginBottom: '1rem' }}>
               Policy: {policy.policyNumber} — {policy.clientName}<br />
               Expected premium: ${policy.premium.toFixed(2)}/mo
             </div>
           )}
-          {!policy && (
+          {!policy && policyId && (
             <div className="info-banner info-banner-warning" style={{ marginBottom: '1rem' }}>
               Loading policy information…
             </div>

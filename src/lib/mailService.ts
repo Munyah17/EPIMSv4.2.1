@@ -1,7 +1,5 @@
 import type { EmailMessage } from '../types'
-import { localStore } from './localStore'
-
-function uid() { return `em${Date.now()}-${Math.random().toString(36).slice(2, 6)}` }
+import { db } from './db'
 
 export interface NotifSettings {
   insurerName: string
@@ -50,25 +48,55 @@ export interface SendEmailOptions {
   linkedTo?: string
 }
 
-export function sendEmail(opts: SendEmailOptions): EmailMessage {
-  const cfg = getNotifSettings()
-  const email: EmailMessage = {
-    id: uid(),
-    from: opts.from ?? cfg.fromAddress,
-    fromName: opts.fromName ?? cfg.fromName,
-    to: opts.to,
-    cc: opts.cc,
-    subject: opts.subject,
-    body: opts.body,
-    timestamp: new Date().toISOString(),
-    read: true,
-    folder: opts.folder ?? 'sent',
-    linkedTo: opts.linkedTo,
-  }
-  localStore.emails.create(email)
-  return email
+export interface SendEmailResult {
+  email: EmailMessage
+  /** True only if the message was actually handed off to the email provider (not just recorded). */
+  delivered: boolean
+  error?: string
 }
 
-export function sendSystemEmail(opts: Omit<SendEmailOptions, 'folder'>): EmailMessage {
+/**
+ * Records the message (via the Supabase-backed db layer, so it shows up in
+ * Sent/history) and attempts real delivery through the Netlify email proxy
+ * (see netlify/functions/send-email.ts). If the proxy isn't deployed or
+ * RESEND_API_KEY isn't configured, the message is still recorded but
+ * `delivered` comes back false with an explanatory `error`.
+ */
+export async function sendEmail(opts: SendEmailOptions): Promise<SendEmailResult> {
+  const cfg = getNotifSettings()
+  const from = opts.from ?? cfg.fromAddress
+  const fromName = opts.fromName ?? cfg.fromName
+
+  const { data: saved } = await db.emails.create({
+    from, fromName, to: opts.to, cc: opts.cc, subject: opts.subject, body: opts.body,
+    read: true, folder: opts.folder ?? 'sent', linkedTo: opts.linkedTo, starred: false, attachments: [],
+  })
+  const email: EmailMessage = saved ?? {
+    id: `em-local-${Date.now()}`, from, fromName, to: opts.to, cc: opts.cc,
+    subject: opts.subject, body: opts.body, timestamp: new Date().toISOString(),
+    read: true, starred: false, folder: opts.folder ?? 'sent', linkedTo: opts.linkedTo, attachments: [],
+  }
+
+  try {
+    const res = await fetch('/.netlify/functions/send-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ to: opts.to, cc: opts.cc, subject: opts.subject, text: opts.body, from, fromName }),
+    })
+    if (!res.ok) {
+      const detail = await res.json().catch(() => ({}))
+      return { email, delivered: false, error: detail?.error ?? `Email service error (HTTP ${res.status})` }
+    }
+    const result = await res.json().catch(() => ({}))
+    if (result?.simulated) {
+      return { email, delivered: false, error: 'Email sending is not configured yet — message recorded but not actually sent.' }
+    }
+    return { email, delivered: true }
+  } catch (e) {
+    return { email, delivered: false, error: `Could not reach email service: ${e}` }
+  }
+}
+
+export async function sendSystemEmail(opts: Omit<SendEmailOptions, 'folder'>): Promise<SendEmailResult> {
   return sendEmail({ ...opts, folder: 'sent' })
 }

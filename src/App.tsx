@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { startReminderEngine } from './lib/reminderEngine'
+import { DB_FALLBACK_EVENT } from './lib/db'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import LoginScreen from './components/Auth/LoginScreen'
 import SuperAdminLogin from './components/Auth/SuperAdminLogin'
@@ -62,6 +63,26 @@ function AppInner() {
   const dismissToast = (id: string) => {
     setToasts(prev => prev.filter(t => t.id !== id))
   }
+
+  useEffect(() => {
+    let lastReadWarningAt = 0
+    let lastWriteWarningAt = 0
+    const onFallback = (e: Event) => {
+      const { type } = (e as CustomEvent<{ table: string; type: 'read' | 'write' | 'delete' }>).detail
+      const now = Date.now()
+      if (type === 'read') {
+        if (now - lastReadWarningAt < 8000) return
+        lastReadWarningAt = now
+        showToast('warning', 'Could not reach the server — showing locally cached data. Some records may be out of date.')
+      } else {
+        if (now - lastWriteWarningAt < 8000) return
+        lastWriteWarningAt = now
+        showToast('warning', 'Could not reach the server — your change was saved locally only and has NOT synced yet.')
+      }
+    }
+    window.addEventListener(DB_FALLBACK_EVENT, onFallback)
+    return () => window.removeEventListener(DB_FALLBACK_EVENT, onFallback)
+  }, [])
 
   if (loading || !user) return null
 

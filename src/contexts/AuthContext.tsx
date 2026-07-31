@@ -112,19 +112,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = useCallback(async (email: string, password: string): Promise<boolean> => {
     try {
       const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-      console.log('[login] error:', error, 'user:', data?.user?.id, 'meta:', data?.user?.user_metadata)
       if (!error && data.user) {
         const meta = data.user.user_metadata as Record<string, unknown>
         const profile = await fetchProfile(data.user.id, data.user.email ?? email, meta)
-        console.log('[login] profile:', profile)
         if (profile && profile.active) {
           setUser(profile)
           return true
         }
         await supabase.auth.signOut().catch(() => {})
       }
-    } catch (e) {
-      console.log('[login] exception:', e)
+    } catch {
+      // fall through to return false below
     }
     return false
   }, [])

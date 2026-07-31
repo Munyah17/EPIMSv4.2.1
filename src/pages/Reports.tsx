@@ -15,6 +15,7 @@ export default function Reports({ showToast }: Props) {
   const [policies, setPolicies] = useState<Policy[]>([])
   const [claims, setClaims] = useState<Claim[]>([])
   const [payments, setPayments] = useState<Payment[]>([])
+  const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -22,10 +23,12 @@ export default function Reports({ showToast }: Props) {
       db.policies.list(),
       db.claims.list(),
       db.payments.list(),
-    ]).then(([policiesRes, claimsRes, paymentsRes]) => {
+      db.clients.list(),
+    ]).then(([policiesRes, claimsRes, paymentsRes, clientsRes]) => {
       if (policiesRes.data) setPolicies(policiesRes.data)
       if (claimsRes.data) setClaims(claimsRes.data)
       if (paymentsRes.data) setPayments(paymentsRes.data)
+      if (clientsRes.data) setClients(clientsRes.data)
       setLoading(false)
     })
   }, [])
@@ -120,9 +123,9 @@ export default function Reports({ showToast }: Props) {
             <div className="stat-card">
               <div className="stat-icon" style={{ background: 'rgba(59,130,246,0.15)', color: 'var(--blue)' }}>👥</div>
               <div className="stat-body">
-                <div className="stat-value">{CLIENTS.length}</div>
+                <div className="stat-value">{clients.length}</div>
                 <div className="stat-label">Total Clients</div>
-                <div className="stat-delta positive">{CLIENTS.filter(c => c.status === 'active').length} active</div>
+                <div className="stat-delta positive">{clients.filter(c => c.status === 'active').length} active</div>
               </div>
             </div>
           </div>
@@ -162,7 +165,7 @@ export default function Reports({ showToast }: Props) {
             {['pending', 'under_review', 'approved', 'rejected', 'paid'].map(s => (
               <div key={s} className="stat-card">
                 <div className="stat-body">
-                  <div className="stat-value">{CLAIMS.filter(c => c.status === s).length}</div>
+                  <div className="stat-value">{claims.filter(c => c.status === s).length}</div>
                   <div className="stat-label" style={{ textTransform: 'capitalize' }}>{s.replace('_', ' ')}</div>
                 </div>
               </div>
@@ -173,7 +176,7 @@ export default function Reports({ showToast }: Props) {
               <tr><th>Claim No.</th><th>Client</th><th>Amount</th><th>Type</th><th>Fraud Score</th><th>Status</th></tr>
             </thead>
             <tbody>
-              {CLAIMS.map(c => (
+              {claims.map(c => (
                 <tr key={c.id}>
                   <td><span className="mono">{c.claimNumber}</span></td>
                   <td>{c.clientName}</td>
@@ -205,7 +208,7 @@ export default function Reports({ showToast }: Props) {
               <tr><td><strong>Claims Incurred</strong></td><td>${totalPaid.toFixed(2)}</td></tr>
               <tr><td><strong>Claims Ratio</strong></td><td>{claimsRatio}%</td></tr>
               <tr><td><strong>Lapse Rate</strong></td><td>{lapseRate}%</td></tr>
-              <tr><td><strong>Total Clients</strong></td><td>{CLIENTS.length}</td></tr>
+              <tr><td><strong>Total Clients</strong></td><td>{clients.length}</td></tr>
             </tbody>
           </table>
           <div style={{ marginTop: '1.5rem', display: 'flex', gap: 8 }}>

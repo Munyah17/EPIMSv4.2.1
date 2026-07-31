@@ -43,10 +43,10 @@ ${claimSummaryBlock(claim)}
 
 Please retain this email for your records. All parties will be copied on further updates.${signature(cfg.signature)}`
 
-  sendEmail({ to: cfg.insurerEmail, cc, subject, body: staffBody, linkedTo: claim.id })
-  sendEmail({ to: cfg.netoneEmail, cc, subject, body: staffBody, linkedTo: claim.id })
+  void sendEmail({ to: cfg.insurerEmail, cc, subject, body: staffBody, linkedTo: claim.id })
+  void sendEmail({ to: cfg.netoneEmail, cc, subject, body: staffBody, linkedTo: claim.id })
   if (client.email) {
-    sendEmail({ to: client.email, cc, subject, body: clientBody, linkedTo: claim.id, folder: 'claims' })
+    void sendEmail({ to: client.email, cc, subject, body: clientBody, linkedTo: claim.id, folder: 'claims' })
   }
 }
 
@@ -78,10 +78,10 @@ ${claimSummaryBlock(claim)}
 
 We will keep you informed as this claim progresses. All parties are copied on this correspondence.${signature(cfg.signature)}`
 
-  sendEmail({ to: cfg.insurerEmail, cc, subject, body: staffBody, linkedTo: claim.id, folder: 'claims' })
-  sendEmail({ to: cfg.netoneEmail, cc, subject, body: staffBody, linkedTo: claim.id, folder: 'claims' })
+  void sendEmail({ to: cfg.insurerEmail, cc, subject, body: staffBody, linkedTo: claim.id, folder: 'claims' })
+  void sendEmail({ to: cfg.netoneEmail, cc, subject, body: staffBody, linkedTo: claim.id, folder: 'claims' })
   if (client.email) {
-    sendEmail({ to: client.email, cc, subject, body: clientBody, linkedTo: claim.id, folder: 'claims' })
+    void sendEmail({ to: client.email, cc, subject, body: clientBody, linkedTo: claim.id, folder: 'claims' })
   }
 }
 
@@ -106,9 +106,9 @@ ${claimSummaryBlock(claim)}
 
 Thank you for choosing our insurance services.${signature(cfg.signature)}`
 
-  sendEmail({ to: cfg.insurerEmail, cc, subject, body: staffBody, linkedTo: claim.id, folder: 'claims' })
-  sendEmail({ to: cfg.netoneEmail, cc, subject, body: staffBody, linkedTo: claim.id, folder: 'claims' })
+  void sendEmail({ to: cfg.insurerEmail, cc, subject, body: staffBody, linkedTo: claim.id, folder: 'claims' })
+  void sendEmail({ to: cfg.netoneEmail, cc, subject, body: staffBody, linkedTo: claim.id, folder: 'claims' })
   if (client.email) {
-    sendEmail({ to: client.email, cc, subject, body: clientBody, linkedTo: claim.id, folder: 'claims' })
+    void sendEmail({ to: client.email, cc, subject, body: clientBody, linkedTo: claim.id, folder: 'claims' })
   }
 }

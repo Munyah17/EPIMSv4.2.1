@@ -116,7 +116,7 @@ export default function Email({ showToast }: Props) {
     try {
       const fromAddr = user?.email ?? 'noreply@tariqify.com'
       const fromName = user?.name ?? 'Tariqify IMS'
-      const sent = sendEmail({
+      const { email: sent, delivered, error } = await sendEmail({
         from: fromAddr,
         fromName,
         to: compose.to.trim(),
@@ -128,7 +128,8 @@ export default function Email({ showToast }: Props) {
       setEmails(prev => [sent, ...prev])
       setShowCompose(false)
       setCompose({ to: '', cc: '', subject: '', body: '' })
-      showToast('success', `Email sent to ${compose.to}.`)
+      if (delivered) showToast('success', `Email sent to ${compose.to}.`)
+      else showToast('warning', error ?? `Email to ${compose.to} was recorded but not actually delivered.`)
     } finally {
       setSending(false)
     }
