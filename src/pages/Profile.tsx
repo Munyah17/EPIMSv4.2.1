@@ -2,6 +2,8 @@ import { useState } from 'react'
 import type { ToastMessage } from '../types'
 import type { ActivePanel } from '../App'
 import { useAuth } from '../contexts/AuthContext'
+import { db } from '../lib/db'
+import { supabase } from '../lib/supabase'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -9,24 +11,71 @@ interface Props {
 }
 
 export default function Profile({ showToast }: Props) {
-  const { user } = useAuth()
+  const { user, updateLocalUser, reauthenticate } = useAuth()
   const [activeTab, setActiveTab] = useState<'info' | 'password' | 'notifications' | 'audit'>('info')
   const [name, setName] = useState(user?.name ?? '')
   const [phone, setPhone] = useState(user?.phone ?? '')
+  const [savingInfo, setSavingInfo] = useState(false)
+
+  const [newEmail, setNewEmail] = useState('')
+  const [emailPwd, setEmailPwd] = useState('')
+  const [savingEmail, setSavingEmail] = useState(false)
+
   const [currentPwd, setCurrentPwd] = useState('')
   const [newPwd, setNewPwd] = useState('')
   const [confirmPwd, setConfirmPwd] = useState('')
+  const [savingPwd, setSavingPwd] = useState(false)
 
-  const saveInfo = () => {
-    showToast('success', 'Profile updated successfully.')
+  const saveInfo = async () => {
+    if (!user) return
+    if (!name.trim()) { showToast('warning', 'Full name cannot be empty.'); return }
+    setSavingInfo(true)
+    try {
+      // Only ever sends name/phone — role, department, active, and permissions
+      // are never part of this payload, and the database itself now rejects
+      // any attempt to change them on your own row (see database/
+      // fix_profiles_self_update_privilege_escalation.sql).
+      const { data, error } = await db.staff.update(user.id, { name: name.trim(), phone: phone.trim() })
+      if (error || !data) { showToast('error', 'Failed to update profile.'); return }
+      updateLocalUser({ name: data.name, phone: data.phone })
+      showToast('success', 'Profile updated successfully.')
+    } finally {
+      setSavingInfo(false)
+    }
   }
 
-  const changePwd = () => {
+  const changeEmail = async () => {
+    if (!newEmail.trim() || !newEmail.includes('@')) { showToast('warning', 'Enter a valid email address.'); return }
+    if (newEmail.trim().toLowerCase() === user?.email.toLowerCase()) { showToast('warning', 'That is already your current email.'); return }
+    if (!emailPwd) { showToast('warning', 'Enter your current password to confirm this change.'); return }
+    setSavingEmail(true)
+    try {
+      const authorized = await reauthenticate(emailPwd)
+      if (!authorized) { showToast('error', 'Current password is incorrect.'); return }
+      const { error } = await supabase.auth.updateUser({ email: newEmail.trim() })
+      if (error) { showToast('error', `Failed to update email: ${error.message}`); return }
+      showToast('success', 'Check your inbox to confirm this email change before it takes effect.')
+      setNewEmail(''); setEmailPwd('')
+    } finally {
+      setSavingEmail(false)
+    }
+  }
+
+  const changePwd = async () => {
     if (!currentPwd) { showToast('warning', 'Enter your current password.'); return }
     if (newPwd !== confirmPwd) { showToast('error', 'New passwords do not match.'); return }
     if (newPwd.length < 8) { showToast('warning', 'Password must be at least 8 characters.'); return }
-    showToast('success', 'Password changed successfully.')
-    setCurrentPwd(''); setNewPwd(''); setConfirmPwd('')
+    setSavingPwd(true)
+    try {
+      const authorized = await reauthenticate(currentPwd)
+      if (!authorized) { showToast('error', 'Current password is incorrect.'); return }
+      const { error } = await supabase.auth.updateUser({ password: newPwd })
+      if (error) { showToast('error', `Failed to change password: ${error.message}`); return }
+      showToast('success', 'Password changed successfully.')
+      setCurrentPwd(''); setNewPwd(''); setConfirmPwd('')
+    } finally {
+      setSavingPwd(false)
+    }
   }
 
   const auditLog = [
@@ -64,10 +113,6 @@ export default function Profile({ showToast }: Props) {
                 <input className="form-control" value={name} onChange={e => setName(e.target.value)} />
               </div>
               <div className="form-group">
-                <label>Email Address</label>
-                <input className="form-control" value={user?.email ?? ''} disabled style={{ opacity: 0.6 }} />
-              </div>
-              <div className="form-group">
                 <label>Phone Number</label>
                 <input className="form-control" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+263 7X XXX XXXX" />
               </div>
@@ -79,7 +124,28 @@ export default function Profile({ showToast }: Props) {
                 <label>Department</label>
                 <input className="form-control" value={user?.department ?? ''} disabled style={{ opacity: 0.6 }} />
               </div>
-              <button className="btn btn-primary" onClick={saveInfo}>Save Changes</button>
+              <button className="btn btn-primary" onClick={saveInfo} disabled={savingInfo}>
+                {savingInfo ? 'Saving…' : 'Save Changes'}
+              </button>
+
+              <hr style={{ margin: '1.5rem 0', border: 'none', borderTop: '1px solid var(--border)' }} />
+
+              <h3 style={{ marginBottom: '0.75rem' }}>Change Email Address</h3>
+              <div className="form-group">
+                <label>Current Email</label>
+                <input className="form-control" value={user?.email ?? ''} disabled style={{ opacity: 0.6 }} />
+              </div>
+              <div className="form-group">
+                <label>New Email Address</label>
+                <input type="email" className="form-control" value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="new@example.com" />
+              </div>
+              <div className="form-group">
+                <label>Confirm Current Password</label>
+                <input type="password" className="form-control" value={emailPwd} onChange={e => setEmailPwd(e.target.value)} placeholder="Required to confirm this change" />
+              </div>
+              <button className="btn btn-primary" onClick={changeEmail} disabled={savingEmail}>
+                {savingEmail ? 'Updating…' : 'Update Email'}
+              </button>
             </div>
           )}
 
@@ -97,7 +163,9 @@ export default function Profile({ showToast }: Props) {
                 <label>Confirm New Password</label>
                 <input type="password" className="form-control" value={confirmPwd} onChange={e => setConfirmPwd(e.target.value)} />
               </div>
-              <button className="btn btn-primary" onClick={changePwd}>Change Password</button>
+              <button className="btn btn-primary" onClick={changePwd} disabled={savingPwd}>
+                {savingPwd ? 'Changing…' : 'Change Password'}
+              </button>
             </div>
           )}
 

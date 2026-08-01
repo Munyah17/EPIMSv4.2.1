@@ -326,6 +326,29 @@ CREATE POLICY "profiles_update_admin" ON public.profiles FOR UPDATE TO authentic
 CREATE POLICY "profiles_delete_super" ON public.profiles FOR DELETE TO authenticated USING (current_user_role() = 'super_admin');
 CREATE POLICY "profiles_insert_trigger" ON public.profiles FOR INSERT TO authenticated WITH CHECK (true);
 
+-- RLS only filters which ROWS a policy applies to, not which columns —
+-- without this trigger, profiles_update_own would let any user change their
+-- own role/active/permissions/department (privilege escalation). Self-edits
+-- keep those fields locked; only an admin editing SOMEONE ELSE's row
+-- (matched by profiles_update_admin) can change them.
+CREATE OR REPLACE FUNCTION public.lock_privileged_profile_fields_on_self_update()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+  IF auth.uid() = OLD.id THEN
+    NEW.role        := OLD.role;
+    NEW.active       := OLD.active;
+    NEW.permissions  := OLD.permissions;
+    NEW.department   := OLD.department;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_lock_privileged_profile_fields ON public.profiles;
+CREATE TRIGGER trg_lock_privileged_profile_fields
+  BEFORE UPDATE ON public.profiles
+  FOR EACH ROW EXECUTE FUNCTION public.lock_privileged_profile_fields_on_self_update();
+
 -- Clients
 CREATE POLICY "clients_select_staff" ON public.clients FOR SELECT TO authenticated USING (is_staff());
 CREATE POLICY "clients_select_own" ON public.clients FOR SELECT TO authenticated USING (

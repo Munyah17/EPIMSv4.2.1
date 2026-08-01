@@ -9,6 +9,12 @@ interface AuthContextValue {
   logout: () => Promise<void>
   hasPermission: (permission: string) => boolean
   canAccess: (panel: string) => boolean
+  /** Merges a patch into the locally-held user (e.g. after Profile.tsx saves name/phone). */
+  updateLocalUser: (patch: Partial<AppUser>) => void
+  /** Re-verifies the current password by attempting a fresh sign-in. Required before
+   *  allowing a password or email change — proves the caller isn't just an open session
+   *  on an unlocked device. Returns false without throwing on a wrong password. */
+  reauthenticate: (password: string) => Promise<boolean>
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -145,8 +151,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return allowed.includes(user.role)
   }, [user])
 
+  const updateLocalUser = useCallback((patch: Partial<AppUser>) => {
+    setUser(prev => prev ? { ...prev, ...patch } : prev)
+  }, [])
+
+  const reauthenticate = useCallback(async (password: string): Promise<boolean> => {
+    if (!user?.email) return false
+    const { error } = await supabase.auth.signInWithPassword({ email: user.email, password })
+    return !error
+  }, [user])
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, hasPermission, canAccess }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, hasPermission, canAccess, updateLocalUser, reauthenticate }}>
       {children}
     </AuthContext.Provider>
   )
