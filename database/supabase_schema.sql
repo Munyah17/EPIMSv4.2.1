@@ -18,6 +18,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE TABLE IF NOT EXISTS public.profiles (
   id          UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   name        TEXT NOT NULL,
+  email       TEXT,
   role        TEXT NOT NULL DEFAULT 'policy_admin'
                 CHECK (role IN ('super_admin','admin','claims_officer','policy_admin','finance','client_relations','policyholder')),
   department  TEXT NOT NULL DEFAULT 'Administration',
@@ -221,14 +222,15 @@ CREATE INDEX IF NOT EXISTS idx_profiles_active    ON public.profiles(active);
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
-  INSERT INTO public.profiles (id, name, role, department)
+  INSERT INTO public.profiles (id, name, role, department, email)
   VALUES (
     NEW.id,
     COALESCE(NEW.raw_user_meta_data->>'name', split_part(NEW.email, '@', 1)),
     COALESCE(NEW.raw_user_meta_data->>'role', 'policy_admin'),
-    COALESCE(NEW.raw_user_meta_data->>'department', 'Administration')
+    COALESCE(NEW.raw_user_meta_data->>'department', 'Administration'),
+    NEW.email
   )
-  ON CONFLICT (id) DO NOTHING;
+  ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email;
   RETURN NEW;
 END;
 $$;
@@ -237,6 +239,22 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
+
+-- Keep profiles.email in sync if the auth email changes later.
+CREATE OR REPLACE FUNCTION public.sync_profile_email()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF NEW.email IS DISTINCT FROM OLD.email THEN
+    UPDATE public.profiles SET email = NEW.email WHERE id = NEW.id;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS on_auth_user_email_updated ON auth.users;
+CREATE TRIGGER on_auth_user_email_updated
+  AFTER UPDATE ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.sync_profile_email();
 
 -- Auto-update updated_at columns
 CREATE OR REPLACE FUNCTION public.set_updated_at()
@@ -308,6 +326,15 @@ RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER AS $$
   )
 $$;
 
+-- Current user's auth email. SECURITY DEFINER so RLS policies can compare
+-- against it without needing a direct grant on auth.users (the
+-- `authenticated` role has none — a plain policy querying auth.users
+-- directly breaks every query that touches the policy's table).
+CREATE OR REPLACE FUNCTION public.current_user_email()
+RETURNS TEXT LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  SELECT email FROM auth.users WHERE id = auth.uid()
+$$;
+
 -- Helper: does current user own a specific policy?
 CREATE OR REPLACE FUNCTION public.owns_policy(check_policy_id UUID)
 RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER AS $$
@@ -352,7 +379,7 @@ CREATE TRIGGER trg_lock_privileged_profile_fields
 -- Clients
 CREATE POLICY "clients_select_staff" ON public.clients FOR SELECT TO authenticated USING (is_staff());
 CREATE POLICY "clients_select_own" ON public.clients FOR SELECT TO authenticated USING (
-  email = (SELECT email FROM auth.users WHERE id = auth.uid())
+  email = public.current_user_email()
 );
 CREATE POLICY "clients_insert" ON public.clients FOR INSERT TO authenticated WITH CHECK (is_staff());
 CREATE POLICY "clients_update" ON public.clients FOR UPDATE TO authenticated USING (is_staff());
@@ -368,7 +395,7 @@ CREATE POLICY "policies_select_own" ON public.policies FOR SELECT TO authenticat
   EXISTS (
     SELECT 1 FROM public.clients c
     WHERE c.id = client_id
-      AND c.email = (SELECT email FROM auth.users WHERE id = auth.uid())
+      AND c.email = public.current_user_email()
   )
 );
 CREATE POLICY "policies_write" ON public.policies FOR ALL TO authenticated USING (is_staff()) WITH CHECK (is_staff());

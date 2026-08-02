@@ -37,12 +37,15 @@ DROP TABLE IF EXISTS public.products CASCADE;
 DROP TABLE IF EXISTS public.clients CASCADE;
 DROP TABLE IF EXISTS public.profiles CASCADE;
 
--- Drop auth trigger
+-- Drop auth triggers
 DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+DROP TRIGGER IF EXISTS on_auth_user_email_updated ON auth.users;
 
 -- Drop functions
 DROP FUNCTION IF EXISTS public.handle_new_user() CASCADE;
+DROP FUNCTION IF EXISTS public.sync_profile_email() CASCADE;
 DROP FUNCTION IF EXISTS public.current_user_role() CASCADE;
+DROP FUNCTION IF EXISTS public.current_user_email() CASCADE;
 DROP FUNCTION IF EXISTS public.is_staff() CASCADE;
 DROP FUNCTION IF EXISTS public.is_admin() CASCADE;
 DROP FUNCTION IF EXISTS public.owns_policy() CASCADE;
@@ -61,6 +64,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE TABLE public.profiles (
   id          UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   name        TEXT NOT NULL,
+  email       TEXT,
   role        TEXT NOT NULL DEFAULT 'policy_admin'
                 CHECK (role IN ('super_admin','admin','claims_officer','policy_admin','finance','client_relations','policyholder')),
   department  TEXT NOT NULL DEFAULT 'Administration',
@@ -264,14 +268,15 @@ CREATE INDEX idx_profiles_active    ON public.profiles(active);
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
 BEGIN
-  INSERT INTO public.profiles (id, name, role, department)
+  INSERT INTO public.profiles (id, name, role, department, email)
   VALUES (
     NEW.id,
     COALESCE(NEW.raw_user_meta_data->>'name', split_part(NEW.email, '@', 1)),
     COALESCE(NEW.raw_user_meta_data->>'role', 'policy_admin'),
-    COALESCE(NEW.raw_user_meta_data->>'department', 'Administration')
+    COALESCE(NEW.raw_user_meta_data->>'department', 'Administration'),
+    NEW.email
   )
-  ON CONFLICT (id) DO NOTHING;
+  ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email;
   RETURN NEW;
 END;
 $$;
@@ -279,6 +284,21 @@ $$;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
+
+-- Keep profiles.email in sync if the auth email changes later.
+CREATE OR REPLACE FUNCTION public.sync_profile_email()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF NEW.email IS DISTINCT FROM OLD.email THEN
+    UPDATE public.profiles SET email = NEW.email WHERE id = NEW.id;
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER on_auth_user_email_updated
+  AFTER UPDATE ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.sync_profile_email();
 
 -- ----------------------------------------------------------------
 -- 5. AUTH HELPER FUNCTIONS (SECURITY DEFINER — safe wrappers)
@@ -308,6 +328,15 @@ RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER AS $$
      FROM public.profiles WHERE id = auth.uid()),
     FALSE
   )
+$$;
+
+-- Current user's auth email. SECURITY DEFINER so RLS policies can compare
+-- against it without needing a direct grant on auth.users (the
+-- `authenticated` role has none — a plain policy querying auth.users
+-- directly breaks every query that touches the policy's table).
+CREATE OR REPLACE FUNCTION public.current_user_email()
+RETURNS TEXT LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  SELECT email FROM auth.users WHERE id = auth.uid()
 $$;
 
 -- Does current user own a specific policy (for policyholders)?
@@ -407,7 +436,7 @@ CREATE POLICY "clients_select_staff" ON public.clients
 -- Policyholders can read their own client record (linked by email)
 CREATE POLICY "clients_select_own" ON public.clients
   FOR SELECT TO authenticated USING (
-    email = (SELECT email FROM auth.users WHERE id = auth.uid())
+    email = public.current_user_email()
   );
 
 -- Only staff can insert/update clients
@@ -441,7 +470,7 @@ CREATE POLICY "policies_select_own" ON public.policies
     EXISTS (
       SELECT 1 FROM public.clients c
       WHERE c.id = client_id
-        AND c.email = (SELECT email FROM auth.users WHERE id = auth.uid())
+        AND c.email = public.current_user_email()
     )
   );
 

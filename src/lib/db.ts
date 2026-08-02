@@ -680,16 +680,10 @@ export const leads = {
 export const staff = {
   async list() {
     const { ok, data } = await sb('profiles', 'read',
-      () => supabase.from('profiles').select('*, users:id(email)').order('name'),
+      () => supabase.from('profiles').select('*').order('name'),
       d => Array.isArray(d),
     )
-    if (ok && data) return {
-      data: (data as Record<string,unknown>[]).map(r => {
-        const emailRows = r.users as Array<{ email?: string }> | undefined
-        return toProfile({ ...r, email: emailRows?.[0]?.email ?? '' })
-      }),
-      error: null,
-    }
+    if (ok && data) return { data: (data as Record<string,unknown>[]).map(toProfile), error: null }
     local('profiles', 'read')
     return { data: localStore.staff.list(), error: null }
   },
