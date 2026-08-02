@@ -1,5 +1,6 @@
 import { useAuth } from '../../contexts/AuthContext'
 import type { ActivePanel } from '../../App'
+import Copyright from './Copyright'
 
 interface SidebarProps {
   activePanel: ActivePanel
@@ -136,13 +137,16 @@ function SidebarHeader({ onClose }: { onClose: () => void }) {
 
 function SidebarFooter({ user }: { user: { name: string; role: string } }) {
   return (
-    <div className="sidebar-user">
-      <div className="sidebar-user-avatar">{user.name.charAt(0)}</div>
-      <div className="sidebar-user-info">
-        <div className="sidebar-user-name">{user.name}</div>
-        <div className="sidebar-user-role">{user.role.replace(/_/g, ' ')}</div>
+    <>
+      <div className="sidebar-user">
+        <div className="sidebar-user-avatar">{user.name.charAt(0)}</div>
+        <div className="sidebar-user-info">
+          <div className="sidebar-user-name">{user.name}</div>
+          <div className="sidebar-user-role">{user.role.replace(/_/g, ' ')}</div>
+        </div>
       </div>
-    </div>
+      <Copyright />
+    </>
   )
 }
 

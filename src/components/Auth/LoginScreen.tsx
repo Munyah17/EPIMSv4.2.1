@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
+import Copyright from '../Layout/Copyright'
 
 export default function LoginScreen() {
   const { login } = useAuth()
@@ -64,6 +65,7 @@ export default function LoginScreen() {
         <div className="login-footer">
           <span>Secured by Supabase ·</span>
           <span> IPEC Reg. No. IPEC/IB/2020/001</span>
+          <Copyright />
         </div>
       </div>
     </div>
