@@ -780,6 +780,128 @@ export const reminders = {
   },
 }
 
+// ── DASHBOARD STATS ──────────────────────────────────────────────
+// Dashboard.tsx used to fetch every row of policies/claims/payments/leads/
+// fraud_cases (each with embedded client/product/profile joins) just to
+// compute a handful of counts and a 5-row "recent" table — the single
+// heaviest set of queries in the app, re-run on every dashboard visit.
+// This replaces that with count-only queries (near-zero payload) and
+// narrow column selects, falling back to the old full-fetch-and-compute
+// approach only if the lightweight path fails.
+
+export interface DashboardStats {
+  activePolicies: number
+  pendingClaims: number
+  totalPremiums: number
+  newLeads: number
+  fraudAlerts: number
+  lapseRate: number
+  productBreakdown: { category: string; count: number }[]
+  recentPolicies: Policy[]
+  latestClaim: { claimNumber: string; clientName: string } | null
+  latestPayment: { clientName: string; amount: number } | null
+  latestLead: { name: string; source: string } | null
+  latestFraud: { claimNumber: string; fraudScore: number } | null
+}
+
+async function loadDashboardStatsLight(): Promise<DashboardStats | null> {
+  const [
+    activeRes, pendingRes, leadsRes, fraudRes, lapsedRes, totalRes, premiumsRes, categoryRes, recentRes,
+    latestClaimRes, latestPaymentRes, latestLeadRes, latestFraudRes,
+  ] = await Promise.all([
+    supabase.from('policies').select('*', { count: 'exact', head: true }).eq('status', 'active'),
+    supabase.from('claims').select('*', { count: 'exact', head: true }).in('status', ['pending', 'under_review']),
+    supabase.from('leads').select('*', { count: 'exact', head: true }).eq('status', 'new'),
+    supabase.from('fraud_cases').select('*', { count: 'exact', head: true }).eq('status', 'open'),
+    supabase.from('policies').select('*', { count: 'exact', head: true }).eq('status', 'lapsed'),
+    supabase.from('policies').select('*', { count: 'exact', head: true }),
+    supabase.from('payments').select('amount').eq('status', 'completed').limit(5000),
+    supabase.from('policies').select('products!product_id(category)').limit(5000),
+    supabase.from('policies').select(POLICY_SELECT).order('created_at', { ascending: false }).limit(5),
+    supabase.from('claims').select('claim_number, policies!policy_id(clients!client_id(name))').order('created_at', { ascending: false }).limit(1),
+    supabase.from('payments').select('amount, policies!policy_id(clients!client_id(name))').order('payment_date', { ascending: false }).limit(1),
+    supabase.from('leads').select('name, source').order('created_at', { ascending: false }).limit(1),
+    supabase.from('fraud_cases').select('fraud_score, claims!claim_id(claim_number)').order('created_at', { ascending: false }).limit(1),
+  ])
+
+  const anyError = activeRes.error || pendingRes.error || leadsRes.error || fraudRes.error
+    || lapsedRes.error || totalRes.error || premiumsRes.error || categoryRes.error || recentRes.error
+    || latestClaimRes.error || latestPaymentRes.error || latestLeadRes.error || latestFraudRes.error
+  if (anyError) return null
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const c = latestClaimRes.data?.[0] as any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const p = latestPaymentRes.data?.[0] as any
+  const l = latestLeadRes.data?.[0] as { name: string; source: string } | undefined
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const f = latestFraudRes.data?.[0] as any
+
+  const totalPremiums = ((premiumsRes.data ?? []) as { amount: number }[]).reduce((s, p) => s + p.amount, 0)
+
+  const categoryCounts = new Map<string, number>()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  for (const row of (categoryRes.data ?? []) as any[]) {
+    const cat = row.products?.category ?? 'other'
+    categoryCounts.set(cat, (categoryCounts.get(cat) ?? 0) + 1)
+  }
+
+  const total = totalRes.count ?? 0
+  const lapsed = lapsedRes.count ?? 0
+
+  return {
+    activePolicies: activeRes.count ?? 0,
+    pendingClaims: pendingRes.count ?? 0,
+    totalPremiums,
+    newLeads: leadsRes.count ?? 0,
+    fraudAlerts: fraudRes.count ?? 0,
+    lapseRate: total > 0 ? Number((lapsed / total * 100).toFixed(1)) : 0,
+    productBreakdown: [...categoryCounts.entries()].map(([category, count]) => ({ category, count })),
+    recentPolicies: ((recentRes.data ?? []) as unknown[]).map(toPolicy),
+    latestClaim: c ? { claimNumber: c.claim_number, clientName: c.policies?.clients?.name ?? '' } : null,
+    latestPayment: p ? { clientName: p.policies?.clients?.name ?? '', amount: p.amount } : null,
+    latestLead: l ? { name: l.name, source: l.source ?? '' } : null,
+    latestFraud: f ? { claimNumber: f.claims?.claim_number ?? '', fraudScore: f.fraud_score } : null,
+  }
+}
+
+async function loadDashboardStatsFallback(): Promise<DashboardStats> {
+  const [{ data: allPolicies }, { data: allClaims }, { data: allPayments }, { data: allLeads }, { data: allFraud }] = await Promise.all([
+    policies.list(), claims.list(), payments.list(), leads.list(), fraudCases.list(),
+  ])
+  const pol = allPolicies ?? [], cla = allClaims ?? [], pay = allPayments ?? [], lea = allLeads ?? [], fra = allFraud ?? []
+  const total = pol.length
+  const lapsed = pol.filter(p => p.status === 'lapsed').length
+  const categoryCounts = new Map<string, number>()
+  for (const p of pol) categoryCounts.set(p.productName, (categoryCounts.get(p.productName) ?? 0) + 1)
+  return {
+    activePolicies: pol.filter(p => p.status === 'active').length,
+    pendingClaims: cla.filter(c => c.status === 'pending' || c.status === 'under_review').length,
+    totalPremiums: pay.filter(p => p.status === 'completed').reduce((s, p) => s + p.amount, 0),
+    newLeads: lea.filter(l => l.status === 'new').length,
+    fraudAlerts: fra.filter(f => f.status === 'open').length,
+    lapseRate: total > 0 ? Number((lapsed / total * 100).toFixed(1)) : 0,
+    productBreakdown: [...categoryCounts.entries()].map(([category, count]) => ({ category, count })),
+    recentPolicies: [...pol].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 5),
+    latestClaim: cla[0] ? { claimNumber: cla[0].claimNumber, clientName: cla[0].clientName } : null,
+    latestPayment: pay[0] ? { clientName: pay[0].clientName, amount: pay[0].amount } : null,
+    latestLead: lea[0] ? { name: lea[0].name, source: lea[0].source } : null,
+    latestFraud: fra[0] ? { claimNumber: fra[0].claimNumber, fraudScore: fra[0].fraudScore } : null,
+  }
+}
+
+export const dashboardStats = {
+  async load(): Promise<{ data: DashboardStats; error: null }> {
+    const start = Date.now()
+    const light = await loadDashboardStatsLight()
+    if (light) {
+      health.record({ ts: Date.now(), type: 'read', table: 'dashboard_stats', success: true, duration: Date.now() - start, source: 'supabase' })
+      return { data: light, error: null }
+    }
+    return { data: await loadDashboardStatsFallback(), error: null }
+  },
+}
+
 // ── REALTIME ──────────────────────────────────────────────────────
 export function subscribeToTable(table: string, callback: () => void) {
   const channel = supabase
@@ -793,6 +915,7 @@ export function subscribeToTable(table: string, callback: () => void) {
 export const db = {
   policies, clients, products, claims, payments,
   tickets, emails, leads, staff, fraudCases, reminders,
+  dashboardStats,
   subscribeToTable,
   resetLocalData: () => localStore.reset(),
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { startReminderEngine } from './lib/reminderEngine'
 import { DB_FALLBACK_EVENT } from './lib/db'
@@ -9,30 +9,34 @@ import AdminLogin from './components/Auth/AdminLogin'
 import Sidebar from './components/Layout/Sidebar'
 import TopBar from './components/Layout/TopBar'
 import Toast from './components/ui/Toast'
-import Dashboard from './pages/Dashboard'
-import Policies from './pages/Policies'
-import Claims from './pages/Claims'
-import Payments from './pages/Payments'
-import Products from './pages/Products'
-import Clients from './pages/Clients'
-import Staff from './pages/Staff'
-import Reminders from './pages/Reminders'
-import Reports from './pages/Reports'
-import Leads from './pages/Leads'
-import Email from './pages/Email'
-import Tickets from './pages/Tickets'
-import Fraud from './pages/Fraud'
-import Profile from './pages/Profile'
-import MnoIntegration from './pages/MnoIntegration'
-import SystemHealthPage from './pages/SystemHealthPage'
-import NotificationSettings from './pages/NotificationSettings'
-import MassMessaging from './pages/MassMessaging'
-import BillingReminders from './pages/BillingReminders'
-import MyPolicies from './pages/policyholder/MyPolicies'
-import MyClaims from './pages/policyholder/MyClaims'
-import MyPayments from './pages/policyholder/MyPayments'
 import SystemHealth from './components/ui/SystemHealth'
 import type { ToastMessage } from './types'
+
+// Route-split: each page becomes its own chunk, fetched on first visit
+// (and cached by the browser/CDN after) instead of all ~20 pages riding
+// in one bundle every user downloads just to see the login screen.
+const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Policies = lazy(() => import('./pages/Policies'))
+const Claims = lazy(() => import('./pages/Claims'))
+const Payments = lazy(() => import('./pages/Payments'))
+const Products = lazy(() => import('./pages/Products'))
+const Clients = lazy(() => import('./pages/Clients'))
+const Staff = lazy(() => import('./pages/Staff'))
+const Reminders = lazy(() => import('./pages/Reminders'))
+const Reports = lazy(() => import('./pages/Reports'))
+const Leads = lazy(() => import('./pages/Leads'))
+const Email = lazy(() => import('./pages/Email'))
+const Tickets = lazy(() => import('./pages/Tickets'))
+const Fraud = lazy(() => import('./pages/Fraud'))
+const Profile = lazy(() => import('./pages/Profile'))
+const MnoIntegration = lazy(() => import('./pages/MnoIntegration'))
+const SystemHealthPage = lazy(() => import('./pages/SystemHealthPage'))
+const NotificationSettings = lazy(() => import('./pages/NotificationSettings'))
+const MassMessaging = lazy(() => import('./pages/MassMessaging'))
+const BillingReminders = lazy(() => import('./pages/BillingReminders'))
+const MyPolicies = lazy(() => import('./pages/policyholder/MyPolicies'))
+const MyClaims = lazy(() => import('./pages/policyholder/MyClaims'))
+const MyPayments = lazy(() => import('./pages/policyholder/MyPayments'))
 
 export type ActivePanel =
   | 'dashboard' | 'policies' | 'claims' | 'payments' | 'products'
@@ -138,7 +142,9 @@ function AppInner() {
           setActivePanel={setActivePanel}
         />
         <div className="content-area">
-          {renderPanel()}
+          <Suspense fallback={<div className="panel"><div className="empty-state">Loading…</div></div>}>
+            {renderPanel()}
+          </Suspense>
         </div>
       </div>
       <Toast toasts={toasts} onDismiss={dismissToast} />
