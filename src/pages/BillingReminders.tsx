@@ -64,7 +64,7 @@ export default function BillingReminders({ showToast }: Props) {
         <>
           <div className="stats-grid" style={{ marginBottom: 18 }}>
             <div className="stat-card">
-              <div className="stat-icon" style={{ background: '#DBEAFE', color: '#2563EB' }}>📅</div>
+              <div className="stat-icon" style={{ background: '#DCE4FB', color: '#2563EB' }}>📅</div>
               <div className="stat-body">
                 <div className="stat-value">{firstDay.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })}</div>
                 <div className="stat-label">Billing Start</div>

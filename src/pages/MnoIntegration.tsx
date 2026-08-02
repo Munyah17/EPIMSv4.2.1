@@ -33,8 +33,8 @@ function ago(ts: number | string) {
 
 const STATUS_DOT: Record<string, string> = { active: '#10B981', testing: '#F59E0B', suspended: '#EF4444' }
 const KEY_STATUS: Record<string, string> = { active: 'badge-active', revoked: 'badge-cancelled', expired: 'badge-lapsed' }
-const EVT_STATUS: Record<string, string> = { delivered: '#10B981', pending: '#F59E0B', retrying: '#3B82F6', failed: '#EF4444' }
-const DIR_COLOR: Record<string, string> = { inbound: '#3B82F6', outbound: '#10B981' }
+const EVT_STATUS: Record<string, string> = { delivered: '#10B981', pending: '#F59E0B', retrying: '#5B7FE8', failed: '#EF4444' }
+const DIR_COLOR: Record<string, string> = { inbound: '#5B7FE8', outbound: '#10B981' }
 
 const ALL_PERMISSIONS: ApiPermission[] = [
   'customers:read', 'customers:write',
@@ -117,7 +117,7 @@ export default function MnoIntegration({ showToast }: Props) {
               <span style={{ background: '#D1FAE5', color: '#065F46', fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 10, letterSpacing: '0.05em' }}>🟢 LIVE</span>
             </div>
             <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--muted)' }}>
-              NetOne Insurance ↔ EazyBet · Bi-directional · Event-driven · HMAC-SHA256 signed
+              NetOne Insurance ↔ Tariqify · Bi-directional · Event-driven · HMAC-SHA256 signed
             </p>
           </div>
         </div>
@@ -466,7 +466,7 @@ function ApiKeysTab({ apiKeys, partners, reload, showToast }: {
                   <td style={{ fontWeight: 500 }}>{key.label}</td>
                   <td>{key.partnerName.split(' ')[0]}</td>
                   <td><code style={{ fontSize: 10, background: 'var(--surface2)', padding: '1px 6px', borderRadius: 4 }}>{key.keyPrefix}…</code></td>
-                  <td><span style={{ fontSize: 10, background: key.environment === 'production' ? '#FEF3C7' : '#DBEAFE', color: key.environment === 'production' ? '#92400E' : '#1E40AF', padding: '2px 6px', borderRadius: 8, fontWeight: 600 }}>{key.environment}</span></td>
+                  <td><span style={{ fontSize: 10, background: key.environment === 'production' ? '#FEF3C7' : '#DCE4FB', color: key.environment === 'production' ? '#92400E' : '#1E40AF', padding: '2px 6px', borderRadius: 8, fontWeight: 600 }}>{key.environment}</span></td>
                   <td><div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, maxWidth: 200 }}>
                     {key.permissions.slice(0, 3).map(p => <span key={p} style={{ fontSize: 9, background: 'var(--blue-soft)', color: 'var(--blue)', padding: '1px 5px', borderRadius: 8 }}>{p}</span>)}
                     {key.permissions.length > 3 && <span style={{ fontSize: 9, color: 'var(--muted)' }}>+{key.permissions.length - 3}</span>}
@@ -545,7 +545,7 @@ function MonitorTab({ apiLogs, reload }: { apiLogs: ApiLog[]; reload: () => void
                   <td><span style={{ color: DIR_COLOR[log.direction], fontWeight: 700, fontSize: 11 }}>
                     {log.direction === 'inbound' ? '↙ IN' : '↗ OUT'}
                   </span></td>
-                  <td><span style={{ fontSize: 10, fontWeight: 700, color: log.method === 'GET' ? '#3B82F6' : log.method === 'POST' ? '#10B981' : '#F59E0B' }}>{log.method}</span></td>
+                  <td><span style={{ fontSize: 10, fontWeight: 700, color: log.method === 'GET' ? '#5B7FE8' : log.method === 'POST' ? '#10B981' : '#F59E0B' }}>{log.method}</span></td>
                   <td style={{ fontFamily: 'monospace', fontSize: 11 }}>{log.endpoint}</td>
                   <td style={{ fontSize: 11 }}>{log.partnerName.split(' ')[0]}</td>
                   <td><span style={{ color: log.success ? '#10B981' : '#EF4444', fontWeight: 700, fontSize: 12 }}>{log.statusCode}</span>
@@ -615,7 +615,7 @@ function UssdTab({ sessions, partners, reload, showToast }: {
     if (termRef.current) termRef.current.scrollTop = termRef.current.scrollHeight
   }
 
-  const STATUS_COLORS: Record<string, string> = { active: '#10B981', completed: '#3B82F6', timeout: '#F59E0B', cancelled: '#6B7E99' }
+  const STATUS_COLORS: Record<string, string> = { active: '#10B981', completed: '#5B7FE8', timeout: '#F59E0B', cancelled: '#6B7E99' }
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 16 }}>
@@ -672,8 +672,8 @@ function UssdTab({ sessions, partners, reload, showToast }: {
         {/* Phone screen */}
         <div style={{ margin: '0 16px', flex: 1, display: 'flex', flexDirection: 'column' }}>
           <div style={{ background: '#0F1C2E', borderRadius: 10, overflow: 'hidden', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 260 }}>
-            <div style={{ background: '#1A56DB', padding: '6px 12px', fontSize: 10, color: 'rgba(255,255,255,0.7)', display: 'flex', justifyContent: 'space-between' }}>
-              <span>*233# · EazyBet Insurance</span>
+            <div style={{ background: '#4169E1', padding: '6px 12px', fontSize: 10, color: 'rgba(255,255,255,0.7)', display: 'flex', justifyContent: 'space-between' }}>
+              <span>*233# · Tariqify Insurance</span>
               <span>{simMsisdn}</span>
             </div>
             <div ref={termRef} style={{ flex: 1, padding: 12, overflowY: 'auto', fontFamily: 'monospace', fontSize: 12, color: '#E2E8F0', lineHeight: 1.6, minHeight: 200, maxHeight: 280 }}>
@@ -702,7 +702,7 @@ function UssdTab({ sessions, partners, reload, showToast }: {
                   autoFocus
                 />
                 <button onClick={sendInput} disabled={running || !input.trim()}
-                  style={{ background: '#1A56DB', border: 'none', borderRadius: 6, padding: '5px 12px', color: 'white', cursor: 'pointer', fontSize: 12 }}>
+                  style={{ background: '#4169E1', border: 'none', borderRadius: 6, padding: '5px 12px', color: 'white', cursor: 'pointer', fontSize: 12 }}>
                   {running ? '…' : 'Send'}
                 </button>
               </div>
@@ -822,7 +822,7 @@ function AuditTab({ apiLogs }: { apiLogs: ApiLog[] }) {
                     {new Date(log.ts).toLocaleString([], { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                   </td>
                   <td style={{ color: DIR_COLOR[log.direction], fontWeight: 700, fontSize: 10 }}>{log.direction.toUpperCase()}</td>
-                  <td style={{ fontWeight: 700, fontSize: 10, color: log.method === 'GET' ? '#3B82F6' : '#10B981' }}>{log.method}</td>
+                  <td style={{ fontWeight: 700, fontSize: 10, color: log.method === 'GET' ? '#5B7FE8' : '#10B981' }}>{log.method}</td>
                   <td style={{ fontFamily: 'monospace', fontSize: 10 }}>{log.endpoint}</td>
                   <td style={{ fontSize: 11 }}>{log.partnerName.split(' ')[0]}</td>
                   <td style={{ fontFamily: 'monospace', fontSize: 9 }}>{log.apiKeyPrefix ?? '—'}</td>

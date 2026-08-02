@@ -81,7 +81,7 @@ export default function Reports({ showToast }: Props) {
         <>
           <div className="stats-grid">
             <div className="stat-card">
-              <div className="stat-icon" style={{ background: 'rgba(59,130,246,0.15)', color: 'var(--blue)' }}>🛡</div>
+              <div className="stat-icon" style={{ background: 'rgba(91,127,232,0.15)', color: 'var(--blue)' }}>🛡</div>
               <div className="stat-body">
                 <div className="stat-value">{totalPolicies}</div>
                 <div className="stat-label">Total Policies</div>
@@ -121,7 +121,7 @@ export default function Reports({ showToast }: Props) {
               </div>
             </div>
             <div className="stat-card">
-              <div className="stat-icon" style={{ background: 'rgba(59,130,246,0.15)', color: 'var(--blue)' }}>👥</div>
+              <div className="stat-icon" style={{ background: 'rgba(91,127,232,0.15)', color: 'var(--blue)' }}>👥</div>
               <div className="stat-body">
                 <div className="stat-value">{clients.length}</div>
                 <div className="stat-label">Total Clients</div>

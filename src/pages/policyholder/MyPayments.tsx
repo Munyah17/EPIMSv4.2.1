@@ -36,7 +36,7 @@ export default function MyPayments({ }: Props) {
           </div>
         </div>
         <div className="stat-card">
-          <div className="stat-icon" style={{ background: 'rgba(59,130,246,0.15)', color: 'var(--blue)' }}>🧾</div>
+          <div className="stat-icon" style={{ background: 'rgba(91,127,232,0.15)', color: 'var(--blue)' }}>🧾</div>
           <div className="stat-body">
             <div className="stat-value">{myPayments.length}</div>
             <div className="stat-label">Transactions</div>

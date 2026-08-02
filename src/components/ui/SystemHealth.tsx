@@ -35,7 +35,7 @@ const STATUS_COLOR: Record<string, string> = {
 }
 
 const OP_COLOR: Record<string, string> = {
-  read: '#3B82F6',
+  read: '#5B7FE8',
   write: '#10B981',
   delete: '#EF4444',
 }

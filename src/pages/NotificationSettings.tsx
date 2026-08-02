@@ -190,7 +190,7 @@ export default function NotificationSettings({ showToast }: Props) {
           </div>
           <div className="notif-flow">
             <div className="notif-flow-step">
-              <div className="notif-flow-icon" style={{ background: '#DBEAFE' }}>📋</div>
+              <div className="notif-flow-icon" style={{ background: '#DCE4FB' }}>📋</div>
               <div>
                 <div className="notif-flow-label">Claim Created / Updated</div>
                 <div className="notif-flow-sub">Triggered automatically</div>

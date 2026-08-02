@@ -41,7 +41,7 @@ const STATUS_TEXT: Record<string, string> = {
 }
 
 const OP_COLOR: Record<string, string> = {
-  read: '#3B82F6',
+  read: '#5B7FE8',
   write: '#10B981',
   delete: '#EF4444',
 }
@@ -154,7 +154,7 @@ export default function SystemHealthPage({ showToast }: Props) {
             <span className="card-title">Performance Metrics</span>
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-            <MetricBar label="Read Success Rate" value={stats.readSuccessPct} color="#3B82F6" />
+            <MetricBar label="Read Success Rate" value={stats.readSuccessPct} color="#5B7FE8" />
             <MetricBar label="Write Success Rate" value={stats.writeSuccessPct} color="#10B981" />
             <MetricBar label="Supabase Success Rate" value={stats.sbSuccessPct} color="#F59E0B" />
           </div>
