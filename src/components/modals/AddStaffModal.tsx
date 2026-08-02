@@ -4,7 +4,7 @@ import type { AppUser, UserRole } from '../../types'
 interface Props {
   staff: AppUser | null
   onClose: () => void
-  onSave: (staff: AppUser) => void
+  onSave: (staff: AppUser, password: string) => void
 }
 
 const ROLES: UserRole[] = ['admin', 'claims_officer', 'policy_admin', 'finance', 'client_relations']
@@ -18,16 +18,22 @@ export default function AddStaffModal({ staff, onClose, onSave }: Props) {
   const [department, setDepartment] = useState(staff?.department ?? 'Client Relations')
   const [password, setPassword] = useState('')
 
+  // New accounts are real Supabase Auth users now, so a real password is
+  // required — no more silent 'staff1234' default. Editing an existing
+  // member can leave it blank (this modal doesn't change an existing
+  // user's password; that's handled elsewhere).
+  const passwordValid = staff ? true : password.length >= 8
+  const canSave = !!name && !!email && passwordValid
+
   const handleSave = () => {
-    if (!name || !email) return
+    if (!canSave) return
     const member: AppUser = {
-      id: staff?.id ?? `u${Date.now()}`,
+      id: staff?.id ?? '',
       name, email, phone, role, department,
-      active: true,
-      permissions: [],
-      password: password || staff?.password || 'staff1234',
+      active: staff?.active ?? true,
+      permissions: staff?.permissions ?? [],
     }
-    onSave(member)
+    onSave(member, password)
   }
 
   return (
@@ -68,14 +74,18 @@ export default function AddStaffModal({ staff, onClose, onSave }: Props) {
               </select>
             </div>
             <div className="form-group">
-              <label>{staff ? 'New Password (leave blank to keep)' : 'Temporary Password'}</label>
-              <input type="password" className="form-control" value={password} onChange={e => setPassword(e.target.value)} placeholder={staff ? 'Leave blank to keep' : 'staff1234'} />
+              <label>{staff ? 'Password' : 'Temporary Password *'}</label>
+              {staff ? (
+                <input className="form-control" disabled style={{ opacity: 0.6 }} value="Not editable here" />
+              ) : (
+                <input type="password" className="form-control" value={password} onChange={e => setPassword(e.target.value)} placeholder="Min. 8 characters" />
+              )}
             </div>
           </div>
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={!name || !email}>
+          <button className="btn btn-primary" onClick={handleSave} disabled={!canSave}>
             {staff ? 'Save Changes' : 'Add Staff Member'}
           </button>
         </div>

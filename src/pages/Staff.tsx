@@ -50,15 +50,19 @@ export default function Staff({ showToast }: Props) {
     s.department.toLowerCase().includes(search.toLowerCase())
   )
 
-  const handleSave = async (s: AppUser) => {
+  const handleSave = async (s: AppUser, password: string) => {
     if (editStaff) {
       const { data, error } = await db.staff.update(s.id, s)
       if (error || !data) { showToast('error', 'Failed to update staff.'); return }
       setStaff(prev => prev.map(x => x.id === data.id ? data : x))
       showToast('success', `Staff member ${data.name} updated.`)
     } else {
-      setStaff(prev => [...prev, s])
-      showToast('success', `Staff member ${s.name} added.`)
+      const { data, error } = await db.staff.create({
+        name: s.name, email: s.email, password, phone: s.phone, role: s.role, department: s.department,
+      })
+      if (error || !data) { showToast('error', error ?? 'Failed to add staff member.'); return }
+      setStaff(prev => [...prev, data])
+      showToast('success', `Staff member ${data.name} added.`)
     }
     setShowAdd(false)
     setEditStaff(null)

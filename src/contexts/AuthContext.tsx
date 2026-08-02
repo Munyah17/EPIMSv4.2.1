@@ -39,6 +39,16 @@ const PANEL_ACCESS: Record<string, UserRole[]> = {
   my_payments: ['policyholder'],
 }
 
+/** Guarantees a promise settles within `ms`, so a stalled Supabase auth call
+ *  (e.g. a stuck client-side lock) can never leave the UI hung on "Authenticating…"
+ *  forever — it fails fast and lets the user retry instead. */
+function withTimeout<T>(promise: Promise<T>, ms: number, timeoutValue: T): Promise<T> {
+  return new Promise(resolve => {
+    const timer = setTimeout(() => resolve(timeoutValue), ms)
+    promise.then(v => { clearTimeout(timer); resolve(v) }, () => { clearTimeout(timer); resolve(timeoutValue) })
+  })
+}
+
 async function fetchProfile(userId: string, email: string, metaFallback?: Record<string, unknown>): Promise<AppUser | null> {
   const { data, error } = await supabase
     .from('profiles')
@@ -116,21 +126,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const login = useCallback(async (email: string, password: string): Promise<boolean> => {
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-      if (!error && data.user) {
-        const meta = data.user.user_metadata as Record<string, unknown>
-        const profile = await fetchProfile(data.user.id, data.user.email ?? email, meta)
-        if (profile && profile.active) {
-          setUser(profile)
-          return true
+    return withTimeout((async () => {
+      try {
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+        if (!error && data.user) {
+          const meta = data.user.user_metadata as Record<string, unknown>
+          const profile = await fetchProfile(data.user.id, data.user.email ?? email, meta)
+          if (profile && profile.active) {
+            setUser(profile)
+            return true
+          }
+          await supabase.auth.signOut().catch(() => {})
         }
-        await supabase.auth.signOut().catch(() => {})
+      } catch {
+        // fall through to return false below
       }
-    } catch {
-      // fall through to return false below
-    }
-    return false
+      return false
+    })(), 15000, false)
   }, [])
 
   const logout = useCallback(async () => {
@@ -157,8 +169,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const reauthenticate = useCallback(async (password: string): Promise<boolean> => {
     if (!user?.email) return false
-    const { error } = await supabase.auth.signInWithPassword({ email: user.email, password })
-    return !error
+    return withTimeout(
+      supabase.auth.signInWithPassword({ email: user.email, password }).then(({ error }) => !error),
+      15000, false,
+    )
   }, [user])
 
   return (

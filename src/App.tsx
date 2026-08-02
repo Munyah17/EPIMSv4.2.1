@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { startReminderEngine } from './lib/reminderEngine'
 import { DB_FALLBACK_EVENT } from './lib/db'
@@ -54,15 +54,20 @@ function AppInner() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [toasts, setToasts] = useState<ToastMessage[]>([])
 
-  const showToast = (type: ToastMessage['type'], message: string) => {
+  // Stable references: 11 pages use `[showToast]` as a data-fetch effect
+  // dependency. An inline function here would be recreated on every render
+  // of AppInner (e.g. whenever ANY toast anywhere appears or auto-dismisses),
+  // which would re-trigger every mounted page's fetch and silently overwrite
+  // any not-yet-persisted local state — including a just-added item.
+  const showToast = useCallback((type: ToastMessage['type'], message: string) => {
     const id = Date.now().toString()
     setToasts(prev => [...prev, { id, type, message }])
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000)
-  }
+  }, [])
 
-  const dismissToast = (id: string) => {
+  const dismissToast = useCallback((id: string) => {
     setToasts(prev => prev.filter(t => t.id !== id))
-  }
+  }, [])
 
   useEffect(() => {
     let lastReadWarningAt = 0

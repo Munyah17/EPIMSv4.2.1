@@ -694,6 +694,31 @@ export const staff = {
     return { data: localStore.staff.list(), error: null }
   },
 
+  /**
+   * Creates a real Supabase Auth user + profiles row via a Netlify function
+   * (netlify/functions/create-staff.ts), which alone holds the service-role
+   * key needed for account creation. Unlike every other method in this
+   * module, there is no local-storage fallback here — a "staff member"
+   * that only exists in browser state was never real, so a failure must be
+   * surfaced as an error rather than silently faked.
+   */
+  async create(input: { name: string; email: string; password: string; phone?: string; role: string; department: string }) {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) return { data: null, error: 'Not signed in.' }
+    try {
+      const res = await fetch('/.netlify/functions/create-staff', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify(input),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) return { data: null, error: body?.error ?? `Failed to create staff account (HTTP ${res.status}).` }
+      return { data: toProfile(body.profile as Record<string, unknown>), error: null }
+    } catch (e) {
+      return { data: null, error: `Could not reach the server: ${e}` }
+    }
+  },
+
   async update(id: string, updates: Partial<AppUser>) {
     const row: Record<string, unknown> = {}
     if (updates.name        !== undefined) row.name        = updates.name
