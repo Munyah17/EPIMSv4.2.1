@@ -1,6 +1,5 @@
-import { useState } from 'react'
-import type { Policy, Beneficiary, Insurer, Client } from '../../types'
-import { PRODUCTS } from '../../data/mockData'
+import { useState, useEffect } from 'react'
+import type { Policy, Beneficiary, Insurer, Client, Product } from '../../types'
 import { db } from '../../lib/db'
 
 const INSURERS: Insurer[] = ['Motions', 'CBZ Life', 'EcoSure', 'ZB Life', 'Nyaradzo Funeral', 'Doves']
@@ -30,7 +29,13 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
   const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([
     { name: '', relationship: '', percentage: 100 }
   ])
-  const product = PRODUCTS.find(p => p.id === productId)
+  const [products, setProducts] = useState<Product[]>([])
+  const [productsLoading, setProductsLoading] = useState(true)
+  const product = products.find(p => p.id === productId)
+
+  useEffect(() => {
+    db.products.list().then(({ data }) => { if (data) setProducts(data); setProductsLoading(false) })
+  }, [])
 
   const addBeneficiary = () => {
     setBeneficiaries(prev => [...prev, { name: '', relationship: '', percentage: 0 }])
@@ -148,9 +153,9 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
           <div className="form-row">
             <div className="form-group">
               <label>Product *</label>
-              <select className="form-control" value={productId} onChange={e => setProductId(e.target.value)}>
-                <option value="">Select product…</option>
-                {PRODUCTS.filter(p => p.active).map(p => <option key={p.id} value={p.id}>{p.name} — ${p.premium}/mo</option>)}
+              <select className="form-control" value={productId} onChange={e => setProductId(e.target.value)} disabled={productsLoading}>
+                <option value="">{productsLoading ? 'Loading products…' : 'Select product…'}</option>
+                {products.filter(p => p.active).map(p => <option key={p.id} value={p.id}>{p.name} — ${p.premium}/mo</option>)}
               </select>
             </div>
             <div className="form-group">
