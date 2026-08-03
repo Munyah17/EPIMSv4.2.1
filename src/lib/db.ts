@@ -353,6 +353,7 @@ export const policies = {
     if (updates.premium !== undefined)               row.premium            = updates.premium
     if (updates.coverAmount !== undefined)           row.cover_amount       = updates.coverAmount
     if (updates.endDate !== undefined)               row.end_date           = updates.endDate
+    if (updates.agentId !== undefined)               row.agent_id           = updates.agentId ?? null
     const { ok, data } = await sb('policies', 'write',
       () => supabase.from('policies').update(row).eq('id', id).select(POLICY_SELECT).single(),
     )

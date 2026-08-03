@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import Copyright from '../Layout/Copyright'
+import ChatWidget from '../chat/ChatWidget'
 
 export default function LoginScreen() {
   const { login } = useAuth()
@@ -68,6 +69,7 @@ export default function LoginScreen() {
           <Copyright />
         </div>
       </div>
+      <ChatWidget />
     </div>
   )
 }

@@ -23,6 +23,7 @@ const PANEL_TITLES: Record<ActivePanel, string> = {
   leads: 'Leads & Marketing',
   email: 'Email',
   tickets: 'Support Tickets',
+  live_chat: 'Live Chat',
   fraud: 'Fraud Detection',
   mno_integration: 'NetOne Integration',
   system_health: 'System Health',

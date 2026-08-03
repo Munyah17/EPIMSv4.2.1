@@ -37,13 +37,14 @@ const BillingReminders = lazy(() => import('./pages/BillingReminders'))
 const MyPolicies = lazy(() => import('./pages/policyholder/MyPolicies'))
 const MyClaims = lazy(() => import('./pages/policyholder/MyClaims'))
 const MyPayments = lazy(() => import('./pages/policyholder/MyPayments'))
+const LiveChat = lazy(() => import('./pages/LiveChat'))
 
 export type ActivePanel =
   | 'dashboard' | 'policies' | 'claims' | 'payments' | 'products'
   | 'clients' | 'staff' | 'reminders' | 'reports' | 'leads'
   | 'email' | 'tickets' | 'fraud' | 'profile' | 'mno_integration'
   | 'system_health' | 'notification_settings' | 'mass_messaging' | 'billing_reminders'
-  | 'my_policies' | 'my_claims' | 'my_payments'
+  | 'my_policies' | 'my_claims' | 'my_payments' | 'live_chat'
 
 function AppInner() {
   const { user, loading } = useAuth()
@@ -121,6 +122,7 @@ function AppInner() {
       case 'my_policies': return <MyPolicies {...panelProps} />
       case 'my_claims': return <MyClaims {...panelProps} />
       case 'my_payments': return <MyPayments {...panelProps} />
+      case 'live_chat': return <LiveChat {...panelProps} />
       default: return <Dashboard {...panelProps} />
     }
   }

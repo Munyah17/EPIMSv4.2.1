@@ -32,6 +32,7 @@ const PANEL_ACCESS: Record<string, UserRole[]> = {
   leads: ['super_admin', 'admin', 'client_relations'],
   email: ['super_admin', 'admin', 'claims_officer', 'policy_admin', 'finance', 'client_relations'],
   tickets: ['super_admin', 'admin', 'client_relations'],
+  live_chat: ['super_admin', 'admin', 'client_relations'],
   fraud: ['super_admin', 'admin', 'claims_officer'],
   profile: ['super_admin', 'admin', 'claims_officer', 'policy_admin', 'finance', 'client_relations', 'policyholder'],
   my_policies: ['policyholder'],
@@ -101,7 +102,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const timeout = setTimeout(() => setLoading(false), 4000)
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       clearTimeout(timeout)
-      if (session?.user) {
+      // Anonymous sessions (the live chat widget) fire the same auth events
+      // as a real login — never treat one as an app sign-in.
+      if (session?.user && !session.user.is_anonymous) {
         const meta = session.user.user_metadata as Record<string, unknown>
         const profile = await fetchProfile(session.user.id, session.user.email ?? '', meta)
         setUser(profile)
@@ -113,7 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
+      if (event === 'SIGNED_IN' && session?.user && !session.user.is_anonymous) {
         const meta = session.user.user_metadata as Record<string, unknown>
         const profile = await fetchProfile(session.user.id, session.user.email ?? '', meta)
         setUser(profile)

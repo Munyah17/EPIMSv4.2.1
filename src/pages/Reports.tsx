@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import type { ToastMessage } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
+import { exportToCsv, exportToExcel, exportToPdf } from '../lib/exportUtils'
 import type { Policy, Claim, Payment, Client } from '../types'
 
 interface Props {
@@ -44,16 +45,76 @@ export default function Reports({ showToast }: Props) {
   const totalPaid = paidClaims.reduce((s, c) => s + c.amount, 0)
   const claimsRatio = totalPremiums > 0 ? ((totalPaid / totalPremiums) * 100).toFixed(1) : '0'
 
-  const productBreakdown = [
-    { name: 'Funeral Cover Basic', policies: policies.filter(p => p.productId === 'p1').length, revenue: policies.filter(p => p.productId === 'p1').length * 5 },
-    { name: 'Funeral Cover Premium', policies: policies.filter(p => p.productId === 'p2').length, revenue: policies.filter(p => p.productId === 'p2').length * 12 },
-    { name: 'Life Cover Essential', policies: policies.filter(p => p.productId === 'p3').length, revenue: policies.filter(p => p.productId === 'p3').length * 10 },
-    { name: 'Hospital Cash Plan', policies: policies.filter(p => p.productId === 'p4').length, revenue: policies.filter(p => p.productId === 'p4').length * 8 },
-    { name: 'Personal Accident', policies: policies.filter(p => p.productId === 'p5').length, revenue: policies.filter(p => p.productId === 'p5').length * 3 },
-  ]
+  const productBreakdown = Object.values(
+    policies.reduce<Record<string, { name: string; policies: number; revenue: number }>>((acc, p) => {
+      const key = p.productName || 'Unknown'
+      if (!acc[key]) acc[key] = { name: key, policies: 0, revenue: 0 }
+      acc[key].policies += 1
+      acc[key].revenue += p.premium
+      return acc
+    }, {}),
+  ).sort((a, b) => b.policies - a.policies)
 
-  const handleExport = (format: string) => {
-    showToast('success', `Report exported as ${format}. Download starting…`)
+  const dateStamp = new Date().toISOString().split('T')[0]
+
+  const handleExport = async (format: 'PDF' | 'Excel' | 'CSV' | 'IPEC PDF') => {
+    if (format === 'IPEC PDF') {
+      await exportToPdf(
+        `ipec-return-${dateStamp}.pdf`, 'IPEC Quarterly Return', ['Field', 'Value'],
+        [
+          ['Intermediary Name', 'Enpassent Multiple Agents (Pvt) Ltd'],
+          ['IPEC Reg. Number', 'IPEC/IB/2020/001'],
+          ['Total Policies Issued', totalPolicies],
+          ['Active Policies', activePolicies],
+          ['Gross Premiums Written', `$${totalPremiums.toFixed(2)}`],
+          ['Claims Incurred', `$${totalPaid.toFixed(2)}`],
+          ['Claims Ratio', `${claimsRatio}%`],
+          ['Lapse Rate', `${lapseRate}%`],
+          ['Total Clients', clients.length],
+        ],
+        `Generated ${new Date().toLocaleDateString('en-GB')}`,
+      )
+      showToast('success', 'IPEC return downloaded.')
+      return
+    }
+
+    let headers: string[]
+    let rows: (string | number)[][]
+    let title: string
+    let baseName: string
+
+    if (activeTab === 'claims') {
+      title = 'Claims Analysis'
+      baseName = 'claims-analysis'
+      headers = ['Claim No.', 'Client', 'Amount', 'Type', 'Fraud Score', 'Status']
+      rows = claims.map(c => [c.claimNumber, c.clientName, c.amount, c.claimType, `${c.fraudScore}%`, c.status])
+    } else if (activeTab === 'ipec') {
+      title = 'IPEC Quarterly Return'
+      baseName = 'ipec-return'
+      headers = ['Field', 'Value']
+      rows = [
+        ['Intermediary Name', 'Enpassent Multiple Agents (Pvt) Ltd'],
+        ['IPEC Reg. Number', 'IPEC/IB/2020/001'],
+        ['Total Policies Issued', totalPolicies],
+        ['Active Policies', activePolicies],
+        ['Gross Premiums Written', `$${totalPremiums.toFixed(2)}`],
+        ['Claims Incurred', `$${totalPaid.toFixed(2)}`],
+        ['Claims Ratio', `${claimsRatio}%`],
+        ['Lapse Rate', `${lapseRate}%`],
+        ['Total Clients', clients.length],
+      ]
+    } else {
+      title = 'Policy Report — Overview'
+      baseName = 'policies-report'
+      headers = ['Policy No.', 'Client', 'Product', 'Premium', 'Status', 'Start Date']
+      rows = policies.map(p => [p.policyNumber, p.clientName, p.productName, `$${p.premium.toFixed(2)}/mo`, p.status, p.startDate])
+    }
+
+    if (format === 'CSV') exportToCsv(`${baseName}-${dateStamp}.csv`, headers, rows)
+    else if (format === 'Excel') await exportToExcel(`${baseName}-${dateStamp}.xlsx`, title, headers, rows)
+    else await exportToPdf(`${baseName}-${dateStamp}.pdf`, title, headers, rows, `Generated ${new Date().toLocaleDateString('en-GB')}`)
+
+    showToast('success', `${title} exported as ${format}.`)
   }
 
   return (

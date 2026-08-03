@@ -276,3 +276,36 @@ export interface DashboardStats {
   fraudAlerts: number
   lapseRate: number
 }
+
+export interface ChatTopic {
+  id: string
+  name: string
+  active: boolean
+  sortOrder: number
+}
+
+export type ChatSessionStatus = 'queued' | 'active' | 'closed'
+
+export interface ChatSession {
+  id: string
+  visitorId: string
+  visitorName: string
+  visitorPhone: string
+  visitorEmail: string
+  topic: string
+  status: ChatSessionStatus
+  assignedTo?: string
+  assignedName?: string
+  queuedAt: string
+  startedAt?: string
+  closedAt?: string
+}
+
+export interface ChatMessage {
+  id: string
+  sessionId: string
+  senderType: 'visitor' | 'agent' | 'system'
+  senderName: string
+  body: string
+  createdAt: string
+}

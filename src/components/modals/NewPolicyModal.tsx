@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import type { Policy, Beneficiary, Insurer, Client, Product } from '../../types'
+import type { Policy, Beneficiary, Insurer, Client, Product, AppUser } from '../../types'
 import { db } from '../../lib/db'
 
 const INSURERS: Insurer[] = ['Motions', 'CBZ Life', 'EcoSure', 'ZB Life', 'Nyaradzo Funeral', 'Doves']
@@ -29,12 +29,15 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
   const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([
     { name: '', relationship: '', percentage: 100 }
   ])
+  const [agentId, setAgentId] = useState('')
   const [products, setProducts] = useState<Product[]>([])
   const [productsLoading, setProductsLoading] = useState(true)
+  const [staff, setStaff] = useState<AppUser[]>([])
   const product = products.find(p => p.id === productId)
 
   useEffect(() => {
     db.products.list().then(({ data }) => { if (data) setProducts(data); setProductsLoading(false) })
+    db.staff.list().then(({ data }) => { if (data) setStaff(data.filter(s => s.active)) })
   }, [])
 
   const addBeneficiary = () => {
@@ -50,7 +53,12 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
       if (showToast) showToast('error', 'Please fill in all required fields.')
       return
     }
-    
+    const incompleteBeneficiary = beneficiaries.find(b => b.percentage > 0 && !b.name.trim())
+    if (incompleteBeneficiary) {
+      if (showToast) showToast('error', 'Enter a name for every beneficiary with a share percentage.')
+      return
+    }
+
     // Create new client first
     const newClient: Client = {
       id: `c${Date.now()}`,
@@ -94,6 +102,8 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
       insurer: policyInsurer || undefined,
       createdAt: new Date().toISOString().split('T')[0],
       nextPaymentDate: new Date(new Date(startDate).setMonth(new Date(startDate).getMonth() + 1)).toISOString().split('T')[0],
+      agentId: agentId || undefined,
+      agentName: staff.find(s => s.id === agentId)?.name,
     }
     onSave(policy)
   }
@@ -185,17 +195,29 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
               </select>
             </div>
           </div>
+          <div className="form-group">
+            <label>Agent</label>
+            <select className="form-control" value={agentId} onChange={e => setAgentId(e.target.value)}>
+              <option value="">Unassigned</option>
+              {staff.map(s => <option key={s.id} value={s.id}>{s.name} — {s.role.replace(/_/g, ' ')}</option>)}
+            </select>
+          </div>
 
           <div style={{ marginTop: '1rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <label>Beneficiaries</label>
               <button type="button" className="btn btn-ghost btn-sm" onClick={addBeneficiary}>+ Add</button>
             </div>
+            <div className="form-row" style={{ marginBottom: 4 }}>
+              <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>Name</span>
+              <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>Relationship</span>
+              <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, width: 80 }}>Share %</span>
+            </div>
             {beneficiaries.map((b, i) => (
               <div key={i} className="form-row" style={{ marginBottom: 8 }}>
                 <input className="form-control" placeholder="Name" value={b.name} onChange={e => updateBeneficiary(i, 'name', e.target.value)} />
                 <input className="form-control" placeholder="Relationship" value={b.relationship} onChange={e => updateBeneficiary(i, 'relationship', e.target.value)} />
-                <input className="form-control" type="number" placeholder="%" min={0} max={100} value={b.percentage} onChange={e => updateBeneficiary(i, 'percentage', Number(e.target.value))} style={{ width: 80 }} />
+                <input className="form-control" type="number" placeholder="Share %" min={0} max={100} value={b.percentage} onChange={e => updateBeneficiary(i, 'percentage', Number(e.target.value))} style={{ width: 80 }} />
               </div>
             ))}
           </div>

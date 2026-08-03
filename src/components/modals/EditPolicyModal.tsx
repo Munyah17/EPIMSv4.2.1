@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import type { Policy, PolicyStatus, Insurer } from '../../types'
+import { useState, useEffect } from 'react'
+import type { Policy, PolicyStatus, Insurer, AppUser } from '../../types'
+import { db } from '../../lib/db'
 
 const INSURERS: Insurer[] = ['Motions', 'CBZ Life', 'EcoSure', 'ZB Life', 'Nyaradzo Funeral', 'Doves']
 
@@ -14,9 +15,19 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
   const [paymentMethod, setPaymentMethod] = useState(policy.paymentMethod)
   const [insurer, setInsurer] = useState<Insurer | ''>(policy.insurer ?? '')
   const [nextPaymentDate, setNextPaymentDate] = useState(policy.nextPaymentDate ?? '')
+  const [agentId, setAgentId] = useState(policy.agentId ?? '')
+  const [staff, setStaff] = useState<AppUser[]>([])
+
+  useEffect(() => {
+    db.staff.list().then(({ data }) => { if (data) setStaff(data.filter(s => s.active)) })
+  }, [])
 
   const handleSave = () => {
-    onSave({ ...policy, status, paymentMethod, insurer: insurer || undefined, nextPaymentDate: nextPaymentDate || undefined })
+    const agent = staff.find(s => s.id === agentId)
+    onSave({
+      ...policy, status, paymentMethod, insurer: insurer || undefined, nextPaymentDate: nextPaymentDate || undefined,
+      agentId: agentId || undefined, agentName: agent?.name ?? (agentId ? policy.agentName : undefined),
+    })
   }
 
   return (
@@ -65,6 +76,13 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
           <div className="form-group">
             <label>Next Payment Date</label>
             <input type="date" className="form-control" value={nextPaymentDate} onChange={e => setNextPaymentDate(e.target.value)} />
+          </div>
+          <div className="form-group">
+            <label>Agent</label>
+            <select className="form-control" value={agentId} onChange={e => setAgentId(e.target.value)}>
+              <option value="">Unassigned</option>
+              {staff.map(s => <option key={s.id} value={s.id}>{s.name} — {s.role.replace(/_/g, ' ')}</option>)}
+            </select>
           </div>
         </div>
         <div className="modal-footer">
