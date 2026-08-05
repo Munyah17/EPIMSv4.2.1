@@ -20,7 +20,6 @@ import type { Policy, Client, Reminder } from '../types'
 import { db } from './db'
 import { sendEmail, getNotifSettings } from './mailService'
 import { sendSms } from './smsService'
-import { cautionStore } from './cautionStore'
 
 const CHECK_KEY = 'tqfy_reminder_last_check'
 
@@ -165,7 +164,7 @@ async function dispatchReminder(policy: Policy, client: Client | undefined, type
   }
 
   if (type === 'r4_post5') {
-    cautionStore.set({
+    await db.cautionFlags.set({
       policyId: policy.id,
       policyNumber: policy.policyNumber,
       clientId: policy.clientId,

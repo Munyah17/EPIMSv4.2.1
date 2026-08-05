@@ -1,9 +1,10 @@
 import type { Claim, ClaimStatus } from '../types'
 import { sendEmail, getNotifSettings } from './mailService'
-import { localStore } from './localStore'
+import { db } from './db'
 
-function getClientContact(claim: Claim): { email: string; phone: string } {
-  const client = localStore.clients.list().find(c => c.id === claim.clientId)
+async function getClientContact(claim: Claim): Promise<{ email: string; phone: string }> {
+  const { data } = await db.clients.list()
+  const client = data?.find(c => c.id === claim.clientId)
   return { email: client?.email ?? '', phone: client?.phone ?? '' }
 }
 
@@ -23,9 +24,9 @@ Status:         ${claim.status.replace('_', ' ').toUpperCase()}
 ${claim.description ? `\nDescription:\n${claim.description}` : ''}`
 }
 
-export function notifyClaimCreated(claim: Claim): void {
+export async function notifyClaimCreated(claim: Claim): Promise<void> {
   const cfg = getNotifSettings()
-  const client = getClientContact(claim)
+  const client = await getClientContact(claim)
 
   const allEmails = [cfg.insurerEmail, cfg.netoneEmail, client.email].filter(Boolean)
   const cc = allEmails.join(', ')
@@ -50,15 +51,15 @@ Please retain this email for your records. All parties will be copied on further
   }
 }
 
-export function notifyClaimStatusChanged(claim: Claim, previousStatus: ClaimStatus): void {
+export async function notifyClaimStatusChanged(claim: Claim, previousStatus: ClaimStatus): Promise<void> {
   if (claim.status === previousStatus) return
   if (claim.status === 'paid') {
-    notifyClaimResolved(claim)
+    await notifyClaimResolved(claim)
     return
   }
 
   const cfg = getNotifSettings()
-  const client = getClientContact(claim)
+  const client = await getClientContact(claim)
 
   const allEmails = [cfg.insurerEmail, cfg.netoneEmail, client.email].filter(Boolean)
   const cc = allEmails.join(', ')
@@ -85,9 +86,9 @@ We will keep you informed as this claim progresses. All parties are copied on th
   }
 }
 
-function notifyClaimResolved(claim: Claim): void {
+async function notifyClaimResolved(claim: Claim): Promise<void> {
   const cfg = getNotifSettings()
-  const client = getClientContact(claim)
+  const client = await getClientContact(claim)
 
   const allEmails = [cfg.insurerEmail, cfg.netoneEmail, client.email].filter(Boolean)
   const cc = allEmails.join(', ')

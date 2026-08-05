@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react'
-import type { ToastMessage } from '../types'
+import type { ToastMessage, Policy, CautionFlag } from '../types'
 import type { ActivePanel } from '../App'
-import { localStore } from '../lib/localStore'
-import { cautionStore } from '../lib/cautionStore'
+import { db } from '../lib/db'
 import { runReminderCheck, getLastCheckTime, lastDayOfMonth, firstDayOfMonth } from '../lib/reminderEngine'
 import { getGatewaySettings, saveGatewaySettings, getPaymentLog } from '../lib/paymentGateways'
 import { getSmsLog } from '../lib/smsService'
@@ -14,29 +13,43 @@ interface Props {
 
 export default function BillingReminders({ showToast }: Props) {
   const [tab, setTab] = useState<'overview' | 'cautions' | 'gw_settings' | 'payment_log'>('overview')
-  const [cautions, setCautions] = useState(() => cautionStore.listActive())
+  const [cautions, setCautions] = useState<CautionFlag[]>([])
   const [lastCheck, setLastCheck] = useState(getLastCheckTime())
   const [gwSettings, setGwSettings] = useState(() => getGatewaySettings())
   const [payLog, setPayLog] = useState(() => getPaymentLog())
   const [savingGw, setSavingGw] = useState(false)
+  const [checking, setChecking] = useState(false)
+  const [activePolicies, setActivePolicies] = useState<Policy[]>([])
 
   const today = new Date()
   const firstDay = firstDayOfMonth(today)
   const lastDay = lastDayOfMonth(today)
   const daysLeft = Math.max(0, Math.round((lastDay.getTime() - today.getTime()) / 86400000))
-  const activePolicies = localStore.policies.list().filter(p => p.status === 'active')
-  const overduePolicies = activePolicies.filter(p => cautionStore.get(p.id) && !cautionStore.get(p.id)?.cleared)
+  const overduePolicyIds = new Set(cautions.map(f => f.policyId))
+  const overduePolicies = activePolicies.filter(p => overduePolicyIds.has(p.id))
 
-  const handleForceCheck = () => {
-    runReminderCheck()
-    setLastCheck(getLastCheckTime())
-    setCautions(cautionStore.listActive())
-    showToast('success', 'Reminder check completed. Check email and SMS logs for dispatches.')
+  useEffect(() => {
+    db.policies.list().then(({ data }) => setActivePolicies((data ?? []).filter(p => p.status === 'active')))
+    db.cautionFlags.listActive().then(({ data }) => setCautions(data))
+  }, [])
+
+  const handleForceCheck = async () => {
+    setChecking(true)
+    try {
+      await runReminderCheck()
+      setLastCheck(getLastCheckTime())
+      const { data } = await db.cautionFlags.listActive()
+      setCautions(data)
+      showToast('success', 'Reminder check completed. Check email and SMS logs for dispatches.')
+    } finally {
+      setChecking(false)
+    }
   }
 
-  const handleClearCaution = (policyId: string) => {
-    cautionStore.clear(policyId)
-    setCautions(cautionStore.listActive())
+  const handleClearCaution = async (policyId: string) => {
+    await db.cautionFlags.clear(policyId)
+    const { data } = await db.cautionFlags.listActive()
+    setCautions(data)
     showToast('success', 'Caution flag cleared.')
   }
 
@@ -119,9 +132,9 @@ export default function BillingReminders({ showToast }: Props) {
               <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
                 <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 10 }}>
                   Last check: {lastCheck ? new Date(lastCheck).toLocaleString('en-GB') : 'Never'}<br />
-                  The engine checks hourly while the app is open. For guaranteed delivery, run <code style={{ fontSize: 10 }}>node scripts/reminder-cron.js</code>.
+                  The engine checks hourly while any staff member has the app open, and dedupes through the database so it's safe to have several staff logged in at once.
                 </p>
-                <button className="btn btn-primary btn-sm" onClick={handleForceCheck}>▶ Run Check Now</button>
+                <button className="btn btn-primary btn-sm" onClick={handleForceCheck} disabled={checking}>{checking ? 'Checking…' : '▶ Run Check Now'}</button>
               </div>
             </div>
 
@@ -227,18 +240,12 @@ export default function BillingReminders({ showToast }: Props) {
               <div className="form-group"><label>Branch Code</label><input className="form-control" value={gwSettings.zipitBranchCode} onChange={e => setGwSettings(p => ({ ...p, zipitBranchCode: e.target.value }))} /></div>
             </div>
           </div>
-          {/* SMTP */}
+          {/* Email delivery */}
           <div className="card">
-            <div className="card-header"><span className="card-title">SMTP Email Server</span></div>
-            <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 14 }}>Used by the Node.js cron script for actual email delivery. In-app emails are stored in the system. Run <code style={{ fontSize: 11 }}>node scripts/reminder-cron.js</code> for live dispatch.</p>
-            <div className="form-row">
-              <div className="form-group"><label>SMTP Host</label><input className="form-control" value={gwSettings.smtpHost} onChange={e => setGwSettings(p => ({ ...p, smtpHost: e.target.value }))} placeholder="smtp.gmail.com" /></div>
-              <div className="form-group"><label>Port</label><input className="form-control" type="number" value={gwSettings.smtpPort} onChange={e => setGwSettings(p => ({ ...p, smtpPort: Number(e.target.value) }))} /></div>
-              <div className="form-group"><label>Username</label><input className="form-control" value={gwSettings.smtpUser} onChange={e => setGwSettings(p => ({ ...p, smtpUser: e.target.value }))} /></div>
-              <div className="form-group"><label>Password</label><input className="form-control" type="password" value={gwSettings.smtpPass} onChange={e => setGwSettings(p => ({ ...p, smtpPass: e.target.value }))} /></div>
-              <div className="form-group"><label>From Address</label><input className="form-control" value={gwSettings.smtpFrom} onChange={e => setGwSettings(p => ({ ...p, smtpFrom: e.target.value }))} /></div>
-              <div className="form-group"><label>From Name</label><input className="form-control" value={gwSettings.smtpFromName} onChange={e => setGwSettings(p => ({ ...p, smtpFromName: e.target.value }))} /></div>
-            </div>
+            <div className="card-header"><span className="card-title">Email Delivery</span></div>
+            <p style={{ fontSize: 12, color: 'var(--muted)' }}>
+              Outgoing email (reminders, claim notices, tickets) is delivered live through Resend. The sender name and address are set on the <b>Notification Settings</b> page, not here.
+            </p>
           </div>
           <div>
             <button className="btn btn-primary" onClick={saveGw} disabled={savingGw}>{savingGw ? 'Saving…' : 'Save All Settings'}</button>

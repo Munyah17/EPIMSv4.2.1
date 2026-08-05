@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { ToastMessage, Client } from '../types'
 import type { ActivePanel } from '../App'
-import { localStore } from '../lib/localStore'
+import { db } from '../lib/db'
 import { sendBulkSms, getSmsSettings, saveSmsSettings, getSmsLog, clearSmsLog } from '../lib/smsService'
 import type { SmsSettings, SmsLogEntry } from '../lib/smsService'
 
@@ -23,10 +23,14 @@ export default function MassMessaging({ showToast }: Props) {
   const [log, setLog] = useState<SmsLogEntry[]>([])
 
   useEffect(() => {
-    const all = localStore.clients.list().filter(c => c.status === 'active')
-    setClients(all)
-    setSelected(new Set(all.map(c => c.id)))
+    db.clients.list().then(({ data, error }) => {
+      if (error) { showToast('error', 'Failed to load clients.'); return }
+      const all = (data ?? []).filter(c => c.status === 'active')
+      setClients(all)
+      setSelected(new Set(all.map(c => c.id)))
+    })
     setLog(getSmsLog())
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const visible = clients.filter(c =>

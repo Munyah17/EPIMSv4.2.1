@@ -3,7 +3,7 @@ import { health } from './health'
 import { localStore } from './localStore'
 import type {
   AppUser, Client, Product, Policy, Claim, Payment,
-  Ticket, EmailMessage, Lead, FraudCase, Reminder,
+  Ticket, EmailMessage, Lead, FraudCase, Reminder, CautionFlag,
   PolicyStatus, ClaimStatus, PaymentStatus, PaymentMethod,
   TicketStatus, TicketPriority, LeadStatus, FraudCaseStatus,
 } from '../types'
@@ -252,6 +252,22 @@ function toReminder(r: any): Reminder {
     message:      r.message ?? '',
     sent:         r.sent,
     channel:      r.channel,
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toCautionFlag(r: any): CautionFlag {
+  return {
+    policyId:        r.policy_id,
+    policyNumber:    r.policy_number,
+    clientId:        r.client_id,
+    clientName:      r.client_name,
+    agentId:         r.agent_id ?? undefined,
+    daysOverdue:     r.days_overdue,
+    flaggedAt:       r.flagged_at,
+    monthsDefaulted: r.months_defaulted,
+    cleared:         r.cleared,
+    clearedAt:       r.cleared_at ?? undefined,
   }
 }
 
@@ -814,6 +830,41 @@ export const reminders = {
   },
 }
 
+// ── CAUTION FLAGS ─────────────────────────────────────────────────
+// Real table (not localStorage) so a flag raised by one staff member's
+// browser is visible to every other staff member, including whoever
+// reviews claims — a caution flag is meant to trigger extra scrutiny there.
+export const cautionFlags = {
+  async listActive() {
+    const { data, error } = await supabase.from('caution_flags').select('*').eq('cleared', false).order('flagged_at', { ascending: false })
+    if (error) return { data: [] as CautionFlag[], error: error.message }
+    return { data: (data ?? []).map(toCautionFlag), error: null }
+  },
+
+  async get(policyId: string) {
+    const { data, error } = await supabase.from('caution_flags').select('*').eq('policy_id', policyId).maybeSingle()
+    if (error || !data) return { data: null, error: error?.message ?? null }
+    return { data: toCautionFlag(data), error: null }
+  },
+
+  async set(flag: CautionFlag) {
+    const row = {
+      policy_id: flag.policyId, policy_number: flag.policyNumber, client_id: flag.clientId,
+      client_name: flag.clientName, agent_id: flag.agentId ?? null, days_overdue: flag.daysOverdue,
+      flagged_at: flag.flaggedAt, months_defaulted: flag.monthsDefaulted, cleared: flag.cleared,
+      cleared_at: flag.clearedAt ?? null,
+    }
+    const { error } = await supabase.from('caution_flags').upsert(row, { onConflict: 'policy_id' })
+    return { error: error?.message ?? null }
+  },
+
+  async clear(policyId: string) {
+    const { error } = await supabase.from('caution_flags')
+      .update({ cleared: true, cleared_at: new Date().toISOString() }).eq('policy_id', policyId)
+    return { error: error?.message ?? null }
+  },
+}
+
 // ── DASHBOARD STATS ──────────────────────────────────────────────
 // Dashboard.tsx used to fetch every row of policies/claims/payments/leads/
 // fraud_cases (each with embedded client/product/profile joins) just to
@@ -948,7 +999,7 @@ export function subscribeToTable(table: string, callback: () => void) {
 // ── EXPORT ────────────────────────────────────────────────────────
 export const db = {
   policies, clients, products, claims, payments,
-  tickets, emails, leads, staff, fraudCases, reminders,
+  tickets, emails, leads, staff, fraudCases, reminders, cautionFlags,
   dashboardStats,
   subscribeToTable,
   resetLocalData: () => localStore.reset(),

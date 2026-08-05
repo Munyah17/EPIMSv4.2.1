@@ -4,9 +4,7 @@ import {
   initiateEcoCash, initiatePaynow, getZipitDetails, pollEcoCash, pollPaynow,
 } from '../../lib/paymentGateways'
 import type { PaymentResponse } from '../../lib/paymentGateways'
-import { localStore } from '../../lib/localStore'
 import { db } from '../../lib/db'
-import { cautionStore } from '../../lib/cautionStore'
 import PhoneInput from '../ui/PhoneInput'
 
 interface Props {
@@ -34,10 +32,16 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
   const [result, setResult] = useState<PaymentResponse | null>(null)
   const [zipitDetails, setZipitDetails] = useState<ReturnType<typeof getZipitDetails> | null>(null)
   const [pollStatus, setPollStatus] = useState<string>('Awaiting payment…')
+  const [hadCaution, setHadCaution] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const client = localStore.clients.list().find(c => c.id === policy.clientId)
-  const ref = `${policy.policyNumber}-${Date.now().toString(36).toUpperCase()}`
+  const [client, setClient] = useState<{ phone?: string; email?: string } | null>(null)
+  useEffect(() => {
+    db.clients.list().then(({ data }) => {
+      setClient(data?.find(c => c.id === policy.clientId) ?? null)
+    })
+  }, [policy.clientId])
+  const ref = `${policy.policyNumber}${Date.now().toString(36).toUpperCase()}`
 
   const req = {
     policyId: policy.id,
@@ -80,7 +84,11 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
       date: new Date().toISOString().split('T')[0],
     })
     // Clear any caution flag
-    cautionStore.clear(policy.id)
+    const { data: existing } = await db.cautionFlags.get(policy.id)
+    if (existing && !existing.cleared) {
+      setHadCaution(true)
+      await db.cautionFlags.clear(policy.id)
+    }
     setStep('success')
     onSuccess()
   }
@@ -225,7 +233,7 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
               <div style={{ fontSize: 42, marginBottom: 12 }}>✅</div>
               <h4 style={{ marginBottom: 8 }}>Payment Confirmed</h4>
               <p style={{ color: 'var(--muted)', fontSize: 13 }}>${policy.premium.toFixed(2)} received for {policy.policyNumber}.</p>
-              {cautionStore.get(policy.id) && <p style={{ color: 'var(--success)', marginTop: 8, fontSize: 12 }}>✓ Caution flag cleared.</p>}
+              {hadCaution && <p style={{ color: 'var(--success)', marginTop: 8, fontSize: 12 }}>✓ Caution flag cleared.</p>}
             </div>
           )}
 

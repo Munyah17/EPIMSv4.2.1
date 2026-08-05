@@ -1,8 +1,7 @@
 import { useState, useEffect } from 'react'
-import type { ToastMessage, Policy, PolicyStatus } from '../types'
+import type { ToastMessage, Policy, PolicyStatus, CautionFlag } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
-import { cautionStore } from '../lib/cautionStore'
 import { formatDate } from '../lib/dateUtils'
 import NewPolicyModal from '../components/modals/NewPolicyModal'
 import ViewPolicyModal from '../components/modals/ViewPolicyModal'
@@ -24,7 +23,7 @@ export default function Policies({ showToast }: Props) {
   const [viewPolicy, setViewPolicy] = useState<Policy | null>(null)
   const [editPolicy, setEditPolicy] = useState<Policy | null>(null)
   const [payPolicy, setPayPolicy] = useState<Policy | null>(null)
-  const cautionFlags = cautionStore.listActive()
+  const [cautionFlags, setCautionFlags] = useState<CautionFlag[]>([])
 
   useEffect(() => {
     db.policies.list().then(({ data, error }) => {
@@ -32,6 +31,7 @@ export default function Policies({ showToast }: Props) {
       else if (data) setPolicies(data)
       setLoading(false)
     })
+    db.cautionFlags.listActive().then(({ data }) => setCautionFlags(data))
   }, [showToast])
 
   const products = [...new Set(policies.map(p => p.productName))]
@@ -171,6 +171,7 @@ export default function Policies({ showToast }: Props) {
           onSuccess={() => {
             showToast('success', `Payment confirmed for ${payPolicy.policyNumber}.`)
             setPayPolicy(null)
+            db.cautionFlags.listActive().then(({ data }) => setCautionFlags(data))
           }}
           showToast={showToast}
         />
