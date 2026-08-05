@@ -5,6 +5,7 @@ import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
 import ScoreBar from '../components/ui/ScoreBar'
 import ViewLeadModal from '../components/modals/ViewLeadModal'
+import NewLeadModal from '../components/modals/NewLeadModal'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -26,7 +27,7 @@ export default function Leads({ showToast }: Props) {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<LeadStatus | 'all'>('all')
   const [viewLead, setViewLead] = useState<Lead | null>(null)
-  const [scanning, setScanning] = useState(false)
+  const [showAdd, setShowAdd] = useState(false)
 
   useEffect(() => {
     db.leads.list().then(({ data, error }) => {
@@ -61,31 +62,18 @@ export default function Leads({ showToast }: Props) {
     setViewLead(null)
   }
 
-  const runScan = () => {
-    setScanning(true)
-    setTimeout(() => {
-      const newLead: Lead = {
-        id: `l${Date.now()}`,
-        name: 'Fungai Mhiripiri',
-        phone: '+263 77 999 8888',
-        email: 'fungai.m@gmail.com',
-        source: 'AI Scan — Facebook',
-        productInterest: 'Funeral Cover Basic',
-        status: 'new',
-        intentScore: 76,
-        createdAt: new Date().toISOString(),
-        assignedTo: undefined,
-      }
-      setLeads(prev => [newLead, ...prev])
-      setScanning(false)
-      showToast('success', '1 new lead discovered via AI scan.')
-    }, 2000)
+  const handleAdd = async (lead: Omit<Lead, 'id'>) => {
+    const { data, error } = await db.leads.create(lead)
+    if (error || !data) { showToast('error', error ?? 'Failed to add lead.'); return }
+    setLeads(prev => [data, ...prev])
+    setShowAdd(false)
+    showToast('success', `Lead "${data.name}" added — AI intent score: ${data.intentScore}.`)
   }
 
   return (
     <div className="panel">
       <div className="info-banner info-banner-info">
-        🎯 AI Lead Scan monitors WhatsApp chatbot, USSD *907#, social media, and referrals for new prospects.
+        🎯 New leads are scored automatically by AI (Groq) on intent to buy, based on source, product interest, and notes.
       </div>
 
       <div className="panel-toolbar">
@@ -106,8 +94,8 @@ export default function Leads({ showToast }: Props) {
             <option value="lost">Lost ({statusCounts.lost})</option>
           </select>
         </div>
-        <button type="button" className="btn btn-primary" onClick={runScan} disabled={scanning}>
-          {scanning ? '⟳ Scanning…' : '🔍 Run AI Scan'}
+        <button type="button" className="btn btn-primary" onClick={() => setShowAdd(true)}>
+          + Add Lead
         </button>
       </div>
 
@@ -152,6 +140,9 @@ export default function Leads({ showToast }: Props) {
 
       {viewLead && (
         <ViewLeadModal lead={viewLead} onClose={() => setViewLead(null)} onSave={handleUpdate} />
+      )}
+      {showAdd && (
+        <NewLeadModal onClose={() => setShowAdd(false)} onSave={handleAdd} />
       )}
     </div>
   )

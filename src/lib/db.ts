@@ -663,13 +663,11 @@ export const leads = {
       source: lead.source, product_interest: lead.productInterest,
       status: lead.status, intent_score: lead.intentScore, assigned_to: lead.assignedTo ?? null,
     }
-    const { ok, data } = await sb('leads', 'write',
-      () => supabase.from('leads').insert(row).select().single(),
-    )
-    if (ok && data) return { data: toLead(data), error: null }
-    local('leads', 'write')
-    const item = { ...lead, id: uid() } as Lead
-    return { data: localStore.leads.create(item), error: null }
+    const start = Date.now()
+    const { data, error } = await supabase.from('leads').insert(row).select().single()
+    health.record({ ts: Date.now(), type: 'write', table: 'leads', success: !error, duration: Date.now() - start, source: 'supabase', detail: error ? String(error.message) : undefined })
+    if (error) return { data: null, error: error.message }
+    return { data: toLead(data), error: null }
   },
 
   async update(id: string, updates: Partial<Lead>) {
