@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { Claim, Policy } from '../../types'
 import { db } from '../../lib/db'
+import { scoreClaimFraud } from '../../lib/aiService'
 
 interface Props {
   onClose: () => void
@@ -9,16 +10,19 @@ interface Props {
 
 export default function NewClaimModal({ onClose, onSave }: Props) {
   const [policies, setPolicies] = useState<Policy[]>([])
+  const [allClaims, setAllClaims] = useState<Claim[]>([])
   const [loading, setLoading] = useState(true)
   const [policyId, setPolicyId] = useState('')
   const [claimType, setClaimType] = useState('Death Benefit')
   const [amount, setAmount] = useState('')
   const [dateOfEvent, setDateOfEvent] = useState('')
   const [description, setDescription] = useState('')
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    db.policies.list().then(({ data }) => {
-      if (data) setPolicies(data)
+    Promise.all([db.policies.list(), db.claims.list()]).then(([polRes, claimRes]) => {
+      if (polRes.data) setPolicies(polRes.data)
+      if (claimRes.data) setAllClaims(claimRes.data)
       setLoading(false)
     })
   }, [])
@@ -36,27 +40,43 @@ export default function NewClaimModal({ onClose, onSave }: Props) {
 
   const CLAIM_TYPES = ['Death Benefit', 'Hospitalisation', 'Accidental Injury', 'Disability Benefit', 'Repatriation', 'Other']
 
-  const handleSave = () => {
-    if (!policyId || !amount || !dateOfEvent || !description) return
-    const claimNumber = `CLM${new Date().getFullYear()}${String(Date.now()).slice(-3)}`
-    const claim: Claim = {
-      id: `cl${Date.now()}`,
-      claimNumber,
-      policyId,
-      policyNumber: policy!.policyNumber,
-      clientId: policy!.clientId,
-      clientName: policy!.clientName,
-      productName: policy!.productName,
-      claimType,
-      amount: Number(amount),
-      status: 'pending',
-      dateOfEvent,
-      dateSubmitted: new Date().toISOString().split('T')[0],
-      description,
-      fraudScore: Math.floor(Math.random() * 30),
-      documents: [],
+  const handleSave = async () => {
+    if (!policyId || !amount || !dateOfEvent || !description || !policy) return
+    setSaving(true)
+    const dateSubmitted = new Date().toISOString().split('T')[0]
+    const priorClaimsOnPolicy = allClaims.filter(c => c.policyId === policyId).length
+    let fraudScore = 20
+    let signals: string[] = []
+    try {
+      const result = await scoreClaimFraud({
+        claimType, amount: Number(amount), coverAmount: policy.coverAmount,
+        dateOfEvent, policyStartDate: policy.startDate, dateSubmitted, description, priorClaimsOnPolicy,
+      })
+      fraudScore = result.score
+      signals = result.signals
+    } finally {
+      const claimNumber = `CLM${new Date().getFullYear()}${String(Date.now()).slice(-3)}`
+      const claim: Claim & { fraudSignals?: string[] } = {
+        id: `cl${Date.now()}`,
+        claimNumber,
+        policyId,
+        policyNumber: policy.policyNumber,
+        clientId: policy.clientId,
+        clientName: policy.clientName,
+        productName: policy.productName,
+        claimType,
+        amount: Number(amount),
+        status: 'pending',
+        dateOfEvent,
+        dateSubmitted,
+        description,
+        fraudScore,
+        documents: [],
+        fraudSignals: signals,
+      }
+      setSaving(false)
+      onSave(claim)
     }
-    onSave(claim)
   }
 
   return (
@@ -110,8 +130,8 @@ export default function NewClaimModal({ onClose, onSave }: Props) {
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={!policyId || !amount || !dateOfEvent || !description}>
-            Submit Claim
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving || !policyId || !amount || !dateOfEvent || !description}>
+            {saving ? 'Analysing & Submitting…' : 'Submit Claim'}
           </button>
         </div>
       </div>

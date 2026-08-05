@@ -44,13 +44,20 @@ export default function Claims({ showToast }: Props) {
     paid: claims.filter(c => c.status === 'paid').length,
   }
 
-  const handleAdd = async (claim: Claim) => {
+  const handleAdd = async (claim: Claim & { fraudSignals?: string[] }) => {
     const { data, error } = await db.claims.create(claim)
     if (error || !data) { showToast('error', 'Failed to submit claim.'); return }
     setClaims(prev => [data, ...prev])
-    showToast('success', `Claim ${data.claimNumber} submitted successfully.`)
     setShowNew(false)
     try { notifyClaimCreated(data) } catch { /**/ }
+
+    const FRAUD_REVIEW_THRESHOLD = 55
+    if (data.fraudScore >= FRAUD_REVIEW_THRESHOLD) {
+      await db.fraudCases.create(data.id, data.fraudScore, claim.fraudSignals ?? [])
+      showToast('warning', `Claim ${data.claimNumber} submitted — flagged for fraud review (score ${data.fraudScore}).`)
+    } else {
+      showToast('success', `Claim ${data.claimNumber} submitted successfully.`)
+    }
   }
 
   const handleUpdate = async (updated: Claim) => {

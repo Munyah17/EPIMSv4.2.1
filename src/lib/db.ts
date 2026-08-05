@@ -782,6 +782,14 @@ export const fraudCases = {
     local('fraud_cases', 'write')
     return { data: localStore.fraudCases.update(id, updates), error: null }
   },
+
+  /** Auto-opened when a newly submitted claim's AI fraud score clears the review threshold. */
+  async create(claimId: string, fraudScore: number, signals: string[]) {
+    const row = { claim_id: claimId, fraud_score: fraudScore, signals, status: 'open' }
+    const { data, error } = await supabase.from('fraud_cases').insert(row).select(FRAUD_SELECT).single()
+    if (error) return { data: null, error: error.message }
+    return { data: toFraudCase(data), error: null }
+  },
 }
 
 // ── REMINDERS ─────────────────────────────────────────────────────
