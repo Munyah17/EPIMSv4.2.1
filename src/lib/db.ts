@@ -789,6 +789,29 @@ export const reminders = {
     await sb('reminders', 'write', () => supabase.from('reminders').update({ sent: true }).in('id', ids))
     ids.forEach(id => localStore.reminders.update(id, { sent: true } as Partial<Reminder>))
   },
+
+  /** Has a reminder tagged with this stage already been logged for this
+   *  policy+due date? Dedup lives in the database (not localStorage) so it
+   *  holds regardless of how many staff browsers have the app open —
+   *  otherwise every logged-in staff member's hourly check would re-send
+   *  the same reminder independently. */
+  async existsForStage(policyId: string, dueDateISO: string, stageTag: string): Promise<boolean> {
+    const { data, error } = await supabase
+      .from('reminders').select('id').eq('policy_id', policyId).eq('due_date', dueDateISO)
+      .like('message', `${stageTag}%`).limit(1)
+    if (error) return false // fail open: better to risk a rare duplicate than silently stop all reminders
+    return (data?.length ?? 0) > 0
+  },
+
+  async create(reminder: Omit<Reminder, 'id'>) {
+    const row = {
+      type: reminder.type, client_id: reminder.clientId, policy_id: reminder.policyId ?? null,
+      due_date: reminder.dueDate, message: reminder.message, sent: reminder.sent, channel: reminder.channel,
+    }
+    const { data, error } = await supabase.from('reminders').insert(row).select(REMINDER_SELECT).single()
+    if (error) return { data: null, error: error.message }
+    return { data: toReminder(data), error: null }
+  },
 }
 
 // ── DASHBOARD STATS ──────────────────────────────────────────────

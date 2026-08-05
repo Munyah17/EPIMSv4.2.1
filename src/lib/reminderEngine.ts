@@ -8,17 +8,20 @@
  *   R3: Last day of month (+ 1 SMS via smsService)
  *   R4: 5 days AFTER last day → caution flag applied
  *
- * Tracks sent reminders in localStorage to prevent duplicates.
- * Run via: startReminderEngine() on app boot.
- * Production: wire into scripts/reminder-cron.js for guaranteed delivery.
+ * Runs client-side (hourly, from whichever staff member has the app open)
+ * against real policies/clients. Dedup is tracked in the `reminders` table
+ * itself (not localStorage) so it holds regardless of how many staff
+ * browsers are open at once — otherwise each one would independently
+ * re-send the same reminder. For guaranteed delivery even when no staff
+ * are logged in, migrate this to a Netlify Scheduled Function (cron) that
+ * calls the same dispatch logic server-side.
  */
-import type { Policy } from '../types'
-import { localStore } from './localStore'
+import type { Policy, Client, Reminder } from '../types'
+import { db } from './db'
 import { sendEmail, getNotifSettings } from './mailService'
 import { sendSms } from './smsService'
 import { cautionStore } from './cautionStore'
 
-const SENT_KEY = 'tqfy_reminder_sent'
 const CHECK_KEY = 'tqfy_reminder_last_check'
 
 // ── Billing date helpers ───────────────────────────────────────────
@@ -48,27 +51,20 @@ function daysDiff(from: Date, to: Date): number {
   return Math.round((to.getTime() - from.getTime()) / 86400000)
 }
 
-// ── Sent-reminder dedup ────────────────────────────────────────────
+// ── Stage tags (dedup markers stored in reminders.message) ────────
 
 type ReminderType = 'r1_pre5' | 'r2_pre1' | 'r3_due' | 'r4_post5'
 
-function sentKey(policyId: string, month: string, type: ReminderType): string {
-  return `${policyId}:${month}:${type}`
+const STAGE_TAG: Record<ReminderType, string> = {
+  r1_pre5: '[R1]', r2_pre1: '[R2]', r3_due: '[R3]', r4_post5: '[R4]',
 }
 
-function getSent(): Set<string> {
-  try { return new Set(JSON.parse(localStorage.getItem(SENT_KEY) ?? '[]')) } catch { return new Set() }
+const STAGE_LABEL: Record<ReminderType, string> = {
+  r1_pre5: '5-Day Pre-Due Reminder',
+  r2_pre1: '1-Day Pre-Due Reminder',
+  r3_due: 'Due Date Reminder',
+  r4_post5: 'OVERDUE — Caution Flag Applied',
 }
-
-function markSent(key: string) {
-  const s = getSent()
-  s.add(key)
-  // Keep max 500 keys to avoid bloat
-  const arr = Array.from(s).slice(-500)
-  try { localStorage.setItem(SENT_KEY, JSON.stringify(arr)) } catch { /**/ }
-}
-
-function wasSent(key: string): boolean { return getSent().has(key) }
 
 // ── Email templates ────────────────────────────────────────────────
 
@@ -116,13 +112,7 @@ ${sig}`
 
 function buildStaffEmail(policy: Policy, type: ReminderType, dueDate: Date, sig: string): string {
   const due = dueDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })
-  const label: Record<ReminderType, string> = {
-    r1_pre5: '5-Day Pre-Due Reminder',
-    r2_pre1: '1-Day Pre-Due Reminder',
-    r3_due: 'Due Date Reminder',
-    r4_post5: 'OVERDUE — Caution Flag Applied',
-  }
-  return `Billing Reminder Alert: ${label[type]}
+  return `Billing Reminder Alert: ${STAGE_LABEL[type]}
 
 Policy: ${policy.policyNumber}
 Client: ${policy.clientName}
@@ -136,21 +126,20 @@ ${sig}`
 
 // ── Core dispatch ──────────────────────────────────────────────────
 
-function dispatchReminder(policy: Policy, type: ReminderType, dueDate: Date) {
-  const cfg = getNotifSettings()
-  const month = `${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(2, '0')}`
-  const key = sentKey(policy.id, month, type)
-  if (wasSent(key)) return
+async function dispatchReminder(policy: Policy, client: Client | undefined, type: ReminderType, dueDate: Date) {
+  const dueISO = dueDate.toISOString().split('T')[0]
+  const tag = STAGE_TAG[type]
 
-  const clients = localStore.clients.list()
-  const client = clients.find(c => c.id === policy.clientId)
+  const already = await db.reminders.existsForStage(policy.id, dueISO, tag)
+  if (already) return
+
+  const cfg = getNotifSettings()
   const clientEmail = client?.email ?? ''
   const clientPhone = client?.phone ?? ''
 
   const allCc = [cfg.insurerEmail, cfg.netoneEmail].filter(Boolean).join(', ')
   const sig = cfg.signature
 
-  // Client email
   if (clientEmail) {
     void sendEmail({
       to: clientEmail,
@@ -164,20 +153,17 @@ function dispatchReminder(policy: Policy, type: ReminderType, dueDate: Date) {
     })
   }
 
-  // Insurer + NetOne staff emails
   const staffBody = buildStaffEmail(policy, type, dueDate, sig)
   const staffSubject = `[Billing Alert] ${policy.policyNumber} — ${policy.clientName}`
   if (cfg.insurerEmail) void sendEmail({ to: cfg.insurerEmail, cc: cfg.netoneEmail, subject: staffSubject, body: staffBody, folder: 'inbox' })
   if (cfg.netoneEmail) void sendEmail({ to: cfg.netoneEmail, subject: staffSubject, body: staffBody, folder: 'inbox' })
 
-  // SMS only on due date
   if (type === 'r3_due' && clientPhone) {
     sendSms(clientPhone,
       `Tariqify: Premium of $${policy.premium.toFixed(2)} for policy ${policy.policyNumber} is DUE TODAY. Pay now via EcoCash/Paynow to keep your coverage active.`
     ).catch(() => { /**/ })
   }
 
-  // Apply caution flag after 5 days overdue
   if (type === 'r4_post5') {
     cautionStore.set({
       policyId: policy.id,
@@ -192,24 +178,39 @@ function dispatchReminder(policy: Policy, type: ReminderType, dueDate: Date) {
     })
   }
 
-  markSent(key)
+  // Logged after sending — this row IS the dedup record for this stage.
+  await db.reminders.create({
+    type: 'payment_due',
+    clientId: policy.clientId,
+    policyId: policy.id,
+    dueDate: dueISO,
+    message: `${tag} ${STAGE_LABEL[type]} — ${policy.policyNumber}`,
+    sent: true,
+    channel: 'email',
+  } as Omit<Reminder, 'id'>)
 }
 
 // ── Engine entry point ─────────────────────────────────────────────
 
-export function runReminderCheck() {
+export async function runReminderCheck() {
   const today = new Date()
   const lastDue = lastDayOfMonth(today)
-  const policies = localStore.policies.list().filter(p => p.status === 'active')
+  const daysToLast = daysDiff(today, lastDue)
 
-  policies.forEach(policy => {
-    const daysToLast = daysDiff(today, lastDue)
+  let type: ReminderType | null = null
+  if (daysToLast === 5) type = 'r1_pre5'
+  else if (daysToLast === 1) type = 'r2_pre1'
+  else if (daysToLast === 0) type = 'r3_due'
+  else if (daysToLast === -5) type = 'r4_post5'
+  if (!type) { try { localStorage.setItem(CHECK_KEY, today.toISOString()) } catch { /**/ }; return }
 
-    if (daysToLast === 5) dispatchReminder(policy, 'r1_pre5', lastDue)
-    else if (daysToLast === 1) dispatchReminder(policy, 'r2_pre1', lastDue)
-    else if (daysToLast === 0) dispatchReminder(policy, 'r3_due', lastDue)
-    else if (daysToLast === -5) dispatchReminder(policy, 'r4_post5', lastDue)
-  })
+  const [{ data: allPolicies }, { data: allClients }] = await Promise.all([db.policies.list(), db.clients.list()])
+  const policies = (allPolicies ?? []).filter(p => p.status === 'active')
+  const clientById = new Map((allClients ?? []).map(c => [c.id, c]))
+
+  for (const policy of policies) {
+    await dispatchReminder(policy, clientById.get(policy.clientId), type, lastDue)
+  }
 
   try { localStorage.setItem(CHECK_KEY, today.toISOString()) } catch { /**/ }
 }
@@ -219,16 +220,18 @@ export function getLastCheckTime(): string | null {
 }
 
 export function getUpcomingDueCount(): number {
+  // Synchronous by design (used for a lightweight badge) — real due-soon
+  // counts are shown properly on the Reminders/Billing pages, which fetch
+  // real data async. This just answers "is anything due within a week".
   const today = new Date()
   const lastDue = lastDayOfMonth(today)
   const daysToLast = daysDiff(today, lastDue)
-  if (daysToLast < 0 || daysToLast > 7) return 0
-  return localStore.policies.list().filter(p => p.status === 'active').length
+  return daysToLast >= 0 && daysToLast <= 7 ? 1 : 0
 }
 
 /** Start hourly in-app checker. Call once from App.tsx. */
 export function startReminderEngine(): () => void {
-  runReminderCheck()
-  const interval = setInterval(runReminderCheck, 3600000) // every hour
+  void runReminderCheck()
+  const interval = setInterval(() => { void runReminderCheck() }, 3600000) // every hour
   return () => clearInterval(interval)
 }
