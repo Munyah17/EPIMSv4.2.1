@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { Policy, Beneficiary, Insurer, Client, Product, AppUser } from '../../types'
 import { db } from '../../lib/db'
+import PhoneInput from '../ui/PhoneInput'
 
 const INSURERS: Insurer[] = ['Motions', 'CBZ Life', 'EcoSure', 'ZB Life', 'Nyaradzo Funeral', 'Doves']
 
@@ -124,7 +125,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
             </div>
             <div className="form-group">
               <label>Phone Number *</label>
-              <input className="form-control" placeholder="e.g. +263 777 123 456" value={clientPhone} onChange={e => setClientPhone(e.target.value)} />
+              <PhoneInput value={clientPhone} onChange={setClientPhone} />
             </div>
           </div>
           <div className="form-row">

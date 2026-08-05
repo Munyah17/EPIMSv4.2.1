@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { AppUser, UserRole } from '../../types'
+import PhoneInput from '../ui/PhoneInput'
 
 interface Props {
   staff: AppUser | null
@@ -57,7 +58,7 @@ export default function AddStaffModal({ staff, onClose, onSave }: Props) {
           <div className="form-row">
             <div className="form-group">
               <label>Phone Number</label>
-              <input className="form-control" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+263 7X XXX XXXX" />
+              <PhoneInput value={phone} onChange={setPhone} />
             </div>
             <div className="form-group">
               <label>Role *</label>

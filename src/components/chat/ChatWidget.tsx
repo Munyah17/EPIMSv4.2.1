@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { ChatTopic, ChatSession, ChatMessage } from '../../types'
 import * as chat from '../../lib/chatService'
+import PhoneInput from '../ui/PhoneInput'
 
 type Stage = 'closed' | 'form' | 'chatting'
 
@@ -141,7 +142,7 @@ export default function ChatWidget() {
               </div>
               <div className="form-group">
                 <label>Phone Number *</label>
-                <input className="form-control" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+263 7X XXX XXXX" />
+                <PhoneInput value={phone} onChange={setPhone} />
               </div>
               <div className="form-group">
                 <label>Email Address *</label>

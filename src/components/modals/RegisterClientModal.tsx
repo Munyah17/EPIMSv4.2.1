@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Client, Insurer } from '../../types'
+import PhoneInput from '../ui/PhoneInput'
 
 const INSURERS: Insurer[] = ['Motions', 'CBZ Life', 'EcoSure', 'ZB Life', 'Nyaradzo Funeral', 'Doves']
 
@@ -51,7 +52,7 @@ export default function RegisterClientModal({ onClose, onSave }: Props) {
           <div className="form-row">
             <div className="form-group">
               <label>Phone Number *</label>
-              <input className="form-control" placeholder="+263 7X XXX XXXX" value={phone} onChange={e => setPhone(e.target.value)} />
+              <PhoneInput value={phone} onChange={setPhone} />
             </div>
             <div className="form-group">
               <label>National ID *</label>

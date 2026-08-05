@@ -4,6 +4,7 @@ import type { ActivePanel } from '../App'
 import { useAuth } from '../contexts/AuthContext'
 import { db } from '../lib/db'
 import { supabase } from '../lib/supabase'
+import PhoneInput from '../components/ui/PhoneInput'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -114,7 +115,7 @@ export default function Profile({ showToast }: Props) {
               </div>
               <div className="form-group">
                 <label>Phone Number</label>
-                <input className="form-control" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+263 7X XXX XXXX" />
+                <PhoneInput value={phone} onChange={setPhone} />
               </div>
               <div className="form-group">
                 <label>Role</label>

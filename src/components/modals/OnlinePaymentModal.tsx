@@ -7,6 +7,7 @@ import type { PaymentResponse } from '../../lib/paymentGateways'
 import { localStore } from '../../lib/localStore'
 import { db } from '../../lib/db'
 import { cautionStore } from '../../lib/cautionStore'
+import PhoneInput from '../ui/PhoneInput'
 
 interface Props {
   policy: Policy
@@ -169,12 +170,7 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
               {method !== 'zipit' && (
                 <div className="form-group">
                   <label>Client Phone Number</label>
-                  <input
-                    className="form-control"
-                    placeholder={client?.phone ?? '+263 7X XXX XXXX'}
-                    value={phone}
-                    onChange={e => setPhone(e.target.value)}
-                  />
+                  <PhoneInput value={phone} onChange={setPhone} placeholder={client?.phone} />
                 </div>
               )}
             </>
