@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { Claim, ClaimStatus, AppUser } from '../../types'
 import { db } from '../../lib/db'
+import { formatDate } from '../../lib/dateUtils'
 
 interface Props {
   claim: Claim
@@ -53,8 +54,8 @@ export default function ReviewClaimModal({ claim, onClose, onSave }: Props) {
             <div className="detail-item"><span className="detail-label">Product</span><span>{claim.productName}</span></div>
             <div className="detail-item"><span className="detail-label">Type</span><span>{claim.claimType}</span></div>
             <div className="detail-item"><span className="detail-label">Amount</span><span>${claim.amount.toLocaleString()}</span></div>
-            <div className="detail-item"><span className="detail-label">Date of Event</span><span>{claim.dateOfEvent}</span></div>
-            <div className="detail-item"><span className="detail-label">Submitted</span><span>{claim.dateSubmitted}</span></div>
+            <div className="detail-item"><span className="detail-label">Date of Event</span><span>{formatDate(claim.dateOfEvent)}</span></div>
+            <div className="detail-item"><span className="detail-label">Submitted</span><span>{formatDate(claim.dateSubmitted)}</span></div>
             <div className="detail-item">
               <span className="detail-label">Fraud Score</span>
               <span style={{ color: scoreColor, fontWeight: 600 }}>{claim.fraudScore}%</span>

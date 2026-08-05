@@ -38,7 +38,7 @@ export default function NewClaimModal({ onClose, onSave }: Props) {
 
   const handleSave = () => {
     if (!policyId || !amount || !dateOfEvent || !description) return
-    const claimNumber = `CLM-${new Date().getFullYear()}-${String(Date.now()).slice(-3)}`
+    const claimNumber = `CLM${new Date().getFullYear()}${String(Date.now()).slice(-3)}`
     const claim: Claim = {
       id: `cl${Date.now()}`,
       claimNumber,

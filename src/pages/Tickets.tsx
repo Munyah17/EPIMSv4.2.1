@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import type { ToastMessage, Ticket, TicketStatus, AppUser } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
+import { formatDate } from '../lib/dateUtils'
 import NewTicketModal from '../components/modals/NewTicketModal'
 import ViewTicketModal from '../components/modals/ViewTicketModal'
 
@@ -106,7 +107,7 @@ export default function Tickets({ showToast }: Props) {
                 <span className="ticket-client">👤 {t.clientName}</span>
                 <span className="ticket-category">🏷 {t.category}</span>
                 {t.assignedName && <span className="ticket-assigned">→ {t.assignedName}</span>}
-                <span className="ticket-date">{new Date(t.createdAt).toLocaleDateString()}</span>
+                <span className="ticket-date">{formatDate(t.createdAt)}</span>
               </div>
             </div>
           ))}

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import type { ToastMessage, Client } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
+import { formatDate } from '../lib/dateUtils'
 import RegisterClientModal from '../components/modals/RegisterClientModal'
 import EditClientModal from '../components/modals/EditClientModal'
 
@@ -126,7 +127,7 @@ export default function Clients({ showToast }: Props) {
                   <td>{c.email}</td>
                   <td>{c.insurer ?? '—'}</td>
                   <td><span className="pill pill-active">{c.policyCount}</span></td>
-                  <td>{c.createdAt}</td>
+                  <td>{formatDate(c.createdAt)}</td>
                   <td><span className={`pill ${c.status === 'active' ? 'pill-active' : 'pill-lapsed'}`}>{c.status}</span></td>
                   <td>
                     <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditClient(c)}>Edit</button>

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import type { ToastMessage } from '../../types'
 import type { ActivePanel } from '../../App'
 import { db } from '../../lib/db'
+import { formatDate } from '../../lib/dateUtils'
 import type { Policy } from '../../types'
 import { useAuth } from '../../contexts/AuthContext'
 
@@ -55,11 +56,11 @@ export default function MyPolicies({ setActivePanel }: Props) {
                 </div>
                 <div className="product-stat">
                   <span className="product-stat-label">Start Date</span>
-                  <span className="product-stat-value">{p.startDate}</span>
+                  <span className="product-stat-value">{formatDate(p.startDate)}</span>
                 </div>
                 <div className="product-stat">
                   <span className="product-stat-label">Next Payment</span>
-                  <span className="product-stat-value">{p.nextPaymentDate ?? '—'}</span>
+                  <span className="product-stat-value">{formatDate(p.nextPaymentDate)}</span>
                 </div>
               </div>
               <div style={{ fontSize: '0.85rem', color: 'var(--muted)', marginTop: 8 }}>

@@ -45,7 +45,7 @@ export default function RecordPaymentModal({ policyId: initialPolicyId, onClose,
 
   const handleSave = () => {
     if (!policyId || !amount) return
-    const reference = `PAY-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(Date.now()).slice(-3)}`
+    const reference = `PAY${new Date().toISOString().slice(0, 10).replace(/-/g, '')}${String(Date.now()).slice(-3)}`
     const payment: Payment = {
       id: `pay${Date.now()}`,
       reference,

@@ -155,7 +155,7 @@ export async function handleClaimInitiation(
   const policy = localStore.policies.list().find(p => p.policyNumber === payload.policyNumber)
   if (!policy) return errResponse('POLICY_NOT_FOUND', `Policy ${payload.policyNumber} not found`, ctx.requestId)
 
-  const claimNumber = `CLM-${new Date().getFullYear()}-${Math.floor(Math.random() * 900000 + 100000)}`
+  const claimNumber = `CLM${new Date().getFullYear()}${Math.floor(Math.random() * 900000 + 100000)}`
   const claim = localStore.claims.create({
     id: uid(),
     claimNumber,

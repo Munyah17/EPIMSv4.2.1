@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import type { ToastMessage, FraudCase, FraudCaseStatus, AppUser } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
+import { formatDate } from '../lib/dateUtils'
 import FraudGauge from '../components/ui/FraudGauge'
 
 interface Props {
@@ -109,7 +110,7 @@ export default function Fraud({ showToast }: Props) {
                   )}
                   {fc.resolvedAt && (
                     <span className="text-muted fraud-meta-text">
-                      Resolved: {new Date(fc.resolvedAt).toLocaleDateString()}
+                      Resolved: {formatDate(fc.resolvedAt)}
                     </span>
                   )}
                 </div>

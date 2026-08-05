@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import type { ToastMessage, Payment, PaymentMethod, PaymentStatus } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
+import { formatDate } from '../lib/dateUtils'
 import RecordPaymentModal from '../components/modals/RecordPaymentModal'
 
 interface Props {
@@ -140,7 +141,7 @@ export default function Payments({ showToast }: Props) {
                       {p.splitPayments && <span className="payment-split-label">+split</span>}
                     </div>
                   </td>
-                  <td>{p.date}</td>
+                  <td>{formatDate(p.date)}</td>
                   <td><span className={`pill ${STATUS_CLASS[p.status]}`}>{p.status}</span></td>
                 </tr>
               ))}

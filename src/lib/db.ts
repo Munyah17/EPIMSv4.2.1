@@ -426,6 +426,14 @@ export const products = {
     return { data: localStore.products.list(), error: null }
   },
 
+  /**
+   * No local-storage fallback here — products.code is UNIQUE in the
+   * database, so a reused code fails with a real, actionable Postgres
+   * error. Silently "succeeding" into localStorage on that error was the
+   * cause of "products aren't saving / vanish after logout": the item
+   * looked saved for the current browser session but was never actually
+   * in Supabase, so it disappeared the moment a real fetch replaced it.
+   */
   async create(product: Omit<Product, 'id' | 'policiesCount'>) {
     const row = {
       name: product.name, code: product.code, category: product.category,
@@ -434,18 +442,19 @@ export const products = {
       max_age: product.maxAge, commission_pct: product.commissionPct,
       active: product.active, features: product.features, description: product.description,
     }
-    const { ok, data } = await sb('products', 'write',
-      () => supabase.from('products').insert(row).select().single(),
-    )
-    if (ok && data) return { data: toProduct({ ...(data as Record<string,unknown>), policies_count: 0 }), error: null }
-    local('products', 'write')
-    const item = { ...product, id: uid(), policiesCount: 0 } as Product
-    return { data: localStore.products.create(item), error: null }
+    const start = Date.now()
+    const { data, error } = await supabase.from('products').insert(row).select().single()
+    health.record({ ts: Date.now(), type: 'write', table: 'products', success: !error, duration: Date.now() - start, source: 'supabase', detail: error ? String(error.message) : undefined })
+    if (error) {
+      return { data: null, error: error.code === '23505' ? 'That product code is already in use — please choose a different one.' : error.message }
+    }
+    return { data: toProduct({ ...(data as Record<string,unknown>), policies_count: 0 }), error: null }
   },
 
   async update(id: string, updates: Partial<Product>) {
     const row: Record<string, unknown> = {}
     if (updates.name              !== undefined) row.name                = updates.name
+    if (updates.code              !== undefined) row.code                = updates.code
     if (updates.premium           !== undefined) row.premium             = updates.premium
     if (updates.coverAmount       !== undefined) row.cover_amount        = updates.coverAmount
     if (updates.commissionPct     !== undefined) row.commission_pct      = updates.commissionPct
@@ -453,12 +462,13 @@ export const products = {
     if (updates.features          !== undefined) row.features            = updates.features
     if (updates.description       !== undefined) row.description         = updates.description
     if (updates.waitingPeriodDays !== undefined) row.waiting_period_days = updates.waitingPeriodDays
-    const { ok, data } = await sb('products', 'write',
-      () => supabase.from('products').update(row).eq('id', id).select().single(),
-    )
-    if (ok && data) return { data: toProduct(data as Record<string,unknown>), error: null }
-    local('products', 'write')
-    return { data: localStore.products.update(id, updates), error: null }
+    const start = Date.now()
+    const { data, error } = await supabase.from('products').update(row).eq('id', id).select().single()
+    health.record({ ts: Date.now(), type: 'write', table: 'products', success: !error, duration: Date.now() - start, source: 'supabase', detail: error ? String(error.message) : undefined })
+    if (error) {
+      return { data: null, error: error.code === '23505' ? 'That product code is already in use — please choose a different one.' : error.message }
+    }
+    return { data: toProduct(data as Record<string,unknown>), error: null }
   },
 }
 
@@ -475,7 +485,7 @@ export const claims = {
   },
 
   async create(claim: Omit<Claim, 'id' | 'claimNumber' | 'policyNumber' | 'clientId' | 'clientName' | 'productName'>) {
-    const claimNumber = `CLM-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`
+    const claimNumber = `CLM${new Date().getFullYear()}${String(Date.now()).slice(-4)}`
     const row = {
       claim_number: claimNumber, policy_id: claim.policyId,
       claim_type: claim.claimType, amount: claim.amount, status: claim.status,
@@ -714,6 +724,9 @@ export const staff = {
     }
   },
 
+  // No local-storage fallback — a profile edit (name/phone especially) that
+  // only "succeeds" into localStorage looks fine in the moment but reverts
+  // the next time real data loads, which is exactly what was reported.
   async update(id: string, updates: Partial<AppUser>) {
     const row: Record<string, unknown> = {}
     if (updates.name        !== undefined) row.name        = updates.name
@@ -722,12 +735,11 @@ export const staff = {
     if (updates.phone       !== undefined) row.phone       = updates.phone ?? null
     if (updates.active      !== undefined) row.active      = updates.active
     if (updates.permissions !== undefined) row.permissions = updates.permissions
-    const { ok, data } = await sb('profiles', 'write',
-      () => supabase.from('profiles').update(row).eq('id', id).select().single(),
-    )
-    if (ok && data) return { data: toProfile(data as Record<string,unknown>), error: null }
-    local('profiles', 'write')
-    return { data: localStore.staff.update(id, updates), error: null }
+    const start = Date.now()
+    const { data, error } = await supabase.from('profiles').update(row).eq('id', id).select().single()
+    health.record({ ts: Date.now(), type: 'write', table: 'profiles', success: !error, duration: Date.now() - start, source: 'supabase', detail: error ? String(error.message) : undefined })
+    if (error) return { data: null, error: error.message }
+    return { data: toProfile(data as Record<string,unknown>), error: null }
   },
 }
 

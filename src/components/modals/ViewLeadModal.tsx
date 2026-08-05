@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Lead, LeadStatus } from '../../types'
+import { formatDate } from '../../lib/dateUtils'
 
 interface Props {
   lead: Lead
@@ -40,7 +41,7 @@ export default function ViewLeadModal({ lead, onClose, onSave }: Props) {
               <span className="detail-label">Intent Score</span>
               <span style={{ color: intentColor, fontWeight: 600 }}>{lead.intentScore}%</span>
             </div>
-            <div className="detail-item"><span className="detail-label">Created</span><span>{new Date(lead.createdAt).toLocaleDateString()}</span></div>
+            <div className="detail-item"><span className="detail-label">Created</span><span>{formatDate(lead.createdAt)}</span></div>
             <div className="detail-item"><span className="detail-label">Last Contact</span><span>{lead.lastContact ?? '—'}</span></div>
           </div>
 

@@ -30,7 +30,7 @@ export default function NewTicketModal({ onClose, onSave }: Props) {
 
   const handleSave = () => {
     if (!clientId || !subject || !description) return
-    const ticketNumber = `TKT-${new Date().getFullYear()}-${String(Date.now()).slice(-3)}`
+    const ticketNumber = `TKT${new Date().getFullYear()}${String(Date.now()).slice(-3)}`
     const ticket: Ticket = {
       id: `t${Date.now()}`,
       ticketNumber,

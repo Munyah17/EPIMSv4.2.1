@@ -82,7 +82,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
     }
     
     // Create policy with the new client
-    const policyNumber = `EMA-${new Date().getFullYear()}-${String(Date.now()).slice(-3)}`
+    const policyNumber = `EMA${new Date().getFullYear()}${String(Date.now()).slice(-3)}`
     const endDate = new Date(startDate)
     endDate.setFullYear(endDate.getFullYear() + 1)
     const policy: Policy = {

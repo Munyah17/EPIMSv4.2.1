@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import type { ToastMessage } from '../../types'
 import type { ActivePanel } from '../../App'
 import { db } from '../../lib/db'
+import { formatDate } from '../../lib/dateUtils'
 import type { Payment } from '../../types'
 import { useAuth } from '../../contexts/AuthContext'
 
@@ -68,7 +69,7 @@ export default function MyPayments({ }: Props) {
                   <td><span className="mono">{p.policyNumber}</span></td>
                   <td><strong>${p.amount.toFixed(2)}</strong></td>
                   <td>{p.method}</td>
-                  <td>{p.date}</td>
+                  <td>{formatDate(p.date)}</td>
                   <td><span className={`pill ${p.status === 'completed' ? 'pill-active' : 'pill-pending'}`}>{p.status}</span></td>
                 </tr>
               ))}

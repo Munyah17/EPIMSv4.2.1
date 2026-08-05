@@ -27,12 +27,12 @@ export default function Products({ showToast }: Props) {
   const handleSave = async (p: Product) => {
     if (editProduct) {
       const { data, error } = await db.products.update(p.id, p)
-      if (error || !data) { showToast('error', 'Failed to update product.'); return }
+      if (error || !data) { showToast('error', error ?? 'Failed to update product.'); return }
       setProducts(prev => prev.map(x => x.id === data.id ? data : x))
       showToast('success', `Product "${data.name}" updated.`)
     } else {
       const { data, error } = await db.products.create(p)
-      if (error || !data) { showToast('error', 'Failed to add product.'); return }
+      if (error || !data) { showToast('error', error ?? 'Failed to add product.'); return }
       setProducts(prev => [...prev, data])
       showToast('success', `Product "${data.name}" added.`)
     }

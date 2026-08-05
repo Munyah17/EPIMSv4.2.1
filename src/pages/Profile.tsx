@@ -36,7 +36,7 @@ export default function Profile({ showToast }: Props) {
       // any attempt to change them on your own row (see database/
       // fix_profiles_self_update_privilege_escalation.sql).
       const { data, error } = await db.staff.update(user.id, { name: name.trim(), phone: phone.trim() })
-      if (error || !data) { showToast('error', 'Failed to update profile.'); return }
+      if (error || !data) { showToast('error', error ?? 'Failed to update profile.'); return }
       updateLocalUser({ name: data.name, phone: data.phone })
       showToast('success', 'Profile updated successfully.')
     } finally {

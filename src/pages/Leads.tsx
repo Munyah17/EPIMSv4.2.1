@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import type { ToastMessage, Lead, LeadStatus } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
+import { formatDate } from '../lib/dateUtils'
 import ScoreBar from '../components/ui/ScoreBar'
 import ViewLeadModal from '../components/modals/ViewLeadModal'
 
@@ -138,7 +139,7 @@ export default function Leads({ showToast }: Props) {
                   <td>{l.productInterest}</td>
                   <td><ScoreBar score={l.intentScore} /></td>
                   <td><span className={`pill ${LEAD_STATUS_CLASS[l.status]}`}>{l.status}</span></td>
-                  <td>{new Date(l.createdAt).toLocaleDateString()}</td>
+                  <td>{formatDate(l.createdAt)}</td>
                   <td>
                     <button type="button" className="btn btn-ghost btn-sm" onClick={() => setViewLead(l)}>View</button>
                   </td>

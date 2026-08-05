@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import type { ToastMessage, AppUser } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
+import { formatDate } from '../lib/dateUtils'
 import AddStaffModal from '../components/modals/AddStaffModal'
 import PermissionsModal from '../components/modals/PermissionsModal'
 
@@ -53,7 +54,7 @@ export default function Staff({ showToast }: Props) {
   const handleSave = async (s: AppUser, password: string) => {
     if (editStaff) {
       const { data, error } = await db.staff.update(s.id, s)
-      if (error || !data) { showToast('error', 'Failed to update staff.'); return }
+      if (error || !data) { showToast('error', error ?? 'Failed to update staff.'); return }
       setStaff(prev => prev.map(x => x.id === data.id ? data : x))
       showToast('success', `Staff member ${data.name} updated.`)
     } else {
@@ -70,7 +71,7 @@ export default function Staff({ showToast }: Props) {
 
   const handlePermissions = async (updated: AppUser) => {
     const { data, error } = await db.staff.update(updated.id, { permissions: updated.permissions })
-    if (error || !data) { showToast('error', 'Failed to update permissions.'); return }
+    if (error || !data) { showToast('error', error ?? 'Failed to update permissions.'); return }
     setStaff(prev => prev.map(s => s.id === data.id ? data : s))
     showToast('success', `Permissions updated for ${data.name}.`)
     setPermStaff(null)
@@ -80,7 +81,7 @@ export default function Staff({ showToast }: Props) {
     const member = staff.find(s => s.id === id)
     if (!member) return
     const { data, error } = await db.staff.update(id, { active: !member.active })
-    if (error || !data) { showToast('error', 'Failed to update status.'); return }
+    if (error || !data) { showToast('error', error ?? 'Failed to update status.'); return }
     setStaff(prev => prev.map(s => s.id === id ? data : s))
     showToast('info', 'Staff status updated.')
   }
@@ -129,7 +130,7 @@ export default function Staff({ showToast }: Props) {
                   <td><span className={`pill ${ROLE_CLASS[s.role] ?? 'role-admin'}`}>{s.role.replace(/_/g, ' ')}</span></td>
                   <td>{s.department}</td>
                   <td>{s.phone ?? '—'}</td>
-                  <td>{s.lastLogin ? new Date(s.lastLogin).toLocaleDateString() : '—'}</td>
+                  <td>{formatDate(s.lastLogin)}</td>
                   <td><span className={`pill ${s.active ? 'pill-active' : 'pill-cancelled'}`}>{s.active ? 'Active' : 'Inactive'}</span></td>
                   <td>
                     <div className="action-btns">

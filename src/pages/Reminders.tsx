@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import type { ToastMessage, Reminder, Policy } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
+import { formatDate } from '../lib/dateUtils'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -94,7 +95,7 @@ export default function Reminders({ showToast }: Props) {
                     <div className="reminder-title">{r.clientName} — {r.type.replace(/_/g, ' ')}</div>
                     <div className="reminder-msg">{r.message}</div>
                     <div className="reminder-meta">
-                      Due: {r.dueDate} · {channelPill(r.channel)}
+                      Due: {formatDate(r.dueDate)} · {channelPill(r.channel)}
                       {r.policyNumber && <span className="mono reminder-policy">{r.policyNumber}</span>}
                     </div>
                   </div>
@@ -123,7 +124,7 @@ export default function Reminders({ showToast }: Props) {
                     <td><span className="mono">{p.policyNumber}</span></td>
                     <td>{p.clientName}</td>
                     <td>{p.productName}</td>
-                    <td>{p.endDate}</td>
+                    <td>{formatDate(p.endDate)}</td>
                     <td><span className={`pill pill-${p.status}`}>{p.status}</span></td>
                     <td>
                       <button type="button" className="btn btn-ghost btn-sm" onClick={() => showToast('success', `Renewal reminder sent to ${p.clientName}.`)}>

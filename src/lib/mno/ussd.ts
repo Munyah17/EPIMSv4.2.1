@@ -142,11 +142,11 @@ export async function handleUssdAction(
       }
     } else if (input === '4') {
       sctx.step = 'CLAIM_ID'
-      responseText = 'CON Enter your Policy Number:\n(e.g. POL-2024-001234)\n0. Back'
+      responseText = 'CON Enter your Policy Number:\n(e.g. POL2024001234)\n0. Back'
       updateSession(session, 'CLAIM_ID', input, 'claim')
     } else if (input === '5') {
       sctx.step = 'CLAIM_STATUS_NO'
-      responseText = 'CON Enter your Claim Number:\n(e.g. CLM-2024-123456)\n0. Back'
+      responseText = 'CON Enter your Claim Number:\n(e.g. CLM2024123456)\n0. Back'
       updateSession(session, 'CLAIM_STATUS_NO', input, 'enquiry')
     } else {
       responseText = MENUS.MAIN()
@@ -197,7 +197,7 @@ export async function handleUssdAction(
         })
       }
       if (prod) {
-        const policyNumber = `POL-${new Date().getFullYear()}-${Math.floor(Math.random() * 900000 + 100000)}`
+        const policyNumber = `POL${new Date().getFullYear()}${Math.floor(Math.random() * 900000 + 100000)}`
         const policy = localStore.policies.create({
           id: uid(), policyNumber, clientId: client.id, clientName: client.name,
           productId: prod.id, productName: prod.name, premium: prod.premium,
@@ -291,7 +291,7 @@ export async function handleUssdAction(
     else if (input === '1') {
       const pol = sctx.policies?.[0]
       if (pol) {
-        const claimNumber = `CLM-${new Date().getFullYear()}-${Math.floor(Math.random() * 900000 + 100000)}`
+        const claimNumber = `CLM${new Date().getFullYear()}${Math.floor(Math.random() * 900000 + 100000)}`
         localStore.claims.create({
           id: uid(), claimNumber, policyId: pol.id, policyNumber: pol.policyNumber,
           clientId: pol.clientId, clientName: '',

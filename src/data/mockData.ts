@@ -204,7 +204,7 @@ export const CLIENTS: Client[] = [
 
 export const POLICIES: Policy[] = [
   {
-    id: 'pol1', policyNumber: 'EMA-2024-001', clientId: 'c1', clientName: 'Simba Dube',
+    id: 'pol1', policyNumber: 'EMA2024001', clientId: 'c1', clientName: 'Simba Dube',
     productId: 'p1', productName: 'Funeral Cover Basic', premium: 5.00, coverAmount: 3000,
     startDate: '2024-01-15', endDate: '2025-01-15', status: 'active',
     beneficiaries: [{ name: 'Grace Dube', relationship: 'Spouse', percentage: 100, phone: '+263 71 111 2222' }],
@@ -212,7 +212,7 @@ export const POLICIES: Policy[] = [
     createdAt: '2024-01-10', nextPaymentDate: '2026-05-15', lastPaymentDate: '2026-04-15',
   },
   {
-    id: 'pol2', policyNumber: 'EMA-2024-002', clientId: 'c1', clientName: 'Simba Dube',
+    id: 'pol2', policyNumber: 'EMA2024002', clientId: 'c1', clientName: 'Simba Dube',
     productId: 'p4', productName: 'Hospital Cash Plan', premium: 8.00, coverAmount: 50,
     startDate: '2024-02-01', endDate: '2025-02-01', status: 'active',
     beneficiaries: [{ name: 'Grace Dube', relationship: 'Spouse', percentage: 100 }],
@@ -220,7 +220,7 @@ export const POLICIES: Policy[] = [
     createdAt: '2024-01-28', nextPaymentDate: '2026-05-01', lastPaymentDate: '2026-04-01',
   },
   {
-    id: 'pol3', policyNumber: 'EMA-2024-003', clientId: 'c2', clientName: 'Nomsa Ndlovu',
+    id: 'pol3', policyNumber: 'EMA2024003', clientId: 'c2', clientName: 'Nomsa Ndlovu',
     productId: 'p2', productName: 'Funeral Cover Premium', premium: 12.00, coverAmount: 8000,
     startDate: '2024-02-10', endDate: '2025-02-10', status: 'active',
     beneficiaries: [
@@ -231,7 +231,7 @@ export const POLICIES: Policy[] = [
     createdAt: '2024-02-05', nextPaymentDate: '2026-05-10', lastPaymentDate: '2026-04-10',
   },
   {
-    id: 'pol4', policyNumber: 'EMA-2024-004', clientId: 'c3', clientName: 'Tafadzwa Chirwa',
+    id: 'pol4', policyNumber: 'EMA2024004', clientId: 'c3', clientName: 'Tafadzwa Chirwa',
     productId: 'p3', productName: 'Life Cover Essential', premium: 10.00, coverAmount: 10000,
     startDate: '2024-03-01', endDate: '2025-03-01', status: 'active',
     beneficiaries: [{ name: 'Mary Chirwa', relationship: 'Spouse', percentage: 100, phone: '+263 73 333 4444' }],
@@ -239,7 +239,7 @@ export const POLICIES: Policy[] = [
     createdAt: '2024-02-25', nextPaymentDate: '2026-06-01', lastPaymentDate: '2026-05-01',
   },
   {
-    id: 'pol5', policyNumber: 'EMA-2024-005', clientId: 'c4', clientName: 'Patience Mukamuri',
+    id: 'pol5', policyNumber: 'EMA2024005', clientId: 'c4', clientName: 'Patience Mukamuri',
     productId: 'p1', productName: 'Funeral Cover Basic', premium: 5.00, coverAmount: 3000,
     startDate: '2024-03-15', endDate: '2025-03-15', status: 'active',
     beneficiaries: [{ name: 'Peter Mukamuri', relationship: 'Spouse', percentage: 100 }],
@@ -247,7 +247,7 @@ export const POLICIES: Policy[] = [
     createdAt: '2024-03-12', nextPaymentDate: '2026-05-15', lastPaymentDate: '2026-04-15',
   },
   {
-    id: 'pol6', policyNumber: 'EMA-2024-006', clientId: 'c5', clientName: 'Garikai Mhike',
+    id: 'pol6', policyNumber: 'EMA2024006', clientId: 'c5', clientName: 'Garikai Mhike',
     productId: 'p5', productName: 'Personal Accident Cover', premium: 3.00, coverAmount: 5000,
     startDate: '2024-04-01', endDate: '2025-04-01', status: 'lapsed',
     beneficiaries: [{ name: 'Anna Mhike', relationship: 'Spouse', percentage: 100 }],
@@ -255,7 +255,7 @@ export const POLICIES: Policy[] = [
     createdAt: '2024-03-28', nextPaymentDate: '2026-05-01', lastPaymentDate: '2026-01-01',
   },
   {
-    id: 'pol7', policyNumber: 'EMA-2024-007', clientId: 'c6', clientName: 'Rutendo Zvobgo',
+    id: 'pol7', policyNumber: 'EMA2024007', clientId: 'c6', clientName: 'Rutendo Zvobgo',
     productId: 'p3', productName: 'Life Cover Essential', premium: 10.00, coverAmount: 10000,
     startDate: '2024-04-20', endDate: '2025-04-20', status: 'active',
     beneficiaries: [{ name: 'David Zvobgo', relationship: 'Spouse', percentage: 50 }, { name: 'Lisa Zvobgo', relationship: 'Child', percentage: 50 }],
@@ -263,7 +263,7 @@ export const POLICIES: Policy[] = [
     createdAt: '2024-04-15', nextPaymentDate: '2026-05-20', lastPaymentDate: '2026-04-20',
   },
   {
-    id: 'pol8', policyNumber: 'EMA-2024-008', clientId: 'c7', clientName: 'Kudakwashe Muzenda',
+    id: 'pol8', policyNumber: 'EMA2024008', clientId: 'c7', clientName: 'Kudakwashe Muzenda',
     productId: 'p4', productName: 'Hospital Cash Plan', premium: 8.00, coverAmount: 50,
     startDate: '2024-05-05', endDate: '2025-05-05', status: 'active',
     beneficiaries: [{ name: 'Fara Muzenda', relationship: 'Spouse', percentage: 100 }],
@@ -271,7 +271,7 @@ export const POLICIES: Policy[] = [
     createdAt: '2024-05-01', nextPaymentDate: '2026-06-05', lastPaymentDate: '2026-05-05',
   },
   {
-    id: 'pol9', policyNumber: 'EMA-2024-009', clientId: 'c8', clientName: 'Chiedza Hove',
+    id: 'pol9', policyNumber: 'EMA2024009', clientId: 'c8', clientName: 'Chiedza Hove',
     productId: 'p5', productName: 'Personal Accident Cover', premium: 3.00, coverAmount: 5000,
     startDate: '2024-05-22', endDate: '2025-05-22', status: 'pending',
     beneficiaries: [{ name: 'James Hove', relationship: 'Spouse', percentage: 100 }],
@@ -279,7 +279,7 @@ export const POLICIES: Policy[] = [
     createdAt: '2024-05-20', nextPaymentDate: '2026-06-22', lastPaymentDate: undefined,
   },
   {
-    id: 'pol10', policyNumber: 'EMA-2024-010', clientId: 'c9', clientName: 'Munyaradzi Gumbo',
+    id: 'pol10', policyNumber: 'EMA2024010', clientId: 'c9', clientName: 'Munyaradzi Gumbo',
     productId: 'p2', productName: 'Funeral Cover Premium', premium: 12.00, coverAmount: 8000,
     startDate: '2024-06-12', endDate: '2025-06-12', status: 'active',
     beneficiaries: [{ name: 'Rose Gumbo', relationship: 'Spouse', percentage: 100 }],
@@ -290,7 +290,7 @@ export const POLICIES: Policy[] = [
 
 export const CLAIMS: Claim[] = [
   {
-    id: 'cl1', claimNumber: 'CLM-2026-001', policyId: 'pol3', policyNumber: 'EMA-2024-003',
+    id: 'cl1', claimNumber: 'CLM2026001', policyId: 'pol3', policyNumber: 'EMA2024003',
     clientId: 'c2', clientName: 'Nomsa Ndlovu', productName: 'Funeral Cover Premium',
     claimType: 'Death Benefit', amount: 8000, status: 'under_review',
     dateOfEvent: '2026-04-28', dateSubmitted: '2026-04-30',
@@ -299,7 +299,7 @@ export const CLAIMS: Claim[] = [
     notes: 'Documents verified. Awaiting next of kin confirmation.',
   },
   {
-    id: 'cl2', claimNumber: 'CLM-2026-002', policyId: 'pol2', policyNumber: 'EMA-2024-002',
+    id: 'cl2', claimNumber: 'CLM2026002', policyId: 'pol2', policyNumber: 'EMA2024002',
     clientId: 'c1', clientName: 'Simba Dube', productName: 'Hospital Cash Plan',
     claimType: 'Hospitalisation', amount: 350, status: 'approved',
     dateOfEvent: '2026-04-15', dateSubmitted: '2026-04-20',
@@ -309,7 +309,7 @@ export const CLAIMS: Claim[] = [
     resolvedAt: '2026-04-25',
   },
   {
-    id: 'cl3', claimNumber: 'CLM-2026-003', policyId: 'pol6', policyNumber: 'EMA-2024-006',
+    id: 'cl3', claimNumber: 'CLM2026003', policyId: 'pol6', policyNumber: 'EMA2024006',
     clientId: 'c5', clientName: 'Garikai Mhike', productName: 'Personal Accident Cover',
     claimType: 'Accidental Injury', amount: 5000, status: 'pending',
     dateOfEvent: '2026-05-01', dateSubmitted: '2026-05-03',
@@ -318,7 +318,7 @@ export const CLAIMS: Claim[] = [
     notes: 'High fraud score flagged. Policy lapsed — claim validity under review.',
   },
   {
-    id: 'cl4', claimNumber: 'CLM-2026-004', policyId: 'pol7', policyNumber: 'EMA-2024-007',
+    id: 'cl4', claimNumber: 'CLM2026004', policyId: 'pol7', policyNumber: 'EMA2024007',
     clientId: 'c6', clientName: 'Rutendo Zvobgo', productName: 'Life Cover Essential',
     claimType: 'Disability Benefit', amount: 5000, status: 'rejected',
     dateOfEvent: '2026-03-10', dateSubmitted: '2026-03-15',
@@ -328,7 +328,7 @@ export const CLAIMS: Claim[] = [
     resolvedAt: '2026-04-01',
   },
   {
-    id: 'cl5', claimNumber: 'CLM-2026-005', policyId: 'pol10', policyNumber: 'EMA-2024-010',
+    id: 'cl5', claimNumber: 'CLM2026005', policyId: 'pol10', policyNumber: 'EMA2024010',
     clientId: 'c9', clientName: 'Munyaradzi Gumbo', productName: 'Funeral Cover Premium',
     claimType: 'Death Benefit', amount: 8000, status: 'paid',
     dateOfEvent: '2026-02-20', dateSubmitted: '2026-02-22',
@@ -340,24 +340,24 @@ export const CLAIMS: Claim[] = [
 ]
 
 export const PAYMENTS: Payment[] = [
-  { id: 'pay1', reference: 'PAY-20260501-001', policyId: 'pol1', policyNumber: 'EMA-2024-001', clientName: 'Simba Dube', amount: 5.00, method: 'EcoCash', status: 'completed', date: '2026-05-01' },
-  { id: 'pay2', reference: 'PAY-20260501-002', policyId: 'pol2', policyNumber: 'EMA-2024-002', clientName: 'Simba Dube', amount: 8.00, method: 'EcoCash', status: 'completed', date: '2026-05-01' },
-  { id: 'pay3', reference: 'PAY-20260502-003', policyId: 'pol3', policyNumber: 'EMA-2024-003', clientName: 'Nomsa Ndlovu', amount: 12.00, method: 'Bank Transfer', status: 'completed', date: '2026-05-02' },
-  { id: 'pay4', reference: 'PAY-20260503-004', policyId: 'pol4', policyNumber: 'EMA-2024-004', clientName: 'Tafadzwa Chirwa', amount: 10.00, method: 'OneMoney', status: 'completed', date: '2026-05-03' },
-  { id: 'pay5', reference: 'PAY-20260504-005', policyId: 'pol5', policyNumber: 'EMA-2024-005', clientName: 'Patience Mukamuri', amount: 5.00, method: 'EcoCash', status: 'completed', date: '2026-05-04' },
-  { id: 'pay6', reference: 'PAY-20260505-006', policyId: 'pol6', policyNumber: 'EMA-2024-006', clientName: 'Garikai Mhike', amount: 3.00, method: 'Cash', status: 'failed', date: '2026-05-05' },
-  { id: 'pay7', reference: 'PAY-20260506-007', policyId: 'pol7', policyNumber: 'EMA-2024-007', clientName: 'Rutendo Zvobgo', amount: 10.00, method: 'InnBucks', status: 'completed', date: '2026-05-06' },
-  { id: 'pay8', reference: 'PAY-20260507-008', policyId: 'pol8', policyNumber: 'EMA-2024-008', clientName: 'Kudakwashe Muzenda', amount: 8.00, method: 'EcoCash', status: 'completed', date: '2026-05-07' },
-  { id: 'pay9', reference: 'PAY-20260508-009', policyId: 'pol10', policyNumber: 'EMA-2024-010', clientName: 'Munyaradzi Gumbo', amount: 12.00, method: 'Debit Order', status: 'completed', date: '2026-05-08' },
-  { id: 'pay10', reference: 'PAY-20260509-010', policyId: 'pol4', policyNumber: 'EMA-2024-004', clientName: 'Tafadzwa Chirwa', amount: 10.00, method: 'OneMoney', status: 'pending', date: '2026-05-09',
+  { id: 'pay1', reference: 'PAY20260501001', policyId: 'pol1', policyNumber: 'EMA2024001', clientName: 'Simba Dube', amount: 5.00, method: 'EcoCash', status: 'completed', date: '2026-05-01' },
+  { id: 'pay2', reference: 'PAY20260501002', policyId: 'pol2', policyNumber: 'EMA2024002', clientName: 'Simba Dube', amount: 8.00, method: 'EcoCash', status: 'completed', date: '2026-05-01' },
+  { id: 'pay3', reference: 'PAY20260502003', policyId: 'pol3', policyNumber: 'EMA2024003', clientName: 'Nomsa Ndlovu', amount: 12.00, method: 'Bank Transfer', status: 'completed', date: '2026-05-02' },
+  { id: 'pay4', reference: 'PAY20260503004', policyId: 'pol4', policyNumber: 'EMA2024004', clientName: 'Tafadzwa Chirwa', amount: 10.00, method: 'OneMoney', status: 'completed', date: '2026-05-03' },
+  { id: 'pay5', reference: 'PAY20260504005', policyId: 'pol5', policyNumber: 'EMA2024005', clientName: 'Patience Mukamuri', amount: 5.00, method: 'EcoCash', status: 'completed', date: '2026-05-04' },
+  { id: 'pay6', reference: 'PAY20260505006', policyId: 'pol6', policyNumber: 'EMA2024006', clientName: 'Garikai Mhike', amount: 3.00, method: 'Cash', status: 'failed', date: '2026-05-05' },
+  { id: 'pay7', reference: 'PAY20260506007', policyId: 'pol7', policyNumber: 'EMA2024007', clientName: 'Rutendo Zvobgo', amount: 10.00, method: 'InnBucks', status: 'completed', date: '2026-05-06' },
+  { id: 'pay8', reference: 'PAY20260507008', policyId: 'pol8', policyNumber: 'EMA2024008', clientName: 'Kudakwashe Muzenda', amount: 8.00, method: 'EcoCash', status: 'completed', date: '2026-05-07' },
+  { id: 'pay9', reference: 'PAY20260508009', policyId: 'pol10', policyNumber: 'EMA2024010', clientName: 'Munyaradzi Gumbo', amount: 12.00, method: 'Debit Order', status: 'completed', date: '2026-05-08' },
+  { id: 'pay10', reference: 'PAY20260509010', policyId: 'pol4', policyNumber: 'EMA2024004', clientName: 'Tafadzwa Chirwa', amount: 10.00, method: 'OneMoney', status: 'pending', date: '2026-05-09',
     splitPayments: [{ method: 'OneMoney', amount: 6.00 }, { method: 'EcoCash', amount: 4.00 }] },
-  { id: 'pay11', reference: 'PAY-20260415-011', policyId: 'pol1', policyNumber: 'EMA-2024-001', clientName: 'Simba Dube', amount: 5.00, method: 'EcoCash', status: 'completed', date: '2026-04-15' },
-  { id: 'pay12', reference: 'PAY-20260410-012', policyId: 'pol3', policyNumber: 'EMA-2024-003', clientName: 'Nomsa Ndlovu', amount: 12.00, method: 'Bank Transfer', status: 'completed', date: '2026-04-10' },
+  { id: 'pay11', reference: 'PAY20260415011', policyId: 'pol1', policyNumber: 'EMA2024001', clientName: 'Simba Dube', amount: 5.00, method: 'EcoCash', status: 'completed', date: '2026-04-15' },
+  { id: 'pay12', reference: 'PAY20260410012', policyId: 'pol3', policyNumber: 'EMA2024003', clientName: 'Nomsa Ndlovu', amount: 12.00, method: 'Bank Transfer', status: 'completed', date: '2026-04-10' },
 ]
 
 export const TICKETS: Ticket[] = [
   {
-    id: 't1', ticketNumber: 'TKT-2026-001', clientId: 'c1', clientName: 'Simba Dube',
+    id: 't1', ticketNumber: 'TKT2026001', clientId: 'c1', clientName: 'Simba Dube',
     subject: 'Cannot access my policy documents', description: 'I have been trying to download my policy schedule but the link keeps failing.',
     status: 'in_progress', priority: 'medium', category: 'Technical',
     assignedTo: 'u5', assignedName: 'Chipo Sibanda',
@@ -368,8 +368,8 @@ export const TICKETS: Ticket[] = [
     ],
   },
   {
-    id: 't2', ticketNumber: 'TKT-2026-002', clientId: 'c2', clientName: 'Nomsa Ndlovu',
-    subject: 'Claim payout not received', description: 'My claim CLM-2026-002 was approved but I have not received the payout.',
+    id: 't2', ticketNumber: 'TKT2026002', clientId: 'c2', clientName: 'Nomsa Ndlovu',
+    subject: 'Claim payout not received', description: 'My claim CLM2026002 was approved but I have not received the payout.',
     status: 'open', priority: 'urgent', category: 'Claims',
     assignedTo: undefined, assignedName: undefined,
     createdAt: '2026-05-09T08:30:00Z', updatedAt: '2026-05-09T08:30:00Z',
@@ -378,7 +378,7 @@ export const TICKETS: Ticket[] = [
     ],
   },
   {
-    id: 't3', ticketNumber: 'TKT-2026-003', clientId: 'c4', clientName: 'Patience Mukamuri',
+    id: 't3', ticketNumber: 'TKT2026003', clientId: 'c4', clientName: 'Patience Mukamuri',
     subject: 'Update beneficiary details', description: 'I need to change my beneficiary from my spouse to my children.',
     status: 'resolved', priority: 'low', category: 'Policy',
     assignedTo: 'u3', assignedName: 'Blessing Moyo',
@@ -393,26 +393,26 @@ export const TICKETS: Ticket[] = [
 export const EMAILS: EmailMessage[] = [
   {
     id: 'em1', from: 'nomsa.ndlovu@gmail.com', fromName: 'Nomsa Ndlovu',
-    to: 'info@tariqify.com', subject: 'Re: Claim CLM-2026-001 - Documents submitted',
-    body: 'Dear Tariqify Team,\n\nPlease find attached the required documents for my claim CLM-2026-001. I have included the death certificate, national ID of the deceased, and my own ID.\n\nKindly confirm receipt.\n\nRegards,\nNomsa Ndlovu',
+    to: 'info@tariqify.com', subject: 'Re: Claim CLM2026001 - Documents submitted',
+    body: 'Dear Tariqify Team,\n\nPlease find attached the required documents for my claim CLM2026001. I have included the death certificate, national ID of the deceased, and my own ID.\n\nKindly confirm receipt.\n\nRegards,\nNomsa Ndlovu',
     timestamp: '2026-05-08T14:30:00Z', read: false, folder: 'inbox', linkedTo: 'cl1',
   },
   {
     id: 'em2', from: 'info@tariqify.com', fromName: 'Tariqify IMS',
-    to: 'simba.dube@gmail.com', subject: 'Your policy EMA-2024-001 premium reminder',
+    to: 'simba.dube@gmail.com', subject: 'Your policy EMA2024001 premium reminder',
     body: 'Dear Simba Dube,\n\nThis is a friendly reminder that your funeral cover premium of $5.00 is due on 15 May 2026.\n\nPlease ensure your EcoCash wallet has sufficient funds.\n\nRegards,\nEnpassent Multiple Agents',
     timestamp: '2026-05-07T09:00:00Z', read: true, folder: 'sent', linkedTo: 'pol1',
   },
   {
     id: 'em3', from: 'garikai.mhike@gmail.com', fromName: 'Garikai Mhike',
     to: 'info@tariqify.com', subject: 'Policy reinstatement request',
-    body: 'Good morning,\n\nI would like to reinstate my policy EMA-2024-006 which lapsed. I am now able to make payments.\n\nPlease advise on the process.\n\nGarikai Mhike',
+    body: 'Good morning,\n\nI would like to reinstate my policy EMA2024006 which lapsed. I am now able to make payments.\n\nPlease advise on the process.\n\nGarikai Mhike',
     timestamp: '2026-05-06T11:20:00Z', read: true, folder: 'inbox',
   },
   {
     id: 'em4', from: 'info@tariqify.com', fromName: 'Tariqify IMS',
-    to: 'tafa.chirwa@gmail.com', subject: 'Welcome to Tariqify IMS - Policy EMA-2024-004',
-    body: 'Dear Tafadzwa Chirwa,\n\nWelcome to Enpassent Multiple Agents! Your Life Cover Essential policy (EMA-2024-004) is now active.\n\nCover Amount: $10,000\nMonthly Premium: $10.00\nPayment Method: OneMoney\n\nFor any queries, reply to this email or call +263 77 123 4567.\n\nEnpassent Multiple Agents',
+    to: 'tafa.chirwa@gmail.com', subject: 'Welcome to Tariqify IMS - Policy EMA2024004',
+    body: 'Dear Tafadzwa Chirwa,\n\nWelcome to Enpassent Multiple Agents! Your Life Cover Essential policy (EMA2024004) is now active.\n\nCover Amount: $10,000\nMonthly Premium: $10.00\nPayment Method: OneMoney\n\nFor any queries, reply to this email or call +263 77 123 4567.\n\nEnpassent Multiple Agents',
     timestamp: '2026-03-01T12:00:00Z', read: true, folder: 'sent', linkedTo: 'pol4',
   },
 ]
@@ -429,13 +429,13 @@ export const LEADS: Lead[] = [
 
 export const FRAUD_CASES: FraudCase[] = [
   {
-    id: 'fc1', claimId: 'cl3', claimNumber: 'CLM-2026-003', policyNumber: 'EMA-2024-006',
+    id: 'fc1', claimId: 'cl3', claimNumber: 'CLM2026003', policyNumber: 'EMA2024006',
     clientName: 'Garikai Mhike', fraudScore: 78,
     signals: ['Policy lapsed at time of claim', 'Claim submitted within 3 days of reactivation attempt', 'Inconsistent accident details', 'No witness corroboration'],
     status: 'open', assignedTo: undefined, createdAt: '2026-05-03T10:00:00Z',
   },
   {
-    id: 'fc2', claimId: 'cl4', claimNumber: 'CLM-2026-004', policyNumber: 'EMA-2024-007',
+    id: 'fc2', claimId: 'cl4', claimNumber: 'CLM2026004', policyNumber: 'EMA2024007',
     clientName: 'Rutendo Zvobgo', fraudScore: 62,
     signals: ['Medical certificate from unregistered practitioner', 'Prior rejected claim history', 'No police report for workplace accident'],
     status: 'confirmed', assignedTo: 'u2', createdAt: '2026-03-15T09:00:00Z', resolvedAt: '2026-04-01T12:00:00Z',
@@ -444,9 +444,9 @@ export const FRAUD_CASES: FraudCase[] = [
 ]
 
 export const REMINDERS: Reminder[] = [
-  { id: 'r1', type: 'payment_due', clientId: 'c1', clientName: 'Simba Dube', policyId: 'pol1', policyNumber: 'EMA-2024-001', dueDate: '2026-05-15', message: 'Your funeral cover premium of $5.00 is due on 15 May.', sent: false, channel: 'whatsapp' },
-  { id: 'r2', type: 'payment_due', clientId: 'c2', clientName: 'Nomsa Ndlovu', policyId: 'pol3', policyNumber: 'EMA-2024-003', dueDate: '2026-05-10', message: 'Your premium of $12.00 is due on 10 May.', sent: true, channel: 'sms' },
-  { id: 'r3', type: 'policy_renewal', clientId: 'c5', clientName: 'Garikai Mhike', policyId: 'pol6', policyNumber: 'EMA-2024-006', dueDate: '2026-05-12', message: 'Your policy EMA-2024-006 has lapsed. Please contact us to reinstate.', sent: false, channel: 'whatsapp' },
-  { id: 'r4', type: 'claim_followup', clientId: 'c2', clientName: 'Nomsa Ndlovu', policyId: 'pol3', policyNumber: 'EMA-2024-003', dueDate: '2026-05-10', message: 'Follow up on claim CLM-2026-001. Documents under review.', sent: false, channel: 'email' },
+  { id: 'r1', type: 'payment_due', clientId: 'c1', clientName: 'Simba Dube', policyId: 'pol1', policyNumber: 'EMA2024001', dueDate: '2026-05-15', message: 'Your funeral cover premium of $5.00 is due on 15 May.', sent: false, channel: 'whatsapp' },
+  { id: 'r2', type: 'payment_due', clientId: 'c2', clientName: 'Nomsa Ndlovu', policyId: 'pol3', policyNumber: 'EMA2024003', dueDate: '2026-05-10', message: 'Your premium of $12.00 is due on 10 May.', sent: true, channel: 'sms' },
+  { id: 'r3', type: 'policy_renewal', clientId: 'c5', clientName: 'Garikai Mhike', policyId: 'pol6', policyNumber: 'EMA2024006', dueDate: '2026-05-12', message: 'Your policy EMA2024006 has lapsed. Please contact us to reinstate.', sent: false, channel: 'whatsapp' },
+  { id: 'r4', type: 'claim_followup', clientId: 'c2', clientName: 'Nomsa Ndlovu', policyId: 'pol3', policyNumber: 'EMA2024003', dueDate: '2026-05-10', message: 'Follow up on claim CLM2026001. Documents under review.', sent: false, channel: 'email' },
   { id: 'r5', type: 'birthday', clientId: 'c3', clientName: 'Tafadzwa Chirwa', dueDate: '2026-05-08', message: 'Happy birthday Tafadzwa! Tariqify IMS wishes you well.', sent: true, channel: 'sms' },
 ]

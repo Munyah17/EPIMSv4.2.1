@@ -3,6 +3,7 @@ import type { ToastMessage, Policy, PolicyStatus } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { cautionStore } from '../lib/cautionStore'
+import { formatDate } from '../lib/dateUtils'
 import NewPolicyModal from '../components/modals/NewPolicyModal'
 import ViewPolicyModal from '../components/modals/ViewPolicyModal'
 import EditPolicyModal from '../components/modals/EditPolicyModal'
@@ -121,7 +122,7 @@ export default function Policies({ showToast }: Props) {
                   <td>{p.productName}</td>
                   <td>${p.coverAmount.toLocaleString()}</td>
                   <td>{p.insurer ?? '—'}</td>
-                  <td>{p.startDate}</td>
+                  <td>{formatDate(p.startDate)}</td>
                   <td>
                     <span className={`pill pill-${p.status}`}>{p.status}</span>
                     {cautionFlags.some(f => f.policyId === p.id) && (

@@ -1,4 +1,5 @@
 import type { Policy } from '../../types'
+import { formatDate } from '../../lib/dateUtils'
 
 interface Props {
   policy: Policy
@@ -22,11 +23,11 @@ export default function ViewPolicyModal({ policy, onClose, onEdit }: Props) {
             <div className="detail-item"><span className="detail-label">Product</span><span>{policy.productName}</span></div>
             <div className="detail-item"><span className="detail-label">Premium</span><span>${policy.premium.toFixed(2)}/mo</span></div>
             <div className="detail-item"><span className="detail-label">Cover Amount</span><span>${policy.coverAmount.toLocaleString()}</span></div>
-            <div className="detail-item"><span className="detail-label">Start Date</span><span>{policy.startDate}</span></div>
-            <div className="detail-item"><span className="detail-label">End Date</span><span>{policy.endDate}</span></div>
+            <div className="detail-item"><span className="detail-label">Start Date</span><span>{formatDate(policy.startDate)}</span></div>
+            <div className="detail-item"><span className="detail-label">End Date</span><span>{formatDate(policy.endDate)}</span></div>
             <div className="detail-item"><span className="detail-label">Payment Method</span><span>{policy.paymentMethod}</span></div>
-            <div className="detail-item"><span className="detail-label">Next Payment</span><span>{policy.nextPaymentDate ?? '—'}</span></div>
-            <div className="detail-item"><span className="detail-label">Last Payment</span><span>{policy.lastPaymentDate ?? '—'}</span></div>
+            <div className="detail-item"><span className="detail-label">Next Payment</span><span>{formatDate(policy.nextPaymentDate)}</span></div>
+            <div className="detail-item"><span className="detail-label">Last Payment</span><span>{formatDate(policy.lastPaymentDate)}</span></div>
             <div className="detail-item"><span className="detail-label">Agent</span><span>{policy.agentName ?? '—'}</span></div>
           </div>
 
