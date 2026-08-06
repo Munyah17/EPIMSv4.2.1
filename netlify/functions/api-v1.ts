@@ -59,7 +59,14 @@ export const handler: Handler = async (event) => {
   if (!supabaseUrl || !serviceKey) return json(500, { error: 'Server is not configured.' })
   const admin = createClient(supabaseUrl, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } })
 
-  const path = event.path.replace(/^.*\/api-v1\/?/, '').replace(/\/+$/, '')
+  // Netlify may deliver either the rewritten function path
+  // (/.netlify/functions/api-v1/products) or the original pretty path
+  // (/api/v1/products) as event.path depending on how it was reached —
+  // strip whichever prefix is actually present rather than assuming one.
+  const path = event.path
+    .replace(/^\/\.netlify\/functions\/api-v1\/?/, '')
+    .replace(/^\/api\/v1\/?/, '')
+    .replace(/^\/+|\/+$/g, '')
   const segments = path.split('/').filter(Boolean)
   const resource = segments[0] ?? ''
   const method = event.httpMethod
