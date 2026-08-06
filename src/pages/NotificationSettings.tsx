@@ -3,6 +3,8 @@ import type { ToastMessage } from '../types'
 import type { ActivePanel } from '../App'
 import { getNotifSettings, saveNotifSettings, DEFAULT_NOTIF_SETTINGS } from '../lib/mailService'
 import type { NotifSettings } from '../lib/mailService'
+import { db } from '../lib/db'
+import { useAuth } from '../contexts/AuthContext'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -10,43 +12,55 @@ interface Props {
 }
 
 export default function NotificationSettings({ showToast }: Props) {
+  const { user } = useAuth()
+  const canEdit = user?.role === 'super_admin' || user?.role === 'admin'
   const [settings, setSettings] = useState<NotifSettings>(() => getNotifSettings())
   const [saving, setSaving] = useState(false)
 
   const update = (key: keyof NotifSettings, value: string | boolean) => {
+    if (!canEdit) return
     setSettings(prev => ({ ...prev, [key]: value }))
   }
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (!canEdit) return
     setSaving(true)
+    const { error } = await db.settings.set('notif_settings', settings)
+    setSaving(false)
+    if (error) { showToast('error', `Failed to save: ${error}`); return }
     saveNotifSettings(settings)
-    setTimeout(() => {
-      setSaving(false)
-      showToast('success', 'Notification settings saved successfully.')
-    }, 400)
+    showToast('success', 'Notification settings saved — now shared with every staff member.')
   }
 
-  const handleReset = () => {
+  const handleReset = async () => {
+    if (!canEdit) return
     const confirmed = window.confirm('Reset all notification settings to defaults?')
     if (!confirmed) return
     setSettings({ ...DEFAULT_NOTIF_SETTINGS })
+    const { error } = await db.settings.set('notif_settings', DEFAULT_NOTIF_SETTINGS)
+    if (error) { showToast('error', `Failed to reset: ${error}`); return }
     saveNotifSettings({ ...DEFAULT_NOTIF_SETTINGS })
     showToast('info', 'Settings reset to defaults.')
   }
 
   return (
     <div className="panel">
+      {!canEdit && (
+        <div className="info-banner info-banner-warning" style={{ marginBottom: 14 }}>
+          🔒 Read-only — only Super Admin or Admin accounts can change notification settings.
+        </div>
+      )}
       <div className="panel-toolbar">
         <div />
         <div style={{ display: 'flex', gap: 8 }}>
-          <button className="btn btn-ghost" onClick={handleReset}>Reset to Defaults</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
+          <button className="btn btn-ghost" onClick={handleReset} disabled={!canEdit}>Reset to Defaults</button>
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving || !canEdit}>
             {saving ? 'Saving…' : 'Save Settings'}
           </button>
         </div>
       </div>
 
-      <div className="notif-settings-layout">
+      <fieldset className="notif-settings-layout" disabled={!canEdit} style={{ border: 'none', padding: 0, margin: 0 }}>
         {/* Insurer */}
         <div className="card">
           <div className="card-header">
@@ -221,7 +235,7 @@ export default function NotificationSettings({ showToast }: Props) {
             </div>
           </div>
         </div>
-      </div>
+      </fieldset>
     </div>
   )
 }

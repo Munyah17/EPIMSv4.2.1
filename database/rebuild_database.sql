@@ -1092,3 +1092,21 @@ BEGIN
   END IF;
 END $$;
 ALTER TABLE public.caution_flags REPLICA IDENTITY FULL;
+
+-- ================================================================
+-- App Settings (previously localStorage — each staff browser had its own
+-- independent copy of notification/gateway config with no shared source
+-- of truth and no write restriction to Super Admin)
+-- ================================================================
+CREATE TABLE IF NOT EXISTS public.app_settings (
+  key         TEXT PRIMARY KEY,
+  value       JSONB NOT NULL,
+  updated_by  UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.app_settings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.app_settings FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY "app_settings_select" ON public.app_settings FOR SELECT TO authenticated USING (is_staff());
+CREATE POLICY "app_settings_write"  ON public.app_settings FOR ALL    TO authenticated USING (is_admin()) WITH CHECK (is_admin());

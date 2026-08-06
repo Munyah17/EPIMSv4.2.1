@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { Policy, Beneficiary, Insurer, Client, Product, AppUser } from '../../types'
 import { db } from '../../lib/db'
+import { useAuth } from '../../contexts/AuthContext'
 import PhoneInput from '../ui/PhoneInput'
 
 const INSURERS: Insurer[] = ['Motions', 'CBZ Life', 'EcoSure', 'ZB Life', 'Nyaradzo Funeral', 'Doves']
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
+  const { user } = useAuth()
   // Client fields
   const [clientName, setClientName] = useState('')
   const [clientPhone, setClientPhone] = useState('')
@@ -38,8 +40,14 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
 
   useEffect(() => {
     db.products.list().then(({ data }) => { if (data) setProducts(data); setProductsLoading(false) })
-    db.staff.list().then(({ data }) => { if (data) setStaff(data.filter(s => s.active)) })
-  }, [])
+    db.staff.list().then(({ data }) => {
+      const active = (data ?? []).filter(s => s.active)
+      setStaff(active)
+      // Default to whoever is actually creating this policy — the person
+      // serving the client — while still letting them reassign it below.
+      if (user && active.some(s => s.id === user.id)) setAgentId(user.id)
+    })
+  }, [user])
 
   const addBeneficiary = () => {
     setBeneficiaries(prev => [...prev, { name: '', relationship: '', percentage: 0 }])

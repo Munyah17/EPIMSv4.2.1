@@ -33,8 +33,24 @@ export function getNotifSettings(): NotifSettings {
   return { ...DEFAULT_NOTIF_SETTINGS }
 }
 
+/** Writes through to the shared app_settings table (admin/super_admin only,
+ *  enforced by RLS) as well as the local cache, so every staff browser
+ *  converges on whatever a Super Admin configured instead of each browser
+ *  quietly keeping its own copy. */
 export function saveNotifSettings(settings: NotifSettings): void {
   try { localStorage.setItem('tqfy_notif_settings', JSON.stringify(settings)) } catch { /**/ }
+  void db.settings.set('notif_settings', settings)
+}
+
+/** Call once at app startup: pulls the shared settings down into the local
+ *  cache so getNotifSettings() (synchronous, used all over the app) reflects
+ *  whatever was last saved by a Super Admin rather than this browser's own
+ *  possibly-stale localStorage copy. */
+export async function initNotifSettings(): Promise<void> {
+  const remote = await db.settings.get<NotifSettings>('notif_settings')
+  if (remote) {
+    try { localStorage.setItem('tqfy_notif_settings', JSON.stringify({ ...DEFAULT_NOTIF_SETTINGS, ...remote })) } catch { /**/ }
+  }
 }
 
 export interface SendEmailOptions {

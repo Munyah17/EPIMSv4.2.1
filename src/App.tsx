@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { startReminderEngine } from './lib/reminderEngine'
+import { initNotifSettings } from './lib/mailService'
 import { DB_FALLBACK_EVENT } from './lib/db'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import LoginScreen from './components/Auth/LoginScreen'
@@ -53,6 +54,7 @@ function AppInner() {
   )
 
   useEffect(() => {
+    void initNotifSettings()
     const stop = startReminderEngine()
     return stop
   }, [])

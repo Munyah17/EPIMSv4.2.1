@@ -873,6 +873,26 @@ export const cautionFlags = {
   },
 }
 
+// ── APP SETTINGS ──────────────────────────────────────────────────
+// Generic shared key/value settings store (notification config, gateway
+// credentials, commission rates, …). Writable by admin/super_admin only
+// (enforced by RLS) so a setting one Super Admin configures is what every
+// staff browser actually uses, instead of each browser's own localStorage.
+export const settings = {
+  async get<T>(key: string): Promise<T | null> {
+    const { data, error } = await supabase.from('app_settings').select('value').eq('key', key).maybeSingle()
+    if (error || !data) return null
+    return data.value as T
+  },
+
+  async set(key: string, value: unknown): Promise<{ error: string | null }> {
+    const { data: { user } } = await supabase.auth.getUser()
+    const { error } = await supabase.from('app_settings')
+      .upsert({ key, value, updated_by: user?.id ?? null, updated_at: new Date().toISOString() }, { onConflict: 'key' })
+    return { error: error?.message ?? null }
+  },
+}
+
 // ── DASHBOARD STATS ──────────────────────────────────────────────
 // Dashboard.tsx used to fetch every row of policies/claims/payments/leads/
 // fraud_cases (each with embedded client/product/profile joins) just to
@@ -1007,7 +1027,7 @@ export function subscribeToTable(table: string, callback: () => void) {
 // ── EXPORT ────────────────────────────────────────────────────────
 export const db = {
   policies, clients, products, claims, payments,
-  tickets, emails, leads, staff, fraudCases, reminders, cautionFlags,
+  tickets, emails, leads, staff, fraudCases, reminders, cautionFlags, settings,
   dashboardStats,
   subscribeToTable,
   resetLocalData: () => localStore.reset(),
