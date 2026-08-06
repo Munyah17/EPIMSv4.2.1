@@ -591,7 +591,7 @@ CREATE TRIGGER tickets_updated_at BEFORE UPDATE ON public.tickets
   FOR EACH ROW EXECUTE PROCEDURE public.set_updated_at();
 
 -- ----------------------------------------------------------------
--- 9. SEED DATA
+-- 9. SEED DATA — staff accounts only.
 -- ----------------------------------------------------------------
 -- STAFF UUIDs:
 --   super_admin   : 10000000-0000-0000-0000-000000000001  hello@munya.co.zw       griezmann17
@@ -600,7 +600,10 @@ CREATE TRIGGER tickets_updated_at BEFORE UPDATE ON public.tickets
 --   policy_admin  : 10000000-0000-0000-0000-000000000004  policy@tariqify.com     staff1234
 --   finance       : 10000000-0000-0000-0000-000000000005  finance@tariqify.com    staff1234
 --   client_rel    : 10000000-0000-0000-0000-000000000006  crm@tariqify.com        staff1234
--- POLICYHOLDER UUIDs: 20000000-0000-0000-0000-00000000000X (10 members)
+-- Demo policyholders/clients/policies/claims/payments/products/tickets/
+-- emails/leads/fraud_cases/reminders were wiped from production 2026-08-06
+-- ahead of launch (see wipe_seed_data.sql) and are intentionally NOT
+-- reseeded here, so a future rebuild starts from zero business data.
 -- ----------------------------------------------------------------
 
 -- 9a. Create auth users via Supabase's internal admin function (correct password hashing)
@@ -654,67 +657,6 @@ BEGIN
       crypt('staff1234',gen_salt('bf',10)),NOW(),NOW(),NOW(),
       '{"provider":"email","providers":["email"]}','{"name":"Chipo Sibanda","role":"client_relations","department":"Client Relations"}',false,'');
   END IF;
-  -- Policyholders
-  IF NOT EXISTS (SELECT 1 FROM auth.users WHERE email='simba.dube@gmail.com') THEN
-    INSERT INTO auth.users (id,instance_id,aud,role,email,encrypted_password,email_confirmed_at,created_at,updated_at,raw_app_meta_data,raw_user_meta_data,is_super_admin,confirmation_token)
-    VALUES (gen_random_uuid(),'00000000-0000-0000-0000-000000000000','authenticated','authenticated','simba.dube@gmail.com',
-      crypt('member1234',gen_salt('bf',10)),NOW(),NOW(),NOW(),
-      '{"provider":"email","providers":["email"]}','{"name":"Simba Dube","role":"policyholder","department":"Client Portal"}',false,'');
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM auth.users WHERE email='nomsa.ndlovu@gmail.com') THEN
-    INSERT INTO auth.users (id,instance_id,aud,role,email,encrypted_password,email_confirmed_at,created_at,updated_at,raw_app_meta_data,raw_user_meta_data,is_super_admin,confirmation_token)
-    VALUES (gen_random_uuid(),'00000000-0000-0000-0000-000000000000','authenticated','authenticated','nomsa.ndlovu@gmail.com',
-      crypt('member1234',gen_salt('bf',10)),NOW(),NOW(),NOW(),
-      '{"provider":"email","providers":["email"]}','{"name":"Nomsa Ndlovu","role":"policyholder","department":"Client Portal"}',false,'');
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM auth.users WHERE email='tafa.chirwa@gmail.com') THEN
-    INSERT INTO auth.users (id,instance_id,aud,role,email,encrypted_password,email_confirmed_at,created_at,updated_at,raw_app_meta_data,raw_user_meta_data,is_super_admin,confirmation_token)
-    VALUES (gen_random_uuid(),'00000000-0000-0000-0000-000000000000','authenticated','authenticated','tafa.chirwa@gmail.com',
-      crypt('member1234',gen_salt('bf',10)),NOW(),NOW(),NOW(),
-      '{"provider":"email","providers":["email"]}','{"name":"Tafadzwa Chirwa","role":"policyholder","department":"Client Portal"}',false,'');
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM auth.users WHERE email='patience.m@yahoo.com') THEN
-    INSERT INTO auth.users (id,instance_id,aud,role,email,encrypted_password,email_confirmed_at,created_at,updated_at,raw_app_meta_data,raw_user_meta_data,is_super_admin,confirmation_token)
-    VALUES (gen_random_uuid(),'00000000-0000-0000-0000-000000000000','authenticated','authenticated','patience.m@yahoo.com',
-      crypt('member1234',gen_salt('bf',10)),NOW(),NOW(),NOW(),
-      '{"provider":"email","providers":["email"]}','{"name":"Patience Mukamuri","role":"policyholder","department":"Client Portal"}',false,'');
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM auth.users WHERE email='garikai.mhike@gmail.com') THEN
-    INSERT INTO auth.users (id,instance_id,aud,role,email,encrypted_password,email_confirmed_at,created_at,updated_at,raw_app_meta_data,raw_user_meta_data,is_super_admin,confirmation_token)
-    VALUES (gen_random_uuid(),'00000000-0000-0000-0000-000000000000','authenticated','authenticated','garikai.mhike@gmail.com',
-      crypt('member1234',gen_salt('bf',10)),NOW(),NOW(),NOW(),
-      '{"provider":"email","providers":["email"]}','{"name":"Garikai Mhike","role":"policyholder","department":"Client Portal"}',false,'');
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM auth.users WHERE email='rutendo.z@gmail.com') THEN
-    INSERT INTO auth.users (id,instance_id,aud,role,email,encrypted_password,email_confirmed_at,created_at,updated_at,raw_app_meta_data,raw_user_meta_data,is_super_admin,confirmation_token)
-    VALUES (gen_random_uuid(),'00000000-0000-0000-0000-000000000000','authenticated','authenticated','rutendo.z@gmail.com',
-      crypt('member1234',gen_salt('bf',10)),NOW(),NOW(),NOW(),
-      '{"provider":"email","providers":["email"]}','{"name":"Rutendo Zvobgo","role":"policyholder","department":"Client Portal"}',false,'');
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM auth.users WHERE email='kuda.muzenda@gmail.com') THEN
-    INSERT INTO auth.users (id,instance_id,aud,role,email,encrypted_password,email_confirmed_at,created_at,updated_at,raw_app_meta_data,raw_user_meta_data,is_super_admin,confirmation_token)
-    VALUES (gen_random_uuid(),'00000000-0000-0000-0000-000000000000','authenticated','authenticated','kuda.muzenda@gmail.com',
-      crypt('member1234',gen_salt('bf',10)),NOW(),NOW(),NOW(),
-      '{"provider":"email","providers":["email"]}','{"name":"Kudakwashe Muzenda","role":"policyholder","department":"Client Portal"}',false,'');
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM auth.users WHERE email='chiedza.h@gmail.com') THEN
-    INSERT INTO auth.users (id,instance_id,aud,role,email,encrypted_password,email_confirmed_at,created_at,updated_at,raw_app_meta_data,raw_user_meta_data,is_super_admin,confirmation_token)
-    VALUES (gen_random_uuid(),'00000000-0000-0000-0000-000000000000','authenticated','authenticated','chiedza.h@gmail.com',
-      crypt('member1234',gen_salt('bf',10)),NOW(),NOW(),NOW(),
-      '{"provider":"email","providers":["email"]}','{"name":"Chiedza Hove","role":"policyholder","department":"Client Portal"}',false,'');
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM auth.users WHERE email='munya.gumbo@gmail.com') THEN
-    INSERT INTO auth.users (id,instance_id,aud,role,email,encrypted_password,email_confirmed_at,created_at,updated_at,raw_app_meta_data,raw_user_meta_data,is_super_admin,confirmation_token)
-    VALUES (gen_random_uuid(),'00000000-0000-0000-0000-000000000000','authenticated','authenticated','munya.gumbo@gmail.com',
-      crypt('member1234',gen_salt('bf',10)),NOW(),NOW(),NOW(),
-      '{"provider":"email","providers":["email"]}','{"name":"Munyaradzi Gumbo","role":"policyholder","department":"Client Portal"}',false,'');
-  END IF;
-  IF NOT EXISTS (SELECT 1 FROM auth.users WHERE email='tsitsi.m@gmail.com') THEN
-    INSERT INTO auth.users (id,instance_id,aud,role,email,encrypted_password,email_confirmed_at,created_at,updated_at,raw_app_meta_data,raw_user_meta_data,is_super_admin,confirmation_token)
-    VALUES (gen_random_uuid(),'00000000-0000-0000-0000-000000000000','authenticated','authenticated','tsitsi.m@gmail.com',
-      crypt('member1234',gen_salt('bf',10)),NOW(),NOW(),NOW(),
-      '{"provider":"email","providers":["email"]}','{"name":"Tsitsi Manyonga","role":"policyholder","department":"Client Portal"}',false,'');
-  END IF;
 END $$;
 
 -- 9b. Insert profiles from auth.users metadata (works with any UUID assigned above)
@@ -731,16 +673,6 @@ SELECT
     WHEN 'policy@tariqify.com'       THEN '+263 77 100 0004'
     WHEN 'finance@tariqify.com'      THEN '+263 77 100 0005'
     WHEN 'crm@tariqify.com'          THEN '+263 77 100 0006'
-    WHEN 'simba.dube@gmail.com'      THEN '+263 71 201 0001'
-    WHEN 'nomsa.ndlovu@gmail.com'    THEN '+263 71 201 0002'
-    WHEN 'tafa.chirwa@gmail.com'     THEN '+263 71 201 0003'
-    WHEN 'patience.m@yahoo.com'      THEN '+263 71 201 0004'
-    WHEN 'garikai.mhike@gmail.com'   THEN '+263 71 201 0005'
-    WHEN 'rutendo.z@gmail.com'       THEN '+263 71 201 0006'
-    WHEN 'kuda.muzenda@gmail.com'    THEN '+263 71 201 0007'
-    WHEN 'chiedza.h@gmail.com'       THEN '+263 71 201 0008'
-    WHEN 'munya.gumbo@gmail.com'     THEN '+263 71 201 0009'
-    WHEN 'tsitsi.m@gmail.com'        THEN '+263 71 201 0010'
     ELSE NULL
   END,
   true,
@@ -756,182 +688,16 @@ SELECT
 FROM auth.users u
 WHERE u.email IN (
   'hello@munya.co.zw','admin@tariqify.com','claims@tariqify.com','policy@tariqify.com',
-  'finance@tariqify.com','crm@tariqify.com','simba.dube@gmail.com','nomsa.ndlovu@gmail.com',
-  'tafa.chirwa@gmail.com','patience.m@yahoo.com','garikai.mhike@gmail.com','rutendo.z@gmail.com',
-  'kuda.muzenda@gmail.com','chiedza.h@gmail.com','munya.gumbo@gmail.com','tsitsi.m@gmail.com'
+  'finance@tariqify.com','crm@tariqify.com'
 )
 ON CONFLICT (id) DO UPDATE SET
   name=EXCLUDED.name, role=EXCLUDED.role, department=EXCLUDED.department,
   phone=EXCLUDED.phone, active=EXCLUDED.active, permissions=EXCLUDED.permissions;
 
--- 9c. Clients (10 policyholders — emails match auth.users above)
-INSERT INTO public.clients (id, name, email, phone, national_id, dob, address, occupation, insurer, status) VALUES
-('aa000001-0000-0000-0000-000000000001','Simba Dube',         'simba.dube@gmail.com',   '+263 71 201 0001','63-1234567A00','1990-03-15','12 Borrowdale Rd, Harare',      'Engineer',       'EMA',  'active'),
-('aa000001-0000-0000-0000-000000000002','Nomsa Ndlovu',       'nomsa.ndlovu@gmail.com', '+263 71 201 0002','78-2345678B00','1978-07-22','45 Bulawayo Ave, Bulawayo',     'Teacher',        'EMA',  'active'),
-('aa000001-0000-0000-0000-000000000003','Tafadzwa Chirwa',    'tafa.chirwa@gmail.com',  '+263 71 201 0003','85-3456789C00','1985-11-08','7 Mutare Road, Mutare',         'Nurse',          'EMA',  'active'),
-('aa000001-0000-0000-0000-000000000004','Patience Mukamuri',  'patience.m@yahoo.com',   '+263 71 201 0004','92-4567890D00','1992-05-30','23 Gweru Drive, Gweru',         'Accountant',     'EMA',  'active'),
-('aa000001-0000-0000-0000-000000000005','Garikai Mhike',      'garikai.mhike@gmail.com','+263 71 201 0005','70-5678901E00','1970-09-14','89 Masvingo Road, Masvingo',    'Farmer',         'EMA',  'inactive'),
-('aa000001-0000-0000-0000-000000000006','Rutendo Zvobgo',     'rutendo.z@gmail.com',    '+263 71 201 0006','88-6789012F00','1988-12-01','34 Harare Gardens, Harare',     'Lawyer',         'EMA',  'active'),
-('aa000001-0000-0000-0000-000000000007','Kudakwashe Muzenda', 'kuda.muzenda@gmail.com', '+263 71 201 0007','95-7890123G00','1995-02-18','56 Zvishavane Way, Zvishavane', 'Miner',          'EMA',  'active'),
-('aa000001-0000-0000-0000-000000000008','Chiedza Hove',       'chiedza.h@gmail.com',    '+263 71 201 0008','82-8901234H00','1982-08-25','12 Chitungwiza Ave, Chitungwiza','Social Worker',  'EMA',  'active'),
-('aa000001-0000-0000-0000-000000000009','Munyaradzi Gumbo',   'munya.gumbo@gmail.com',  '+263 71 201 0009','75-9012345I00','1975-04-10','78 Chinhoyi Road, Chinhoyi',    'Driver',         'EMA',  'active'),
-('aa000001-0000-0000-0000-000000000010','Tsitsi Manyonga',    'tsitsi.m@gmail.com',     '+263 71 201 0010','90-0123456J00','1990-06-15','5 Norton Heights, Norton',       'Business Owner', 'EMA',  'active')
-ON CONFLICT (id) DO NOTHING;
-
--- 9d. Products (lean set — 5 active)
-INSERT INTO public.products (id, name, code, category, premium, cover_amount, waiting_period_days, min_age, max_age, commission_pct, active, features, description) VALUES
-('bb000001-0000-0000-0000-000000000001','Funeral Cover Basic',    'FUN-001','funeral', 5.00, 3000,30,18,75,15,true, ARRAY['Immediate payout','Up to 6 dependants','Repatriation cover','Transport allowance'],'Affordable funeral cover for individuals and families.'),
-('bb000001-0000-0000-0000-000000000002','Funeral Cover Premium',  'FUN-002','funeral',12.00, 8000,30,18,75,15,true, ARRAY['Immediate payout','Unlimited dependants','Repatriation + Groceries allowance','Tombstone benefit'],'Comprehensive funeral cover with extended benefits.'),
-('bb000001-0000-0000-0000-000000000003','Life Cover Essential',   'LIF-001','life',   10.00,10000,60,18,65,20,true, ARRAY['Death benefit','Terminal illness cover','Disability benefit','Premium waiver'],'Essential life cover protecting your family.'),
-('bb000001-0000-0000-0000-000000000004','Hospital Cash Plan',     'HCP-001','health',  8.00,   50,14,18,70,12,true, ARRAY['$50/day hospital cash','ICU double benefit','Day 1 cover after waiting period'],'Daily hospital cash benefit while admitted.'),
-('bb000001-0000-0000-0000-000000000005','Personal Accident Cover','PAC-001','accident',3.00, 5000, 0,18,70,10,true, ARRAY['Accidental death','Permanent disability','Temporary disability income','Medical expenses'],'24/7 accident protection.')
-ON CONFLICT (id) DO NOTHING;
-
--- 9e. Policies (agent_id looked up by email to handle dynamic UUIDs)
-DO $$
-DECLARE
-  crm_id  UUID := (SELECT id FROM auth.users WHERE email='crm@tariqify.com' LIMIT 1);
-  pol_id  UUID := (SELECT id FROM auth.users WHERE email='policy@tariqify.com' LIMIT 1);
-BEGIN
-  INSERT INTO public.policies (id, policy_number, client_id, product_id, premium, cover_amount, start_date, end_date, status, beneficiaries, payment_method, agent_id, next_payment_date, last_payment_date) VALUES
-  ('cc000001-0000-0000-0000-000000000001','EMA-2024-001','aa000001-0000-0000-0000-000000000001','bb000001-0000-0000-0000-000000000001', 5.00, 3000,'2024-01-15','2027-01-15','active',
-    '[{"name":"Grace Dube","relationship":"Spouse","percentage":100}]','EcoCash',crm_id,'2026-06-15','2026-05-15'),
-  ('cc000001-0000-0000-0000-000000000002','EMA-2024-002','aa000001-0000-0000-0000-000000000002','bb000001-0000-0000-0000-000000000002',12.00, 8000,'2024-02-10','2027-02-10','active',
-    '[{"name":"John Ndlovu","relationship":"Spouse","percentage":60},{"name":"Thabo Ndlovu","relationship":"Child","percentage":40}]','Bank Transfer',pol_id,'2026-06-10','2026-05-10'),
-  ('cc000001-0000-0000-0000-000000000003','EMA-2024-003','aa000001-0000-0000-0000-000000000003','bb000001-0000-0000-0000-000000000003',10.00,10000,'2024-03-01','2027-03-01','active',
-    '[{"name":"Mary Chirwa","relationship":"Spouse","percentage":100}]','OneMoney',pol_id,'2026-06-01','2026-05-01'),
-  ('cc000001-0000-0000-0000-000000000004','EMA-2024-004','aa000001-0000-0000-0000-000000000004','bb000001-0000-0000-0000-000000000001', 5.00, 3000,'2024-03-15','2027-03-15','active',
-    '[{"name":"Peter Mukamuri","relationship":"Spouse","percentage":100}]','EcoCash',crm_id,'2026-06-15','2026-05-15'),
-  ('cc000001-0000-0000-0000-000000000005','EMA-2024-005','aa000001-0000-0000-0000-000000000005','bb000001-0000-0000-0000-000000000005', 3.00, 5000,'2024-04-01','2025-04-01','lapsed',
-    '[{"name":"Anna Mhike","relationship":"Spouse","percentage":100}]','Cash',crm_id,NULL,'2026-01-01'),
-  ('cc000001-0000-0000-0000-000000000006','EMA-2024-006','aa000001-0000-0000-0000-000000000006','bb000001-0000-0000-0000-000000000003',10.00,10000,'2024-04-20','2027-04-20','active',
-    '[{"name":"David Zvobgo","relationship":"Spouse","percentage":50},{"name":"Lisa Zvobgo","relationship":"Child","percentage":50}]','InnBucks',pol_id,'2026-06-20','2026-05-20'),
-  ('cc000001-0000-0000-0000-000000000007','EMA-2024-007','aa000001-0000-0000-0000-000000000007','bb000001-0000-0000-0000-000000000004', 8.00,   50,'2024-05-05','2027-05-05','active',
-    '[{"name":"Fara Muzenda","relationship":"Spouse","percentage":100}]','EcoCash',crm_id,'2026-06-05','2026-05-05'),
-  ('cc000001-0000-0000-0000-000000000008','EMA-2024-008','aa000001-0000-0000-0000-000000000008','bb000001-0000-0000-0000-000000000005', 3.00, 5000,'2024-05-22','2027-05-22','pending',
-    '[{"name":"James Hove","relationship":"Spouse","percentage":100}]','Bank Transfer',pol_id,NULL,NULL),
-  ('cc000001-0000-0000-0000-000000000009','EMA-2024-009','aa000001-0000-0000-0000-000000000009','bb000001-0000-0000-0000-000000000002',12.00, 8000,'2024-06-12','2027-06-12','active',
-    '[{"name":"Rose Gumbo","relationship":"Spouse","percentage":100}]','Debit Order',crm_id,'2026-06-12','2026-05-12'),
-  ('cc000001-0000-0000-0000-000000000010','EMA-2024-010','aa000001-0000-0000-0000-000000000010','bb000001-0000-0000-0000-000000000001', 5.00, 3000,'2024-07-01','2027-07-01','active',
-    '[{"name":"Ben Manyonga","relationship":"Spouse","percentage":100}]','EcoCash',crm_id,'2026-06-01','2026-05-01')
-  ON CONFLICT (id) DO NOTHING;
-END $$;
-
--- 9f. Claims (5 realistic claims)
-DO $$
-DECLARE
-  claims_id UUID := (SELECT id FROM auth.users WHERE email='claims@tariqify.com' LIMIT 1);
-BEGIN
-  INSERT INTO public.claims (id, claim_number, policy_id, claim_type, amount, status, date_of_event, date_submitted, description, fraud_score, assigned_to, documents, notes, resolved_at) VALUES
-  ('dd000001-0000-0000-0000-000000000001','CLM-2026-001','cc000001-0000-0000-0000-000000000002','Death Benefit',  8000,'under_review','2026-04-28','2026-04-30',
-    'Policyholder''s mother passed away 28 April 2026.',12,claims_id,ARRAY['death_cert.pdf','id_copy.pdf'],'Documents verified. Awaiting next of kin confirmation.',NULL),
-  ('dd000001-0000-0000-0000-000000000002','CLM-2026-002','cc000001-0000-0000-0000-000000000007','Hospitalisation',350,'approved','2026-04-15','2026-04-20',
-    '7 days hospitalisation at Parirenyatwa Hospital.',5,claims_id,ARRAY['hospital_letter.pdf','receipts.pdf'],'All documents verified. 7 days at $50/day.','2026-04-25'),
-  ('dd000001-0000-0000-0000-000000000003','CLM-2026-003','cc000001-0000-0000-0000-000000000005','Accidental Injury',5000,'pending','2026-05-01','2026-05-03',
-    'Client involved in road traffic accident.',78,NULL,ARRAY['police_report.pdf'],'High fraud score flagged. Policy lapsed — under review.',NULL),
-  ('dd000001-0000-0000-0000-000000000004','CLM-2026-004','cc000001-0000-0000-0000-000000000006','Disability Benefit',5000,'rejected','2026-03-10','2026-03-15',
-    'Claimed permanent disability after workplace accident.',62,claims_id,ARRAY['medical_cert.pdf'],'Rejected: certificate from unregistered practitioner.','2026-04-01'),
-  ('dd000001-0000-0000-0000-000000000005','CLM-2026-005','cc000001-0000-0000-0000-000000000009','Death Benefit',  8000,'paid','2026-02-20','2026-02-22',
-    'Policyholder''s spouse passed away.',8,claims_id,ARRAY['death_cert.pdf','marriage_cert.pdf'],'Paid via EcoCash on 2026-03-05.','2026-03-05')
-  ON CONFLICT (id) DO NOTHING;
-END $$;
-
--- 9g. Payments (10 recent payments)
-INSERT INTO public.payments (id, reference, policy_id, amount, method, status, payment_date) VALUES
-('ee000001-0000-0000-0000-000000000001','PAY-20260501-001','cc000001-0000-0000-0000-000000000001', 5.00,'EcoCash',     'completed','2026-05-01'),
-('ee000001-0000-0000-0000-000000000002','PAY-20260501-002','cc000001-0000-0000-0000-000000000002',12.00,'Bank Transfer','completed','2026-05-01'),
-('ee000001-0000-0000-0000-000000000003','PAY-20260502-003','cc000001-0000-0000-0000-000000000003',10.00,'OneMoney',    'completed','2026-05-02'),
-('ee000001-0000-0000-0000-000000000004','PAY-20260503-004','cc000001-0000-0000-0000-000000000004', 5.00,'EcoCash',     'completed','2026-05-03'),
-('ee000001-0000-0000-0000-000000000005','PAY-20260504-005','cc000001-0000-0000-0000-000000000005', 3.00,'Cash',        'failed',   '2026-05-04'),
-('ee000001-0000-0000-0000-000000000006','PAY-20260505-006','cc000001-0000-0000-0000-000000000006',10.00,'InnBucks',    'completed','2026-05-05'),
-('ee000001-0000-0000-0000-000000000007','PAY-20260506-007','cc000001-0000-0000-0000-000000000007', 8.00,'EcoCash',     'completed','2026-05-06'),
-('ee000001-0000-0000-0000-000000000008','PAY-20260507-008','cc000001-0000-0000-0000-000000000009',12.00,'Debit Order', 'completed','2026-05-07'),
-('ee000001-0000-0000-0000-000000000009','PAY-20260508-009','cc000001-0000-0000-0000-000000000010', 5.00,'EcoCash',     'completed','2026-05-08'),
-('ee000001-0000-0000-0000-000000000010','PAY-20260415-010','cc000001-0000-0000-0000-000000000003',10.00,'OneMoney',    'completed','2026-04-15')
-ON CONFLICT (id) DO NOTHING;
-
--- 9h. Tickets (3 support tickets)
-DO $$
-DECLARE
-  crm_id UUID := (SELECT id FROM auth.users WHERE email='crm@tariqify.com' LIMIT 1);
-  pol_id UUID := (SELECT id FROM auth.users WHERE email='policy@tariqify.com' LIMIT 1);
-BEGIN
-  INSERT INTO public.tickets (id, ticket_number, client_id, subject, description, status, priority, category, assigned_to, messages) VALUES
-  ('ff000001-0000-0000-0000-000000000001','TKT-2026-001','aa000001-0000-0000-0000-000000000001',
-    'Cannot access my policy documents','I have been trying to download my policy schedule but the link keeps failing.',
-    'in_progress','medium','Technical',crm_id,
-    '[{"id":"m1","senderId":"aa000001-0000-0000-0000-000000000001","senderName":"Simba Dube","message":"I cannot download my policy documents.","timestamp":"2026-05-07T10:00:00Z","isStaff":false},{"id":"m2","senderName":"Chipo Sibanda","message":"We are looking into the issue.","timestamp":"2026-05-08T09:00:00Z","isStaff":true}]'),
-  ('ff000001-0000-0000-0000-000000000002','TKT-2026-002','aa000001-0000-0000-0000-000000000002',
-    'Claim payout not received','My claim CLM-2026-002 was approved but I have not received the payout.',
-    'open','urgent','Claims',NULL,
-    '[{"id":"m3","senderId":"aa000001-0000-0000-0000-000000000002","senderName":"Nomsa Ndlovu","message":"Please assist with my claim payout.","timestamp":"2026-05-09T08:30:00Z","isStaff":false}]'),
-  ('ff000001-0000-0000-0000-000000000003','TKT-2026-003','aa000001-0000-0000-0000-000000000004',
-    'Update beneficiary details','I need to change my beneficiary.',
-    'resolved','low','Policy',pol_id,
-    '[{"id":"m4","senderId":"aa000001-0000-0000-0000-000000000004","senderName":"Patience Mukamuri","message":"Please help me update beneficiary details.","timestamp":"2026-04-20T14:00:00Z","isStaff":false},{"id":"m5","senderName":"Blessing Moyo","message":"Your beneficiary details have been updated.","timestamp":"2026-04-22T11:00:00Z","isStaff":true}]')
-  ON CONFLICT (id) DO NOTHING;
-END $$;
-
--- 9i. Emails (4 sample emails)
-INSERT INTO public.emails (id, from_address, from_name, to_address, subject, body, read, folder, linked_to) VALUES
-('a1000001-0000-0000-0000-000000000001','nomsa.ndlovu@gmail.com','Nomsa Ndlovu','info@tariqify.com',
-  'Re: Claim CLM-2026-001 - Documents submitted',
-  'Dear Tariqify Team,\n\nPlease find attached the required documents for claim CLM-2026-001.\n\nRegards,\nNomsa Ndlovu',
-  false,'inbox','CLM-2026-001'),
-('a1000001-0000-0000-0000-000000000002','hello@munya.co.zw','Tariqify IMS','simba.dube@gmail.com',
-  'Your policy EMA-2024-001 premium reminder',
-  'Dear Simba Dube,\n\nYour funeral cover premium of $5.00 is due on 15 June 2026.\n\nRegards,\nEnpassent Multiple Agents',
-  true,'sent','EMA-2024-001'),
-('a1000001-0000-0000-0000-000000000003','garikai.mhike@gmail.com','Garikai Mhike','info@tariqify.com',
-  'Policy reinstatement request',
-  'Good morning,\n\nI would like to reinstate my policy EMA-2024-005.\n\nGarikai Mhike',
-  true,'inbox',NULL),
-('a1000001-0000-0000-0000-000000000004','hello@munya.co.zw','Tariqify IMS','tafa.chirwa@gmail.com',
-  'Welcome - Policy EMA-2024-003 Active',
-  'Dear Tafadzwa Chirwa,\n\nWelcome to Enpassent Multiple Agents! Your Life Cover Essential policy is now active.\n\nEnpassent Multiple Agents',
-  true,'sent','EMA-2024-003')
-ON CONFLICT (id) DO NOTHING;
-
--- 9j. Leads (5 sample leads)
-DO $$
-DECLARE
-  crm_id UUID := (SELECT id FROM auth.users WHERE email='crm@tariqify.com' LIMIT 1);
-BEGIN
-  INSERT INTO public.leads (id, name, email, phone, source, product_interest, status, intent_score, assigned_to) VALUES
-  ('b1000001-0000-0000-0000-000000000001','Tanaka Mushore',  'tanaka.m@gmail.com', '+263 77 100 2000','WhatsApp Chatbot','Funeral Cover Basic',    'new',       82,crm_id),
-  ('b1000001-0000-0000-0000-000000000002','Sekai Choto',     NULL,                 '+263 73 200 3000','USSD *907#',       'Hospital Cash Plan',     'contacted', 65,crm_id),
-  ('b1000001-0000-0000-0000-000000000003','Farai Madzima',   'farai.m@yahoo.com',  '+263 78 300 4000','Referral',         'Life Cover Essential',   'qualified', 91,crm_id),
-  ('b1000001-0000-0000-0000-000000000004','Nyasha Banda',    NULL,                 '+263 71 400 5000','Facebook Ad',      'Personal Accident Cover','proposal',  55,crm_id),
-  ('b1000001-0000-0000-0000-000000000005','Tariro Mutumhe',  'tariro.m@gmail.com', '+263 77 500 6000','Walk-in',          'Funeral Cover Premium',  'converted', 95,crm_id)
-  ON CONFLICT (id) DO NOTHING;
-END $$;
-
--- 9k. Fraud Cases (2 open cases)
-DO $$
-DECLARE
-  claims_id UUID := (SELECT id FROM auth.users WHERE email='claims@tariqify.com' LIMIT 1);
-BEGIN
-  INSERT INTO public.fraud_cases (id, claim_id, fraud_score, signals, status, assigned_to, notes, resolved_at) VALUES
-  ('c1000001-0000-0000-0000-000000000001','dd000001-0000-0000-0000-000000000003',78,
-    ARRAY['Policy lapsed at time of claim','Claim submitted within 3 days of reactivation attempt','Inconsistent accident details','No witness corroboration'],
-    'open',NULL,NULL,NULL),
-  ('c1000001-0000-0000-0000-000000000002','dd000001-0000-0000-0000-000000000004',62,
-    ARRAY['Medical certificate from unregistered practitioner','Prior rejected claim history','No police report for workplace accident'],
-    'confirmed',claims_id,'Claim rejected. Evidence submitted to police.','2026-04-01')
-  ON CONFLICT (id) DO NOTHING;
-END $$;
-
--- 9l. Reminders (5 upcoming reminders)
-INSERT INTO public.reminders (id, type, client_id, policy_id, due_date, message, sent, channel) VALUES
-('d1000001-0000-0000-0000-000000000001','payment_due',   'aa000001-0000-0000-0000-000000000001','cc000001-0000-0000-0000-000000000001','2026-06-15','Your funeral cover premium of $5.00 is due on 15 June.',false,'whatsapp'),
-('d1000001-0000-0000-0000-000000000002','payment_due',   'aa000001-0000-0000-0000-000000000002','cc000001-0000-0000-0000-000000000002','2026-06-10','Your premium of $12.00 is due on 10 June.',false,'sms'),
-('d1000001-0000-0000-0000-000000000003','policy_renewal','aa000001-0000-0000-0000-000000000005','cc000001-0000-0000-0000-000000000005','2026-06-01','Your policy EMA-2024-005 has lapsed. Please contact us to reinstate.',false,'whatsapp'),
-('d1000001-0000-0000-0000-000000000004','claim_followup','aa000001-0000-0000-0000-000000000002','cc000001-0000-0000-0000-000000000002','2026-05-15','Follow up on claim CLM-2026-001 — awaiting next of kin docs.',false,'email'),
-('d1000001-0000-0000-0000-000000000005','birthday',      'aa000001-0000-0000-0000-000000000003',NULL,'2026-11-08','Happy birthday Tafadzwa Chirwa!',false,'sms')
-ON CONFLICT (id) DO NOTHING;
-
 -- ================================================================
--- DONE.
+-- DONE. No demo business data seeded — clients, products, policies,
+-- claims, payments, tickets, emails, leads, fraud_cases, and reminders
+-- start empty; staff enter real data from launch onward.
 -- Login credentials summary:
 -- Super Admin : hello@munya.co.zw        / griezmann17
 -- Admin       : admin@tariqify.com       / staff1234
@@ -939,7 +705,6 @@ ON CONFLICT (id) DO NOTHING;
 -- Policy Admin: policy@tariqify.com      / staff1234
 -- Finance     : finance@tariqify.com     / staff1234
 -- Client Rel  : crm@tariqify.com         / staff1234
--- Members     : (email above)            / member1234
 -- ================================================================
 
 -- ----------------------------------------------------------------
