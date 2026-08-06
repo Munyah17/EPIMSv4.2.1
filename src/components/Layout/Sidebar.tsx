@@ -1,4 +1,7 @@
+import { useEffect, useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
+import { db } from '../../lib/db'
+import type { SidebarCounts } from '../../lib/db'
 import type { ActivePanel } from '../../App'
 import Copyright from './Copyright'
 
@@ -27,8 +30,8 @@ const STAFF_SECTIONS: NavSection[] = [
     label: 'MAIN',
     items: [
       { id: 'dashboard', label: 'Dashboard', icon: '⊞' },
-      { id: 'policies', label: 'Policies', icon: '🛡', badge: '1,284' },
-      { id: 'claims', label: 'Claims', icon: '📋', badge: 7 },
+      { id: 'policies', label: 'Policies', icon: '🛡' },
+      { id: 'claims', label: 'Claims', icon: '📋' },
       { id: 'payments', label: 'Payments', icon: '💳' },
       { id: 'products', label: 'Products', icon: '📦', roles: ['super_admin', 'admin', 'policy_admin'] },
     ],
@@ -36,7 +39,7 @@ const STAFF_SECTIONS: NavSection[] = [
   {
     label: 'CLIENT MANAGEMENT',
     items: [
-      { id: 'clients', label: 'Clients', icon: '👥', badge: 892 },
+      { id: 'clients', label: 'Clients', icon: '👥' },
       { id: 'leads', label: 'Leads & Marketing', icon: '🎯', badge: 'AI' },
     ],
   },
@@ -44,10 +47,10 @@ const STAFF_SECTIONS: NavSection[] = [
     label: 'OPERATIONS',
     items: [
       { id: 'staff', label: 'Staff', icon: '✅', roles: ['super_admin', 'admin'] },
-      { id: 'reminders', label: 'Reminders', icon: '🔔', badge: '19 due' },
+      { id: 'reminders', label: 'Reminders', icon: '🔔' },
       { id: 'reports', label: 'Reports', icon: '📊', roles: ['super_admin', 'admin', 'finance'] },
-      { id: 'email', label: 'Email', icon: '✉', badge: 9 },
-      { id: 'tickets', label: 'Tickets', icon: '💬', badge: 4 },
+      { id: 'email', label: 'Email', icon: '✉' },
+      { id: 'tickets', label: 'Tickets', icon: '💬' },
       { id: 'live_chat', label: 'Live Chat', icon: '🟢', roles: ['super_admin', 'admin', 'client_relations'] },
       { id: 'mass_messaging', label: 'Mass Messaging', icon: '📱', roles: ['super_admin', 'admin'] },
       { id: 'billing_reminders', label: 'Billing & Reminders', icon: '💳', roles: ['super_admin', 'admin', 'finance'] },
@@ -58,17 +61,27 @@ const STAFF_SECTIONS: NavSection[] = [
     items: [
       { id: 'mno_integration', label: 'NetOne Integration', icon: '📡', roles: ['super_admin', 'admin'] },
       { id: 'fraud', label: 'Fraud Detection', icon: '⚠', roles: ['super_admin', 'admin', 'claims_officer'] },
+      { id: 'developer_api', label: 'Developer API', icon: '🔌', roles: ['super_admin', 'admin'] },
     ],
   },
   {
     label: 'SYSTEM',
     items: [
       { id: 'system_health', label: 'System Health', icon: '🖥', roles: ['super_admin', 'admin'] },
-      { id: 'notification_settings', label: 'Notification Settings', icon: '🔔', roles: ['super_admin', 'admin'] },
+      { id: 'settings', label: 'Settings', icon: '⚙', roles: ['super_admin', 'admin'] },
       { id: 'profile', label: 'My Profile', icon: '👤' },
     ],
   },
 ]
+
+const BADGE_COUNT_KEYS: Partial<Record<ActivePanel, keyof SidebarCounts>> = {
+  policies: 'policies',
+  claims: 'claimsPending',
+  clients: 'clients',
+  reminders: 'remindersDue',
+  email: 'emailUnread',
+  tickets: 'ticketsOpen',
+}
 
 const CLIENT_NAV: NavItem[] = [
   { id: 'my_policies', label: 'My Policies', icon: '🛡' },
@@ -79,6 +92,16 @@ const CLIENT_NAV: NavItem[] = [
 
 export default function Sidebar({ activePanel, setActivePanel, isOpen, onClose }: SidebarProps) {
   const { user, canAccess } = useAuth()
+  const [counts, setCounts] = useState<SidebarCounts | null>(null)
+
+  useEffect(() => {
+    if (!user || user.role === 'policyholder') return
+    const load = () => { db.sidebarCounts.load().then(setCounts) }
+    load()
+    const interval = setInterval(load, 60000)
+    return () => clearInterval(interval)
+  }, [user])
+
   if (!user) return null
 
   const isClient = user.role === 'policyholder'
@@ -111,9 +134,14 @@ export default function Sidebar({ activePanel, setActivePanel, isOpen, onClose }
           return (
             <div key={section.label}>
               <span className="nav-sec">{section.label}</span>
-              {visible.map(item => (
-                <NavBtn key={item.id} item={item} active={activePanel === item.id} onClick={() => setActivePanel(item.id)} />
-              ))}
+              {visible.map(item => {
+                const countKey = BADGE_COUNT_KEYS[item.id]
+                const liveBadge = countKey && counts ? counts[countKey] : undefined
+                const resolved = liveBadge !== undefined ? (liveBadge > 0 ? liveBadge : undefined) : item.badge
+                return (
+                  <NavBtn key={item.id} item={{ ...item, badge: resolved }} active={activePanel === item.id} onClick={() => setActivePanel(item.id)} />
+                )
+              })}
             </div>
           )
         })}

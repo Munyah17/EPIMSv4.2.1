@@ -873,6 +873,113 @@ export const cautionFlags = {
   },
 }
 
+// ── DEVELOPER API ─────────────────────────────────────────────────
+export interface ApiDeveloper {
+  id: string
+  agentProfileId: string
+  companyName: string
+  contactEmail: string
+  contactPhone?: string
+  status: 'active' | 'suspended'
+  commissionOverridePercent?: number
+  createdAt: string
+}
+
+export interface ApiKeyRow {
+  id: string
+  developerId: string
+  keyPrefix: string
+  scopes: string[]
+  status: 'active' | 'revoked'
+  rateLimitPerMin: number
+  createdAt: string
+  lastUsedAt?: string
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toApiDeveloper(r: any): ApiDeveloper {
+  return {
+    id: r.id, agentProfileId: r.agent_profile_id, companyName: r.company_name,
+    contactEmail: r.contact_email, contactPhone: r.contact_phone ?? undefined,
+    status: r.status, commissionOverridePercent: r.commission_override_percent ?? undefined,
+    createdAt: r.created_at,
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toApiKeyRow(r: any): ApiKeyRow {
+  return {
+    id: r.id, developerId: r.developer_id, keyPrefix: r.key_prefix, scopes: r.scopes ?? [],
+    status: r.status, rateLimitPerMin: r.rate_limit_per_min, createdAt: r.created_at,
+    lastUsedAt: r.last_used_at ?? undefined,
+  }
+}
+
+export const developerApi = {
+  async listDevelopers() {
+    const { data, error } = await supabase.from('api_developers').select('*').order('created_at', { ascending: false })
+    if (error) return { data: [] as ApiDeveloper[], error: error.message }
+    return { data: (data ?? []).map(toApiDeveloper), error: null }
+  },
+
+  async listKeys(developerId: string) {
+    const { data, error } = await supabase.from('api_keys').select('*').eq('developer_id', developerId).order('created_at', { ascending: false })
+    if (error) return { data: [] as ApiKeyRow[], error: error.message }
+    return { data: (data ?? []).map(toApiKeyRow), error: null }
+  },
+
+  /** Calls create-api-developer.ts — needs the service-role key to create the partner's login-disabled identity. */
+  async createDeveloper(input: { companyName: string; contactEmail: string; contactPhone?: string }) {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) return { data: null, error: 'Not signed in.' }
+    try {
+      const res = await fetch('/.netlify/functions/create-api-developer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify(input),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) return { data: null, error: body?.error ?? `Failed to register developer (HTTP ${res.status}).` }
+      return { data: toApiDeveloper(body.developer), error: null }
+    } catch (e) {
+      return { data: null, error: `Could not reach the server: ${e}` }
+    }
+  },
+
+  /** Calls create-api-key.ts. Returns the raw key ONCE — it is never stored or retrievable again. */
+  async issueKey(developerId: string, opts?: { scopes?: string[]; rateLimitPerMin?: number }) {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) return { data: null, error: 'Not signed in.' }
+    try {
+      const res = await fetch('/.netlify/functions/create-api-key', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({ developerId, scopes: opts?.scopes, rateLimitPerMin: opts?.rateLimitPerMin }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) return { data: null, error: body?.error ?? `Failed to issue key (HTTP ${res.status}).` }
+      return { data: { ...toApiKeyRow(body.key), rawKey: body.key.rawKey as string }, error: null }
+    } catch (e) {
+      return { data: null, error: `Could not reach the server: ${e}` }
+    }
+  },
+
+  async revokeKey(keyId: string) {
+    const { error } = await supabase.from('api_keys').update({ status: 'revoked' }).eq('id', keyId)
+    return { error: error?.message ?? null }
+  },
+
+  async setDeveloperStatus(developerId: string, status: 'active' | 'suspended') {
+    const { error } = await supabase.from('api_developers').update({ status }).eq('id', developerId)
+    return { error: error?.message ?? null }
+  },
+
+  async setCommissionOverride(developerId: string, pct: number | null) {
+    const { error } = await supabase.from('api_developers').update({ commission_override_percent: pct }).eq('id', developerId)
+    return { error: error?.message ?? null }
+  },
+}
+
 // ── LOGIN ATTEMPTS ────────────────────────────────────────────────
 // Real brute-force signal for System Health — previously that page had
 // no security data at all, only DB latency stats.
@@ -1035,6 +1142,40 @@ export const dashboardStats = {
   },
 }
 
+// ── SIDEBAR COUNTS ────────────────────────────────────────────────
+// The sidebar nav badges used to be hardcoded numbers (e.g. "1,284"
+// policies, "892" clients) baked into the nav config — real counts,
+// live, cheap COUNT-only queries.
+export interface SidebarCounts {
+  policies: number
+  claimsPending: number
+  clients: number
+  remindersDue: number
+  emailUnread: number
+  ticketsOpen: number
+}
+
+export const sidebarCounts = {
+  async load(): Promise<SidebarCounts> {
+    const [pol, claimsRes, cli, rem, mail, tix] = await Promise.all([
+      supabase.from('policies').select('*', { count: 'exact', head: true }),
+      supabase.from('claims').select('*', { count: 'exact', head: true }).in('status', ['pending', 'under_review']),
+      supabase.from('clients').select('*', { count: 'exact', head: true }).eq('status', 'active'),
+      supabase.from('reminders').select('*', { count: 'exact', head: true }).eq('sent', false),
+      supabase.from('emails').select('*', { count: 'exact', head: true }).eq('folder', 'inbox').eq('read', false),
+      supabase.from('tickets').select('*', { count: 'exact', head: true }).in('status', ['open', 'in_progress']),
+    ])
+    return {
+      policies: pol.count ?? 0,
+      claimsPending: claimsRes.count ?? 0,
+      clients: cli.count ?? 0,
+      remindersDue: rem.count ?? 0,
+      emailUnread: mail.count ?? 0,
+      ticketsOpen: tix.count ?? 0,
+    }
+  },
+}
+
 // ── REALTIME ──────────────────────────────────────────────────────
 export function subscribeToTable(table: string, callback: () => void) {
   const channel = supabase
@@ -1047,8 +1188,8 @@ export function subscribeToTable(table: string, callback: () => void) {
 // ── EXPORT ────────────────────────────────────────────────────────
 export const db = {
   policies, clients, products, claims, payments,
-  tickets, emails, leads, staff, fraudCases, reminders, cautionFlags, settings, loginAttempts,
-  dashboardStats,
+  tickets, emails, leads, staff, fraudCases, reminders, cautionFlags, settings, loginAttempts, developerApi,
+  dashboardStats, sidebarCounts,
   subscribeToTable,
   resetLocalData: () => localStore.reset(),
 }

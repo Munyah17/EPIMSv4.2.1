@@ -44,7 +44,7 @@ export default function NotificationSettings({ showToast }: Props) {
   }
 
   return (
-    <div className="panel">
+    <div>
       {!canEdit && (
         <div className="info-banner info-banner-warning" style={{ marginBottom: 14 }}>
           🔒 Read-only — only Super Admin or Admin accounts can change notification settings.

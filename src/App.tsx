@@ -32,7 +32,8 @@ const Fraud = lazy(() => import('./pages/Fraud'))
 const Profile = lazy(() => import('./pages/Profile'))
 const MnoIntegration = lazy(() => import('./pages/MnoIntegration'))
 const SystemHealthPage = lazy(() => import('./pages/SystemHealthPage'))
-const NotificationSettings = lazy(() => import('./pages/NotificationSettings'))
+const Settings = lazy(() => import('./pages/Settings'))
+const DeveloperApi = lazy(() => import('./pages/DeveloperApi'))
 const MassMessaging = lazy(() => import('./pages/MassMessaging'))
 const BillingReminders = lazy(() => import('./pages/BillingReminders'))
 const MyPolicies = lazy(() => import('./pages/policyholder/MyPolicies'))
@@ -44,7 +45,7 @@ export type ActivePanel =
   | 'dashboard' | 'policies' | 'claims' | 'payments' | 'products'
   | 'clients' | 'staff' | 'reminders' | 'reports' | 'leads'
   | 'email' | 'tickets' | 'fraud' | 'profile' | 'mno_integration'
-  | 'system_health' | 'notification_settings' | 'mass_messaging' | 'billing_reminders'
+  | 'system_health' | 'settings' | 'developer_api' | 'mass_messaging' | 'billing_reminders'
   | 'my_policies' | 'my_claims' | 'my_payments' | 'live_chat'
 
 function AppInner() {
@@ -117,7 +118,8 @@ function AppInner() {
       case 'fraud': return <Fraud {...panelProps} />
       case 'mno_integration': return <MnoIntegration {...panelProps} />
       case 'system_health': return <SystemHealthPage {...panelProps} />
-      case 'notification_settings': return <NotificationSettings {...panelProps} />
+      case 'settings': return <Settings {...panelProps} />
+      case 'developer_api': return <DeveloperApi {...panelProps} />
       case 'mass_messaging': return <MassMessaging {...panelProps} />
       case 'billing_reminders': return <BillingReminders {...panelProps} />
       case 'profile': return <Profile {...panelProps} />
