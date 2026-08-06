@@ -272,9 +272,11 @@ export default function Reports({ showToast }: Props) {
               <tr><td><strong>Total Clients</strong></td><td>{clients.length}</td></tr>
             </tbody>
           </table>
-          <div style={{ marginTop: '1.5rem', display: 'flex', gap: 8 }}>
+          <div style={{ marginTop: '1.5rem' }}>
             <button className="btn btn-primary" onClick={() => handleExport('IPEC PDF')}>↓ Download IPEC Return</button>
-            <button className="btn btn-ghost" onClick={() => showToast('success', 'IPEC return submitted electronically.')}>Submit to IPEC</button>
+            <p style={{ marginTop: 10, fontSize: 12, color: 'var(--muted)' }}>
+              IPEC does not provide a public electronic-submission API — download the return above and submit it through IPEC's own portal or email.
+            </p>
           </div>
         </div>
       )}
