@@ -794,3 +794,28 @@ ALTER TABLE public.app_settings FORCE ROW LEVEL SECURITY;
 
 CREATE POLICY "app_settings_select" ON public.app_settings FOR SELECT TO authenticated USING (is_staff());
 CREATE POLICY "app_settings_write"  ON public.app_settings FOR ALL    TO authenticated USING (is_admin()) WITH CHECK (is_admin());
+
+-- ================================================================
+-- Login Attempts (real brute-force detection for System Health)
+-- ================================================================
+CREATE TABLE IF NOT EXISTS public.login_attempts (
+  id         UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  email      TEXT NOT NULL,
+  success    BOOLEAN NOT NULL,
+  ts         TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_login_attempts_ts ON public.login_attempts(ts DESC);
+CREATE INDEX IF NOT EXISTS idx_login_attempts_email ON public.login_attempts(email);
+
+ALTER TABLE public.login_attempts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.login_attempts FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY "login_attempts_insert_anon" ON public.login_attempts FOR INSERT TO anon WITH CHECK (true);
+CREATE POLICY "login_attempts_insert_auth" ON public.login_attempts FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "login_attempts_select_staff" ON public.login_attempts FOR SELECT TO authenticated USING (is_staff());
+
+CREATE OR REPLACE FUNCTION public.trim_login_attempts()
+RETURNS VOID LANGUAGE sql SECURITY DEFINER AS $$
+  DELETE FROM public.login_attempts WHERE ts < NOW() - INTERVAL '7 days'
+$$;

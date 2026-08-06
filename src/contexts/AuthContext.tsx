@@ -130,6 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = useCallback(async (email: string, password: string): Promise<boolean> => {
     return withTimeout((async () => {
+      let ok = false
       try {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password })
         if (!error && data.user) {
@@ -137,14 +138,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const profile = await fetchProfile(data.user.id, data.user.email ?? email, meta)
           if (profile && profile.active) {
             setUser(profile)
-            return true
+            ok = true
+          } else {
+            await supabase.auth.signOut().catch(() => {})
           }
-          await supabase.auth.signOut().catch(() => {})
         }
       } catch {
-        // fall through to return false below
+        // fall through — ok stays false
       }
-      return false
+      // Direct insert (not via db.ts) so this always-loaded auth module
+      // doesn't drag the whole data layer + Supabase SDK into the eager
+      // bundle — everything else in the app reaches Supabase through
+      // lazy-loaded pages, only auth is loaded up front.
+      void supabase.from('login_attempts').insert({ email: email.toLowerCase(), success: ok }).then(() => {})
+      return ok
     })(), 15000, false)
   }, [])
 

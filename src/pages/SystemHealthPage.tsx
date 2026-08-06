@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { health } from '../lib/health'
 import type { DbOp } from '../lib/health'
+import { db } from '../lib/db'
 import type { ToastMessage } from '../types'
 import type { ActivePanel } from '../App'
+
+const QUOTA_ALERT_PATTERN = /rate.?limit|429|quota|expired|401|403|unauthorized|jwt/i
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -77,12 +80,16 @@ export default function SystemHealthPage({ showToast }: Props) {
   const [stats, setStats] = useState<Stats>(() => health.stats as Stats)
   const [tab, setTab] = useState<'overview' | 'log'>('overview')
   const [ticker, setTicker] = useState(0)
+  const [failedLogins, setFailedLogins] = useState<{ email: string; count: number; lastAttempt: string }[]>([])
   const logRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const unsub = health.subscribe(() => setStats(health.stats as Stats))
     const interval = setInterval(() => setTicker(t => t + 1), 1000)
-    return () => { unsub(); clearInterval(interval) }
+    const loadSecurity = () => { db.loginAttempts.recentFailures(15).then(({ data }) => setFailedLogins(data)) }
+    loadSecurity()
+    const secInterval = setInterval(loadSecurity, 30000)
+    return () => { unsub(); clearInterval(interval); clearInterval(secInterval) }
   }, [])
 
   // silence the ticker lint
@@ -90,7 +97,12 @@ export default function SystemHealthPage({ showToast }: Props) {
 
   const dot = STATUS_COLOR[stats.overall]
 
+  const quotaAlerts = stats.recent.filter(op => !op.success && op.detail && QUOTA_ALERT_PATTERN.test(op.detail))
+  const BRUTE_FORCE_THRESHOLD = 5
+  const suspiciousLogins = failedLogins.filter(f => f.count >= BRUTE_FORCE_THRESHOLD)
+
   const handleReset = () => {
+    health.reset()
     showToast('info', 'Health tracker stats cleared.')
   }
 
@@ -145,6 +157,48 @@ export default function SystemHealthPage({ showToast }: Props) {
             <div className="stat-label">Data Source</div>
           </div>
         </div>
+      </div>
+
+      {(suspiciousLogins.length > 0 || quotaAlerts.length > 0) && (
+        <div className="card" style={{ marginBottom: 20, borderLeft: '3px solid var(--danger)' }}>
+          <div className="card-header"><span className="card-title">⚠ Security & Quota Alerts</span></div>
+          {suspiciousLogins.map(f => (
+            <div key={f.email} className="info-banner info-banner-danger" style={{ marginBottom: 8, borderRadius: 8, padding: '10px 13px', fontSize: 12 }}>
+              🔒 Possible brute-force: {f.count} failed login attempts for <strong>{f.email}</strong> in the last 15 minutes (last at {fmtTime(new Date(f.lastAttempt).getTime())}).
+            </div>
+          ))}
+          {quotaAlerts.map(op => (
+            <div key={op.id} className="info-banner info-banner-warning" style={{ marginBottom: 8, borderRadius: 8, padding: '10px 13px', fontSize: 12 }}>
+              ⚡ {op.table}: {op.detail} ({fmtTime(op.ts)})
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Security */}
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div className="card-header"><span className="card-title">🔐 Login Attempts (last 15 min)</span></div>
+        {failedLogins.length === 0 ? (
+          <div className="empty-state" style={{ padding: '20px 0' }}>No failed login attempts recorded in the last 15 minutes.</div>
+        ) : (
+          <table className="table">
+            <thead><tr><th>Email</th><th>Failed Attempts</th><th>Last Attempt</th><th>Status</th></tr></thead>
+            <tbody>
+              {failedLogins.map(f => (
+                <tr key={f.email}>
+                  <td>{f.email}</td>
+                  <td>{f.count}</td>
+                  <td>{fmtTime(new Date(f.lastAttempt).getTime())}</td>
+                  <td>
+                    {f.count >= BRUTE_FORCE_THRESHOLD
+                      ? <span className="pill pill-lapsed">⚠ Suspicious</span>
+                      : <span className="pill pill-pending">Watching</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
       </div>
 
       <div className="sh-page-body">

@@ -28,6 +28,11 @@ class HealthTracker {
     return () => this.listeners.delete(fn)
   }
 
+  reset() {
+    this.ops = []
+    this.listeners.forEach(fn => fn())
+  }
+
   get stats() {
     const all = this.ops
     const recent50 = all.slice(-50)

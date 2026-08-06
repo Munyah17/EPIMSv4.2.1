@@ -873,6 +873,26 @@ export const cautionFlags = {
   },
 }
 
+// ── LOGIN ATTEMPTS ────────────────────────────────────────────────
+// Real brute-force signal for System Health — previously that page had
+// no security data at all, only DB latency stats.
+export const loginAttempts = {
+  /** Failed attempts in the last N minutes, grouped by email, for staff-only viewing. */
+  async recentFailures(minutes = 15) {
+    const since = new Date(Date.now() - minutes * 60000).toISOString()
+    const { data, error } = await supabase
+      .from('login_attempts').select('email, ts').eq('success', false).gte('ts', since).order('ts', { ascending: false })
+    if (error || !data) return { data: [] as { email: string; count: number; lastAttempt: string }[], error: error?.message ?? null }
+    const byEmail = new Map<string, { email: string; count: number; lastAttempt: string }>()
+    for (const row of data as { email: string; ts: string }[]) {
+      const existing = byEmail.get(row.email)
+      if (existing) existing.count += 1
+      else byEmail.set(row.email, { email: row.email, count: 1, lastAttempt: row.ts })
+    }
+    return { data: [...byEmail.values()].sort((a, b) => b.count - a.count), error: null }
+  },
+}
+
 // ── APP SETTINGS ──────────────────────────────────────────────────
 // Generic shared key/value settings store (notification config, gateway
 // credentials, commission rates, …). Writable by admin/super_admin only
@@ -1027,7 +1047,7 @@ export function subscribeToTable(table: string, callback: () => void) {
 // ── EXPORT ────────────────────────────────────────────────────────
 export const db = {
   policies, clients, products, claims, payments,
-  tickets, emails, leads, staff, fraudCases, reminders, cautionFlags, settings,
+  tickets, emails, leads, staff, fraudCases, reminders, cautionFlags, settings, loginAttempts,
   dashboardStats,
   subscribeToTable,
   resetLocalData: () => localStore.reset(),
