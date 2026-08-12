@@ -757,6 +757,30 @@ export const staff = {
     if (error) return { data: null, error: error.code === '23505' ? 'That username is already taken.' : error.message }
     return { data: toProfile(data as Record<string,unknown>), error: null }
   },
+
+  /**
+   * Permanently deletes a staff member via delete-staff.ts (service-role
+   * only — removes the Supabase Auth identity itself, not just the
+   * profiles row, so the account can no longer sign in at all). No
+   * local-storage fallback, same reasoning as create(): a "deleted" staff
+   * member that only disappeared from browser state was never really gone.
+   */
+  async remove(staffId: string) {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) return { error: 'Not signed in.' }
+    try {
+      const res = await fetch('/.netlify/functions/delete-staff', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({ staffId }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) return { error: body?.error ?? `Failed to delete staff account (HTTP ${res.status}).` }
+      return { error: null }
+    } catch (e) {
+      return { error: `Could not reach the server: ${e}` }
+    }
+  },
 }
 
 // ── FRAUD CASES ───────────────────────────────────────────────────

@@ -3,6 +3,7 @@ import type { ToastMessage, AppUser } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
+import { useAuth } from '../contexts/AuthContext'
 import AddStaffModal from '../components/modals/AddStaffModal'
 import PermissionsModal from '../components/modals/PermissionsModal'
 
@@ -30,6 +31,7 @@ const AVATAR_CLASS: Record<string, string> = {
 }
 
 export default function Staff({ showToast }: Props) {
+  const { user } = useAuth()
   const [staff, setStaff] = useState<AppUser[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -87,6 +89,14 @@ export default function Staff({ showToast }: Props) {
     showToast('info', 'Staff status updated.')
   }
 
+  const handleDelete = async (member: AppUser) => {
+    if (!window.confirm(`Permanently delete ${member.name}? This removes their account entirely — they will no longer be able to sign in. This cannot be undone.`)) return
+    const { error } = await db.staff.remove(member.id)
+    if (error) { showToast('error', error); return }
+    setStaff(prev => prev.filter(s => s.id !== member.id))
+    showToast('success', `${member.name} was deleted.`)
+  }
+
   return (
     <div className="panel">
       <div className="panel-toolbar">
@@ -142,6 +152,11 @@ export default function Staff({ showToast }: Props) {
                       <button type="button" className="btn btn-ghost btn-sm" onClick={() => toggleActive(s.id)}>
                         {s.active ? 'Disable' : 'Enable'}
                       </button>
+                      {user?.role === 'super_admin' && s.role !== 'super_admin' && s.id !== user.id && (
+                        <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => handleDelete(s)}>
+                          Delete
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
