@@ -57,11 +57,16 @@ function withTimeout<T>(promise: Promise<T>, ms: number, timeoutValue: T): Promi
 }
 
 async function fetchProfile(userId: string, email: string, metaFallback?: Record<string, unknown>): Promise<AppUser | null> {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', userId)
-    .single()
+  // A 5s cap so a stuck query (e.g. supabase-js's internal session lock
+  // contending with a concurrent call — see the onAuthStateChange comment
+  // in AuthProvider) falls through to the metadata fallback below instead
+  // of leaving the whole login() hung until its own 15s timeout.
+  const query = supabase.from('profiles').select('*').eq('id', userId).single()
+  const { data, error } = await withTimeout(
+    Promise.resolve(query),
+    5000,
+    { data: null, error: { message: 'profiles query timed out' } } as Awaited<typeof query>,
+  )
 
   if (!error && data) {
     return {
@@ -122,12 +127,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false)
     })
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session?.user && !session.user.is_anonymous) {
-        const meta = session.user.user_metadata as Record<string, unknown>
-        const profile = await fetchProfile(session.user.id, session.user.email ?? '', meta)
-        setUser(profile)
-      } else if (event === 'SIGNED_OUT') {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      // SIGNED_IN is intentionally not handled here — it fires as a side
+      // effect of signInWithPassword() resolving inside login(), which
+      // already does its own fetchProfile()+setUser() explicitly and
+      // synchronously with the call site. Doing a second, independent
+      // fetchProfile() here landed at nearly the same instant as that one,
+      // and the two concurrent profiles queries right after a fresh
+      // sign-in reliably deadlocked supabase-js's internal session lock in
+      // production (reproduced consistently on the deployed build; never
+      // on local dev, where slower/HMR-instrumented execution happened to
+      // never hit the same race window) — login would hang on
+      // "Authenticating…" for the full 15s client-side timeout and then
+      // fail with "Invalid credentials" despite the password being right.
+      if (event === 'SIGNED_OUT') {
         setUser(null)
       }
     })
