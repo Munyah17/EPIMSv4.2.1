@@ -781,6 +781,31 @@ export const staff = {
       return { error: `Could not reach the server: ${e}` }
     }
   },
+
+  /**
+   * Sets a new password for a staff member via reset-staff-password.ts
+   * (service-role only). Replaces the "Not editable here" dead end that
+   * used to be the only thing shown for an existing staff member's
+   * password — an admin helping a locked-out colleague has no way to
+   * supply that colleague's CURRENT password, so self-service Change
+   * Password isn't an option for them.
+   */
+  async resetPassword(staffId: string, newPassword: string) {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) return { error: 'Not signed in.' }
+    try {
+      const res = await fetch('/.netlify/functions/reset-staff-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({ staffId, newPassword }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) return { error: body?.error ?? `Failed to reset password (HTTP ${res.status}).` }
+      return { error: null }
+    } catch (e) {
+      return { error: `Could not reach the server: ${e}` }
+    }
+  },
 }
 
 // ── FRAUD CASES ───────────────────────────────────────────────────

@@ -97,6 +97,12 @@ export default function Staff({ showToast }: Props) {
     showToast('success', `${member.name} was deleted.`)
   }
 
+  const handleResetPassword = async (staffId: string, newPassword: string) => {
+    const { error } = await db.staff.resetPassword(staffId, newPassword)
+    if (error) { showToast('error', error); return }
+    showToast('success', 'Password reset successfully.')
+  }
+
   return (
     <div className="panel">
       <div className="panel-toolbar">
@@ -171,6 +177,7 @@ export default function Staff({ showToast }: Props) {
           staff={editStaff}
           onClose={() => { setShowAdd(false); setEditStaff(null) }}
           onSave={handleSave}
+          onResetPassword={handleResetPassword}
         />
       )}
       {permStaff && (

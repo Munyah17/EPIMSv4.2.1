@@ -6,12 +6,16 @@ interface Props {
   staff: AppUser | null
   onClose: () => void
   onSave: (staff: AppUser, password: string) => void
+  /** Only used in edit mode — sets a new password for an existing staff
+   *  member (self-service Change Password needs their CURRENT password,
+   *  which isn't something an admin resetting a locked-out account has). */
+  onResetPassword: (staffId: string, newPassword: string) => Promise<void>
 }
 
 const ROLES: UserRole[] = ['admin', 'claims_officer', 'policy_admin', 'finance', 'client_relations']
 const DEPARTMENTS = ['Claims', 'Policy Administration', 'Finance', 'Client Relations', 'Administration', 'IT']
 
-export default function AddStaffModal({ staff, onClose, onSave }: Props) {
+export default function AddStaffModal({ staff, onClose, onSave, onResetPassword }: Props) {
   const [name, setName] = useState(staff?.name ?? '')
   const [username, setUsername] = useState(staff?.username ?? '')
   const [email, setEmail] = useState(staff?.email ?? '')
@@ -19,6 +23,8 @@ export default function AddStaffModal({ staff, onClose, onSave }: Props) {
   const [role, setRole] = useState<UserRole>(staff?.role ?? 'client_relations')
   const [department, setDepartment] = useState(staff?.department ?? 'Client Relations')
   const [password, setPassword] = useState('')
+  const [resetPwd, setResetPwd] = useState('')
+  const [resettingPwd, setResettingPwd] = useState(false)
 
   // New accounts are real Supabase Auth users now, so a real password is
   // required — no more silent 'staff1234' default. Editing an existing
@@ -82,9 +88,30 @@ export default function AddStaffModal({ staff, onClose, onSave }: Props) {
           </div>
           <div className="form-row">
             <div className="form-group">
-              <label>{staff ? 'Password' : 'Temporary Password *'}</label>
+              <label>{staff ? 'Reset Password' : 'Temporary Password *'}</label>
               {staff ? (
-                <input className="form-control" disabled style={{ opacity: 0.6 }} value="Not editable here" />
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    type="password"
+                    className="form-control"
+                    value={resetPwd}
+                    onChange={e => setResetPwd(e.target.value)}
+                    placeholder="New password, min. 8 characters"
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-ghost btn-sm"
+                    disabled={resetPwd.length < 8 || resettingPwd}
+                    onClick={async () => {
+                      setResettingPwd(true)
+                      await onResetPassword(staff.id, resetPwd)
+                      setResetPwd('')
+                      setResettingPwd(false)
+                    }}
+                  >
+                    {resettingPwd ? 'Resetting…' : 'Reset'}
+                  </button>
+                </div>
               ) : (
                 <input type="password" className="form-control" value={password} onChange={e => setPassword(e.target.value)} placeholder="Min. 8 characters" />
               )}
