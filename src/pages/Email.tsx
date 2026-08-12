@@ -166,25 +166,15 @@ export default function Email({ showToast }: Props) {
   return (
     <div className="panel">
       <div className="email3-shell">
-        {/* Left: Folder sidebar */}
-        <div className="email3-sidebar">
+        {/* Top: Compose + folder nav + search, run horizontally to keep the
+            list/reader panes below at full width */}
+        <div className="email3-topbar">
           <button
-            className="btn btn-primary btn-full"
-            style={{ marginBottom: 16 }}
+            className="btn btn-primary"
             onClick={() => { setCompose({ to: '', cc: '', subject: '', body: '' }); setShowCompose(true) }}
           >
             ✉ Compose
           </button>
-
-          <div className="email3-search">
-            <input
-              className="search-input"
-              placeholder="Search emails…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              style={{ fontSize: 12 }}
-            />
-          </div>
 
           <nav className="email3-folders">
             {(['inbox', 'sent', 'claims', 'draft', 'starred'] as Folder[]).map(f => {
@@ -202,9 +192,20 @@ export default function Email({ showToast }: Props) {
               )
             })}
           </nav>
+
+          <div className="email3-search">
+            <input
+              className="search-input"
+              placeholder="Search emails…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              style={{ fontSize: 12 }}
+            />
+          </div>
         </div>
 
-        {/* Middle: Email list */}
+        <div className="email3-body">
+        {/* Left: Email list */}
         <div className="email3-list">
           <div className="email3-list-header">
             <span className="email3-list-title">{FOLDER_LABELS[folder]}</span>
@@ -307,6 +308,7 @@ export default function Email({ showToast }: Props) {
               </div>
             </div>
           )}
+        </div>
         </div>
       </div>
 

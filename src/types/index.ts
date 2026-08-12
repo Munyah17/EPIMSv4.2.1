@@ -12,6 +12,8 @@ export type Insurer = 'Motions' | 'CBZ Life' | 'EcoSure' | 'ZB Life' | 'Nyaradzo
 export interface AppUser {
   id: string
   name: string
+  /** Short, self-chosen nickname used for username login — distinct from `name`. */
+  username?: string
   email: string
   role: UserRole
   department: string

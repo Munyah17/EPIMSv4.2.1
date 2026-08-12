@@ -13,6 +13,7 @@ const DEPARTMENTS = ['Claims', 'Policy Administration', 'Finance', 'Client Relat
 
 export default function AddStaffModal({ staff, onClose, onSave }: Props) {
   const [name, setName] = useState(staff?.name ?? '')
+  const [username, setUsername] = useState(staff?.username ?? '')
   const [email, setEmail] = useState(staff?.email ?? '')
   const [phone, setPhone] = useState(staff?.phone ?? '')
   const [role, setRole] = useState<UserRole>(staff?.role ?? 'client_relations')
@@ -24,13 +25,13 @@ export default function AddStaffModal({ staff, onClose, onSave }: Props) {
   // member can leave it blank (this modal doesn't change an existing
   // user's password; that's handled elsewhere).
   const passwordValid = staff ? true : password.length >= 8
-  const canSave = !!name && !!email && passwordValid
+  const canSave = !!name && !!username.trim() && !!email && passwordValid
 
   const handleSave = () => {
     if (!canSave) return
     const member: AppUser = {
       id: staff?.id ?? '',
-      name, email, phone, role, department,
+      name, username: username.trim(), email, phone, role, department,
       active: staff?.active ?? true,
       permissions: staff?.permissions ?? [],
     }
@@ -51,29 +52,35 @@ export default function AddStaffModal({ staff, onClose, onSave }: Props) {
               <input className="form-control" value={name} onChange={e => setName(e.target.value)} placeholder="Full name" />
             </div>
             <div className="form-group">
-              <label>Email Address *</label>
-              <input type="email" className="form-control" value={email} onChange={e => setEmail(e.target.value)} placeholder="staff@tariqify.com" />
+              <label>Username *</label>
+              <input className="form-control" value={username} onChange={e => setUsername(e.target.value)} placeholder="Nickname used to sign in" />
             </div>
           </div>
           <div className="form-row">
             <div className="form-group">
+              <label>Email Address *</label>
+              <input type="email" className="form-control" value={email} onChange={e => setEmail(e.target.value)} placeholder="staff@tariqify.com" />
+            </div>
+            <div className="form-group">
               <label>Phone Number</label>
               <PhoneInput value={phone} onChange={setPhone} />
             </div>
+          </div>
+          <div className="form-row">
             <div className="form-group">
               <label>Role *</label>
               <select className="form-control" value={role} onChange={e => setRole(e.target.value as UserRole)}>
                 {ROLES.map(r => <option key={r} value={r}>{r.replace(/_/g, ' ')}</option>)}
               </select>
             </div>
-          </div>
-          <div className="form-row">
             <div className="form-group">
               <label>Department</label>
               <select className="form-control" value={department} onChange={e => setDepartment(e.target.value)}>
                 {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
               </select>
             </div>
+          </div>
+          <div className="form-row">
             <div className="form-group">
               <label>{staff ? 'Password' : 'Temporary Password *'}</label>
               {staff ? (

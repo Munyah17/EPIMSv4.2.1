@@ -5,7 +5,9 @@ import { supabase } from '../lib/supabase'
 interface AuthContextValue {
   user: AppUser | null
   loading: boolean
-  login: (email: string, password: string) => Promise<boolean>
+  /** `identifier` may be an email address or a staff member's username —
+   *  whichever the single login field was given. */
+  login: (identifier: string, password: string) => Promise<boolean>
   logout: () => Promise<void>
   hasPermission: (permission: string) => boolean
   canAccess: (panel: string) => boolean
@@ -61,6 +63,7 @@ async function fetchProfile(userId: string, email: string, metaFallback?: Record
     return {
       id: data.id,
       name: data.name,
+      username: data.username ?? undefined,
       email,
       role: data.role as UserRole,
       department: data.department ?? '',
@@ -128,10 +131,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe()
   }, [])
 
-  const login = useCallback(async (email: string, password: string): Promise<boolean> => {
+  const login = useCallback(async (identifier: string, password: string): Promise<boolean> => {
     return withTimeout((async () => {
       let ok = false
+      const trimmed = identifier.trim()
+      // A bare email is used as-is; anything else (a username) is resolved
+      // to its email server-side, since profiles isn't readable pre-auth.
+      let email = trimmed
       try {
+        if (!trimmed.includes('@')) {
+          const { data: resolved } = await supabase.rpc('resolve_login_email', { p_identifier: trimmed })
+          if (!resolved) {
+            void supabase.from('login_attempts').insert({ email: trimmed.toLowerCase(), success: false }).then(() => {})
+            return false
+          }
+          email = resolved as string
+        }
         const { data, error } = await supabase.auth.signInWithPassword({ email, password })
         if (!error && data.user) {
           const meta = data.user.user_metadata as Record<string, unknown>

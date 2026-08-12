@@ -18,6 +18,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE TABLE IF NOT EXISTS public.profiles (
   id          UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   name        TEXT NOT NULL,
+  username    TEXT,
   email       TEXT,
   role        TEXT NOT NULL DEFAULT 'policy_admin'
                 CHECK (role IN ('super_admin','admin','claims_officer','policy_admin','finance','client_relations','policyholder')),
@@ -215,6 +216,9 @@ CREATE INDEX IF NOT EXISTS idx_leads_assigned     ON public.leads(assigned_to);
 CREATE INDEX IF NOT EXISTS idx_tickets_client     ON public.tickets(client_id);
 CREATE INDEX IF NOT EXISTS idx_profiles_role      ON public.profiles(role);
 CREATE INDEX IF NOT EXISTS idx_profiles_active    ON public.profiles(active);
+-- Case-insensitive uniqueness, only among rows that have a username set.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_username_unique
+  ON public.profiles (lower(username)) WHERE username IS NOT NULL;
 
 -- ----------------------------------------------------------------
 -- 4. TRIGGERS — auto-create profile + auto-update timestamps
@@ -339,6 +343,20 @@ CREATE OR REPLACE FUNCTION public.current_user_email()
 RETURNS TEXT LANGUAGE sql STABLE SECURITY DEFINER AS $$
   SELECT email FROM auth.users WHERE id = auth.uid()
 $$;
+
+-- Resolves a username to its email for username-based login (there's no
+-- session yet at this point in the login flow, so profiles_select's
+-- `authenticated`-only grant can't be used directly). Only ever returns a
+-- bare email — see database/add_username_field.sql for the full rationale.
+CREATE OR REPLACE FUNCTION public.resolve_login_email(p_identifier TEXT)
+RETURNS TEXT LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  SELECT email FROM public.profiles
+  WHERE lower(username) = lower(trim(p_identifier)) AND active = true AND email IS NOT NULL
+  LIMIT 1
+$$;
+
+REVOKE ALL ON FUNCTION public.resolve_login_email(TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.resolve_login_email(TEXT) TO anon, authenticated;
 
 -- Helper: does current user own a specific policy?
 CREATE OR REPLACE FUNCTION public.owns_policy(check_policy_id UUID)

@@ -34,6 +34,15 @@ function refNumber(prefix: string): string {
   return `${prefix}${new Date().getFullYear()}${Date.now().toString().slice(-6)}${Math.random().toString(36).slice(2, 5).toUpperCase()}`
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** Postgres rejects a malformed UUID with a raw 22P02 error before RLS/lookup
+ *  logic even runs — checking the shape up front turns that into a clean 400
+ *  instead of a 500 that leaks the underlying DB error text to the caller. */
+function isUuid(v: unknown): v is string {
+  return typeof v === 'string' && UUID_RE.test(v)
+}
+
 async function logRequest(admin: SupabaseClient, keyId: string | null, endpoint: string, statusCode: number) {
   if (!keyId) return
   await admin.from('api_request_log').insert({ key_id: keyId, endpoint, status_code: statusCode })
@@ -160,13 +169,14 @@ async function listProducts(admin: SupabaseClient) {
 async function getQuote(admin: SupabaseClient, body: Json) {
   const productId = body.productId as string | undefined
   if (!productId) return { status: 400, body: { error: 'productId is required.' } }
+  if (!isUuid(productId)) return { status: 400, body: { error: 'productId must be a valid UUID.' } }
   const { data: product, error } = await admin
     .from('products').select('id, name, premium, cover_amount, waiting_period_days, min_age, max_age')
     .eq('id', productId).eq('active', true).maybeSingle()
   if (error) return { status: 500, body: { error: error.message } }
   if (!product) return { status: 404, body: { error: 'Product not found or inactive.' } }
 
-  const age = typeof body.age === 'number' ? body.age : undefined
+  const age = body.age !== undefined && body.age !== null && Number.isFinite(Number(body.age)) ? Number(body.age) : undefined
   const eligible = age === undefined || (age >= product.min_age && age <= product.max_age)
 
   return {
@@ -207,6 +217,7 @@ async function createPolicy(admin: SupabaseClient, body: Json, agentId: string) 
   const productId = body.productId as string | undefined
   const paymentMethod = String(body.paymentMethod ?? 'EcoCash')
   if (!clientId || !productId) return { status: 400, body: { error: 'clientId and productId are required.' } }
+  if (!isUuid(clientId) || !isUuid(productId)) return { status: 400, body: { error: 'clientId and productId must be valid UUIDs.' } }
 
   const { data: client } = await admin.from('clients').select('id').eq('id', clientId).maybeSingle()
   if (!client) return { status: 404, body: { error: 'Client not found.' } }
@@ -215,6 +226,7 @@ async function createPolicy(admin: SupabaseClient, body: Json, agentId: string) 
   if (!product) return { status: 404, body: { error: 'Product not found or inactive.' } }
 
   const startDate = body.startDate ? new Date(String(body.startDate)) : new Date()
+  if (Number.isNaN(startDate.getTime())) return { status: 400, body: { error: 'startDate is not a valid date.' } }
   const endDate = new Date(startDate)
   endDate.setFullYear(endDate.getFullYear() + 1)
 
@@ -260,7 +272,9 @@ async function getPolicy(admin: SupabaseClient, policyNumber: string, agentId: s
 async function recordPayment(admin: SupabaseClient, body: Json, agentId: string) {
   const policyNumber = String(body.policyNumber ?? '')
   const amount = Number(body.amount)
-  if (!policyNumber || !amount) return { status: 400, body: { error: 'policyNumber and amount are required.' } }
+  if (!policyNumber || !Number.isFinite(amount) || amount <= 0) {
+    return { status: 400, body: { error: 'policyNumber is required and amount must be a positive number.' } }
+  }
 
   const { data: policy } = await admin.from('policies').select('id, agent_id').eq('policy_number', policyNumber).maybeSingle()
   if (!policy || policy.agent_id !== agentId) return { status: 404, body: { error: 'Policy not found.' } }

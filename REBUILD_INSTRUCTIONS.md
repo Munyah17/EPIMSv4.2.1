@@ -44,15 +44,27 @@ Expected:
 
 ### 4. Test login credentials
 
-| Email | Password | Role |
-|---|---|---|
-| `admin@tariqify.com` | `admin1234` | super_admin |
-| `claims@tariqify.com` | `staff1234` | claims_officer |
-| `policy@tariqify.com` | `staff1234` | policy_admin |
-| `finance@tariqify.com` | `staff1234` | finance |
-| `crm@tariqify.com` | `staff1234` | client_relations |
-| `client@example.com` | `client1234` | policyholder |
-| `admin2@tariqify.com` | `staff1234` | admin |
+These are the credentials actually seeded by `fix_auth.mjs` against the live
+project — the table below previously listed passwords/accounts that don't
+match what's live (`admin1234`, `admin2@tariqify.com`, `client@example.com`),
+which is why login attempts using it were failing. Login also accepts each
+account's **username** (see `database/add_username_field.sql`) in place of
+the email — existing accounts were assigned role-grouped defaults
+(`Admin 1`, `Agent 1`, ...); these are editable any time from Profile
+(self-service) or Staff management (admin), and new accounts are always
+given a real username up front in the Add Staff modal.
+
+| Email | Username | Password | Role |
+|---|---|---|---|
+| `hello@munya.co.zw` | `Admin 2` | `griezmann17` | super_admin |
+| `admin@tariqify.com` | `Admin 1` | `staff1234` | admin |
+| `claims@tariqify.com` | `Agent 1` | `staff1234` | claims_officer |
+| `policy@tariqify.com` | `Agent 4` | `staff1234` | policy_admin |
+| `finance@tariqify.com` | `Agent 2` | `staff1234` | finance |
+| `crm@tariqify.com` | `Agent 3` | `staff1234` | client_relations |
+
+Run `node fix_auth.mjs` (from `imsv3/`, needs `.env.local`) any time these
+accounts' passwords need resetting to the values above.
 
 ### 5. Test the app locally
 ```bash

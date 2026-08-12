@@ -72,10 +72,6 @@ export default function Leads({ showToast }: Props) {
 
   return (
     <div className="panel">
-      <div className="info-banner info-banner-info">
-        🎯 New leads are scored automatically by AI (Groq) on intent to buy, based on source, product interest, and notes.
-      </div>
-
       <div className="panel-toolbar">
         <div className="filter-row">
           <input

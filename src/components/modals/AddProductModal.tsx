@@ -54,7 +54,7 @@ export default function AddProductModal({ product, onClose, onSave }: Props) {
             </div>
             <div className="form-group">
               <label>Product Code *</label>
-              <input className="form-control" value={code} onChange={e => setCode(e.target.value)} placeholder="FUN-001" />
+              <input className="form-control" value={code} onChange={e => setCode(e.target.value)} placeholder="FUN001" />
             </div>
           </div>
           <div className="form-row">

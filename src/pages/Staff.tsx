@@ -47,6 +47,7 @@ export default function Staff({ showToast }: Props) {
 
   const filtered = staff.filter(s =>
     s.name.toLowerCase().includes(search.toLowerCase()) ||
+    (s.username ?? '').toLowerCase().includes(search.toLowerCase()) ||
     s.email.toLowerCase().includes(search.toLowerCase()) ||
     s.department.toLowerCase().includes(search.toLowerCase())
   )
@@ -59,7 +60,7 @@ export default function Staff({ showToast }: Props) {
       showToast('success', `Staff member ${data.name} updated.`)
     } else {
       const { data, error } = await db.staff.create({
-        name: s.name, email: s.email, password, phone: s.phone, role: s.role, department: s.department,
+        name: s.name, username: s.username, email: s.email, password, phone: s.phone, role: s.role, department: s.department,
       })
       if (error || !data) { showToast('error', error ?? 'Failed to add staff member.'); return }
       setStaff(prev => [...prev, data])
@@ -91,7 +92,7 @@ export default function Staff({ showToast }: Props) {
       <div className="panel-toolbar">
         <input
           className="search-input"
-          placeholder="Search name, email, department…"
+          placeholder="Search name, username, email, department…"
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
@@ -106,6 +107,7 @@ export default function Staff({ showToast }: Props) {
             <thead>
               <tr>
                 <th>Name</th>
+                <th>Username</th>
                 <th>Email</th>
                 <th>Role</th>
                 <th>Department</th>
@@ -126,6 +128,7 @@ export default function Staff({ showToast }: Props) {
                       <strong>{s.name}</strong>
                     </div>
                   </td>
+                  <td>{s.username ?? '—'}</td>
                   <td>{s.email}</td>
                   <td><span className={`pill ${ROLE_CLASS[s.role] ?? 'role-admin'}`}>{s.role.replace(/_/g, ' ')}</span></td>
                   <td>{s.department}</td>

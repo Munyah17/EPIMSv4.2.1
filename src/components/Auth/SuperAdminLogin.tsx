@@ -59,15 +59,15 @@ export default function SuperAdminLogin() {
 
         <form onSubmit={handleSubmit} className="login-form">
           <div className="form-group">
-            <label htmlFor="email">Email Address</label>
+            <label htmlFor="email">Email or Full Name</label>
             <input
               id="email"
-              type="email"
-              placeholder="Enter super admin email"
+              type="text"
+              placeholder="Enter super admin email or full name"
               value={email}
               onChange={e => setEmail(e.target.value)}
               required
-              autoComplete="email"
+              autoComplete="username"
             />
           </div>
           <div className="form-group">

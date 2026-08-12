@@ -59,15 +59,15 @@ export default function AdminLogin() {
 
         <form onSubmit={handleSubmit} className="login-form">
           <div className="form-group">
-            <label htmlFor="email">Email Address</label>
+            <label htmlFor="email">Email or Username</label>
             <input
               id="email"
-              type="email"
-              placeholder="Enter admin email"
+              type="text"
+              placeholder="Enter admin email or username"
               value={email}
               onChange={e => setEmail(e.target.value)}
               required
-              autoComplete="email"
+              autoComplete="username"
             />
           </div>
           <div className="form-group">

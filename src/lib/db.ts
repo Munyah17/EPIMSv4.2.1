@@ -51,6 +51,7 @@ function toProfile(r: Record<string, unknown>): AppUser {
   return {
     id:          r.id as string,
     name:        r.name as string,
+    username:    (r.username as string | null) ?? undefined,
     email:       (r.email as string) ?? '',
     role:        r.role as AppUser['role'],
     department:  (r.department as string) ?? '',
@@ -721,7 +722,7 @@ export const staff = {
    * that only exists in browser state was never real, so a failure must be
    * surfaced as an error rather than silently faked.
    */
-  async create(input: { name: string; email: string; password: string; phone?: string; role: string; department: string }) {
+  async create(input: { name: string; username?: string; email: string; password: string; phone?: string; role: string; department: string }) {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) return { data: null, error: 'Not signed in.' }
     try {
@@ -744,6 +745,7 @@ export const staff = {
   async update(id: string, updates: Partial<AppUser>) {
     const row: Record<string, unknown> = {}
     if (updates.name        !== undefined) row.name        = updates.name
+    if (updates.username    !== undefined) row.username    = updates.username?.trim() || null
     if (updates.role        !== undefined) row.role        = updates.role
     if (updates.department  !== undefined) row.department  = updates.department
     if (updates.phone       !== undefined) row.phone       = updates.phone ?? null
@@ -752,7 +754,7 @@ export const staff = {
     const start = Date.now()
     const { data, error } = await supabase.from('profiles').update(row).eq('id', id).select().single()
     health.record({ ts: Date.now(), type: 'write', table: 'profiles', success: !error, duration: Date.now() - start, source: 'supabase', detail: error ? String(error.message) : undefined })
-    if (error) return { data: null, error: error.message }
+    if (error) return { data: null, error: error.code === '23505' ? 'That username is already taken.' : error.message }
     return { data: toProfile(data as Record<string,unknown>), error: null }
   },
 }

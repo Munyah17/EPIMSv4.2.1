@@ -15,6 +15,7 @@ export default function Profile({ showToast }: Props) {
   const { user, updateLocalUser, reauthenticate } = useAuth()
   const [activeTab, setActiveTab] = useState<'info' | 'password' | 'notifications' | 'audit'>('info')
   const [name, setName] = useState(user?.name ?? '')
+  const [username, setUsername] = useState(user?.username ?? '')
   const [phone, setPhone] = useState(user?.phone ?? '')
   const [savingInfo, setSavingInfo] = useState(false)
 
@@ -30,15 +31,16 @@ export default function Profile({ showToast }: Props) {
   const saveInfo = async () => {
     if (!user) return
     if (!name.trim()) { showToast('warning', 'Full name cannot be empty.'); return }
+    if (!username.trim()) { showToast('warning', 'Username cannot be empty.'); return }
     setSavingInfo(true)
     try {
-      // Only ever sends name/phone — role, department, active, and permissions
-      // are never part of this payload, and the database itself now rejects
-      // any attempt to change them on your own row (see database/
-      // fix_profiles_self_update_privilege_escalation.sql).
-      const { data, error } = await db.staff.update(user.id, { name: name.trim(), phone: phone.trim() })
+      // Only ever sends name/username/phone — role, department, active, and
+      // permissions are never part of this payload, and the database itself
+      // now rejects any attempt to change them on your own row (see
+      // database/fix_profiles_self_update_privilege_escalation.sql).
+      const { data, error } = await db.staff.update(user.id, { name: name.trim(), username: username.trim(), phone: phone.trim() })
       if (error || !data) { showToast('error', error ?? 'Failed to update profile.'); return }
-      updateLocalUser({ name: data.name, phone: data.phone })
+      updateLocalUser({ name: data.name, username: data.username, phone: data.phone })
       showToast('success', 'Profile updated successfully.')
     } finally {
       setSavingInfo(false)
@@ -108,46 +110,58 @@ export default function Profile({ showToast }: Props) {
           </div>
 
           {activeTab === 'info' && (
-            <div className="card">
-              <div className="form-group">
-                <label>Full Name</label>
-                <input className="form-control" value={name} onChange={e => setName(e.target.value)} />
+            <>
+              <div className="card">
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Full Name</label>
+                    <input className="form-control" value={name} onChange={e => setName(e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label>Username</label>
+                    <input className="form-control" value={username} onChange={e => setUsername(e.target.value)} placeholder="Nickname used to sign in" />
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label>Phone Number</label>
+                  <PhoneInput value={phone} onChange={setPhone} />
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Role</label>
+                    <input className="form-control" value={user?.role.replace(/_/g, ' ') ?? ''} disabled style={{ opacity: 0.6 }} />
+                  </div>
+                  <div className="form-group">
+                    <label>Department</label>
+                    <input className="form-control" value={user?.department ?? ''} disabled style={{ opacity: 0.6 }} />
+                  </div>
+                </div>
+                <button className="btn btn-primary" onClick={saveInfo} disabled={savingInfo} style={{ alignSelf: 'flex-start' }}>
+                  {savingInfo ? 'Saving…' : 'Save Changes'}
+                </button>
               </div>
-              <div className="form-group">
-                <label>Phone Number</label>
-                <PhoneInput value={phone} onChange={setPhone} />
-              </div>
-              <div className="form-group">
-                <label>Role</label>
-                <input className="form-control" value={user?.role.replace(/_/g, ' ') ?? ''} disabled style={{ opacity: 0.6 }} />
-              </div>
-              <div className="form-group">
-                <label>Department</label>
-                <input className="form-control" value={user?.department ?? ''} disabled style={{ opacity: 0.6 }} />
-              </div>
-              <button className="btn btn-primary" onClick={saveInfo} disabled={savingInfo}>
-                {savingInfo ? 'Saving…' : 'Save Changes'}
-              </button>
 
-              <hr style={{ margin: '1.5rem 0', border: 'none', borderTop: '1px solid var(--border)' }} />
-
-              <h3 style={{ marginBottom: '0.75rem' }}>Change Email Address</h3>
-              <div className="form-group">
-                <label>Current Email</label>
-                <input className="form-control" value={user?.email ?? ''} disabled style={{ opacity: 0.6 }} />
+              <div className="card">
+                <h3>Change Email Address</h3>
+                <div className="form-group">
+                  <label>Current Email</label>
+                  <input className="form-control" value={user?.email ?? ''} disabled style={{ opacity: 0.6 }} />
+                </div>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>New Email Address</label>
+                    <input type="email" className="form-control" value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="new@example.com" />
+                  </div>
+                  <div className="form-group">
+                    <label>Confirm Current Password</label>
+                    <input type="password" className="form-control" value={emailPwd} onChange={e => setEmailPwd(e.target.value)} placeholder="Required to confirm this change" />
+                  </div>
+                </div>
+                <button className="btn btn-primary" onClick={changeEmail} disabled={savingEmail} style={{ alignSelf: 'flex-start' }}>
+                  {savingEmail ? 'Updating…' : 'Update Email'}
+                </button>
               </div>
-              <div className="form-group">
-                <label>New Email Address</label>
-                <input type="email" className="form-control" value={newEmail} onChange={e => setNewEmail(e.target.value)} placeholder="new@example.com" />
-              </div>
-              <div className="form-group">
-                <label>Confirm Current Password</label>
-                <input type="password" className="form-control" value={emailPwd} onChange={e => setEmailPwd(e.target.value)} placeholder="Required to confirm this change" />
-              </div>
-              <button className="btn btn-primary" onClick={changeEmail} disabled={savingEmail}>
-                {savingEmail ? 'Updating…' : 'Update Email'}
-              </button>
-            </div>
+            </>
           )}
 
           {activeTab === 'password' && (
@@ -164,7 +178,7 @@ export default function Profile({ showToast }: Props) {
                 <label>Confirm New Password</label>
                 <input type="password" className="form-control" value={confirmPwd} onChange={e => setConfirmPwd(e.target.value)} />
               </div>
-              <button className="btn btn-primary" onClick={changePwd} disabled={savingPwd}>
+              <button className="btn btn-primary" onClick={changePwd} disabled={savingPwd} style={{ alignSelf: 'flex-start' }}>
                 {savingPwd ? 'Changing…' : 'Change Password'}
               </button>
             </div>
@@ -172,7 +186,7 @@ export default function Profile({ showToast }: Props) {
 
           {activeTab === 'notifications' && (
             <div className="card" style={{ maxWidth: 480 }}>
-              <h3 style={{ marginBottom: '1.5rem' }}>Notification Preferences</h3>
+              <h3>Notification Preferences</h3>
               {[
                 ['Email me on new policy', true],
                 ['Email me on claim submission', true],
@@ -185,7 +199,7 @@ export default function Profile({ showToast }: Props) {
                   <label htmlFor={label as string} style={{ marginBottom: 0, cursor: 'pointer' }}>{label as string}</label>
                 </div>
               ))}
-              <button className="btn btn-primary" style={{ marginTop: '1rem' }} onClick={() => showToast('success', 'Notification preferences saved.')}>
+              <button className="btn btn-primary" style={{ alignSelf: 'flex-start' }} onClick={() => showToast('success', 'Notification preferences saved.')}>
                 Save Preferences
               </button>
             </div>
@@ -193,7 +207,7 @@ export default function Profile({ showToast }: Props) {
 
           {activeTab === 'audit' && (
             <div className="card">
-              <h3 style={{ marginBottom: '1rem' }}>Audit Log</h3>
+              <h3>Audit Log</h3>
               <table className="table">
                 <thead>
                   <tr><th>Action</th><th>Detail</th><th>Time</th></tr>

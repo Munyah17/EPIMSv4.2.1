@@ -94,7 +94,7 @@ export const PRODUCTS: Product[] = [
   {
     id: 'p1',
     name: 'Funeral Cover Basic',
-    code: 'FUN-001',
+    code: 'FUN001',
     category: 'funeral',
     premium: 5.00,
     coverAmount: 3000,
@@ -110,7 +110,7 @@ export const PRODUCTS: Product[] = [
   {
     id: 'p2',
     name: 'Funeral Cover Premium',
-    code: 'FUN-002',
+    code: 'FUN002',
     category: 'funeral',
     premium: 12.00,
     coverAmount: 8000,
@@ -126,7 +126,7 @@ export const PRODUCTS: Product[] = [
   {
     id: 'p3',
     name: 'Life Cover Essential',
-    code: 'LIF-001',
+    code: 'LIF001',
     category: 'life',
     premium: 10.00,
     coverAmount: 10000,
@@ -142,7 +142,7 @@ export const PRODUCTS: Product[] = [
   {
     id: 'p4',
     name: 'Hospital Cash Plan',
-    code: 'HCP-001',
+    code: 'HCP001',
     category: 'health',
     premium: 8.00,
     coverAmount: 50,
@@ -158,7 +158,7 @@ export const PRODUCTS: Product[] = [
   {
     id: 'p5',
     name: 'Personal Accident Cover',
-    code: 'PAC-001',
+    code: 'PAC001',
     category: 'accident',
     premium: 3.00,
     coverAmount: 5000,
@@ -174,7 +174,7 @@ export const PRODUCTS: Product[] = [
   {
     id: 'p6',
     name: 'Group Funeral Scheme',
-    code: 'GFS-001',
+    code: 'GFS001',
     category: 'funeral',
     premium: 3.50,
     coverAmount: 4000,

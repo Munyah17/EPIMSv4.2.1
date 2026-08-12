@@ -20,11 +20,30 @@ const STAFF_ROLES = ['admin', 'claims_officer', 'policy_admin', 'finance', 'clie
 
 interface CreateStaffBody {
   name: string
+  username?: string
   email: string
   password: string
   phone?: string
   role: string
   department: string
+}
+
+/** Next free "Agent N" / "Admin N" default for a role's group, so a blank
+ *  username field still gets something usable — matches the convention
+ *  used to backfill existing accounts (see database/reset_default_usernames.sql). */
+async function nextDefaultUsername(admin: ReturnType<typeof createClient>, role: string): Promise<string> {
+  const group = role === 'super_admin' || role === 'admin' ? 'Admin'
+    : role === 'policyholder' ? 'User'
+    : 'Agent'
+  const { data } = await admin
+    .from('profiles')
+    .select('username')
+    .ilike('username', `${group} %`)
+  const maxN = (data ?? []).reduce((max, row) => {
+    const n = parseInt(String(row.username).slice(group.length + 1), 10)
+    return Number.isFinite(n) && n > max ? n : max
+  }, 0)
+  return `${group} ${maxN + 1}`
 }
 
 export const handler: Handler = async (event) => {
@@ -89,6 +108,12 @@ export const handler: Handler = async (event) => {
 
   if (body.phone) {
     await admin.from('profiles').update({ phone: body.phone }).eq('id', created.user.id)
+  }
+
+  const username = body.username?.trim() || await nextDefaultUsername(admin, body.role)
+  const { error: usernameError } = await admin.from('profiles').update({ username }).eq('id', created.user.id)
+  if (usernameError) {
+    return { statusCode: 400, body: JSON.stringify({ error: usernameError.code === '23505' ? 'That username is already taken.' : usernameError.message }) }
   }
 
   const { data: profile } = await admin.from('profiles').select('*').eq('id', created.user.id).single()
