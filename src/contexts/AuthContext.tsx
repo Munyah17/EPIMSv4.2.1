@@ -6,8 +6,12 @@ interface AuthContextValue {
   user: AppUser | null
   loading: boolean
   /** `identifier` may be an email address or a staff member's username —
-   *  whichever the single login field was given. */
-  login: (identifier: string, password: string) => Promise<boolean>
+   *  whichever the single login field was given. Returns the freshly
+   *  fetched profile (the authoritative role source — profiles.role, not
+   *  the JWT's user_metadata.role, which can be stale) so callers that
+   *  need to gate on role (AdminLogin, SuperAdminLogin) don't have to
+   *  re-derive it from a separate, racy supabase.auth.getSession() call. */
+  login: (identifier: string, password: string) => Promise<AppUser | null>
   logout: () => Promise<void>
   hasPermission: (permission: string) => boolean
   canAccess: (panel: string) => boolean
@@ -131,9 +135,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe()
   }, [])
 
-  const login = useCallback(async (identifier: string, password: string): Promise<boolean> => {
+  const login = useCallback(async (identifier: string, password: string): Promise<AppUser | null> => {
     return withTimeout((async () => {
-      let ok = false
+      let result: AppUser | null = null
       const trimmed = identifier.trim()
       // A bare email is used as-is; anything else (a username) is resolved
       // to its email server-side, since profiles isn't readable pre-auth.
@@ -143,7 +147,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const { data: resolved } = await supabase.rpc('resolve_login_email', { p_identifier: trimmed })
           if (!resolved) {
             void supabase.from('login_attempts').insert({ email: trimmed.toLowerCase(), success: false }).then(() => {})
-            return false
+            return null
           }
           email = resolved as string
         }
@@ -153,21 +157,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           const profile = await fetchProfile(data.user.id, data.user.email ?? email, meta)
           if (profile && profile.active) {
             setUser(profile)
-            ok = true
+            result = profile
           } else {
             await supabase.auth.signOut().catch(() => {})
           }
         }
       } catch {
-        // fall through — ok stays false
+        // fall through — result stays null
       }
       // Direct insert (not via db.ts) so this always-loaded auth module
       // doesn't drag the whole data layer + Supabase SDK into the eager
       // bundle — everything else in the app reaches Supabase through
       // lazy-loaded pages, only auth is loaded up front.
-      void supabase.from('login_attempts').insert({ email: email.toLowerCase(), success: ok }).then(() => {})
-      return ok
-    })(), 15000, false)
+      void supabase.from('login_attempts').insert({ email: email.toLowerCase(), success: !!result }).then(() => {})
+      return result
+    })(), 15000, null)
   }, [])
 
   const logout = useCallback(async () => {

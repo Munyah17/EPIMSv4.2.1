@@ -16,12 +16,16 @@ export default function AdminLogin() {
     e.preventDefault()
     setError('')
     setLoading(true)
-    const ok = await login(email, password)
+    // Gate on the profile login() already fetched (profiles.role — the
+    // authoritative source) rather than a second, separate
+    // supabase.auth.getSession() call: that re-read the JWT's
+    // user_metadata.role right after sign-in and would occasionally see a
+    // not-yet-settled session, signing the user straight back out a moment
+    // after a genuinely successful login.
+    const profile = await login(email, password)
     setLoading(false)
-    if (ok) {
-      const { data: { session } } = await supabase.auth.getSession()
-      const role = session?.user?.user_metadata?.role
-      if (role === 'admin') {
+    if (profile) {
+      if (profile.role === 'admin') {
         navigate('/', { replace: true })
       } else {
         await supabase.auth.signOut()
