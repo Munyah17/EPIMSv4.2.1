@@ -124,7 +124,11 @@ export default function BillingReminders({ showToast }: Props) {
                         <span className="billing-schedule-label">{item.label}</span>
                         <span className="billing-schedule-desc">{item.desc}</span>
                       </div>
-                      {isActive && <span className="pill pill-active" style={{ fontSize: 10 }}>TODAY</span>}
+                      {isActive ? (
+                        <span className="pill pill-active" style={{ fontSize: 10 }}>TODAY</span>
+                      ) : (
+                        <span className="billing-schedule-desc" style={{ fontSize: 10, whiteSpace: 'nowrap' }}>Day {item.days}</span>
+                      )}
                     </div>
                   )
                 })}

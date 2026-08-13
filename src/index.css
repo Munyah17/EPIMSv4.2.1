@@ -958,12 +958,16 @@ textarea.form-control{resize:vertical;min-height:80px}
 
 /* ── BILLING & REMINDERS ── */
 .billing-schedule{display:flex;flex-direction:column;gap:0;border:1px solid var(--border);border-radius:9px;overflow:hidden}
-.billing-schedule-row{display:grid;grid-template-columns:40px 80px 1fr auto;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid var(--border);font-size:12px}
+.billing-schedule-row{display:grid;grid-template-columns:36px 1fr auto;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border);font-size:12px;transition:background 0.15s ease}
 .billing-schedule-row:last-child{border-bottom:none}
-.billing-schedule-row.active-row{background:var(--blue-light)}
-.billing-schedule-dot{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
-.billing-schedule-when{font-size:10px;color:var(--muted);white-space:nowrap}
-.billing-schedule-desc{color:var(--text);line-height:1.4}
+.billing-schedule-row:hover{background:var(--surface)}
+.billing-schedule-row.active{background:var(--blue-light)}
+.billing-schedule-row.active:hover{background:var(--blue-light)}
+.billing-schedule-icon{width:32px;height:32px;border-radius:50%;background:var(--surface);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0}
+.billing-schedule-row.active .billing-schedule-icon{background:white}
+.billing-schedule-info{display:flex;flex-direction:column;gap:2px;min-width:0}
+.billing-schedule-label{font-weight:600;color:var(--text)}
+.billing-schedule-desc{color:var(--muted);font-size:11px;line-height:1.4}
 .sidebar-nav{flex:1;padding:7px 0;overflow-y:auto}
 .sidebar-nav::-webkit-scrollbar{width:0}
 .sidebar-user{display:flex;align-items:center;gap:9px;padding:11px 14px;border-top:1px solid rgba(255,255,255,0.08)}
