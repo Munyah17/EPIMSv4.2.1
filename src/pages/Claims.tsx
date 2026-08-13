@@ -157,6 +157,7 @@ export default function Claims({ showToast }: Props) {
           claim={reviewClaim}
           onClose={() => setReviewClaim(null)}
           onSave={handleUpdate}
+          showToast={showToast}
         />
       )}
     </div>

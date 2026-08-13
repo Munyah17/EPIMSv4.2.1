@@ -104,6 +104,10 @@ export interface Policy {
   insurer?: Insurer
   /** Agriculture policies only — the grower's registration number with the insurer. */
   growerNumber?: string
+  /** Farm/field location, captured at registration or via the pre-loss
+   *  assessment — agriculture policies only. */
+  gpsLat?: number
+  gpsLng?: number
   agentId?: string
   agentName?: string
   createdAt: string
@@ -146,6 +150,10 @@ export interface Claim {
   amount: number
   status: ClaimStatus
   stage: ClaimStage
+  /** Denormalized from the policy's product at claim creation — lets the UI
+   *  know it's an agriculture claim (and therefore needs a physical
+   *  assessment before final review) without an extra product lookup. */
+  category?: string
   dateOfEvent: string
   dateSubmitted: string
   description: string
@@ -363,5 +371,72 @@ export interface ChatMessage {
   senderType: 'visitor' | 'agent' | 'system'
   senderName: string
   body: string
+  createdAt: string
+}
+
+/** A single photo captured during an assessment, plus whatever we could
+ *  determine about when it was actually taken — the core of the "must
+ *  never be more than 3 days old" fraud check. */
+export interface AssessmentPhoto {
+  path: string
+  label: string
+  /** From the file's EXIF DateTimeOriginal, when readable. */
+  exifDate?: string
+  /** A visible burned-in date stamp the AI read off the image itself
+   *  (common on camera apps that overlay a date on the photo). */
+  visibleDateStamp?: string
+  /** Freeform note from the AI vision pass — content match, staging
+   *  concerns, inconsistencies between EXIF/visible date and today. */
+  aiNote?: string
+  aiFlagged?: boolean
+  capturedAt: string
+}
+
+export type AssessmentSyncStatus = 'synced' | 'pending_sync'
+
+/** Post-loss physical assessment — an Assessor's site visit for an
+ *  agriculture claim, required before it can be escalated to final review.
+ *  Captured largely offline-first (see src/lib/offlineQueue.ts) since
+ *  assessors are often on farms with no signal. */
+export interface ClaimAssessment {
+  id: string
+  claimId: string
+  claimNumber: string
+  assessorId: string
+  assessorName: string
+  descriptionOfLoss: string
+  photos: AssessmentPhoto[]
+  assessorComments: string
+  gpsLat?: number
+  gpsLng?: number
+  cropPopulation?: string
+  cropStage?: string
+  barnCapacity?: string
+  farmerSignature?: string
+  assessorSignature?: string
+  farmerSelfie?: string
+  submittedAt?: string
+  syncStatus: AssessmentSyncStatus
+  createdAt: string
+}
+
+/** Pre-loss baseline captured when an agriculture policy is registered —
+ *  establishes what's actually on the farm before any claim exists, so a
+ *  later claim can be checked against it (a claim for a crop that was
+ *  never recorded as planted is an obvious red flag). */
+export interface PolicyAssessment {
+  id: string
+  policyId: string
+  policyNumber: string
+  assessorId: string
+  assessorName: string
+  cropType: string
+  cropPopulation?: string
+  plantDate?: string
+  photos: AssessmentPhoto[]
+  notes: string
+  gpsLat?: number
+  gpsLng?: number
+  syncStatus: AssessmentSyncStatus
   createdAt: string
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import type { Claim, Policy, Client } from '../../types'
+import type { Claim, Policy, Client, Product } from '../../types'
 import { db } from '../../lib/db'
 import { scoreClaimFraud } from '../../lib/aiService'
 import { uploadDocument, deleteDocument, ACCEPTED_DOCUMENT_TYPES } from '../../lib/storage'
@@ -19,6 +19,7 @@ interface DocSlot {
 
 export default function NewClaimModal({ onClose, onSave, showToast }: Props) {
   const [policies, setPolicies] = useState<Policy[]>([])
+  const [products, setProducts] = useState<Product[]>([])
   const [allClaims, setAllClaims] = useState<Claim[]>([])
   const [loading, setLoading] = useState(true)
   const [policyNumberInput, setPolicyNumberInput] = useState('')
@@ -40,15 +41,17 @@ export default function NewClaimModal({ onClose, onSave, showToast }: Props) {
   const [draftId] = useState(() => `cl${Date.now()}`)
 
   useEffect(() => {
-    Promise.all([db.policies.list(), db.claims.list()]).then(([polRes, claimRes]) => {
+    Promise.all([db.policies.list(), db.claims.list(), db.products.list()]).then(([polRes, claimRes, prodRes]) => {
       if (polRes.data) setPolicies(polRes.data)
       if (claimRes.data) setAllClaims(claimRes.data)
+      if (prodRes.data) setProducts(prodRes.data)
       setLoading(false)
     })
   }, [])
 
   const policy = policies.find(p => p.policyNumber.toLowerCase() === policyNumberInput.trim().toLowerCase())
   const policyId = policy?.id ?? ''
+  const category = products.find(p => p.id === policy?.productId)?.category ?? ''
   const [client, setClient] = useState<Client | null>(null)
 
   // Auto-fill amount and client details when a policy is matched
@@ -130,6 +133,7 @@ export default function NewClaimModal({ onClose, onSave, showToast }: Props) {
         amount: Number(amount),
         status: 'pending',
         stage: 'intake',
+        category: category || undefined,
         agentId: policy.agentId,
         agentName: policy.agentName,
         dateOfEvent,

@@ -6,6 +6,7 @@ import type {
   Ticket, EmailMessage, Lead, FraudCase, Reminder, CautionFlag,
   PolicyStatus, ClaimStatus, PaymentStatus, PaymentMethod,
   TicketStatus, TicketPriority, LeadStatus, FraudCaseStatus, CustomRole,
+  ClaimAssessment, PolicyAssessment, AssessmentPhoto,
 } from '../types'
 
 // ── helpers ───────────────────────────────────────────────────────
@@ -129,6 +130,8 @@ function toPolicy(r: any): Policy {
     paymentMethod:   r.payment_method,
     insurer:         r.insurer ?? undefined,
     growerNumber:    r.grower_number ?? undefined,
+    gpsLat:          r.gps_lat ?? undefined,
+    gpsLng:          r.gps_lng ?? undefined,
     agentId:         r.profiles?.id ?? r.agent_id,
     agentName:       r.profiles?.name,
     createdAt:       date(r.created_at),
@@ -152,6 +155,7 @@ function toClaim(r: any): Claim {
     amount:        r.amount,
     status:        r.status as ClaimStatus,
     stage:         (r.stage as Claim['stage']) ?? 'intake',
+    category:      r.category ?? pol?.products?.category ?? undefined,
     dateOfEvent:   date(r.date_of_event),
     dateSubmitted: date(r.date_submitted),
     description:   r.description ?? '',
@@ -295,20 +299,20 @@ function toCautionFlag(r: any): CautionFlag {
 const POLICY_SELECT = `
   id, policy_number, client_id, product_id, premium, cover_amount,
   start_date, end_date, status, dependants, payment_method, insurer,
-  grower_number, agent_id, next_payment_date, last_payment_date, created_at,
+  grower_number, gps_lat, gps_lng, agent_id, next_payment_date, last_payment_date, created_at,
   clients!client_id(id, name),
   products!product_id(id, name),
   profiles!agent_id(id, name)
 `
 const CLAIM_SELECT = `
   id, claim_number, policy_id, claim_type, amount, status,
-  stage, assessment_notes, agent_id,
+  stage, assessment_notes, agent_id, category,
   date_of_event, date_submitted, description, fraud_score,
   assigned_to, documents, notes, resolved_at, created_at,
   policies!policy_id(
     id, policy_number,
     clients!client_id(id, name),
-    products!product_id(name)
+    products!product_id(name, category)
   ),
   assignee:profiles!assigned_to(id, name),
   agent:profiles!agent_id(id, name)
@@ -371,6 +375,7 @@ export const policies = {
       end_date: policy.endDate, status: policy.status,
       dependants: policy.dependants, payment_method: policy.paymentMethod,
       insurer: policy.insurer ?? null, grower_number: policy.growerNumber ?? null,
+      gps_lat: policy.gpsLat ?? null, gps_lng: policy.gpsLng ?? null,
       agent_id: policy.agentId ?? null, next_payment_date: policy.nextPaymentDate ?? null,
     }
     const { ok, data } = await sb('policies', 'write',
@@ -388,6 +393,8 @@ export const policies = {
     if (updates.paymentMethod)                       row.payment_method     = updates.paymentMethod
     if (updates.insurer !== undefined)               row.insurer            = updates.insurer ?? null
     if (updates.growerNumber !== undefined)          row.grower_number      = updates.growerNumber ?? null
+    if (updates.gpsLat !== undefined)                row.gps_lat            = updates.gpsLat ?? null
+    if (updates.gpsLng !== undefined)                row.gps_lng            = updates.gpsLng ?? null
     if (updates.nextPaymentDate !== undefined)        row.next_payment_date  = updates.nextPaymentDate ?? null
     if (updates.dependants)                          row.dependants         = updates.dependants
     if (updates.premium !== undefined)               row.premium            = updates.premium
@@ -566,7 +573,7 @@ export const claims = {
     const row = {
       claim_number: claimNumber, policy_id: claim.policyId,
       claim_type: claim.claimType, amount: claim.amount, status: claim.status,
-      stage: claim.stage ?? 'intake', agent_id: claim.agentId ?? null,
+      stage: claim.stage ?? 'intake', agent_id: claim.agentId ?? null, category: claim.category ?? null,
       date_of_event: claim.dateOfEvent, date_submitted: claim.dateSubmitted,
       description: claim.description, fraud_score: claim.fraudScore, documents: claim.documents,
     }
@@ -686,6 +693,113 @@ export const payments = {
     }
     local('payments', 'write')
     return { data: localStore.payments.update(id, updates), error: null }
+  },
+}
+
+// ── AGRICULTURE ASSESSMENTS ─────────────────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toClaimAssessment(r: any): ClaimAssessment {
+  return {
+    id:                 r.id,
+    claimId:            r.claim_id,
+    claimNumber:        r.claims?.claim_number ?? '',
+    assessorId:         r.assessor_id ?? '',
+    assessorName:       r.profiles?.name ?? '',
+    descriptionOfLoss:  r.description_of_loss ?? '',
+    photos:             (r.photos as AssessmentPhoto[]) ?? [],
+    assessorComments:   r.assessor_comments ?? '',
+    gpsLat:             r.gps_lat ?? undefined,
+    gpsLng:             r.gps_lng ?? undefined,
+    cropPopulation:     r.crop_population ?? undefined,
+    cropStage:          r.crop_stage ?? undefined,
+    barnCapacity:       r.barn_capacity ?? undefined,
+    farmerSignature:    r.farmer_signature ?? undefined,
+    assessorSignature:  r.assessor_signature ?? undefined,
+    farmerSelfie:       r.farmer_selfie ?? undefined,
+    submittedAt:        r.submitted_at ?? undefined,
+    syncStatus:         r.sync_status ?? 'synced',
+    createdAt:          r.created_at,
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toPolicyAssessment(r: any): PolicyAssessment {
+  return {
+    id:               r.id,
+    policyId:         r.policy_id,
+    policyNumber:     r.policies?.policy_number ?? '',
+    assessorId:       r.assessor_id ?? '',
+    assessorName:     r.profiles?.name ?? '',
+    cropType:         r.crop_type ?? '',
+    cropPopulation:   r.crop_population ?? undefined,
+    plantDate:        r.plant_date ?? undefined,
+    photos:           (r.photos as AssessmentPhoto[]) ?? [],
+    notes:            r.notes ?? '',
+    gpsLat:           r.gps_lat ?? undefined,
+    gpsLng:           r.gps_lng ?? undefined,
+    syncStatus:       r.sync_status ?? 'synced',
+    createdAt:        r.created_at,
+  }
+}
+
+const CLAIM_ASSESSMENT_SELECT = `
+  id, claim_id, assessor_id, description_of_loss, photos, assessor_comments,
+  gps_lat, gps_lng, crop_population, crop_stage, barn_capacity,
+  farmer_signature, assessor_signature, farmer_selfie, submitted_at, sync_status, created_at,
+  claims!claim_id(claim_number),
+  profiles!assessor_id(name)
+`
+const POLICY_ASSESSMENT_SELECT = `
+  id, policy_id, assessor_id, crop_type, crop_population, plant_date, photos, notes,
+  gps_lat, gps_lng, sync_status, created_at,
+  policies!policy_id(policy_number),
+  profiles!assessor_id(name)
+`
+
+export const claimAssessments = {
+  async listForClaim(claimId: string) {
+    const { ok, data } = await sb('claim_assessments', 'read',
+      () => supabase.from('claim_assessments').select(CLAIM_ASSESSMENT_SELECT).eq('claim_id', claimId).order('created_at', { ascending: false }),
+      d => Array.isArray(d),
+    )
+    if (ok && data) return { data: (data as unknown[]).map(toClaimAssessment), error: null }
+    return { data: [], error: null }
+  },
+
+  async create(a: Omit<ClaimAssessment, 'id' | 'claimNumber' | 'assessorName' | 'createdAt'>) {
+    const row = {
+      claim_id: a.claimId, assessor_id: a.assessorId || null,
+      description_of_loss: a.descriptionOfLoss, photos: a.photos,
+      assessor_comments: a.assessorComments, gps_lat: a.gpsLat ?? null, gps_lng: a.gpsLng ?? null,
+      crop_population: a.cropPopulation ?? null, crop_stage: a.cropStage ?? null, barn_capacity: a.barnCapacity ?? null,
+      farmer_signature: a.farmerSignature ?? null, assessor_signature: a.assessorSignature ?? null,
+      farmer_selfie: a.farmerSelfie ?? null, submitted_at: a.submittedAt ?? null, sync_status: a.syncStatus,
+    }
+    const { data, error } = await supabase.from('claim_assessments').insert(row).select(CLAIM_ASSESSMENT_SELECT).single()
+    if (error) return { data: null, error: error.message }
+    return { data: toClaimAssessment(data), error: null }
+  },
+}
+
+export const policyAssessments = {
+  async listForPolicy(policyId: string) {
+    const { ok, data } = await sb('policy_assessments', 'read',
+      () => supabase.from('policy_assessments').select(POLICY_ASSESSMENT_SELECT).eq('policy_id', policyId).order('created_at', { ascending: false }),
+      d => Array.isArray(d),
+    )
+    if (ok && data) return { data: (data as unknown[]).map(toPolicyAssessment), error: null }
+    return { data: [], error: null }
+  },
+
+  async create(a: Omit<PolicyAssessment, 'id' | 'policyNumber' | 'assessorName' | 'createdAt'>) {
+    const row = {
+      policy_id: a.policyId, assessor_id: a.assessorId || null,
+      crop_type: a.cropType, crop_population: a.cropPopulation ?? null, plant_date: a.plantDate || null,
+      photos: a.photos, notes: a.notes, gps_lat: a.gpsLat ?? null, gps_lng: a.gpsLng ?? null, sync_status: a.syncStatus,
+    }
+    const { data, error } = await supabase.from('policy_assessments').insert(row).select(POLICY_ASSESSMENT_SELECT).single()
+    if (error) return { data: null, error: error.message }
+    return { data: toPolicyAssessment(data), error: null }
   },
 }
 
@@ -1463,7 +1577,7 @@ export function subscribeToTable(table: string, callback: () => void) {
 export const db = {
   policies, clients, products, claims, payments,
   tickets, emails, leads, staff, fraudCases, reminders, cautionFlags, settings, loginAttempts, developerApi,
-  customRoles,
+  customRoles, claimAssessments, policyAssessments,
   dashboardStats, sidebarCounts,
   subscribeToTable,
   resetLocalData: () => localStore.reset(),

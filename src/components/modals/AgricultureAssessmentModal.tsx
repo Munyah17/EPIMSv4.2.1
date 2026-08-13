@@ -1,0 +1,186 @@
+import { useState } from 'react'
+import type { AssessmentPhoto } from '../../types'
+import { useAuth } from '../../contexts/AuthContext'
+import { db } from '../../lib/db'
+import { getCurrentCoordinates } from '../../lib/geolocation'
+import { queueAssessment } from '../../lib/offlineQueue'
+import { fileToBase64 } from '../../lib/photoAnalysis'
+import PhotoCaptureField from '../ui/PhotoCaptureField'
+import SignaturePad from '../ui/SignaturePad'
+
+interface Props {
+  claimId: string
+  claimNumber: string
+  claimDescription: string
+  onClose: () => void
+  onSubmitted: () => void
+  showToast: (type: 'success' | 'error' | 'warning' | 'info', message: string) => void
+}
+
+const PHOTO_SLOTS = ['Barn (exterior)', 'Barn (interior)', 'Crop damage — wide shot', 'Crop damage — close-up']
+
+export default function AgricultureAssessmentModal({ claimId, claimNumber, claimDescription, onClose, onSubmitted, showToast }: Props) {
+  const { user } = useAuth()
+  const [descriptionOfLoss, setDescriptionOfLoss] = useState('')
+  const [photos, setPhotos] = useState<Record<string, AssessmentPhoto | undefined>>({})
+  const [extraPhotoLabels, setExtraPhotoLabels] = useState<string[]>([])
+  const [assessorComments, setAssessorComments] = useState('')
+  const [gpsLat, setGpsLat] = useState<number | undefined>(undefined)
+  const [gpsLng, setGpsLng] = useState<number | undefined>(undefined)
+  const [gpsBusy, setGpsBusy] = useState(false)
+  const [cropPopulation, setCropPopulation] = useState('')
+  const [cropStage, setCropStage] = useState('')
+  const [barnCapacity, setBarnCapacity] = useState('')
+  const [farmerSignature, setFarmerSignature] = useState<string | undefined>()
+  const [assessorSignature, setAssessorSignature] = useState<string | undefined>()
+  const [farmerSelfie, setFarmerSelfie] = useState<AssessmentPhoto | undefined>()
+  const [submitting, setSubmitting] = useState(false)
+  const [offlinePending, setOfflinePending] = useState<{ label: string; file: File }[]>([])
+
+  const allSlots = [...PHOTO_SLOTS, ...extraPhotoLabels]
+  const photoCount = Object.values(photos).filter(Boolean).length + offlinePending.length
+  const canSubmit = descriptionOfLoss.trim().length > 0 && photoCount > 0 && farmerSignature && assessorSignature && !submitting
+
+  const captureGps = async () => {
+    setGpsBusy(true)
+    const coords = await getCurrentCoordinates()
+    setGpsBusy(false)
+    if (!coords) { showToast('warning', 'Could not get GPS coordinates — enter them manually if needed.'); return }
+    setGpsLat(coords.lat)
+    setGpsLng(coords.lng)
+  }
+
+  const addExtraSlot = () => {
+    setExtraPhotoLabels(prev => [...prev, `Additional Photo ${prev.length + 1}`])
+  }
+
+  const handleOfflineCapture = (file: File, label: string) => {
+    setOfflinePending(prev => [...prev, { label, file }])
+    showToast('warning', `No connection — "${label}" saved on this device and will upload automatically once you're back online.`)
+  }
+
+  const handleSubmit = async () => {
+    if (!canSubmit || !user) return
+    setSubmitting(true)
+
+    const uploadedPhotos = Object.values(photos).filter((p): p is AssessmentPhoto => !!p)
+    if (farmerSelfie) uploadedPhotos.push(farmerSelfie)
+
+    if (!navigator.onLine || offlinePending.length > 0) {
+      // Whole assessment goes into the offline queue together — some
+      // photos may already be uploaded (online ones), the rest travel as
+      // raw files and get uploaded when the queue flushes.
+      const pendingPhotos = await Promise.all(offlinePending.map(async ({ label, file }) => ({
+        label, base64: await fileToBase64(file), mediaType: file.type, fileName: file.name, capturedAt: new Date().toISOString(),
+      })))
+      queueAssessment('claim', claimId, {
+        assessorId: user.id, descriptionOfLoss, assessorComments,
+        gpsLat, gpsLng, cropPopulation, cropStage, barnCapacity,
+        farmerSignature, assessorSignature, farmerSelfie: farmerSelfie?.path,
+        _alreadyUploadedPhotos: uploadedPhotos,
+      }, pendingPhotos)
+      showToast('success', 'Assessment saved on this device — it will sync automatically once you\'re back online.')
+      setSubmitting(false)
+      onSubmitted()
+      return
+    }
+
+    const { error } = await db.claimAssessments.create({
+      claimId,
+      assessorId: user.id,
+      descriptionOfLoss,
+      photos: uploadedPhotos,
+      assessorComments,
+      gpsLat, gpsLng, cropPopulation, cropStage, barnCapacity,
+      farmerSignature, assessorSignature, farmerSelfie: farmerSelfie?.path,
+      submittedAt: new Date().toISOString(),
+      syncStatus: 'synced',
+    })
+    setSubmitting(false)
+    if (error) { showToast('error', error); return }
+    showToast('success', 'Physical assessment submitted.')
+    onSubmitted()
+  }
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal" style={{ maxWidth: 720 }}>
+        <div className="modal-header">
+          <h3>Physical Assessment — {claimNumber}</h3>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          <div className="info-banner info-banner-warning" style={{ marginBottom: '1rem' }}>
+            Agriculture claims require a physical site visit before they can go to final review. Photos must be no more than 3 days old — this is checked automatically from each photo's date metadata and, where available, a visible on-image date stamp.
+          </div>
+
+          <div className="form-group">
+            <label>Description of Loss (if no other proof) *</label>
+            <textarea className="form-control" rows={3} value={descriptionOfLoss} onChange={e => setDescriptionOfLoss(e.target.value)} placeholder="Describe what happened and what you observed on site…" />
+          </div>
+
+          <label style={{ display: 'block', margin: '1rem 0 6px', fontSize: 13, fontWeight: 600 }}>Photos</label>
+          {allSlots.map(slot => (
+            <PhotoCaptureField
+              key={slot}
+              label={slot}
+              folder="claims"
+              recordId={claimId}
+              claimDescription={claimDescription}
+              value={photos[slot]}
+              onChange={p => setPhotos(prev => ({ ...prev, [slot]: p }))}
+              onOfflineCapture={handleOfflineCapture}
+            />
+          ))}
+          <button type="button" className="btn btn-ghost btn-sm" onClick={addExtraSlot}>+ Add Another Photo</button>
+
+          <div className="form-group" style={{ marginTop: '1rem' }}>
+            <label>Assessor's Comments (after reviewing the photos)</label>
+            <textarea className="form-control" rows={3} value={assessorComments} onChange={e => setAssessorComments(e.target.value)} placeholder="Your analysis of the damage and evidence…" />
+          </div>
+
+          <div className="form-row">
+            <div className="form-group">
+              <label>Crop Population <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(e.g. 15,000 plants/ha)</span></label>
+              <input className="form-control" value={cropPopulation} onChange={e => setCropPopulation(e.target.value)} placeholder="e.g. 15000 plants/ha" />
+            </div>
+            <div className="form-group">
+              <label>Crop Stage <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(e.g. tobacco — leaf stage)</span></label>
+              <input className="form-control" value={cropStage} onChange={e => setCropStage(e.target.value)} placeholder="e.g. Tobacco, leaf stage" />
+            </div>
+          </div>
+          <div className="form-group">
+            <label>Barn Capacity</label>
+            <input className="form-control" value={barnCapacity} onChange={e => setBarnCapacity(e.target.value)} placeholder="e.g. 12 tonnes" />
+          </div>
+
+          <div className="form-group">
+            <label>GPS Coordinates</label>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button type="button" className="btn btn-outline btn-sm" disabled={gpsBusy} onClick={captureGps}>📍 {gpsBusy ? 'Getting location…' : 'Use Current Location'}</button>
+              {gpsLat !== undefined && gpsLng !== undefined && (
+                <span style={{ fontSize: 12, color: 'var(--muted)' }}>{gpsLat.toFixed(6)}, {gpsLng.toFixed(6)}</span>
+              )}
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label>Farmer Selfie</label>
+            <PhotoCaptureField label="Farmer Selfie" folder="claims" recordId={claimId} value={farmerSelfie} onChange={setFarmerSelfie} onOfflineCapture={handleOfflineCapture} />
+          </div>
+
+          <div className="form-row" style={{ marginTop: '1rem' }}>
+            <SignaturePad label="Farmer Signature *" onChange={setFarmerSignature} />
+            <SignaturePad label="Assessor Signature *" onChange={setAssessorSignature} />
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleSubmit} disabled={!canSubmit}>
+            {submitting ? 'Submitting…' : 'Submit Assessment'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import type { Claim, AppUser } from '../../types'
+import type { Claim, AppUser, ClaimAssessment } from '../../types'
 import { db } from '../../lib/db'
 import { formatDate } from '../../lib/dateUtils'
 import { getDocumentUrl, documentDisplayName } from '../../lib/storage'
@@ -8,6 +8,7 @@ import {
   notifyClaimIntakeAccepted, notifyClaimIntakeRejected,
   notifyClaimEscalated, notifyClaimFinalDecision,
 } from '../../lib/claimNotifications'
+import AgricultureAssessmentModal from './AgricultureAssessmentModal'
 
 interface Props {
   claim: Claim
@@ -15,6 +16,7 @@ interface Props {
   /** The modal resolves the whole transition (next claim state) itself —
    *  the parent just persists it and, on success, fires `notify`. */
   onSave: (claim: Claim, notify: () => Promise<void>) => void
+  showToast: (type: 'success' | 'error' | 'warning' | 'info', message: string) => void
 }
 
 const STAGE_LABEL: Record<Claim['stage'], string> = {
@@ -24,17 +26,26 @@ const STAGE_LABEL: Record<Claim['stage'], string> = {
   closed: 'Closed',
 }
 
-export default function ReviewClaimModal({ claim, onClose, onSave }: Props) {
+const isAgriculture = (claim: Claim) => claim.category === 'agriculture'
+
+export default function ReviewClaimModal({ claim, onClose, onSave, showToast }: Props) {
   const { hasPermission } = useAuth()
   const [notes, setNotes] = useState(claim.notes ?? '')
   const [assessmentNotes, setAssessmentNotes] = useState(claim.assessmentNotes ?? '')
   const [nextStaffId, setNextStaffId] = useState('')
   const [staff, setStaff] = useState<AppUser[]>([])
   const [busy, setBusy] = useState(false)
+  const [physicalAssessments, setPhysicalAssessments] = useState<ClaimAssessment[]>([])
+  const [showAssessmentModal, setShowAssessmentModal] = useState(false)
 
   useEffect(() => {
     db.staff.list().then(({ data }) => { if (data) setStaff(data.filter(u => u.active)) })
-  }, [])
+    if (isAgriculture(claim)) {
+      db.claimAssessments.listForClaim(claim.id).then(({ data }) => setPhysicalAssessments(data))
+    }
+  }, [claim])
+
+  const hasCompletedAssessment = physicalAssessments.some(a => !!a.submittedAt)
 
   const scoreColor = claim.fraudScore >= 70 ? 'var(--danger)' : claim.fraudScore >= 40 ? 'var(--gold)' : 'var(--teal)'
 
@@ -157,6 +168,26 @@ export default function ReviewClaimModal({ claim, onClose, onSave }: Props) {
             </div>
           )}
 
+          {claim.stage === 'assessment' && isAgriculture(claim) && (
+            <div className="claim-stage-action">
+              <label>Physical Assessment {hasCompletedAssessment ? '✓ Completed' : '(required before final review)'}</label>
+              {hasCompletedAssessment ? (
+                <p style={{ fontSize: 12, color: 'var(--success)' }}>
+                  Submitted {formatDate(physicalAssessments.find(a => a.submittedAt)?.submittedAt)} by {physicalAssessments.find(a => a.submittedAt)?.assessorName}.
+                </p>
+              ) : (
+                <p style={{ fontSize: 12, color: 'var(--muted)' }}>An Assessor must complete a site visit before this claim can go to final review.</p>
+              )}
+              {hasPermission('claims.physical_assessment') && (
+                <div className="claim-stage-action-btns">
+                  <button type="button" className="btn btn-outline btn-sm" onClick={() => setShowAssessmentModal(true)}>
+                    {hasCompletedAssessment ? 'View / Redo Assessment' : '📷 Start Physical Assessment'}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
           {claim.stage === 'assessment' && hasPermission('claims.assess') && (
             <div className="claim-stage-action">
               <label>Assessment Notes</label>
@@ -166,8 +197,11 @@ export default function ReviewClaimModal({ claim, onClose, onSave }: Props) {
                 <option value="">Select final reviewer…</option>
                 {staff.map(s => <option key={s.id} value={s.id}>{s.name} ({s.role.replace(/_/g, ' ')})</option>)}
               </select>
+              {isAgriculture(claim) && !hasCompletedAssessment && (
+                <p style={{ fontSize: 11, color: 'var(--danger)', marginTop: 4 }}>Complete the physical assessment above before escalating.</p>
+              )}
               <div className="claim-stage-action-btns">
-                <button type="button" className="btn btn-primary btn-sm" disabled={busy || !nextStaffId} onClick={escalateToFinalReview}>Submit for Final Review</button>
+                <button type="button" className="btn btn-primary btn-sm" disabled={busy || !nextStaffId || (isAgriculture(claim) && !hasCompletedAssessment)} onClick={escalateToFinalReview}>Submit for Final Review</button>
               </div>
             </div>
           )}
@@ -191,6 +225,19 @@ export default function ReviewClaimModal({ claim, onClose, onSave }: Props) {
           <button className="btn btn-primary" onClick={saveNotesOnly} disabled={busy}>Save Notes</button>
         </div>
       </div>
+      {showAssessmentModal && (
+        <AgricultureAssessmentModal
+          claimId={claim.id}
+          claimNumber={claim.claimNumber}
+          claimDescription={claim.description}
+          onClose={() => setShowAssessmentModal(false)}
+          onSubmitted={() => {
+            setShowAssessmentModal(false)
+            db.claimAssessments.listForClaim(claim.id).then(({ data }) => setPhysicalAssessments(data))
+          }}
+          showToast={showToast}
+        />
+      )}
     </div>
   )
 }

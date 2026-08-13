@@ -698,6 +698,27 @@ textarea.form-control{resize:vertical;min-height:80px}
 .login-footer .app-copyright{display:inline-block;margin-top:6px;padding:0;font-size:10px;color:var(--muted)}
 .login-footer .app-copyright:hover{color:var(--blue-mid)}
 
+/* --- SIGNATURE PAD --- */
+.signature-pad{display:flex;flex-direction:column;gap:6px}
+.signature-pad label{font-size:12px;font-weight:600;color:var(--muted)}
+.signature-pad-canvas{border:1px solid var(--border);border-radius:8px;background:#fff;touch-action:none;cursor:crosshair;max-width:100%}
+.signature-pad-actions{display:flex;align-items:center;justify-content:space-between}
+.signature-pad-status{font-size:11px;color:var(--success)}
+.signature-pad-status.muted{color:var(--muted)}
+
+/* --- PHOTO CAPTURE FIELD --- */
+.photo-capture-field{border:1px solid var(--border);border-radius:9px;padding:10px 12px;margin-bottom:10px}
+.photo-capture-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.photo-capture-label{font-size:12px;font-weight:600}
+.photo-capture-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.photo-capture-busy{font-size:11px;color:var(--muted)}
+.photo-capture-result{display:flex;gap:10px;align-items:flex-start;flex-wrap:wrap}
+.photo-capture-thumb{width:88px;height:88px;object-fit:cover;border-radius:8px;border:1px solid var(--border)}
+.photo-capture-meta{flex:1;min-width:180px;font-size:11px;color:var(--text);display:flex;flex-direction:column;gap:3px}
+.photo-capture-meta .muted{color:var(--muted)}
+.photo-capture-ai-note{color:var(--muted);font-style:italic}
+.photo-capture-flag{color:var(--danger);font-weight:600}
+
 /* --- CLAIM WORKFLOW STAGE ACTIONS --- */
 .claim-stage-action{margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px}
 .claim-stage-action label{font-size:12px;font-weight:600;color:var(--muted)}
