@@ -5,6 +5,8 @@ import { db } from '../lib/db'
 import type { ApiDeveloper, ApiKeyRow } from '../lib/db'
 import { useAuth } from '../contexts/AuthContext'
 import { API_TERMS_TEXT, API_TERMS_VERSION } from '../lib/apiTerms'
+import { sendSystemEmail } from '../lib/mailService'
+import { MAILBOXES } from '../lib/mailboxes'
 
 const ALL_SCOPES = ['products:read', 'quotes:read', 'clients:write', 'policies:write', 'policies:read', 'payments:write']
 
@@ -31,7 +33,8 @@ export default function DeveloperApi({ showToast }: Props) {
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<string | null>(null)
   const [showNew, setShowNew] = useState(false)
-  const [newKey, setNewKey] = useState<{ rawKey: string; publishableKey: string; environment: 'sandbox' | 'live' } | null>(null)
+  const [newKey, setNewKey] = useState<{ rawKey: string; publishableKey: string; environment: 'sandbox' | 'live'; developer: ApiDeveloper } | null>(null)
+  const [sendingToPartner, setSendingToPartner] = useState(false)
   const [issueKeyFor, setIssueKeyFor] = useState<ApiDeveloper | null>(null)
   const [showDocs, setShowDocs] = useState(false)
 
@@ -57,10 +60,40 @@ export default function DeveloperApi({ showToast }: Props) {
   const handleIssueKey = async (dev: ApiDeveloper, opts: { scopes: string[]; rateLimitPerMin: number; environment: 'sandbox' | 'live' }) => {
     const { data, error } = await db.developerApi.issueKey(dev.id, opts)
     if (error || !data) { showToast('error', error ?? 'Failed to issue key.'); return }
-    setNewKey({ rawKey: data.rawKey, publishableKey: data.publishableKey, environment: data.environment })
+    setNewKey({ rawKey: data.rawKey, publishableKey: data.publishableKey, environment: data.environment, developer: dev })
     setIssueKeyFor(null)
     const { data: keys } = await db.developerApi.listKeys(dev.id)
     setKeysByDeveloper(prev => ({ ...prev, [dev.id]: keys }))
+  }
+
+  const handleSendToPartner = async () => {
+    if (!newKey) return
+    setSendingToPartner(true)
+    try {
+      const { delivered, error } = await sendSystemEmail({
+        from: MAILBOXES.admin,
+        fromName: 'Tariqify IMS — Developer API',
+        to: newKey.developer.contactEmail,
+        subject: `Your API Credentials — ${newKey.environment === 'live' ? 'Live' : 'Sandbox'} Key`,
+        body: `Hello,
+
+Here are your API credentials for ${newKey.developer.companyName}'s integration (${newKey.environment} environment):
+
+Publishable Key: ${newKey.publishableKey}
+Secret Key: ${newKey.rawKey}
+
+The secret key authorizes real requests and must be kept server-side only — never expose it in a browser, mobile app bundle, or public repository. Treat it exactly like a password. If it's ever compromised, contact us immediately to have it revoked and reissued.
+
+Full API documentation is available on request.
+
+Regards,
+Tariqify IMS`,
+      })
+      if (delivered) showToast('success', `Credentials sent to ${newKey.developer.contactEmail}.`)
+      else showToast('warning', error ?? 'Could not deliver the email — copy the keys manually instead.')
+    } finally {
+      setSendingToPartner(false)
+    }
   }
 
   const handleRevoke = async (keyId: string, developerId: string) => {
@@ -291,7 +324,10 @@ export default function DeveloperApi({ showToast }: Props) {
               </div>
             </div>
             <div className="modal-footer">
-              <button className="btn btn-primary" onClick={() => setNewKey(null)}>Done</button>
+              <button className="btn btn-ghost" onClick={() => setNewKey(null)}>Close</button>
+              <button className="btn btn-primary" onClick={handleSendToPartner} disabled={sendingToPartner}>
+                {sendingToPartner ? 'Sending…' : `✉ Send to Partner (${newKey.developer.contactEmail})`}
+              </button>
             </div>
           </div>
         </div>

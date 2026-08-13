@@ -155,7 +155,11 @@ export const handler: Handler = async (event) => {
       result = { status: 404, body: { error: 'Unknown endpoint or missing path parameter.' } }
     }
   } catch (e) {
-    result = { status: 500, body: { error: `Internal error: ${e}` } }
+    // Never echo the raw exception back to an external caller — it can
+    // carry Postgres schema/constraint details. Netlify's own function
+    // logs still capture it for us to debug from.
+    console.error('api-v1 handler error:', e)
+    result = { status: 500, body: { error: 'Internal server error.' } }
   }
 
   await admin.from('api_keys').update({ last_used_at: new Date().toISOString() }).eq('id', keyRow.id)
@@ -313,10 +317,23 @@ async function recordPayment(admin: SupabaseClient, body: Json, agentId: string)
     return { status: 400, body: { error: 'policyNumber is required and amount must be a positive number.' } }
   }
 
-  const { data: policy } = await admin.from('policies').select('id, agent_id').eq('policy_number', policyNumber).maybeSingle()
+  const { data: policy } = await admin.from('policies')
+    .select('id, agent_id, status, product_id, premium, next_payment_date')
+    .eq('policy_number', policyNumber).maybeSingle()
   if (!policy || policy.agent_id !== agentId) return { status: 404, body: { error: 'Policy not found.' } }
 
-  const { data, error } = await admin.from('payments').insert({
+  // A 'pending' policy is still awaiting Admin approval (the API creates
+  // policies as 'pending' specifically so a human reviews external-sourced
+  // business before it's live) — a payment must never be the thing that
+  // silently pushes it past that gate.
+  if (policy.status === 'pending') {
+    return { status: 409, body: { error: 'This policy is still pending approval and cannot accept payments yet.' } }
+  }
+  if (policy.status === 'cancelled' || policy.status === 'expired') {
+    return { status: 409, body: { error: `This policy is ${policy.status} and cannot accept payments.` } }
+  }
+
+  const { data: paymentRow, error } = await admin.from('payments').insert({
     reference: refNumber('PAY'),
     policy_id: policy.id,
     amount,
@@ -325,13 +342,31 @@ async function recordPayment(admin: SupabaseClient, body: Json, agentId: string)
   }).select('id, reference').single()
   if (error) return { status: 400, body: { error: error.message } }
 
-  // NOTE: this bypasses the waiting_period/lapse-reinstatement lifecycle
-  // that staff-recorded payments go through (see applyCompletedPaymentToPolicy
-  // in src/lib/db.ts) — an API-recorded payment always jumps straight to
-  // 'active'. Worth reconciling later; flagged rather than silently left.
-  await admin.from('policies').update({ status: 'active', last_payment_date: new Date().toISOString().split('T')[0] }).eq('id', policy.id)
+  // Mirrors applyCompletedPaymentToPolicy in src/lib/db.ts, the same rule
+  // staff-recorded payments follow: agriculture jumps straight to active on
+  // its first payment (no waiting period); a lapsed policy reinstates to a
+  // fresh waiting_period, not straight back to active; everything else
+  // keeps its current status — the 90-day wait is lifted by the hourly
+  // reminder-engine check, not by paying.
+  const { data: product } = await admin.from('products').select('category').eq('id', policy.product_id).maybeSingle()
+  const category = product?.category ?? ''
+  let nextStatus = policy.status
+  if (policy.status === 'lapsed') nextStatus = 'waiting_period'
+  else if (category === 'agriculture' && policy.status === 'waiting_period') nextStatus = 'active'
 
-  return { status: 201, body: { data: { id: data.id, reference: data.reference, status: 'completed' } } }
+  const today = new Date()
+  const cycleMonths = category === 'agriculture' ? 12 : 1
+  const base = policy.next_payment_date && new Date(policy.next_payment_date) > today ? new Date(policy.next_payment_date) : today
+  const next = new Date(base)
+  next.setMonth(next.getMonth() + cycleMonths)
+
+  await admin.from('policies').update({
+    status: nextStatus,
+    last_payment_date: today.toISOString().split('T')[0],
+    next_payment_date: next.toISOString().split('T')[0],
+  }).eq('id', policy.id)
+
+  return { status: 201, body: { data: { id: paymentRow.id, reference: paymentRow.reference, status: 'completed' } } }
 }
 
 /**
