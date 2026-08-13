@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import type { Claim, Policy } from '../../types'
+import type { Claim, Policy, Client } from '../../types'
 import { db } from '../../lib/db'
 import { scoreClaimFraud } from '../../lib/aiService'
 import { uploadDocument, deleteDocument, ACCEPTED_DOCUMENT_TYPES } from '../../lib/storage'
@@ -49,13 +49,16 @@ export default function NewClaimModal({ onClose, onSave, showToast }: Props) {
 
   const policy = policies.find(p => p.policyNumber.toLowerCase() === policyNumberInput.trim().toLowerCase())
   const policyId = policy?.id ?? ''
+  const [client, setClient] = useState<Client | null>(null)
 
-  // Auto-fill amount when policy is selected
+  // Auto-fill amount and client details when a policy is matched
   useEffect(() => {
     if (policy) {
       setAmount(policy.coverAmount.toString())
+      db.clients.get(policy.clientId).then(({ data }) => setClient(data))
     } else {
       setAmount('')
+      setClient(null)
     }
   }, [policy])
 
@@ -158,9 +161,42 @@ export default function NewClaimModal({ onClose, onSave, showToast }: Props) {
             </div>
           )}
           {policy && (
-            <div className="info-banner info-banner-info" style={{ marginBottom: '1rem' }}>
-              {policy.clientName} · {policy.productName} · Max cover: ${policy.coverAmount.toLocaleString()} · Status: {policy.status}
-            </div>
+            <>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Client Name</label>
+                  <input className="form-control" value={policy.clientName} disabled style={{ opacity: 0.6 }} />
+                </div>
+                <div className="form-group">
+                  <label>National ID</label>
+                  <input className="form-control" value={client?.nationalId ?? '—'} disabled style={{ opacity: 0.6 }} />
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Phone Number</label>
+                  <input className="form-control" value={client?.phone ?? '—'} disabled style={{ opacity: 0.6 }} />
+                </div>
+                <div className="form-group">
+                  <label>Email</label>
+                  <input className="form-control" value={client?.email || '—'} disabled style={{ opacity: 0.6 }} />
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Product / Package</label>
+                  <input className="form-control" value={policy.productName} disabled style={{ opacity: 0.6 }} />
+                </div>
+                <div className="form-group">
+                  <label>Policy Status</label>
+                  <input className="form-control" value={policy.status} disabled style={{ opacity: 0.6, textTransform: 'capitalize' }} />
+                </div>
+              </div>
+              <div className="form-group">
+                <label>Max Cover</label>
+                <input className="form-control" value={`$${policy.coverAmount.toLocaleString()}`} disabled style={{ opacity: 0.6 }} />
+              </div>
+            </>
           )}
           <div className="form-row">
             <div className="form-group">
