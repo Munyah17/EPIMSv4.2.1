@@ -48,10 +48,14 @@ export interface Dependant {
   name: string
   relationship: string
   dob: string
+  /** ID number for a dependant 16+; a birth record/entry number is
+   *  accepted for younger dependants (not every birth certificate carries
+   *  a future national ID number). */
   nationalId: string
   productId?: string
   productName?: string
   premium?: number
+  coverAmount?: number
   phone?: string
 }
 

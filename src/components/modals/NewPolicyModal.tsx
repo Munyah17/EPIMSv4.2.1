@@ -106,6 +106,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
         const plan = products.find(p => p.id === value)
         next.productName = plan?.name
         next.premium = plan?.premium
+        next.coverAmount = plan?.coverAmount
       }
       return next
     }))
@@ -131,9 +132,9 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
       if (showToast) showToast('error', 'Enter date of birth and ID number for every dependant.')
       return
     }
-    const overPremium = dependants.find(d => (d.premium ?? 0) > product!.premium)
-    if (overPremium) {
-      if (showToast) showToast('error', `${overPremium.name || 'A dependant'}'s plan premium cannot exceed the policyholder's premium.`)
+    const overValue = dependants.find(d => (d.premium ?? 0) > product!.premium || (d.coverAmount ?? 0) > product!.coverAmount)
+    if (overValue) {
+      if (showToast) showToast('error', `${overValue.name || 'A dependant'}'s plan premium and cover cannot exceed the policyholder's.`)
       return
     }
 
@@ -198,7 +199,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
 
   return (
     <div className="modal-overlay">
-      <div className="modal">
+      <div className="modal" style={{ maxWidth: 900 }}>
         <div className="modal-header">
           <h3>New Policy</h3>
           <button className="modal-close" onClick={onClose}>✕</button>
@@ -245,84 +246,80 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
             </div>
           )}
 
-          <h4 style={{ marginBottom: '1rem', marginTop: 0 }}>Customer Information</h4>
-          <div className="form-row">
-            <div className="form-group">
-              <label>Full Name *</label>
-              <input className="form-control" placeholder="Enter full name" value={clientName} onChange={e => setClientName(e.target.value)} />
+          <div className="new-policy-cols">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <h4 style={{ margin: 0 }}>Customer Information</h4>
+              <div className="form-group">
+                <label>Full Name *</label>
+                <input className="form-control" placeholder="Enter full name" value={clientName} onChange={e => setClientName(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label>Phone Number *</label>
+                <PhoneInput value={clientPhone} onChange={setClientPhone} />
+              </div>
+              <div className="form-group">
+                <label>Email</label>
+                <input type="email" className="form-control" placeholder="email@example.com" value={clientEmail} onChange={e => setClientEmail(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label>National ID *</label>
+                <input className="form-control" placeholder="e.g. 632118532K12" value={clientNationalId} onChange={e => setClientNationalId(e.target.value)} disabled={!!existingClientId} style={existingClientId ? { opacity: 0.6 } : undefined} />
+              </div>
+              <div className="form-group">
+                <label>Date of Birth * (18+)</label>
+                <input type="date" className="form-control" value={clientDob} onChange={e => setClientDob(e.target.value)} disabled={!!existingClientId} style={existingClientId ? { opacity: 0.6 } : undefined} />
+              </div>
+              <div className="form-group">
+                <label>Occupation</label>
+                <input className="form-control" placeholder="e.g. Teacher" value={clientOccupation} onChange={e => setClientOccupation(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label>Address</label>
+                <input className="form-control" placeholder="Street address, city" value={clientAddress} onChange={e => setClientAddress(e.target.value)} />
+              </div>
             </div>
-            <div className="form-group">
-              <label>Phone Number *</label>
-              <PhoneInput value={clientPhone} onChange={setClientPhone} />
-            </div>
-          </div>
-          <div className="form-row">
-            <div className="form-group">
-              <label>Email</label>
-              <input type="email" className="form-control" placeholder="email@example.com" value={clientEmail} onChange={e => setClientEmail(e.target.value)} />
-            </div>
-            <div className="form-group">
-              <label>National ID *</label>
-              <input className="form-control" placeholder="e.g. 632118532K12" value={clientNationalId} onChange={e => setClientNationalId(e.target.value)} disabled={!!existingClientId} style={existingClientId ? { opacity: 0.6 } : undefined} />
-            </div>
-          </div>
-          <div className="form-row">
-            <div className="form-group">
-              <label>Date of Birth * (policyholder must be 18+)</label>
-              <input type="date" className="form-control" value={clientDob} onChange={e => setClientDob(e.target.value)} disabled={!!existingClientId} style={existingClientId ? { opacity: 0.6 } : undefined} />
-            </div>
-            <div className="form-group">
-              <label>Occupation</label>
-              <input className="form-control" placeholder="e.g. Teacher" value={clientOccupation} onChange={e => setClientOccupation(e.target.value)} />
-            </div>
-          </div>
-          <div className="form-group">
-            <label>Address</label>
-            <input className="form-control" placeholder="Street address, city" value={clientAddress} onChange={e => setClientAddress(e.target.value)} />
-          </div>
 
-          <h4 style={{ marginBottom: '1rem', marginTop: '1.5rem' }}>Policy Information</h4>
-          <div className="form-row">
-            <div className="form-group">
-              <label>Product *</label>
-              <select className="form-control" value={productId} onChange={e => setProductId(e.target.value)} disabled={productsLoading}>
-                <option value="">{productsLoading ? 'Loading products…' : 'Select product…'}</option>
-                {products.filter(p => p.active).map(p => <option key={p.id} value={p.id}>{p.name} (${p.premium}/mo)</option>)}
-              </select>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <h4 style={{ margin: 0 }}>Policy Information</h4>
+              <div className="form-group">
+                <label>Product *</label>
+                <select className="form-control" value={productId} onChange={e => setProductId(e.target.value)} disabled={productsLoading}>
+                  <option value="">{productsLoading ? 'Loading products…' : 'Select product…'}</option>
+                  {products.filter(p => p.active).map(p => <option key={p.id} value={p.id}>{p.name} (${p.premium}/mo)</option>)}
+                </select>
+              </div>
+              {product && (
+                <div className="info-banner info-banner-info">
+                  Cover: ${product.coverAmount.toLocaleString()} · Premium: ${product.premium}/mo · Commission: {product.commissionPct}%
+                </div>
+              )}
+              <div className="form-group">
+                <label>Start Date *</label>
+                <input type="date" className="form-control" value={startDate} onChange={e => setStartDate(e.target.value)} />
+              </div>
+              <div className="form-group">
+                <label>Payment Method *</label>
+                <select className="form-control" value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}>
+                  {['OneMoney', 'InnBucks', 'Airtime Balance', 'Bank Transfer', 'Cash', 'Debit Order', 'Stop Order', 'EcoCash'].map(m => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Insurer</label>
+                <select className="form-control" value={insurer} onChange={e => setInsurer(e.target.value as Insurer)}>
+                  <option value="">Select insurer…</option>
+                  {INSURERS.map(i => <option key={i} value={i}>{i}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Agent</label>
+                <select className="form-control" value={agentId} onChange={e => setAgentId(e.target.value)}>
+                  <option value="">Unassigned</option>
+                  {staff.map(s => <option key={s.id} value={s.id}>{s.name} ({s.role.replace(/_/g, ' ')})</option>)}
+                </select>
+              </div>
             </div>
-            <div className="form-group">
-              <label>Start Date *</label>
-              <input type="date" className="form-control" value={startDate} onChange={e => setStartDate(e.target.value)} />
-            </div>
-          </div>
-          {product && (
-            <div className="info-banner info-banner-info" style={{ marginBottom: '1rem' }}>
-              Cover: ${product.coverAmount.toLocaleString()} · Premium: ${product.premium}/mo · Commission: {product.commissionPct}%
-            </div>
-          )}
-          <div className="form-row">
-            <div className="form-group">
-              <label>Payment Method *</label>
-              <select className="form-control" value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}>
-                {['OneMoney', 'InnBucks', 'Airtime Balance', 'Bank Transfer', 'Cash', 'Debit Order', 'Stop Order', 'EcoCash'].map(m => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
-              </select>
-            </div>
-            <div className="form-group">
-              <label>Insurer</label>
-              <select className="form-control" value={insurer} onChange={e => setInsurer(e.target.value as Insurer)}>
-                <option value="">Select insurer…</option>
-                {INSURERS.map(i => <option key={i} value={i}>{i}</option>)}
-              </select>
-            </div>
-          </div>
-          <div className="form-group">
-            <label>Agent</label>
-            <select className="form-control" value={agentId} onChange={e => setAgentId(e.target.value)}>
-              <option value="">Unassigned</option>
-              {staff.map(s => <option key={s.id} value={s.id}>{s.name} ({s.role.replace(/_/g, ' ')})</option>)}
-            </select>
           </div>
 
           <div style={{ marginTop: '1rem' }}>
@@ -334,20 +331,20 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
               <p style={{ fontSize: 12, color: 'var(--muted)' }}>No dependants added.</p>
             ) : (
               <>
-                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr 1fr auto', gap: 8, marginBottom: 4 }}>
+                <div className="new-policy-dependant-row" style={{ marginBottom: 4 }}>
                   <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>Name</span>
                   <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>Relationship</span>
                   <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>Date of Birth</span>
-                  <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>ID Number</span>
+                  <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>ID / Birth Record No.</span>
                   <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>Plan</span>
                   <span />
                 </div>
                 {dependants.map((d, i) => (
-                  <div key={i} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr 1fr auto', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+                  <div key={i} className="new-policy-dependant-row" style={{ marginBottom: 8, alignItems: 'center' }}>
                     <input className="form-control" placeholder="Name" value={d.name} onChange={e => updateDependant(i, 'name', e.target.value)} />
                     <input className="form-control" placeholder="Relationship" value={d.relationship} onChange={e => updateDependant(i, 'relationship', e.target.value)} />
                     <input type="date" className="form-control" value={d.dob} onChange={e => updateDependant(i, 'dob', e.target.value)} />
-                    <input className="form-control" placeholder="e.g. 632118532K12" value={d.nationalId} onChange={e => updateDependant(i, 'nationalId', e.target.value)} />
+                    <input className="form-control" placeholder="ID (16+) or birth record no." value={d.nationalId} onChange={e => updateDependant(i, 'nationalId', e.target.value)} />
                     <select className="form-control" value={d.productId ?? ''} onChange={e => updateDependant(i, 'productId', e.target.value)}>
                       <option value="">Select plan…</option>
                       {products.filter(p => p.active).map(p => <option key={p.id} value={p.id}>{p.name} (${p.premium})</option>)}
