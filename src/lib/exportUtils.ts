@@ -2,9 +2,10 @@
 // most visits to a page with export buttons never click one — dynamic
 // import() keeps them out of the page's own chunk entirely, fetched only
 // when a user actually exports something.
-import type { Policy, Client } from '../types'
+import type { Policy, Client, ClaimAssessment } from '../types'
 import { formatDate } from './dateUtils'
 import { getNotifSettings } from './mailService'
+import { getDocumentUrl } from './storage'
 
 function triggerDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
@@ -234,4 +235,157 @@ export async function exportPolicyReport(policy: Policy, client: Client, categor
 export async function getPolicyReportPdfBase64(policy: Policy, client: Client, category: string): Promise<string> {
   const doc = await buildPolicyReportDoc(policy, client, category)
   return doc.output('datauristring').split(',')[1]
+}
+
+async function fetchImageAsDataUrl(path: string): Promise<string | null> {
+  try {
+    const url = await getDocumentUrl(path)
+    if (!url) return null
+    const res = await fetch(url)
+    const blob = await res.blob()
+    return await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = reject
+      reader.readAsDataURL(blob)
+    })
+  } catch {
+    return null
+  }
+}
+
+/** Printable record of an Agriculture Assessor's physical claim
+ *  assessment — overview, description of loss, site details, comments,
+ *  embedded photos (with whatever date evidence was captured), and the
+ *  farmer/assessor sign-off. */
+export async function exportClaimAssessmentReport(
+  assessment: ClaimAssessment, claimNumber: string, policyNumber: string, clientName: string,
+) {
+  const { jsPDF } = await import('jspdf')
+  const doc = new jsPDF()
+  const pageWidth = doc.internal.pageSize.getWidth()
+  const cfg = getNotifSettings()
+
+  doc.setFillColor(...BRAND_BLUE)
+  doc.rect(0, 0, pageWidth, 24, 'F')
+  doc.setFillColor(...BRAND_RED)
+  doc.rect(0, 24, pageWidth, 1.5, 'F')
+  doc.setTextColor(255, 255, 255)
+  doc.setFontSize(15)
+  doc.text('MOTIONS', 14, 12)
+  doc.setFontSize(9)
+  doc.text('AGRICULTURE PHYSICAL ASSESSMENT REPORT', 14, 19)
+  doc.text(claimNumber, pageWidth - 14, 15, { align: 'right' })
+  doc.setTextColor(...TEXT)
+
+  let y = 31
+  const contactLine = [cfg.companyAddress, cfg.companyPhone, cfg.companyEmail].filter(Boolean).join('  ·  ')
+  if (contactLine) {
+    doc.setFontSize(7.5)
+    doc.setTextColor(...MUTED)
+    doc.text(contactLine, 14, y)
+    doc.setTextColor(...TEXT)
+    y += 6
+  }
+  y += 3
+
+  const sectionHeading = (n: number, title: string) => {
+    doc.setFontSize(12)
+    doc.setTextColor(...BRAND_BLUE)
+    doc.text(`${n}.  ${title}`, 14, y)
+    doc.setDrawColor(220, 226, 240)
+    doc.line(14, y + 2, pageWidth - 14, y + 2)
+    doc.setTextColor(...TEXT)
+    y += 9
+  }
+
+  const kvRows = (rows: [string, string][]) => {
+    doc.setFontSize(10)
+    rows.forEach(([l, v], i) => {
+      doc.setTextColor(...MUTED)
+      doc.text(`${l}:`, 14, y + i * 6.5)
+      doc.setTextColor(...TEXT)
+      doc.text(v, 60, y + i * 6.5)
+    })
+    y += rows.length * 6.5 + 8
+  }
+
+  sectionHeading(1, 'CLAIM OVERVIEW')
+  kvRows([
+    ['Claim Number', claimNumber], ['Policy Number', policyNumber], ['Client', clientName],
+    ['Assessor', assessment.assessorName], ['Submitted', assessment.submittedAt ? formatDate(assessment.submittedAt) : '—'],
+  ])
+
+  sectionHeading(2, 'DESCRIPTION OF LOSS')
+  doc.setFontSize(9)
+  const desc = doc.splitTextToSize(assessment.descriptionOfLoss || '—', pageWidth - 28)
+  doc.text(desc, 14, y)
+  y += desc.length * 4.5 + 6
+
+  sectionHeading(3, 'SITE DETAILS')
+  kvRows([
+    ['Crop Population', assessment.cropPopulation || '—'],
+    ['Crop Stage', assessment.cropStage || '—'],
+    ['Barn Capacity', assessment.barnCapacity || '—'],
+    ['GPS Coordinates', assessment.gpsLat !== undefined ? `${assessment.gpsLat.toFixed(6)}, ${assessment.gpsLng?.toFixed(6)}` : '—'],
+  ])
+
+  sectionHeading(4, "ASSESSOR'S COMMENTS")
+  doc.setFontSize(9)
+  const comments = doc.splitTextToSize(assessment.assessorComments || '—', pageWidth - 28)
+  doc.text(comments, 14, y)
+  y += comments.length * 4.5 + 8
+
+  if (assessment.photos.length > 0) {
+    if (y > 230) { doc.addPage(); y = 20 }
+    sectionHeading(5, 'PHOTOGRAPHIC EVIDENCE')
+    for (const photo of assessment.photos) {
+      if (y > 220) { doc.addPage(); y = 20 }
+      doc.setFontSize(9)
+      doc.setTextColor(...TEXT)
+      doc.text(photo.label, 14, y)
+      const dateLabel = photo.exifDate || photo.visibleDateStamp
+      doc.setFontSize(7.5)
+      doc.setTextColor(...MUTED)
+      if (dateLabel) doc.text(`Captured: ${dateLabel}`, 14, y + 4.5)
+      if (photo.aiFlagged) {
+        doc.setTextColor(...BRAND_RED)
+        doc.text('⚠ Flagged for review', 60, y + 4.5)
+      }
+      const dataUrl = await fetchImageAsDataUrl(photo.path)
+      if (dataUrl) {
+        try {
+          const format = dataUrl.includes('image/png') ? 'PNG' : 'JPEG'
+          doc.addImage(dataUrl, format, 14, y + 7, 60, 45)
+        } catch { /* skip if the image can't be decoded into the PDF */ }
+      }
+      doc.setTextColor(...TEXT)
+      y += 58
+    }
+  }
+
+  if (assessment.farmerSignature || assessment.assessorSignature) {
+    if (y > 220) { doc.addPage(); y = 20 }
+    sectionHeading(6, 'SIGN-OFF')
+    if (assessment.farmerSignature) {
+      doc.setFontSize(8.5)
+      doc.setTextColor(...MUTED)
+      doc.text('Farmer Signature', 14, y)
+      try { doc.addImage(assessment.farmerSignature, 'PNG', 14, y + 2, 60, 20) } catch { /**/ }
+    }
+    if (assessment.assessorSignature) {
+      doc.setFontSize(8.5)
+      doc.setTextColor(...MUTED)
+      doc.text('Assessor Signature', 110, y)
+      try { doc.addImage(assessment.assessorSignature, 'PNG', 110, y + 2, 60, 20) } catch { /**/ }
+    }
+    y += 26
+  }
+
+  const pageHeight = doc.internal.pageSize.getHeight()
+  doc.setFontSize(7.5)
+  doc.setTextColor(...MUTED)
+  doc.text(`Generated ${formatDate(new Date())} · Tariqify IMS`, 14, pageHeight - 10)
+
+  doc.save(`${claimNumber}-Assessment-Report.pdf`)
 }

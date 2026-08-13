@@ -9,6 +9,7 @@ import {
   notifyClaimEscalated, notifyClaimFinalDecision,
 } from '../../lib/claimNotifications'
 import AgricultureAssessmentModal from './AgricultureAssessmentModal'
+import { exportClaimAssessmentReport } from '../../lib/exportUtils'
 
 interface Props {
   claim: Claim
@@ -46,6 +47,11 @@ export default function ReviewClaimModal({ claim, onClose, onSave, showToast }: 
   }, [claim])
 
   const hasCompletedAssessment = physicalAssessments.some(a => !!a.submittedAt)
+
+  const printAssessment = () => {
+    const completed = physicalAssessments.find(a => !!a.submittedAt)
+    if (completed) void exportClaimAssessmentReport(completed, claim.claimNumber, claim.policyNumber, claim.clientName)
+  }
 
   const scoreColor = claim.fraudScore >= 70 ? 'var(--danger)' : claim.fraudScore >= 40 ? 'var(--gold)' : 'var(--teal)'
 
@@ -178,13 +184,16 @@ export default function ReviewClaimModal({ claim, onClose, onSave, showToast }: 
               ) : (
                 <p style={{ fontSize: 12, color: 'var(--muted)' }}>An Assessor must complete a site visit before this claim can go to final review.</p>
               )}
-              {hasPermission('claims.physical_assessment') && (
-                <div className="claim-stage-action-btns">
+              <div className="claim-stage-action-btns">
+                {hasCompletedAssessment && (
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={printAssessment}>🖨 Print Assessment</button>
+                )}
+                {hasPermission('claims.physical_assessment') && (
                   <button type="button" className="btn btn-outline btn-sm" onClick={() => setShowAssessmentModal(true)}>
                     {hasCompletedAssessment ? 'View / Redo Assessment' : '📷 Start Physical Assessment'}
                   </button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           )}
 

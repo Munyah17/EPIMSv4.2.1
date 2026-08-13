@@ -4,6 +4,8 @@ import { formatDate } from '../../lib/dateUtils'
 import { premiumPeriodLabel } from '../../lib/productUtils'
 import { paymentCurrencyStatus, PAYMENT_CURRENCY_LABEL, PAYMENT_CURRENCY_CLASS } from '../../lib/policyLifecycle'
 import { db } from '../../lib/db'
+import { useAuth } from '../../contexts/AuthContext'
+import PolicyAssessmentModal from './PolicyAssessmentModal'
 
 interface Props {
   policy: Policy
@@ -12,10 +14,13 @@ interface Props {
   /** Omitted when the policy's product isn't loaded yet or is a funeral
    *  package — printed reports aren't offered for those. */
   onPrint?: () => void
+  showToast: (type: 'success' | 'error' | 'warning' | 'info', message: string) => void
 }
 
-export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint }: Props) {
+export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint, showToast }: Props) {
+  const { hasPermission } = useAuth()
   const [category, setCategory] = useState('')
+  const [showAssessment, setShowAssessment] = useState(false)
 
   useEffect(() => {
     db.products.list().then(({ data }) => {
@@ -74,6 +79,13 @@ export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint }: Pr
               </table>
             </div>
           )}
+
+          {category === 'agriculture' && hasPermission('claims.physical_assessment') && (
+            <div style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid var(--border)' }}>
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => setShowAssessment(true)}>🌾 Record Pre-Loss Assessment</button>
+              <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>Establishes the crop/farm baseline for later fraud checks against any claim.</p>
+            </div>
+          )}
         </div>
         <div className="modal-footer view-policy-footer">
           <button className="btn btn-ghost" onClick={onClose}>Close</button>
@@ -81,6 +93,15 @@ export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint }: Pr
           <button className="btn btn-primary" onClick={onEdit}>Edit Policy</button>
         </div>
       </div>
+      {showAssessment && (
+        <PolicyAssessmentModal
+          policyId={policy.id}
+          policyNumber={policy.policyNumber}
+          onClose={() => setShowAssessment(false)}
+          onSubmitted={() => setShowAssessment(false)}
+          showToast={showToast}
+        />
+      )}
     </div>
   )
 }

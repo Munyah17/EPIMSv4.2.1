@@ -244,6 +244,7 @@ export default function Policies({ showToast }: Props) {
           onClose={() => setViewPolicy(null)}
           onEdit={() => { setEditPolicy(viewPolicy); setViewPolicy(null) }}
           onPrint={() => handlePrint(viewPolicy)}
+          showToast={showToast}
         />
       )}
       {editPolicy && (
