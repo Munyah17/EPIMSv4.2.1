@@ -6,6 +6,7 @@ import { formatDate } from '../lib/dateUtils'
 import ScoreBar from '../components/ui/ScoreBar'
 import ViewLeadModal from '../components/modals/ViewLeadModal'
 import NewLeadModal from '../components/modals/NewLeadModal'
+import LeadsSearchModal from '../components/modals/LeadsSearchModal'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -28,6 +29,7 @@ export default function Leads({ showToast }: Props) {
   const [statusFilter, setStatusFilter] = useState<LeadStatus | 'all'>('all')
   const [viewLead, setViewLead] = useState<Lead | null>(null)
   const [showAdd, setShowAdd] = useState(false)
+  const [showSearch, setShowSearch] = useState(false)
 
   useEffect(() => {
     db.leads.list().then(({ data, error }) => {
@@ -70,6 +72,16 @@ export default function Leads({ showToast }: Props) {
     showToast('success', `Lead "${data.name}" added — AI intent score: ${data.intentScore}.`)
   }
 
+  const handleImportSearched = async (found: Omit<Lead, 'id'>[]) => {
+    let imported = 0
+    for (const lead of found) {
+      const { data } = await db.leads.create(lead)
+      if (data) { setLeads(prev => [data, ...prev]); imported++ }
+    }
+    setShowSearch(false)
+    showToast(imported > 0 ? 'success' : 'error', imported > 0 ? `Imported ${imported} lead${imported !== 1 ? 's' : ''}.` : 'Failed to import leads.')
+  }
+
   return (
     <div className="panel">
       <div className="panel-toolbar">
@@ -90,9 +102,14 @@ export default function Leads({ showToast }: Props) {
             <option value="lost">Lost ({statusCounts.lost})</option>
           </select>
         </div>
-        <button type="button" className="btn btn-primary" onClick={() => setShowAdd(true)}>
-          + Add Lead
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button type="button" className="btn btn-outline" onClick={() => setShowSearch(true)}>
+            🎯 Run Leads Search
+          </button>
+          <button type="button" className="btn btn-primary" onClick={() => setShowAdd(true)}>
+            + Add Lead
+          </button>
+        </div>
       </div>
 
       <div className="card">
@@ -139,6 +156,9 @@ export default function Leads({ showToast }: Props) {
       )}
       {showAdd && (
         <NewLeadModal onClose={() => setShowAdd(false)} onSave={handleAdd} />
+      )}
+      {showSearch && (
+        <LeadsSearchModal onClose={() => setShowSearch(false)} onImport={handleImportSearched} />
       )}
     </div>
   )
