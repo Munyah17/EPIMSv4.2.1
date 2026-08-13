@@ -12,6 +12,7 @@ import Sidebar from './components/Layout/Sidebar'
 import TopBar from './components/Layout/TopBar'
 import Toast from './components/ui/Toast'
 import SystemHealth from './components/ui/SystemHealth'
+import ChatWidget from './components/chat/ChatWidget'
 import type { ToastMessage } from './types'
 
 // Route-split: each page becomes its own chunk, fetched on first visit
@@ -161,6 +162,9 @@ function AppInner() {
       </div>
       <Toast toasts={toasts} onDismiss={dismissToast} />
       <SystemHealth />
+      {user.role === 'policyholder' && (
+        <ChatWidget prefill={{ name: user.name, phone: user.phone ?? '', email: user.email }} />
+      )}
     </div>
   )
 }

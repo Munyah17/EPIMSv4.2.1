@@ -23,6 +23,10 @@ interface Body {
   staffId: string
 }
 
+/** Founder account — never deletable through this endpoint, full stop,
+ *  regardless of role or any future refactor of the super_admin check below. */
+const PROTECTED_EMAILS = ['hello@munya.co.zw']
+
 export const handler: Handler = async (event) => {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: JSON.stringify({ error: 'Method not allowed' }) }
@@ -72,11 +76,14 @@ export const handler: Handler = async (event) => {
 
   const { data: target, error: targetError } = await admin
     .from('profiles')
-    .select('role')
+    .select('role, email')
     .eq('id', body.staffId)
     .maybeSingle()
   if (targetError || !target) {
-    return { statusCode: 404, body: JSON.stringify({ error: 'Staff member not found.' }) }
+    return { statusCode: 404, body: JSON.stringify({ error: 'Staff member not found. Their record may have failed to load from the server — refresh the page and try again.' }) }
+  }
+  if (target.email && PROTECTED_EMAILS.includes(target.email.toLowerCase())) {
+    return { statusCode: 403, body: JSON.stringify({ error: 'This account cannot be deleted.' }) }
   }
   if (target.role === 'super_admin') {
     return { statusCode: 403, body: JSON.stringify({ error: 'Super Admin accounts cannot be deleted from here.' }) }

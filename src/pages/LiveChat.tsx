@@ -20,6 +20,8 @@ export default function LiveChat({ showToast }: Props) {
   const { user } = useAuth()
   const [queue, setQueue] = useState<ChatSession[]>([])
   const [active, setActive] = useState<ChatSession[]>([])
+  const [closed, setClosed] = useState<ChatSession[]>([])
+  const [showHistory, setShowHistory] = useState(false)
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<ChatSession | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -29,9 +31,13 @@ export default function LiveChat({ showToast }: Props) {
   const reload = useCallback(() => {
     Promise.all([chat.listQueue(), chat.listActiveSessions()]).then(([q, a]) => {
       setQueue(q); setActive(a); setLoading(false)
-      setSelected(prev => prev ? [...q, ...a].find(s => s.id === prev.id) ?? prev : prev)
+      setSelected(prev => prev ? [...q, ...a, ...closed].find(s => s.id === prev.id) ?? prev : prev)
     })
-  }, [])
+  }, [closed])
+
+  useEffect(() => {
+    if (showHistory) chat.listClosedSessions().then(setClosed)
+  }, [showHistory])
 
   useEffect(() => {
     reload()
@@ -115,6 +121,23 @@ export default function LiveChat({ showToast }: Props) {
               </div>
             </div>
           ))}
+
+          <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 16, width: '100%' }} onClick={() => setShowHistory(h => !h)}>
+            {showHistory ? '▲ Hide Chat History' : '▼ View Chat History'}
+          </button>
+          {showHistory && (
+            closed.length === 0 ? (
+              <div className="empty-state" style={{ padding: '12px 0' }}>No closed chats yet.</div>
+            ) : closed.map(s => (
+              <div key={s.id} className={`livechat-item livechat-item-clickable${selected?.id === s.id ? ' active' : ''}`} onClick={() => setSelected(s)}>
+                <div className="livechat-item-main">
+                  <strong>{s.visitorName}</strong>
+                  <span className="livechat-item-topic">{s.topic}</span>
+                  <span className="livechat-item-time">{s.closedAt ? timeAgo(s.closedAt) : ''}</span>
+                </div>
+              </div>
+            ))
+          )}
         </div>
 
         <div className="livechat-window">

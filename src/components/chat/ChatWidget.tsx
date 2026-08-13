@@ -5,13 +5,19 @@ import PhoneInput from '../ui/PhoneInput'
 
 type Stage = 'closed' | 'form' | 'chatting'
 
-export default function ChatWidget() {
+interface Props {
+  /** When the visitor is already a known, logged-in policyholder, skip
+   *  asking for contact details again and pre-fill from their account. */
+  prefill?: { name: string; phone: string; email: string }
+}
+
+export default function ChatWidget({ prefill }: Props) {
   const [open, setOpen] = useState(false)
   const [stage, setStage] = useState<Stage>('form')
   const [topics, setTopics] = useState<ChatTopic[]>([])
-  const [name, setName] = useState('')
-  const [phone, setPhone] = useState('')
-  const [email, setEmail] = useState('')
+  const [name, setName] = useState(prefill?.name ?? '')
+  const [phone, setPhone] = useState(prefill?.phone ?? '')
+  const [email, setEmail] = useState(prefill?.email ?? '')
   const [topic, setTopic] = useState('')
   const [starting, setStarting] = useState(false)
   const [formError, setFormError] = useState('')
@@ -74,7 +80,7 @@ export default function ChatWidget() {
       return
     }
     if (!name.trim() || !phone.trim() || !email.trim() || !topic) {
-      setFormError('Please fill in all fields.')
+      setFormError(prefill ? 'Please choose what you need help with.' : 'Please fill in all fields.')
       return
     }
     if (!email.includes('@')) {
@@ -106,7 +112,7 @@ export default function ChatWidget() {
     setStage('form')
     setSession(null)
     setMessages([])
-    setName(''); setPhone(''); setEmail('')
+    setName(prefill?.name ?? ''); setPhone(prefill?.phone ?? ''); setEmail(prefill?.email ?? '')
   }
 
   return (
@@ -128,7 +134,7 @@ export default function ChatWidget() {
           {stage === 'form' && (
             <div className="chat-panel-body">
               <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>
-                Tell us a bit about yourself so we can connect you with the right agent.
+                {prefill ? `Chatting as ${prefill.name}. What can we help with?` : 'Tell us a bit about yourself so we can connect you with the right agent.'}
               </p>
               <div className="form-group">
                 <label>What can we help with? *</label>
@@ -136,18 +142,22 @@ export default function ChatWidget() {
                   {topics.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
                 </select>
               </div>
-              <div className="form-group">
-                <label>Full Name *</label>
-                <input className="form-control" value={name} onChange={e => setName(e.target.value)} placeholder="Your name" />
-              </div>
-              <div className="form-group">
-                <label>Phone Number *</label>
-                <PhoneInput value={phone} onChange={setPhone} />
-              </div>
-              <div className="form-group">
-                <label>Email Address *</label>
-                <input type="email" className="form-control" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" />
-              </div>
+              {!prefill && (
+                <>
+                  <div className="form-group">
+                    <label>Full Name *</label>
+                    <input className="form-control" value={name} onChange={e => setName(e.target.value)} placeholder="Your name" />
+                  </div>
+                  <div className="form-group">
+                    <label>Phone Number *</label>
+                    <PhoneInput value={phone} onChange={setPhone} />
+                  </div>
+                  <div className="form-group">
+                    <label>Email Address *</label>
+                    <input type="email" className="form-control" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@example.com" />
+                  </div>
+                </>
+              )}
               {formError && <div className="login-error">{formError}</div>}
               <button className="btn btn-primary btn-full" onClick={startChat} disabled={starting || topics.length === 0}>
                 {starting ? 'Starting…' : topics.length === 0 ? 'Loading…' : 'Start Chat'}

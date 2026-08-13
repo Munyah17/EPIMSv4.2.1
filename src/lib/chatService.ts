@@ -126,6 +126,12 @@ export async function listActiveSessions(): Promise<ChatSession[]> {
   return data.map(toSession)
 }
 
+export async function listClosedSessions(limit = 50): Promise<ChatSession[]> {
+  const { data, error } = await supabase.from('chat_sessions').select(SESSION_SELECT).eq('status', 'closed').order('closed_at', { ascending: false }).limit(limit)
+  if (error || !data) return []
+  return data.map(toSession)
+}
+
 export function subscribeToAllSessions(onChange: () => void) {
   const channel = supabase
     .channel('chat-sessions-staff')

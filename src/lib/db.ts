@@ -980,14 +980,19 @@ export const leads = {
 
 // ── STAFF / PROFILES ──────────────────────────────────────────────
 export const staff = {
+  // No local-storage fallback here — unlike most list() methods, a stale
+  // mock roster standing in for real staff/system accounts is actively
+  // dangerous: it looks real enough to act on (edit, delete) but its IDs
+  // don't exist in the real profiles table, so e.g. a delete against it
+  // fails with a confusing 404 instead of the real account ever being
+  // touched. Better to surface the load failure than to risk that.
   async list() {
     const { ok, data } = await sb('profiles', 'read',
       () => supabase.from('profiles').select('*, custom_roles!profiles_custom_role_id_fkey(name)').order('name'),
       d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as Record<string,unknown>[]).map(toProfile), error: null }
-    local('profiles', 'read')
-    return { data: localStore.staff.list(), error: null }
+    return { data: null, error: 'Could not load the staff list from the server. Please check your connection and try again.' }
   },
 
   /**
@@ -1549,17 +1554,19 @@ export interface SidebarCounts {
   remindersDue: number
   emailUnread: number
   ticketsOpen: number
+  chatQueued: number
 }
 
 export const sidebarCounts = {
   async load(): Promise<SidebarCounts> {
-    const [pol, claimsRes, cli, rem, mail, tix] = await Promise.all([
+    const [pol, claimsRes, cli, rem, mail, tix, chatQ] = await Promise.all([
       supabase.from('policies').select('*', { count: 'exact', head: true }),
       supabase.from('claims').select('*', { count: 'exact', head: true }).in('status', ['pending', 'under_review']),
       supabase.from('clients').select('*', { count: 'exact', head: true }).eq('status', 'active'),
       supabase.from('reminders').select('*', { count: 'exact', head: true }).eq('sent', false),
       supabase.from('emails').select('*', { count: 'exact', head: true }).eq('folder', 'inbox').eq('read', false),
       supabase.from('tickets').select('*', { count: 'exact', head: true }).in('status', ['open', 'in_progress']),
+      supabase.from('chat_sessions').select('*', { count: 'exact', head: true }).eq('status', 'queued'),
     ])
     return {
       policies: pol.count ?? 0,
@@ -1568,6 +1575,7 @@ export const sidebarCounts = {
       remindersDue: rem.count ?? 0,
       emailUnread: mail.count ?? 0,
       ticketsOpen: tix.count ?? 0,
+      chatQueued: chatQ.count ?? 0,
     }
   },
 }

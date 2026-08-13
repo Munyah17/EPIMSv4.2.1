@@ -88,6 +88,7 @@ const BADGE_COUNT_KEYS: Partial<Record<ActivePanel, keyof SidebarCounts>> = {
   reminders: 'remindersDue',
   email: 'emailUnread',
   tickets: 'ticketsOpen',
+  live_chat: 'chatQueued',
 }
 
 const CLIENT_NAV: NavItem[] = [
