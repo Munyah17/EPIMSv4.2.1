@@ -3,6 +3,7 @@ import type { ToastMessage, Client } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
+import { useAuth } from '../contexts/AuthContext'
 import RegisterClientModal from '../components/modals/RegisterClientModal'
 import EditClientModal from '../components/modals/EditClientModal'
 
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export default function Clients({ showToast }: Props) {
+  const { user } = useAuth()
   const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -62,6 +64,14 @@ export default function Clients({ showToast }: Props) {
     setClients(prev => prev.map(c => c.id === data.id ? data : c))
     showToast('success', `Client ${data.name} updated.`)
     setEditClient(null)
+  }
+
+  const handleDelete = async (client: Client) => {
+    if (!window.confirm(`Permanently delete ${client.name}? This cannot be undone.`)) return
+    const { error } = await db.clients.remove(client.id)
+    if (error) { showToast('error', error); return }
+    setClients(prev => prev.filter(c => c.id !== client.id))
+    showToast('success', `${client.name} was deleted.`)
   }
 
   const bulkSMS = () => {
@@ -130,7 +140,12 @@ export default function Clients({ showToast }: Props) {
                   <td>{formatDate(c.createdAt)}</td>
                   <td><span className={`pill ${c.status === 'active' ? 'pill-active' : 'pill-lapsed'}`}>{c.status}</span></td>
                   <td>
-                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditClient(c)}>Edit</button>
+                    <div className="action-btns">
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditClient(c)}>Edit</button>
+                      {user?.role === 'super_admin' && (
+                        <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => handleDelete(c)}>Delete</button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

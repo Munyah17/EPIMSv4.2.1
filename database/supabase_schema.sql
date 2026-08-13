@@ -407,7 +407,7 @@ CREATE POLICY "clients_select_own" ON public.clients FOR SELECT TO authenticated
 );
 CREATE POLICY "clients_insert" ON public.clients FOR INSERT TO authenticated WITH CHECK (is_staff());
 CREATE POLICY "clients_update" ON public.clients FOR UPDATE TO authenticated USING (is_staff());
-CREATE POLICY "clients_delete_admin" ON public.clients FOR DELETE TO authenticated USING (is_admin());
+CREATE POLICY "clients_delete_super_admin" ON public.clients FOR DELETE TO authenticated USING (current_user_role() = 'super_admin');
 
 -- Products
 CREATE POLICY "products_select" ON public.products FOR SELECT TO authenticated USING (true);

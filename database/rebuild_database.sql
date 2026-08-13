@@ -469,9 +469,9 @@ CREATE POLICY "clients_insert" ON public.clients
 CREATE POLICY "clients_update" ON public.clients
   FOR UPDATE TO authenticated USING (is_staff());
 
--- Only admins can delete clients
-CREATE POLICY "clients_delete_admin" ON public.clients
-  FOR DELETE TO authenticated USING (is_admin());
+-- Only Super Admin can delete clients
+CREATE POLICY "clients_delete_super_admin" ON public.clients
+  FOR DELETE TO authenticated USING (current_user_role() = 'super_admin');
 
 -- ==================== PRODUCTS ====================
 -- All authenticated users can read products

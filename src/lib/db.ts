@@ -441,6 +441,22 @@ export const clients = {
     local('clients', 'write')
     return { data: localStore.clients.update(id, updates), error: null }
   },
+
+  /**
+   * Super Admin only (enforced by RLS — clients_delete_super_admin). No
+   * local-storage fallback, same reasoning as staff.remove(): a "deleted"
+   * client that only disappeared from browser state was never really gone.
+   * Policies/claims reference clients with ON DELETE RESTRICT, so this
+   * fails with a clear foreign-key error for any client who still has a
+   * policy — surfaced as a friendly message rather than a raw Postgres one.
+   */
+  async remove(id: string) {
+    const { error } = await supabase.from('clients').delete().eq('id', id)
+    if (error) {
+      return { error: error.code === '23503' ? 'This client has existing policies and cannot be deleted.' : error.message }
+    }
+    return { error: null }
+  },
 }
 
 // ── PRODUCTS ──────────────────────────────────────────────────────
