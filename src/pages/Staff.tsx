@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import type { ToastMessage, AppUser } from '../types'
+import { SYSTEM_ROLES } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
@@ -44,7 +45,7 @@ export default function Staff({ showToast }: Props) {
   useEffect(() => {
     db.staff.list().then(({ data, error }) => {
       if (error) showToast('error', 'Failed to load staff.')
-      else if (data) setStaff(data)
+      else if (data) setStaff(data.filter(s => !(SYSTEM_ROLES as string[]).includes(s.role)))
       setLoading(false)
     })
   }, [showToast])

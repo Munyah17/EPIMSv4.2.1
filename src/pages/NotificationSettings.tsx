@@ -132,6 +132,25 @@ export default function NotificationSettings({ showToast }: Props) {
           </div>
         </div>
 
+        {/* Claims escalation */}
+        <div className="card">
+          <div className="card-header">
+            <span className="card-title">🔔 Claims Escalation</span>
+          </div>
+          <p className="notif-settings-desc">
+            Receives an SMS at every stage of the claims pipeline (intake, assessment, final decision) — in addition to the client and whichever staff member is picking the claim up next.
+          </p>
+          <div className="form-group">
+            <label>Super Admin Phone (SMS)</label>
+            <input
+              className="form-control"
+              value={settings.superAdminPhone}
+              onChange={e => update('superAdminPhone', e.target.value)}
+              placeholder="+263..."
+            />
+          </div>
+        </div>
+
         {/* Sender config */}
         <div className="card">
           <div className="card-header">

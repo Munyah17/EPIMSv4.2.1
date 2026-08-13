@@ -73,6 +73,7 @@ const STAFF_SECTIONS: NavSection[] = [
   {
     label: 'SYSTEM',
     items: [
+      { id: 'system_access_roles', label: 'System Access Roles', icon: '🔐', roles: ['super_admin'] },
       { id: 'system_health', label: 'System Health', icon: '🖥', roles: ['super_admin', 'admin'] },
       { id: 'settings', label: 'Settings', icon: '⚙', roles: ['super_admin', 'admin'] },
       { id: 'profile', label: 'My Profile', icon: '👤' },

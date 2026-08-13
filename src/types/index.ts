@@ -1,11 +1,17 @@
+/** super_admin/admin/tech_support are SYSTEM access roles — managed on the
+ *  System Access Roles page, Super Admin only. Everything else is a WORK
+ *  role — managed on Staff Management. */
 export type UserRole =
   | 'super_admin'
   | 'admin'
+  | 'tech_support'
   | 'claims_officer'
   | 'policy_admin'
   | 'finance'
   | 'client_relations'
   | 'policyholder'
+
+export const SYSTEM_ROLES: UserRole[] = ['super_admin', 'admin', 'tech_support']
 
 export type Insurer = 'Motions' | 'CBZ Life' | 'EcoSure' | 'ZB Life' | 'Nyaradzo Funeral' | 'Doves'
 

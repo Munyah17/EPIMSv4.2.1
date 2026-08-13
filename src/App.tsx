@@ -23,6 +23,7 @@ const Payments = lazy(() => import('./pages/Payments'))
 const Products = lazy(() => import('./pages/Products'))
 const Clients = lazy(() => import('./pages/Clients'))
 const Staff = lazy(() => import('./pages/Staff'))
+const SystemAccessRoles = lazy(() => import('./pages/SystemAccessRoles'))
 const Reminders = lazy(() => import('./pages/Reminders'))
 const Reports = lazy(() => import('./pages/Reports'))
 const Leads = lazy(() => import('./pages/Leads'))
@@ -43,7 +44,7 @@ const LiveChat = lazy(() => import('./pages/LiveChat'))
 
 export type ActivePanel =
   | 'dashboard' | 'policies' | 'claims' | 'payments' | 'products'
-  | 'clients' | 'staff' | 'reminders' | 'reports' | 'leads'
+  | 'clients' | 'staff' | 'system_access_roles' | 'reminders' | 'reports' | 'leads'
   | 'email' | 'tickets' | 'fraud' | 'profile' | 'mno_integration'
   | 'system_health' | 'settings' | 'developer_api' | 'mass_messaging' | 'billing_reminders'
   | 'my_policies' | 'my_claims' | 'my_payments' | 'live_chat'
@@ -112,6 +113,7 @@ function AppInner() {
       case 'products': return <Products {...panelProps} />
       case 'clients': return <Clients {...panelProps} />
       case 'staff': return <Staff {...panelProps} />
+      case 'system_access_roles': return <SystemAccessRoles {...panelProps} />
       case 'reminders': return <Reminders {...panelProps} />
       case 'reports': return <Reports {...panelProps} />
       case 'leads': return <Leads {...panelProps} />

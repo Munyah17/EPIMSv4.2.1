@@ -13,7 +13,9 @@ interface Props {
   onResetPassword: (staffId: string, newPassword: string) => Promise<void>
 }
 
-const ROLES: UserRole[] = ['admin', 'claims_officer', 'policy_admin', 'finance', 'client_relations']
+// Work roles only — Super Admin, Admin, and Tech Support are system access
+// roles, managed on the System Access Roles page instead.
+const ROLES: UserRole[] = ['claims_officer', 'policy_admin', 'finance', 'client_relations']
 const DEPARTMENTS = ['Claims', 'Policy Administration', 'Finance', 'Client Relations', 'Administration', 'IT']
 
 export default function AddStaffModal({ staff, onClose, onSave, onResetPassword }: Props) {

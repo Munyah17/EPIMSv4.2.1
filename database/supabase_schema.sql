@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   username    TEXT,
   email       TEXT,
   role        TEXT NOT NULL DEFAULT 'policy_admin'
-                CHECK (role IN ('super_admin','admin','claims_officer','policy_admin','finance','client_relations','policyholder')),
+                CHECK (role IN ('super_admin','admin','tech_support','claims_officer','policy_admin','finance','client_relations','policyholder')),
   department  TEXT NOT NULL DEFAULT 'Administration',
   phone       TEXT,
   active      BOOLEAN NOT NULL DEFAULT TRUE,
@@ -344,10 +344,25 @@ $$;
 CREATE OR REPLACE FUNCTION public.is_staff()
 RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER AS $$
   SELECT COALESCE(
-    (SELECT role IN ('super_admin','admin','claims_officer','policy_admin','finance','client_relations')
+    (SELECT role IN ('super_admin','admin','tech_support','claims_officer','policy_admin','finance','client_relations')
      FROM public.profiles WHERE id = auth.uid()),
     FALSE
   )
+$$;
+
+-- System roles (super_admin, admin, tech_support) can only be changed by a
+-- Super Admin, regardless of which endpoint the update comes through — see
+-- src/pages/SystemAccessRoles.tsx.
+CREATE OR REPLACE FUNCTION public.block_non_super_admin_system_role_changes()
+RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER AS $$
+BEGIN
+  IF NEW.role IS DISTINCT FROM OLD.role
+     AND (NEW.role IN ('super_admin','admin','tech_support') OR OLD.role IN ('super_admin','admin','tech_support'))
+     AND current_user_role() <> 'super_admin' THEN
+    RAISE EXCEPTION 'Only a Super Admin can change a system access role.';
+  END IF;
+  RETURN NEW;
+END;
 $$;
 
 -- Helper: is current user an admin?
@@ -431,6 +446,11 @@ DROP TRIGGER IF EXISTS trg_lock_privileged_profile_fields ON public.profiles;
 CREATE TRIGGER trg_lock_privileged_profile_fields
   BEFORE UPDATE ON public.profiles
   FOR EACH ROW EXECUTE FUNCTION public.lock_privileged_profile_fields_on_self_update();
+
+DROP TRIGGER IF EXISTS trg_block_non_super_admin_system_role_changes ON public.profiles;
+CREATE TRIGGER trg_block_non_super_admin_system_role_changes
+  BEFORE UPDATE ON public.profiles
+  FOR EACH ROW EXECUTE FUNCTION public.block_non_super_admin_system_role_changes();
 
 -- Clients
 CREATE POLICY "clients_select_staff" ON public.clients FOR SELECT TO authenticated USING (is_staff());

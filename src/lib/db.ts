@@ -900,6 +900,29 @@ export const staff = {
   },
 
   /**
+   * Creates a Super Admin / Admin / Tech Support account via
+   * create-system-user.ts — the System Access Roles page's counterpart to
+   * staff.create() (Staff Management, work roles only). Super Admin caller
+   * only, enforced both here and again by the DB trigger.
+   */
+  async createSystemUser(input: { name: string; username?: string; email: string; password: string; phone?: string; role: string; department: string }) {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) return { data: null, error: 'Not signed in.' }
+    try {
+      const res = await fetch('/.netlify/functions/create-system-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify(input),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) return { data: null, error: body?.error ?? `Failed to create account (HTTP ${res.status}).` }
+      return { data: toProfile(body.profile as Record<string, unknown>), error: null }
+    } catch (e) {
+      return { data: null, error: `Could not reach the server: ${e}` }
+    }
+  },
+
+  /**
    * Sets a new password for a staff member via reset-staff-password.ts
    * (service-role only). Replaces the "Not editable here" dead end that
    * used to be the only thing shown for an existing staff member's

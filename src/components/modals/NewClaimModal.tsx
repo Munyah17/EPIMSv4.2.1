@@ -92,6 +92,14 @@ export default function NewClaimModal({ onClose, onSave, showToast }: Props) {
     setDocSlots(prev => prev.map((s, i) => i === index ? { ...s, path: null } : s))
   }
 
+  /** Removes an extra "+ Upload More" slot entirely (not just its file) —
+   *  the 2 compulsory slots can't be removed this way. */
+  const removeSlot = async (index: number) => {
+    const slot = docSlots[index]
+    if (slot.path) await deleteDocument(slot.path)
+    setDocSlots(prev => prev.filter((_, i) => i !== index))
+  }
+
   const requiredDocsMissing = !docSlots[0]?.path || !docSlots[1]?.path
 
   const handleSave = async () => {
@@ -247,6 +255,9 @@ export default function NewClaimModal({ onClose, onSave, showToast }: Props) {
                   />
                 )}
                 {slot.uploading && <span style={{ fontSize: 11, color: 'var(--muted)' }}>Uploading…</span>}
+                {i >= 2 && !slot.path && (
+                  <button type="button" onClick={() => removeSlot(i)} title="Remove this slot" style={{ background: 'none', border: 'none', color: 'var(--danger)', cursor: 'pointer', fontSize: 14, padding: '0 4px', lineHeight: 1 }}>✕</button>
+                )}
               </div>
             ))}
             <button type="button" className="btn btn-ghost btn-sm" onClick={addDocSlot} style={{ marginTop: 4 }}>+ Upload More</button>

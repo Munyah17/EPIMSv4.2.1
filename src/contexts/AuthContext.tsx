@@ -33,6 +33,7 @@ const PANEL_ACCESS: Record<string, UserRole[]> = {
   products: ['super_admin', 'admin', 'policy_admin'],
   clients: ['super_admin', 'admin', 'policy_admin', 'client_relations'],
   staff: ['super_admin', 'admin'],
+  system_access_roles: ['super_admin'],
   reminders: ['super_admin', 'admin', 'client_relations'],
   reports: ['super_admin', 'admin', 'finance'],
   leads: ['super_admin', 'admin', 'client_relations'],

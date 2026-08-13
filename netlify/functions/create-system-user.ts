@@ -2,25 +2,20 @@ import type { Handler } from '@netlify/functions'
 import { createClient } from '@supabase/supabase-js'
 
 /**
- * Creates a real Supabase Auth user + profiles row for a new staff member.
- * Requires the service-role key (server-side only — never sent to the
- * client), so this can't run in the browser. profiles.name/role/department
- * are populated by the existing `on_auth_user_created` DB trigger from
- * user_metadata; phone is set in a follow-up update since the trigger
- * doesn't set it.
+ * Creates a system-access account (Super Admin, Admin, or Tech Support) —
+ * the sibling of create-staff.ts, but for the System Access Roles page
+ * instead of Staff Management (work roles). Requires the service-role key,
+ * so this can't run in the browser.
  *
- * Authorization: the caller must send their own Supabase access token
- * (Authorization: Bearer <token>) and must already be an admin/super_admin
- * — this function has no other access control of its own, and the service
- * role key bypasses RLS entirely, so this check is the only thing standing
- * between this endpoint and anyone on the internet creating accounts.
+ * Authorization: the caller must already BE a super_admin — stricter than
+ * create-staff.ts (which allows admin or super_admin), since only a Super
+ * Admin may provision another system-tier account. The DB also enforces
+ * this independently via trg_block_non_super_admin_system_role_changes.
  */
 
-// Work roles only — super_admin/admin/tech_support are system access roles,
-// created via create-system-user.ts (Super Admin only).
-const STAFF_ROLES = ['claims_officer', 'policy_admin', 'finance', 'client_relations'] as const
+const SYSTEM_ROLES = ['super_admin', 'admin', 'tech_support'] as const
 
-interface CreateStaffBody {
+interface CreateSystemUserBody {
   name: string
   username?: string
   email: string
@@ -28,17 +23,10 @@ interface CreateStaffBody {
   phone?: string
   role: string
   department: string
-  customRoleId?: string
-  permissions?: string[]
 }
 
-/** Next free "Agent N" / "Admin N" default for a role's group, so a blank
- *  username field still gets something usable — matches the convention
- *  used to backfill existing accounts (see database/reset_default_usernames.sql). */
 async function nextDefaultUsername(admin: ReturnType<typeof createClient>, role: string): Promise<string> {
-  const group = role === 'super_admin' || role === 'admin' ? 'Admin'
-    : role === 'policyholder' ? 'User'
-    : 'Agent'
+  const group = role === 'super_admin' || role === 'admin' ? 'Admin' : 'Tech'
   const { data } = await admin
     .from('profiles')
     .select('username')
@@ -67,7 +55,7 @@ export const handler: Handler = async (event) => {
     return { statusCode: 401, body: JSON.stringify({ error: 'Missing Authorization header.' }) }
   }
 
-  let body: CreateStaffBody
+  let body: CreateSystemUserBody
   try {
     body = JSON.parse(event.body ?? '{}')
   } catch {
@@ -80,8 +68,8 @@ export const handler: Handler = async (event) => {
   if (body.password.length < 8) {
     return { statusCode: 400, body: JSON.stringify({ error: 'Password must be at least 8 characters.' }) }
   }
-  if (!STAFF_ROLES.includes(body.role as typeof STAFF_ROLES[number])) {
-    return { statusCode: 400, body: JSON.stringify({ error: 'Invalid role for this endpoint — system access roles (Super Admin, Admin, Tech Support) are created on the System Access Roles page.' }) }
+  if (!SYSTEM_ROLES.includes(body.role as typeof SYSTEM_ROLES[number])) {
+    return { statusCode: 400, body: JSON.stringify({ error: 'Invalid role for this endpoint — work roles are created on Staff Management.' }) }
   }
 
   const admin = createClient(supabaseUrl, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } })
@@ -96,8 +84,8 @@ export const handler: Handler = async (event) => {
     .select('role, active')
     .eq('id', caller.id)
     .single()
-  if (profileError || !callerProfile || !callerProfile.active || !['admin', 'super_admin'].includes(callerProfile.role)) {
-    return { statusCode: 403, body: JSON.stringify({ error: 'You do not have permission to create staff accounts.' }) }
+  if (profileError || !callerProfile || !callerProfile.active || callerProfile.role !== 'super_admin') {
+    return { statusCode: 403, body: JSON.stringify({ error: 'Only a Super Admin can create system access accounts.' }) }
   }
 
   const { data: created, error: createError } = await admin.auth.admin.createUser({
@@ -115,15 +103,15 @@ export const handler: Handler = async (event) => {
   }
 
   const username = body.username?.trim() || await nextDefaultUsername(admin, body.role)
-  const extra: Record<string, unknown> = { username }
-  if (body.customRoleId) extra.custom_role_id = body.customRoleId
-  if (body.permissions) extra.permissions = body.permissions
-  const { error: usernameError } = await admin.from('profiles').update(extra).eq('id', created.user.id)
+  // super_admin/admin get blanket-access sentinels (matching every other
+  // system-tier account); tech_support starts with none, granted explicitly.
+  const permissions = body.role === 'super_admin' ? ['all'] : body.role === 'admin' ? ['all_except_super'] : []
+  const { error: usernameError } = await admin.from('profiles').update({ username, permissions }).eq('id', created.user.id)
   if (usernameError) {
     return { statusCode: 400, body: JSON.stringify({ error: usernameError.code === '23505' ? 'That username is already taken.' : usernameError.message }) }
   }
 
-  const { data: profile } = await admin.from('profiles').select('*, custom_roles!profiles_custom_role_id_fkey(name)').eq('id', created.user.id).single()
+  const { data: profile } = await admin.from('profiles').select('*').eq('id', created.user.id).single()
 
   return { statusCode: 200, body: JSON.stringify({ success: true, profile: { ...profile, email: created.user.email } }) }
 }

@@ -11,6 +11,10 @@ export interface NotifSettings {
   fromName: string
   smsEnabled: boolean
   signature: string
+  /** Receives an SMS at every claims-workflow stage transition (intake,
+   *  assessment, final decision) — set once by Super Admin, on top of the
+   *  client and whichever staff member is picking the claim up next. */
+  superAdminPhone: string
 }
 
 export const DEFAULT_NOTIF_SETTINGS: NotifSettings = {
@@ -23,6 +27,7 @@ export const DEFAULT_NOTIF_SETTINGS: NotifSettings = {
   fromName: 'Tariqify IMS',
   smsEnabled: false,
   signature: 'Regards,\nTariqify Insurance Management System\nwww.tariqify.com',
+  superAdminPhone: '',
 }
 
 export function getNotifSettings(): NotifSettings {
