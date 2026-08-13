@@ -16,17 +16,24 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
   const [insurer, setInsurer] = useState<Insurer | ''>(policy.insurer ?? '')
   const [nextPaymentDate, setNextPaymentDate] = useState(policy.nextPaymentDate ?? '')
   const [agentId, setAgentId] = useState(policy.agentId ?? '')
+  const [growerNumber, setGrowerNumber] = useState(policy.growerNumber ?? '')
   const [staff, setStaff] = useState<AppUser[]>([])
+  const [isAgriculture, setIsAgriculture] = useState(false)
 
   useEffect(() => {
     db.staff.list().then(({ data }) => { if (data) setStaff(data.filter(s => s.active)) })
-  }, [])
+    db.products.list().then(({ data }) => {
+      const category = data?.find(p => p.id === policy.productId)?.category
+      setIsAgriculture(category === 'agriculture')
+    })
+  }, [policy.productId])
 
   const handleSave = () => {
     const agent = staff.find(s => s.id === agentId)
     onSave({
       ...policy, status, paymentMethod, insurer: insurer || undefined, nextPaymentDate: nextPaymentDate || undefined,
       agentId: agentId || undefined, agentName: agent?.name ?? (agentId ? policy.agentName : undefined),
+      growerNumber: isAgriculture ? (growerNumber || undefined) : policy.growerNumber,
     })
   }
 
@@ -73,6 +80,12 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
               {INSURERS.map(i => <option key={i} value={i}>{i}</option>)}
             </select>
           </div>
+          {isAgriculture && (
+            <div className="form-group">
+              <label>Grower Number</label>
+              <input className="form-control" placeholder="Grower registration number" value={growerNumber} onChange={e => setGrowerNumber(e.target.value)} />
+            </div>
+          )}
           <div className="form-group">
             <label>Next Payment Date</label>
             <input type="date" className="form-control" value={nextPaymentDate} onChange={e => setNextPaymentDate(e.target.value)} />

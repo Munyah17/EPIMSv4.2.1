@@ -115,6 +115,7 @@ function toPolicy(r: any): Policy {
     dependants:      r.dependants ?? [],
     paymentMethod:   r.payment_method,
     insurer:         r.insurer ?? undefined,
+    growerNumber:    r.grower_number ?? undefined,
     agentId:         r.profiles?.id ?? r.agent_id,
     agentName:       r.profiles?.name,
     createdAt:       date(r.created_at),
@@ -276,7 +277,7 @@ function toCautionFlag(r: any): CautionFlag {
 const POLICY_SELECT = `
   id, policy_number, client_id, product_id, premium, cover_amount,
   start_date, end_date, status, dependants, payment_method, insurer,
-  agent_id, next_payment_date, last_payment_date, created_at,
+  grower_number, agent_id, next_payment_date, last_payment_date, created_at,
   clients!client_id(id, name),
   products!product_id(id, name),
   profiles!agent_id(id, name)
@@ -348,7 +349,7 @@ export const policies = {
       cover_amount: policy.coverAmount, start_date: policy.startDate,
       end_date: policy.endDate, status: policy.status,
       dependants: policy.dependants, payment_method: policy.paymentMethod,
-      insurer: policy.insurer ?? null,
+      insurer: policy.insurer ?? null, grower_number: policy.growerNumber ?? null,
       agent_id: policy.agentId ?? null, next_payment_date: policy.nextPaymentDate ?? null,
     }
     const { ok, data } = await sb('policies', 'write',
@@ -365,6 +366,7 @@ export const policies = {
     if (updates.status)                              row.status             = updates.status
     if (updates.paymentMethod)                       row.payment_method     = updates.paymentMethod
     if (updates.insurer !== undefined)               row.insurer            = updates.insurer ?? null
+    if (updates.growerNumber !== undefined)          row.grower_number      = updates.growerNumber ?? null
     if (updates.nextPaymentDate !== undefined)        row.next_payment_date  = updates.nextPaymentDate ?? null
     if (updates.dependants)                          row.dependants         = updates.dependants
     if (updates.premium !== undefined)               row.premium            = updates.premium

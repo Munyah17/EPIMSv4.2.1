@@ -58,7 +58,7 @@ const STAFF_SECTIONS: NavSection[] = [
       { id: 'email', label: 'Email', icon: '✉' },
       { id: 'tickets', label: 'Tickets', icon: '💬' },
       { id: 'live_chat', label: 'Live Chat', icon: '🟢', roles: ['super_admin', 'admin', 'client_relations'] },
-      { id: 'mass_messaging', label: 'Mass Messaging', icon: '📱', roles: ['super_admin', 'admin'] },
+      { id: 'mass_messaging', label: 'Bulk SMS Messaging', icon: '📱', roles: ['super_admin', 'admin'] },
       { id: 'billing_reminders', label: 'Billing & Reminders', icon: '💳', roles: ['super_admin', 'admin', 'finance'] },
     ],
   },

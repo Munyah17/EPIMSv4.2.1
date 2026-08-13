@@ -80,6 +80,7 @@ CREATE TABLE IF NOT EXISTS public.policies (
   payment_method    TEXT NOT NULL,
   documents         TEXT[] NOT NULL DEFAULT '{}',
   insurer           TEXT,
+  grower_number     TEXT,
   agent_id          UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
   next_payment_date DATE,
   last_payment_date DATE,

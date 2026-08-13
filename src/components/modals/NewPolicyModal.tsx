@@ -41,6 +41,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
   // Optional — a policy can carry zero dependants, so this starts empty
   // rather than seeding a mandatory first row.
   const [dependants, setDependants] = useState<Dependant[]>([])
+  const [growerNumber, setGrowerNumber] = useState('')
   const [agentId, setAgentId] = useState('')
   const [products, setProducts] = useState<Product[]>([])
   const [productsLoading, setProductsLoading] = useState(true)
@@ -189,6 +190,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
       dependants,
       paymentMethod,
       insurer: insurer || undefined,
+      growerNumber: product!.category === 'agriculture' ? (growerNumber || undefined) : undefined,
       createdAt: new Date().toISOString().split('T')[0],
       nextPaymentDate: new Date(new Date(startDate).setMonth(new Date(startDate).getMonth() + 1)).toISOString().split('T')[0],
       agentId: agentId || undefined,
@@ -291,6 +293,12 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
               {product && (
                 <div className="info-banner info-banner-info">
                   Cover: ${product.coverAmount.toLocaleString()} · Premium: ${product.premium}/mo · Commission: {product.commissionPct}%
+                </div>
+              )}
+              {product?.category === 'agriculture' && (
+                <div className="form-group">
+                  <label>Grower Number</label>
+                  <input className="form-control" placeholder="Grower registration number" value={growerNumber} onChange={e => setGrowerNumber(e.target.value)} />
                 </div>
               )}
               <div className="form-group">

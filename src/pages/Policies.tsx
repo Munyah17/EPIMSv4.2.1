@@ -155,6 +155,7 @@ export default function Policies({ showToast }: Props) {
                 <th>Client</th>
                 <th>Product</th>
                 <th>Cover</th>
+                <th>Grower No.</th>
                 <th>Insurer</th>
                 <th>Start Date</th>
                 <th>Status</th>
@@ -163,13 +164,14 @@ export default function Policies({ showToast }: Props) {
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={8} className="td-empty">No policies found.</td></tr>
+                <tr><td colSpan={9} className="td-empty">No policies found.</td></tr>
               ) : filtered.map(p => (
                 <tr key={p.id}>
                   <td><span className="mono">{p.policyNumber}</span></td>
                   <td>{p.clientName}</td>
                   <td>{p.productName}</td>
                   <td>${p.coverAmount.toLocaleString()}</td>
+                  <td>{p.growerNumber ?? '—'}</td>
                   <td>{p.insurer ?? '—'}</td>
                   <td>{formatDate(p.startDate)}</td>
                   <td>

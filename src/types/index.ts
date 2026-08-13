@@ -76,6 +76,8 @@ export interface Policy {
   dependants: Dependant[]
   paymentMethod: string
   insurer?: Insurer
+  /** Agriculture policies only — the grower's registration number with the insurer. */
+  growerNumber?: string
   agentId?: string
   agentName?: string
   createdAt: string

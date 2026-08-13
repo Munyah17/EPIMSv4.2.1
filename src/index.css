@@ -178,10 +178,6 @@ tbody tr:hover td{background:var(--surface)}
 .modal-close{cursor:pointer;color:var(--muted);font-size:20px;line-height:1;border:none;background:none;font-family:inherit;padding:0}.modal-close:hover{color:var(--text)}
 .modal-foot{margin-top:18px;display:flex;gap:8px;flex-wrap:wrap}
 
-/* TOAST */
-.toast{position:fixed;bottom:20px;right:20px;z-index:9998;background:var(--text);color:white;font-size:12px;font-weight:500;padding:10px 16px;border-radius:8px;opacity:0;transform:translateY(8px);transition:all 0.22s;pointer-events:none;max-width:280px}
-.toast.show{opacity:1;transform:none}
-
 /* LOGOUT CONFIRM */
 .logout-confirm{display:none;position:fixed;inset:0;z-index:700;background:rgba(15,28,46,0.5);align-items:center;justify-content:center}
 .logout-confirm.open{display:flex}
@@ -664,7 +660,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 
 /* --- TOAST (react component) --- */
 .toast-container{position:fixed;bottom:20px;right:20px;z-index:9998;display:flex;flex-direction:column;gap:8px;max-width:320px}
-.toast{display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:9px;font-size:12px;font-weight:500;box-shadow:0 4px 16px rgba(0,0,0,0.15);animation:toastIn 0.2s ease;color:white}
+.toast{display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:9px;font-size:12px;font-weight:500;box-shadow:0 4px 16px rgba(0,0,0,0.15);animation:toastIn 0.2s ease forwards;color:white}
 @keyframes toastIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:none}}
 .toast-success{background:#059669}
 .toast-error{background:var(--danger)}

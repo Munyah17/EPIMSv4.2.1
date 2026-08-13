@@ -68,7 +68,7 @@ function AppInner() {
   // which would re-trigger every mounted page's fetch and silently overwrite
   // any not-yet-persisted local state — including a just-added item.
   const showToast = useCallback((type: ToastMessage['type'], message: string) => {
-    const id = Date.now().toString()
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`
     setToasts(prev => [...prev, { id, type, message }])
     // Stays up to 15s so it's actually readable — the user can also close
     // it early via the toast's own dismiss button (see Toast.tsx).

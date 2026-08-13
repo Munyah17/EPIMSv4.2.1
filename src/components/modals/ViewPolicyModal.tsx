@@ -29,6 +29,9 @@ export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint }: Pr
             <div className="detail-item"><span className="detail-label">Start Date</span><span>{formatDate(policy.startDate)}</span></div>
             <div className="detail-item"><span className="detail-label">End Date</span><span>{formatDate(policy.endDate)}</span></div>
             <div className="detail-item"><span className="detail-label">Payment Method</span><span>{policy.paymentMethod}</span></div>
+            {policy.growerNumber && (
+              <div className="detail-item"><span className="detail-label">Grower Number</span><span>{policy.growerNumber}</span></div>
+            )}
             <div className="detail-item"><span className="detail-label">Next Payment</span><span>{formatDate(policy.nextPaymentDate)}</span></div>
             <div className="detail-item"><span className="detail-label">Last Payment</span><span>{formatDate(policy.lastPaymentDate)}</span></div>
             <div className="detail-item"><span className="detail-label">Agent</span><span>{policy.agentName ?? '—'}</span></div>

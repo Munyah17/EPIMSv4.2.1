@@ -171,6 +171,14 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   y += terms.length * 4 + 8
 
   if (category === 'agriculture') {
+    if (policy.growerNumber) {
+      doc.setFontSize(9.5)
+      doc.setTextColor(...MUTED)
+      doc.text('Grower Number:', 14, y)
+      doc.setTextColor(...TEXT)
+      doc.text(policy.growerNumber, 50, y)
+      y += 8
+    }
     sectionHeading(5, 'COVER PROVIDED')
     doc.setFontSize(9.5)
     AGRICULTURE_COVER.forEach((peril, i) => {

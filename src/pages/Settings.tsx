@@ -25,7 +25,7 @@ export default function Settings(props: Props) {
         </button>
       </div>
       <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 16 }}>
-        Payment gateway credentials (EcoCash/Paynow/Zipit) live under <b>Billing &amp; Reminders</b>, and the SMS gateway lives under <b>Mass Messaging</b> — kept there since they sit next to where they're used.
+        Payment gateway credentials (EcoCash/Paynow/Zipit) live under <b>Billing &amp; Reminders</b>, and the SMS gateway lives under <b>Bulk SMS Messaging</b> — kept there since they sit next to where they're used.
       </p>
       {tab === 'notifications' && <NotificationSettings {...props} />}
       {tab === 'commission' && <CommissionSettings showToast={props.showToast} />}

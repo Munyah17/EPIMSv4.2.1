@@ -29,7 +29,7 @@ const PANEL_TITLES: Record<ActivePanel, string> = {
   system_health: 'System Health',
   settings: 'Settings',
   developer_api: 'Developer API',
-  mass_messaging: 'Mass Messaging',
+  mass_messaging: 'Bulk SMS Messaging',
   billing_reminders: 'Billing & Reminders',
   profile: 'My Profile',
   my_policies: 'My Policies',
