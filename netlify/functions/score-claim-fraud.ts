@@ -1,9 +1,12 @@
 import type { Handler } from '@netlify/functions'
 
 /**
- * Real AI fraud scoring via Groq (llama-3.3-70b-versatile). Replaces the
+ * Real AI fraud scoring via Claude (claude-sonnet-5) — replaces the
  * hardcoded `Math.floor(Math.random() * 30)` that used to ship with every
- * submitted claim regardless of its actual content.
+ * submitted claim regardless of its actual content. Was previously on Groq;
+ * moved to Anthropic per the 2026-08 access review so claim fraud scoring
+ * and assessment photo analysis (analyze-assessment-photo.ts) share one
+ * provider and key.
  */
 
 interface ScoreClaimBody {
@@ -22,9 +25,9 @@ export const handler: Handler = async (event) => {
     return { statusCode: 405, body: JSON.stringify({ error: 'Method not allowed' }) }
   }
 
-  const apiKey = process.env.GROQ_API_KEY
+  const apiKey = process.env.ANTHROPIC_API_KEY
   if (!apiKey) {
-    return { statusCode: 200, body: JSON.stringify({ score: 20, signals: [] as string[], reasoning: 'AI fraud scoring not configured (GROQ_API_KEY missing) — default low score.' }) }
+    return { statusCode: 200, body: JSON.stringify({ score: 20, signals: [] as string[], reasoning: 'AI fraud scoring not configured (ANTHROPIC_API_KEY missing) — default low score.' }) }
   }
 
   let body: ScoreClaimBody
@@ -54,27 +57,25 @@ Days between event and submission: ${daysEventToSubmit}
 Prior claims already filed on this policy: ${body.priorClaimsOnPolicy}
 Description provided by claimant: "${body.description}"
 
-Respond with ONLY a JSON object, no markdown, no explanation outside the JSON: {"score": <integer 0-100>, "signals": [<0-4 short strings naming specific red flags actually present, empty array if none>], "reasoning": "<one sentence, under 25 words>"}`
+Respond with ONLY a JSON object, no markdown fences, no explanation outside the JSON: {"score": <integer 0-100>, "signals": [<0-4 short strings naming specific red flags actually present, empty array if none>], "reasoning": "<one sentence, under 25 words>"}`
 
   try {
-    const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.2,
+        model: 'claude-sonnet-5',
         max_tokens: 300,
-        response_format: { type: 'json_object' },
+        messages: [{ role: 'user', content: prompt }],
       }),
     })
     if (!res.ok) {
       const text = await res.text().catch(() => '')
-      return { statusCode: 502, body: JSON.stringify({ error: `Groq API error (${res.status}): ${text}` }) }
+      return { statusCode: 502, body: JSON.stringify({ error: `AI service error (${res.status}): ${text}` }) }
     }
     const data = await res.json()
-    const content = data?.choices?.[0]?.message?.content
-    if (!content) return { statusCode: 502, body: JSON.stringify({ error: 'Groq returned no content.' }) }
+    const content = data?.content?.[0]?.text
+    if (!content) return { statusCode: 502, body: JSON.stringify({ error: 'AI service returned no content.' }) }
 
     const parsed = JSON.parse(content)
     const score = Math.max(0, Math.min(100, Math.round(Number(parsed.score) || 0)))
