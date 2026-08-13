@@ -296,7 +296,7 @@ export async function handleUssdAction(
           id: uid(), claimNumber, policyId: pol.id, policyNumber: pol.policyNumber,
           clientId: pol.clientId, clientName: '',
           productName: pol.productName,
-          claimType: sctx.claimType ?? 'General', amount: 0, status: 'pending',
+          claimType: sctx.claimType ?? 'General', amount: 0, status: 'pending', stage: 'intake',
           dateOfEvent: shortDate(), dateSubmitted: shortDate(),
           description: `${sctx.claimType} claim — submitted via USSD`,
           fraudScore: Math.floor(Math.random() * 25),

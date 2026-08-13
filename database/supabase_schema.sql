@@ -113,6 +113,13 @@ CREATE TABLE IF NOT EXISTS public.claims (
   amount         NUMERIC(14,2) NOT NULL,
   status         TEXT NOT NULL DEFAULT 'pending'
                    CHECK (status IN ('pending','under_review','approved','rejected','paid')),
+  -- Pipeline stage: intake (Claims Receiver) -> assessment (Claims Processor)
+  -- -> final_review (MD/COO) -> closed. Separate from `status` (the outcome)
+  -- so the UI knows who needs to act next.
+  stage          TEXT NOT NULL DEFAULT 'intake'
+                   CHECK (stage IN ('intake','assessment','final_review','closed')),
+  assessment_notes TEXT,
+  agent_id       UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
   date_of_event  DATE NOT NULL,
   date_submitted DATE NOT NULL DEFAULT CURRENT_DATE,
   description    TEXT,
@@ -526,7 +533,7 @@ ON CONFLICT (id) DO NOTHING;
 -- 6b. Update profiles
 UPDATE public.profiles SET name='Munyaradzi Choto',  role='super_admin',      department='Management',            phone='+263 77 100 0001', active=true, permissions=ARRAY['all'] WHERE id='10000000-0000-0000-0000-000000000001';
 UPDATE public.profiles SET name='Farai Mutasa',       role='admin',            department='Administration',        phone='+263 77 100 0002', active=true, permissions=ARRAY['all_except_super'] WHERE id='10000000-0000-0000-0000-000000000002';
-UPDATE public.profiles SET name='Rudo Chikwanda',     role='claims_officer',   department='Claims',                phone='+263 77 100 0003', active=true, permissions=ARRAY['claims.view','claims.create','claims.edit','claims.approve','claims.reject','communications.send_email'] WHERE id='10000000-0000-0000-0000-000000000003';
+UPDATE public.profiles SET name='Rudo Chikwanda',     role='claims_officer',   department='Claims',                phone='+263 77 100 0003', active=true, permissions=ARRAY['claims.view','claims.create','claims.edit','claims.intake','claims.assess','claims.approve','claims.reject','communications.send_email'] WHERE id='10000000-0000-0000-0000-000000000003';
 UPDATE public.profiles SET name='Blessing Moyo',      role='policy_admin',     department='Policy Administration', phone='+263 77 100 0004', active=true, permissions=ARRAY['policies.view','policies.create','policies.edit','products.view','products.create','products.edit','clients.view','clients.create','clients.edit','communications.send_email'] WHERE id='10000000-0000-0000-0000-000000000004';
 UPDATE public.profiles SET name='Tendai Nhamo',       role='finance',          department='Finance',               phone='+263 77 100 0005', active=true, permissions=ARRAY['payments.view','payments.capture','payments.validate','reports.view','communications.send_email'] WHERE id='10000000-0000-0000-0000-000000000005';
 UPDATE public.profiles SET name='Chipo Sibanda',      role='client_relations', department='Client Relations',      phone='+263 77 100 0006', active=true, permissions=ARRAY['clients.view','clients.create','clients.edit','communications.send_email','communications.send_sms'] WHERE id='10000000-0000-0000-0000-000000000006';

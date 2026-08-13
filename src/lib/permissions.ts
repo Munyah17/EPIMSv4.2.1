@@ -40,8 +40,10 @@ export const PERMISSION_CATALOG: PermissionGroup[] = [
       { key: 'claims.view', label: 'View Claims' },
       { key: 'claims.create', label: 'Submit Claims' },
       { key: 'claims.edit', label: 'Edit / Review Claims' },
-      { key: 'claims.approve', label: 'Approve Claims' },
-      { key: 'claims.reject', label: 'Reject Claims' },
+      { key: 'claims.intake', label: 'Accept/Reject Claim Intake (Claims Receiver)' },
+      { key: 'claims.assess', label: 'Assess & Escalate Claims (Claims Processor)' },
+      { key: 'claims.approve', label: 'Final Approve Claims (MD/COO)' },
+      { key: 'claims.reject', label: 'Final Decline Claims (MD/COO)' },
     ],
   },
   {

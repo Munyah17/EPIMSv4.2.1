@@ -292,7 +292,7 @@ export const CLAIMS: Claim[] = [
   {
     id: 'cl1', claimNumber: 'CLM2026001', policyId: 'pol3', policyNumber: 'EMA2024003',
     clientId: 'c2', clientName: 'Nomsa Ndlovu', productName: 'Funeral Cover Premium',
-    claimType: 'Death Benefit', amount: 8000, status: 'under_review',
+    claimType: 'Death Benefit', amount: 8000, status: 'under_review', stage: 'assessment',
     dateOfEvent: '2026-04-28', dateSubmitted: '2026-04-30',
     description: 'Policyholder\'s mother passed away on 28 April 2026. Death certificate and ID attached.',
     fraudScore: 12, assignedTo: 'u2', documents: ['death_cert.pdf', 'id_copy.pdf'],
@@ -301,7 +301,7 @@ export const CLAIMS: Claim[] = [
   {
     id: 'cl2', claimNumber: 'CLM2026002', policyId: 'pol2', policyNumber: 'EMA2024002',
     clientId: 'c1', clientName: 'Simba Dube', productName: 'Hospital Cash Plan',
-    claimType: 'Hospitalisation', amount: 350, status: 'approved',
+    claimType: 'Hospitalisation', amount: 350, status: 'approved', stage: 'closed',
     dateOfEvent: '2026-04-15', dateSubmitted: '2026-04-20',
     description: '7 days hospitalisation at Parirenyatwa Hospital due to malaria.',
     fraudScore: 5, assignedTo: 'u2', documents: ['hospital_letter.pdf', 'receipts.pdf'],
@@ -311,7 +311,7 @@ export const CLAIMS: Claim[] = [
   {
     id: 'cl3', claimNumber: 'CLM2026003', policyId: 'pol6', policyNumber: 'EMA2024006',
     clientId: 'c5', clientName: 'Garikai Mhike', productName: 'Personal Accident Cover',
-    claimType: 'Accidental Injury', amount: 5000, status: 'pending',
+    claimType: 'Accidental Injury', amount: 5000, status: 'pending', stage: 'intake',
     dateOfEvent: '2026-05-01', dateSubmitted: '2026-05-03',
     description: 'Client involved in road traffic accident on Harare-Bulawayo highway.',
     fraudScore: 78, assignedTo: undefined, documents: ['police_report.pdf'],
@@ -320,7 +320,7 @@ export const CLAIMS: Claim[] = [
   {
     id: 'cl4', claimNumber: 'CLM2026004', policyId: 'pol7', policyNumber: 'EMA2024007',
     clientId: 'c6', clientName: 'Rutendo Zvobgo', productName: 'Life Cover Essential',
-    claimType: 'Disability Benefit', amount: 5000, status: 'rejected',
+    claimType: 'Disability Benefit', amount: 5000, status: 'rejected', stage: 'closed',
     dateOfEvent: '2026-03-10', dateSubmitted: '2026-03-15',
     description: 'Claimed permanent disability after workplace accident.',
     fraudScore: 62, assignedTo: 'u2', documents: ['medical_cert.pdf', 'employer_letter.pdf'],
@@ -330,7 +330,7 @@ export const CLAIMS: Claim[] = [
   {
     id: 'cl5', claimNumber: 'CLM2026005', policyId: 'pol10', policyNumber: 'EMA2024010',
     clientId: 'c9', clientName: 'Munyaradzi Gumbo', productName: 'Funeral Cover Premium',
-    claimType: 'Death Benefit', amount: 8000, status: 'paid',
+    claimType: 'Death Benefit', amount: 8000, status: 'paid', stage: 'closed',
     dateOfEvent: '2026-02-20', dateSubmitted: '2026-02-22',
     description: 'Policyholder\'s spouse passed away.',
     fraudScore: 8, assignedTo: 'u2', documents: ['death_cert.pdf', 'marriage_cert.pdf', 'id.pdf'],

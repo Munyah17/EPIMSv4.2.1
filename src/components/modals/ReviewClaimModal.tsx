@@ -1,38 +1,40 @@
 import { useState, useEffect } from 'react'
-import type { Claim, ClaimStatus, AppUser } from '../../types'
+import type { Claim, AppUser } from '../../types'
 import { db } from '../../lib/db'
 import { formatDate } from '../../lib/dateUtils'
 import { getDocumentUrl, documentDisplayName } from '../../lib/storage'
+import { useAuth } from '../../contexts/AuthContext'
+import {
+  notifyClaimIntakeAccepted, notifyClaimIntakeRejected,
+  notifyClaimEscalated, notifyClaimFinalDecision,
+} from '../../lib/claimNotifications'
 
 interface Props {
   claim: Claim
   onClose: () => void
-  onSave: (claim: Claim) => void
+  /** The modal resolves the whole transition (next claim state) itself —
+   *  the parent just persists it and, on success, fires `notify`. */
+  onSave: (claim: Claim, notify: () => Promise<void>) => void
+}
+
+const STAGE_LABEL: Record<Claim['stage'], string> = {
+  intake: 'Intake — Claims Receiver',
+  assessment: 'Assessment — Claims Processor',
+  final_review: 'Final Review — MD/COO',
+  closed: 'Closed',
 }
 
 export default function ReviewClaimModal({ claim, onClose, onSave }: Props) {
-  const [status, setStatus] = useState<ClaimStatus>(claim.status)
+  const { hasPermission } = useAuth()
   const [notes, setNotes] = useState(claim.notes ?? '')
-  const [assignedTo, setAssignedTo] = useState(claim.assignedTo ?? '')
+  const [assessmentNotes, setAssessmentNotes] = useState(claim.assessmentNotes ?? '')
+  const [nextStaffId, setNextStaffId] = useState('')
   const [staff, setStaff] = useState<AppUser[]>([])
+  const [busy, setBusy] = useState(false)
 
   useEffect(() => {
-    db.staff.list().then(({ data }) => {
-      if (data) {
-        setStaff(data.filter(u => ['claims_officer', 'admin', 'super_admin'].includes(u.role)))
-      }
-    })
+    db.staff.list().then(({ data }) => { if (data) setStaff(data.filter(u => u.active)) })
   }, [])
-
-  const handleSave = () => {
-    onSave({
-      ...claim,
-      status,
-      notes,
-      assignedTo: assignedTo || undefined,
-      resolvedAt: ['approved', 'rejected', 'paid'].includes(status) ? new Date().toISOString() : claim.resolvedAt,
-    })
-  }
 
   const scoreColor = claim.fraudScore >= 70 ? 'var(--danger)' : claim.fraudScore >= 40 ? 'var(--gold)' : 'var(--teal)'
 
@@ -41,12 +43,42 @@ export default function ReviewClaimModal({ claim, onClose, onSave }: Props) {
     if (url) window.open(url, '_blank', 'noopener,noreferrer')
   }
 
-  // Uploaded filenames are "<Slot-Label>_<original name>" (see
-  // NewClaimModal) — split that back into a readable "Label: filename".
   const describeDocument = (path: string) => {
     const raw = documentDisplayName(path)
     const [label, ...rest] = raw.split('_')
     return rest.length ? `${label.replace(/-/g, ' ')}: ${rest.join('_')}` : raw
+  }
+
+  const saveNotesOnly = () => {
+    onSave({ ...claim, notes }, async () => { /* internal note edit — nothing to notify */ })
+  }
+
+  const acceptIntake = async () => {
+    const processor = staff.find(s => s.id === nextStaffId)
+    if (!processor) return
+    setBusy(true)
+    const updated: Claim = { ...claim, notes, stage: 'assessment', status: 'under_review', assignedTo: processor.id, assignedName: processor.name }
+    onSave(updated, () => notifyClaimIntakeAccepted(updated, { email: processor.email, phone: processor.phone, name: processor.name }))
+  }
+
+  const rejectIntake = () => {
+    setBusy(true)
+    const updated: Claim = { ...claim, notes, stage: 'closed', status: 'rejected', resolvedAt: new Date().toISOString() }
+    onSave(updated, () => notifyClaimIntakeRejected(updated))
+  }
+
+  const escalateToFinalReview = () => {
+    const reviewer = staff.find(s => s.id === nextStaffId)
+    if (!reviewer) return
+    setBusy(true)
+    const updated: Claim = { ...claim, notes, assessmentNotes, stage: 'final_review', assignedTo: reviewer.id, assignedName: reviewer.name }
+    onSave(updated, () => notifyClaimEscalated(updated, { email: reviewer.email, phone: reviewer.phone, name: reviewer.name }))
+  }
+
+  const finalDecision = (approve: boolean) => {
+    setBusy(true)
+    const updated: Claim = { ...claim, notes, stage: 'closed', status: approve ? 'approved' : 'rejected', resolvedAt: new Date().toISOString() }
+    onSave(updated, () => notifyClaimFinalDecision(updated))
   }
 
   return (
@@ -62,6 +94,10 @@ export default function ReviewClaimModal({ claim, onClose, onSave }: Props) {
               ⚠ Fraud score: <strong>{claim.fraudScore}%</strong> — {claim.fraudScore >= 70 ? 'HIGH RISK — Investigate before processing.' : 'Moderate risk — Verify documents carefully.'}
             </div>
           )}
+          <div className="info-banner info-banner-info" style={{ marginBottom: '1rem' }}>
+            Stage: <strong>{STAGE_LABEL[claim.stage]}</strong>
+            {claim.assignedName && claim.stage !== 'closed' && <> — assigned to <strong>{claim.assignedName}</strong></>}
+          </div>
           <div className="detail-grid">
             <div className="detail-item"><span className="detail-label">Client</span><span>{claim.clientName}</span></div>
             <div className="detail-item"><span className="detail-label">Policy</span><span className="mono">{claim.policyNumber}</span></div>
@@ -93,33 +129,66 @@ export default function ReviewClaimModal({ claim, onClose, onSave }: Props) {
               </ul>
             </div>
           )}
-          <div className="form-row">
+
+          {claim.assessmentNotes && claim.stage !== 'assessment' && (
             <div className="form-group">
-              <label>Update Status</label>
-              <select className="form-control" value={status} onChange={e => setStatus(e.target.value as ClaimStatus)}>
-                <option value="pending">Pending</option>
-                <option value="under_review">Under Review</option>
-                <option value="approved">Approved</option>
-                <option value="rejected">Rejected</option>
-                <option value="paid">Paid</option>
-              </select>
+              <label>Assessment Notes</label>
+              <p style={{ color: 'var(--text)', fontSize: '0.85rem', lineHeight: 1.6 }}>{claim.assessmentNotes}</p>
             </div>
-            <div className="form-group">
-              <label>Assign To</label>
-              <select className="form-control" value={assignedTo} onChange={e => setAssignedTo(e.target.value)}>
-                <option value="">Unassigned</option>
-                {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </select>
-            </div>
-          </div>
+          )}
+
           <div className="form-group">
             <label>Internal Notes</label>
             <textarea className="form-control" rows={3} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Add review notes…" />
           </div>
+
+          {/* ── Stage-specific action area ─────────────────────────── */}
+          {claim.stage === 'intake' && hasPermission('claims.intake') && (
+            <div className="claim-stage-action">
+              <label>Accept &amp; Assign to Claims Processor</label>
+              <select className="form-control" value={nextStaffId} onChange={e => setNextStaffId(e.target.value)}>
+                <option value="">Select processor…</option>
+                {staff.map(s => <option key={s.id} value={s.id}>{s.name} ({s.role.replace(/_/g, ' ')})</option>)}
+              </select>
+              <div className="claim-stage-action-btns">
+                <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} disabled={busy} onClick={rejectIntake}>Reject Claim</button>
+                <button type="button" className="btn btn-primary btn-sm" disabled={busy || !nextStaffId} onClick={acceptIntake}>Accept &amp; Assign</button>
+              </div>
+            </div>
+          )}
+
+          {claim.stage === 'assessment' && hasPermission('claims.assess') && (
+            <div className="claim-stage-action">
+              <label>Assessment Notes</label>
+              <textarea className="form-control" rows={3} value={assessmentNotes} onChange={e => setAssessmentNotes(e.target.value)} placeholder="Record your analysis of this claim…" />
+              <label style={{ marginTop: 8 }}>Escalate to Final Reviewer (MD/COO)</label>
+              <select className="form-control" value={nextStaffId} onChange={e => setNextStaffId(e.target.value)}>
+                <option value="">Select final reviewer…</option>
+                {staff.map(s => <option key={s.id} value={s.id}>{s.name} ({s.role.replace(/_/g, ' ')})</option>)}
+              </select>
+              <div className="claim-stage-action-btns">
+                <button type="button" className="btn btn-primary btn-sm" disabled={busy || !nextStaffId} onClick={escalateToFinalReview}>Submit for Final Review</button>
+              </div>
+            </div>
+          )}
+
+          {claim.stage === 'final_review' && (hasPermission('claims.approve') || hasPermission('claims.reject')) && (
+            <div className="claim-stage-action">
+              <label>Final Decision</label>
+              <div className="claim-stage-action-btns">
+                {hasPermission('claims.reject') && (
+                  <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} disabled={busy} onClick={() => finalDecision(false)}>Decline</button>
+                )}
+                {hasPermission('claims.approve') && (
+                  <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => finalDecision(true)}>Approve</button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
         <div className="modal-footer">
-          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSave}>Save Review</button>
+          <button className="btn btn-ghost" onClick={onClose}>Close</button>
+          <button className="btn btn-primary" onClick={saveNotesOnly} disabled={busy}>Save Notes</button>
         </div>
       </div>
     </div>

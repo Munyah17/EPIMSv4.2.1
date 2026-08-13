@@ -119,6 +119,10 @@ export interface Product {
 
 export type ClaimStatus = 'pending' | 'under_review' | 'approved' | 'rejected' | 'paid'
 
+/** Where the claim currently sits in the receiver → processor → final
+ *  reviewer pipeline. `status` is the outcome; `stage` is who owns it next. */
+export type ClaimStage = 'intake' | 'assessment' | 'final_review' | 'closed'
+
 export interface Claim {
   id: string
   claimNumber: string
@@ -130,11 +134,20 @@ export interface Claim {
   claimType: string
   amount: number
   status: ClaimStatus
+  stage: ClaimStage
   dateOfEvent: string
   dateSubmitted: string
   description: string
   fraudScore: number
+  /** Whoever needs to act next — the intake receiver, then the processor,
+   *  then the final reviewer, reassigned at each handoff. */
   assignedTo?: string
+  assignedName?: string
+  /** The staff member the underlying policy is attributed to — carried onto
+   *  the claim so their portal reflects the outcome without being notified. */
+  agentId?: string
+  agentName?: string
+  assessmentNotes?: string
   documents: string[]
   notes?: string
   resolvedAt?: string

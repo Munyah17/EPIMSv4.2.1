@@ -5,7 +5,7 @@ import { db } from '../lib/db'
 import ScoreBar from '../components/ui/ScoreBar'
 import NewClaimModal from '../components/modals/NewClaimModal'
 import ReviewClaimModal from '../components/modals/ReviewClaimModal'
-import { notifyClaimCreated, notifyClaimStatusChanged } from '../lib/claimNotifications'
+import { notifyClaimCreated } from '../lib/claimNotifications'
 import { useAuth } from '../contexts/AuthContext'
 
 interface Props {
@@ -62,25 +62,13 @@ export default function Claims({ showToast }: Props) {
     }
   }
 
-  const handleUpdate = async (updated: Claim) => {
-    const previous = claims.find(c => c.id === updated.id)
+  const handleUpdate = async (updated: Claim, notify: () => Promise<void>) => {
     const { data, error } = await db.claims.update(updated.id, updated)
     if (error || !data) { showToast('error', 'Failed to update claim.'); return }
     setClaims(prev => prev.map(c => c.id === data.id ? data : c))
     showToast('success', `Claim ${data.claimNumber} updated.`)
     setReviewClaim(null)
-    if (previous && data.status !== previous.status) {
-      try { notifyClaimStatusChanged(data, previous.status) } catch { /**/ }
-    }
-  }
-
-  const handleQuickDecision = async (claim: Claim, status: ClaimStatus) => {
-    const previous = claim.status
-    const { data, error } = await db.claims.update(claim.id, { status, resolvedAt: new Date().toISOString() })
-    if (error || !data) { showToast('error', `Failed to ${status} claim.`); return }
-    setClaims(prev => prev.map(c => c.id === data.id ? data : c))
-    showToast('success', `Claim ${data.claimNumber} ${status}.`)
-    try { notifyClaimStatusChanged(data, previous) } catch { /**/ }
+    try { await notify() } catch { /**/ }
   }
 
   return (
@@ -122,12 +110,13 @@ export default function Claims({ showToast }: Props) {
                 <th>Submitted</th>
                 <th>Fraud Score</th>
                 <th>Status</th>
+                <th>Stage</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={9} className="td-empty">No claims found.</td></tr>
+                <tr><td colSpan={10} className="td-empty">No claims found.</td></tr>
               ) : filtered.map(c => (
                 <tr key={c.id}>
                   <td><span className="mono">{c.claimNumber}</span></td>
@@ -139,15 +128,17 @@ export default function Claims({ showToast }: Props) {
                   <td><ScoreBar score={c.fraudScore} /></td>
                   <td><span className={`pill pill-${c.status.replace('_', '-')}`}>{c.status.replace('_', ' ')}</span></td>
                   <td>
+                    {c.stage === 'closed' ? '—' : (
+                      <>
+                        <span className="pill pill-active pill-xs">{c.stage.replace('_', ' ')}</span>
+                        {c.assignedName && <span style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginTop: 2 }}>{c.assignedName}</span>}
+                      </>
+                    )}
+                  </td>
+                  <td>
                     <div className="action-btns">
                       {hasPermission('claims.edit') && (
                         <button type="button" className="btn btn-ghost btn-sm" onClick={() => setReviewClaim(c)}>Review</button>
-                      )}
-                      {['pending', 'under_review'].includes(c.status) && hasPermission('claims.approve') && (
-                        <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--success)' }} onClick={() => handleQuickDecision(c, 'approved')}>Approve</button>
-                      )}
-                      {['pending', 'under_review'].includes(c.status) && hasPermission('claims.reject') && (
-                        <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => handleQuickDecision(c, 'rejected')}>Reject</button>
                       )}
                     </div>
                   </td>

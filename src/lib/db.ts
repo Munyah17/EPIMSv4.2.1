@@ -151,11 +151,16 @@ function toClaim(r: any): Claim {
     claimType:     r.claim_type,
     amount:        r.amount,
     status:        r.status as ClaimStatus,
+    stage:         (r.stage as Claim['stage']) ?? 'intake',
     dateOfEvent:   date(r.date_of_event),
     dateSubmitted: date(r.date_submitted),
     description:   r.description ?? '',
     fraudScore:    r.fraud_score,
     assignedTo:    r.assigned_to ?? undefined,
+    assignedName:  r.assignee?.name ?? undefined,
+    agentId:       r.agent_id ?? undefined,
+    agentName:     r.agent?.name ?? undefined,
+    assessmentNotes: r.assessment_notes ?? undefined,
     documents:     r.documents ?? [],
     notes:         r.notes ?? undefined,
     resolvedAt:    r.resolved_at ?? undefined,
@@ -297,13 +302,16 @@ const POLICY_SELECT = `
 `
 const CLAIM_SELECT = `
   id, claim_number, policy_id, claim_type, amount, status,
+  stage, assessment_notes, agent_id,
   date_of_event, date_submitted, description, fraud_score,
   assigned_to, documents, notes, resolved_at, created_at,
   policies!policy_id(
     id, policy_number,
     clients!client_id(id, name),
     products!product_id(name)
-  )
+  ),
+  assignee:profiles!assigned_to(id, name),
+  agent:profiles!agent_id(id, name)
 `
 const PAYMENT_SELECT = `
   id, reference, policy_id, amount, method, status, payment_date, split_payments, created_at,
@@ -558,6 +566,7 @@ export const claims = {
     const row = {
       claim_number: claimNumber, policy_id: claim.policyId,
       claim_type: claim.claimType, amount: claim.amount, status: claim.status,
+      stage: claim.stage ?? 'intake', agent_id: claim.agentId ?? null,
       date_of_event: claim.dateOfEvent, date_submitted: claim.dateSubmitted,
       description: claim.description, fraud_score: claim.fraudScore, documents: claim.documents,
     }
@@ -578,7 +587,9 @@ export const claims = {
   async update(id: string, updates: Partial<Claim>) {
     const row: Record<string, unknown> = {}
     if (updates.status     !== undefined) row.status      = updates.status
+    if (updates.stage      !== undefined) row.stage       = updates.stage
     if (updates.assignedTo !== undefined) row.assigned_to = updates.assignedTo ?? null
+    if (updates.assessmentNotes !== undefined) row.assessment_notes = updates.assessmentNotes ?? null
     if (updates.notes      !== undefined) row.notes       = updates.notes ?? null
     if (updates.resolvedAt !== undefined) row.resolved_at = updates.resolvedAt ?? null
     const { ok, data } = await sb('claims', 'write',

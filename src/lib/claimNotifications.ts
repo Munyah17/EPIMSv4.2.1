@@ -2,6 +2,7 @@ import type { Claim, ClaimStatus } from '../types'
 import { sendEmail, getNotifSettings } from './mailService'
 import { db } from './db'
 import { MAILBOXES } from './mailboxes'
+import { sendSms } from './smsService'
 
 async function getClientContact(claim: Claim): Promise<{ email: string; phone: string }> {
   const { data } = await db.clients.list()
@@ -84,6 +85,88 @@ We will keep you informed as this claim progresses. All parties are copied on th
   void sendEmail({ to: cfg.netoneEmail, cc, subject, body: staffBody, linkedTo: claim.id, folder: 'claims', from: MAILBOXES.claims })
   if (client.email) {
     void sendEmail({ to: client.email, cc, subject, body: clientBody, linkedTo: claim.id, folder: 'claims', from: MAILBOXES.claims })
+  }
+}
+
+// ── Pipeline handoffs: intake (Claims Receiver) -> assessment (Claims
+// Processor) -> final_review (MD/COO) -> closed. Each handoff notifies the
+// client and whoever is picking the claim up next — never the agent (their
+// portal reflects the outcome passively via the claim's own status/pill,
+// no push notification, per the 2026-08 access review).
+
+interface StaffContact { email?: string; phone?: string; name: string }
+
+export async function notifyClaimIntakeAccepted(claim: Claim, processor: StaffContact): Promise<void> {
+  const cfg = getNotifSettings()
+  const client = await getClientContact(claim)
+  const subject = `[Claim Received] ${claim.claimNumber} — Now with Claims Processing`
+
+  if (client.email) {
+    void sendEmail({
+      to: client.email, subject, linkedTo: claim.id, folder: 'claims', from: MAILBOXES.claims,
+      body: `Dear ${claim.clientName},\n\nYour claim ${claim.claimNumber} has been received and accepted for processing.${claimSummaryBlock(claim)}\n\nIt is now with our claims processing team for assessment.${signature(cfg.signature)}`,
+    })
+  }
+  if (client.phone) void sendSms(client.phone, `Tariqify: Your claim ${claim.claimNumber} was received and is now being processed.`).catch(() => { /**/ })
+
+  if (processor.email) {
+    void sendEmail({
+      to: processor.email, subject: `[Assigned] Claim ${claim.claimNumber} needs assessment`, linkedTo: claim.id, folder: 'claims', from: MAILBOXES.claims,
+      body: `${claim.claimNumber} has been accepted at intake and assigned to you for assessment.${claimSummaryBlock(claim)}\n\nLog in to Tariqify IMS to review.${signature(cfg.signature)}`,
+    })
+  }
+  if (processor.phone) void sendSms(processor.phone, `Tariqify: Claim ${claim.claimNumber} assigned to you for assessment.`).catch(() => { /**/ })
+}
+
+export async function notifyClaimIntakeRejected(claim: Claim): Promise<void> {
+  const cfg = getNotifSettings()
+  const client = await getClientContact(claim)
+  const subject = `[Claim Not Accepted] ${claim.claimNumber}`
+  if (client.email) {
+    void sendEmail({
+      to: client.email, subject, linkedTo: claim.id, folder: 'claims', from: MAILBOXES.claims,
+      body: `Dear ${claim.clientName},\n\nWe were unable to accept your claim ${claim.claimNumber} for processing.${claimSummaryBlock(claim)}\n\nPlease contact us if you believe this is in error.${signature(cfg.signature)}`,
+    })
+  }
+  if (client.phone) void sendSms(client.phone, `Tariqify: Your claim ${claim.claimNumber} could not be accepted. Please contact us for details.`).catch(() => { /**/ })
+}
+
+export async function notifyClaimEscalated(claim: Claim, reviewer: StaffContact): Promise<void> {
+  const cfg = getNotifSettings()
+  const client = await getClientContact(claim)
+  const subject = `[Claim Under Final Review] ${claim.claimNumber}`
+
+  if (client.email) {
+    void sendEmail({
+      to: client.email, subject, linkedTo: claim.id, folder: 'claims', from: MAILBOXES.claims,
+      body: `Dear ${claim.clientName},\n\nYour claim ${claim.claimNumber} has completed assessment and is now with our final reviewer for a decision.${claimSummaryBlock(claim)}${signature(cfg.signature)}`,
+    })
+  }
+  if (client.phone) void sendSms(client.phone, `Tariqify: Your claim ${claim.claimNumber} is now with our final reviewer.`).catch(() => { /**/ })
+
+  if (reviewer.email) {
+    void sendEmail({
+      to: reviewer.email, subject: `[Decision Needed] Claim ${claim.claimNumber}`, linkedTo: claim.id, folder: 'claims', from: MAILBOXES.claims,
+      body: `${claim.claimNumber} has been assessed and escalated to you for a final decision.${claimSummaryBlock(claim)}${claim.assessmentNotes ? `\n\nAssessment notes:\n${claim.assessmentNotes}` : ''}\n\nLog in to Tariqify IMS to approve or decline.${signature(cfg.signature)}`,
+    })
+  }
+  if (reviewer.phone) void sendSms(reviewer.phone, `Tariqify: Claim ${claim.claimNumber} needs your final decision.`).catch(() => { /**/ })
+}
+
+export async function notifyClaimFinalDecision(claim: Claim): Promise<void> {
+  const cfg = getNotifSettings()
+  const client = await getClientContact(claim)
+  const approved = claim.status === 'approved'
+  const subject = `[Claim ${approved ? 'Approved' : 'Declined'}] ${claim.claimNumber}`
+
+  if (client.email) {
+    void sendEmail({
+      to: client.email, subject, linkedTo: claim.id, folder: 'claims', from: MAILBOXES.claims,
+      body: `Dear ${claim.clientName},\n\nA final decision has been made on your claim ${claim.claimNumber}: ${approved ? 'APPROVED' : 'DECLINED'}.${claimSummaryBlock(claim)}\n\n${approved ? 'Payment will be processed shortly.' : 'If you have questions about this decision, please contact us.'}${signature(cfg.signature)}`,
+    })
+  }
+  if (client.phone) {
+    void sendSms(client.phone, `Tariqify: Your claim ${claim.claimNumber} has been ${approved ? 'APPROVED' : 'DECLINED'}.`).catch(() => { /**/ })
   }
 }
 
