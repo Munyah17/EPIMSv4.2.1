@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import type { Claim, ClaimStatus, AppUser } from '../../types'
 import { db } from '../../lib/db'
 import { formatDate } from '../../lib/dateUtils'
+import { getDocumentUrl, documentDisplayName } from '../../lib/storage'
 
 interface Props {
   claim: Claim
@@ -35,6 +36,19 @@ export default function ReviewClaimModal({ claim, onClose, onSave }: Props) {
 
   const scoreColor = claim.fraudScore >= 70 ? 'var(--danger)' : claim.fraudScore >= 40 ? 'var(--gold)' : 'var(--teal)'
 
+  const openDocument = async (path: string) => {
+    const url = await getDocumentUrl(path)
+    if (url) window.open(url, '_blank', 'noopener,noreferrer')
+  }
+
+  // Uploaded filenames are "<Slot-Label>_<original name>" (see
+  // NewClaimModal) — split that back into a readable "Label: filename".
+  const describeDocument = (path: string) => {
+    const raw = documentDisplayName(path)
+    const [label, ...rest] = raw.split('_')
+    return rest.length ? `${label.replace(/-/g, ' ')}: ${rest.join('_')}` : raw
+  }
+
   return (
     <div className="modal-overlay">
       <div className="modal">
@@ -65,6 +79,20 @@ export default function ReviewClaimModal({ claim, onClose, onSave }: Props) {
             <label>Description</label>
             <p style={{ color: 'var(--text)', fontSize: '0.9rem', lineHeight: 1.6 }}>{claim.description}</p>
           </div>
+          {claim.documents.length > 0 && (
+            <div className="form-group">
+              <label>Supporting Documents</label>
+              <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {claim.documents.map(path => (
+                  <li key={path}>
+                    <button type="button" onClick={() => openDocument(path)} style={{ background: 'none', border: 'none', padding: 0, color: 'var(--blue)', textDecoration: 'underline', cursor: 'pointer', fontSize: 12 }}>
+                      📄 {describeDocument(path)}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
           <div className="form-row">
             <div className="form-group">
               <label>Update Status</label>

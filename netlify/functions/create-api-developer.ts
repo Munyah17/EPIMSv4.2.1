@@ -19,6 +19,8 @@ interface Body {
   companyName: string
   contactEmail: string
   contactPhone?: string
+  termsAccepted: boolean
+  termsVersion: string
 }
 
 export const handler: Handler = async (event) => {
@@ -44,6 +46,9 @@ export const handler: Handler = async (event) => {
   }
   if (!body.companyName?.trim() || !body.contactEmail?.trim()) {
     return { statusCode: 400, body: JSON.stringify({ error: 'companyName and contactEmail are required.' }) }
+  }
+  if (!body.termsAccepted || !body.termsVersion) {
+    return { statusCode: 400, body: JSON.stringify({ error: 'The Developer API terms must be accepted to register.' }) }
   }
 
   const admin = createClient(supabaseUrl, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } })
@@ -75,6 +80,8 @@ export const handler: Handler = async (event) => {
     contact_email: body.contactEmail.trim(),
     contact_phone: body.contactPhone?.trim() || null,
     status: 'active',
+    terms_accepted_at: new Date().toISOString(),
+    terms_version: body.termsVersion,
   }).select('*').single()
 
   if (devError || !developer) {

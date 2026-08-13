@@ -943,8 +943,12 @@ export interface ApiDeveloper {
   companyName: string
   contactEmail: string
   contactPhone?: string
-  status: 'active' | 'suspended'
+  status: 'active' | 'suspended' | 'terminated'
   commissionOverridePercent?: number
+  termsAcceptedAt?: string
+  termsVersion?: string
+  terminatedAt?: string
+  terminationReason?: string
   createdAt: string
 }
 
@@ -965,6 +969,8 @@ function toApiDeveloper(r: any): ApiDeveloper {
     id: r.id, agentProfileId: r.agent_profile_id, companyName: r.company_name,
     contactEmail: r.contact_email, contactPhone: r.contact_phone ?? undefined,
     status: r.status, commissionOverridePercent: r.commission_override_percent ?? undefined,
+    termsAcceptedAt: r.terms_accepted_at ?? undefined, termsVersion: r.terms_version ?? undefined,
+    terminatedAt: r.terminated_at ?? undefined, terminationReason: r.termination_reason ?? undefined,
     createdAt: r.created_at,
   }
 }
@@ -992,14 +998,19 @@ export const developerApi = {
   },
 
   /** Calls create-api-developer.ts — needs the service-role key to create the partner's login-disabled identity. */
-  async createDeveloper(input: { companyName: string; contactEmail: string; contactPhone?: string }) {
+  async createDeveloper(input: { companyName: string; contactEmail: string; contactPhone?: string; termsVersion: string }) {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) return { data: null, error: 'Not signed in.' }
     try {
+      // termsAccepted is hardcoded true here — the only caller (DeveloperApi
+      // page) already gates the Register button on the acceptance checkbox,
+      // so by the time this fires the admin has confirmed it on the client's
+      // behalf. termsVersion still travels through from the caller so the
+      // stored record reflects exactly what was shown at registration time.
       const res = await fetch('/.netlify/functions/create-api-developer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-        body: JSON.stringify(input),
+        body: JSON.stringify({ ...input, termsAccepted: true }),
       })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) return { data: null, error: body?.error ?? `Failed to register developer (HTTP ${res.status}).` }
@@ -1035,6 +1046,22 @@ export const developerApi = {
   async setDeveloperStatus(developerId: string, status: 'active' | 'suspended') {
     const { error } = await supabase.from('api_developers').update({ status }).eq('id', developerId)
     return { error: error?.message ?? null }
+  },
+
+  /**
+   * Permanent — unlike suspend, there is no reactivate path back from this.
+   * Revokes every active key for the developer in the same action, since a
+   * terminated developer should lose access immediately, not just be
+   * blocked from issuing new keys.
+   */
+  async terminateDeveloper(developerId: string, reason: string) {
+    const { error: devError } = await supabase.from('api_developers').update({
+      status: 'terminated', terminated_at: new Date().toISOString(), termination_reason: reason,
+    }).eq('id', developerId)
+    if (devError) return { error: devError.message }
+    const { error: keysError } = await supabase.from('api_keys').update({ status: 'revoked' })
+      .eq('developer_id', developerId).eq('status', 'active')
+    return { error: keysError?.message ?? null }
   },
 
   async setCommissionOverride(developerId: string, pct: number | null) {

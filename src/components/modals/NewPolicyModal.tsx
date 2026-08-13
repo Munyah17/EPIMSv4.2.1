@@ -14,6 +14,14 @@ interface Props {
 
 export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
   const { user } = useAuth()
+  // A customer already on file can take out another policy without being
+  // re-registered from scratch — that's what "existing" mode is for. It's
+  // also how a client ends up holding more than one policy at all.
+  const [customerMode, setCustomerMode] = useState<'new' | 'existing'>('new')
+  const [clientSearch, setClientSearch] = useState('')
+  const [existingClientId, setExistingClientId] = useState('')
+  const [existingClients, setExistingClients] = useState<Client[]>([])
+
   // Client fields
   const [clientName, setClientName] = useState('')
   const [clientPhone, setClientPhone] = useState('')
@@ -41,6 +49,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
 
   useEffect(() => {
     db.products.list().then(({ data }) => { if (data) setProducts(data); setProductsLoading(false) })
+    db.clients.list().then(({ data }) => { if (data) setExistingClients(data) })
     db.staff.list().then(({ data }) => {
       const active = (data ?? []).filter(s => s.active)
       setStaff(active)
@@ -49,6 +58,37 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
       if (user && active.some(s => s.id === user.id)) setAgentId(user.id)
     })
   }, [user])
+
+  const clearClientFields = () => {
+    setClientName(''); setClientPhone(''); setClientEmail(''); setClientNationalId('')
+    setClientDob(''); setClientAddress(''); setClientOccupation(''); setInsurer('')
+  }
+
+  const switchMode = (mode: 'new' | 'existing') => {
+    setCustomerMode(mode)
+    setExistingClientId('')
+    setClientSearch('')
+    clearClientFields()
+  }
+
+  const clientSearchResults = clientSearch.trim().length < 2 ? [] : existingClients.filter(c =>
+    c.name.toLowerCase().includes(clientSearch.trim().toLowerCase()) ||
+    c.phone.includes(clientSearch.trim()) ||
+    c.nationalId.toLowerCase().includes(clientSearch.trim().toLowerCase())
+  ).slice(0, 8)
+
+  const selectExistingClient = (client: Client) => {
+    setExistingClientId(client.id)
+    setClientSearch(`${client.name} (${client.phone})`)
+    setClientName(client.name)
+    setClientPhone(client.phone)
+    setClientEmail(client.email)
+    setClientNationalId(client.nationalId)
+    setClientDob(client.dob)
+    setClientAddress(client.address)
+    setClientOccupation(client.occupation ?? '')
+    setInsurer(client.insurer ?? '')
+  }
 
   const addDependant = () => {
     setDependants(prev => [...prev, { name: '', relationship: '', dob: '', nationalId: '' }])
@@ -74,6 +114,10 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
   const clientAge = clientDob ? Math.floor((Date.now() - new Date(clientDob).getTime()) / (365.25 * 24 * 3600 * 1000)) : null
 
   const handleSave = async () => {
+    if (customerMode === 'existing' && !existingClientId) {
+      if (showToast) showToast('error', 'Search for and select an existing customer first.')
+      return
+    }
     if (!clientName || !clientPhone || !clientNationalId || !clientDob || !productId) {
       if (showToast) showToast('error', 'Please fill in all required fields, including date of birth.')
       return
@@ -93,29 +137,39 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
       return
     }
 
-    // Create new client first
-    const newClient: Client = {
-      id: `c${Date.now()}`,
-      name: clientName,
-      email: clientEmail,
-      phone: clientPhone,
-      nationalId: clientNationalId,
-      dob: clientDob,
-      address: clientAddress,
-      occupation: clientOccupation,
-      insurer: insurer || undefined,
-      createdAt: new Date().toISOString().split('T')[0],
-      policyCount: 0,
-      status: 'active',
+    // Existing customer: update their record in place (details may have
+    // changed since they were first registered) rather than creating a
+    // duplicate client row — this is what lets one person hold more than
+    // one policy.
+    let createdClient: Client | null
+    if (customerMode === 'existing' && existingClientId) {
+      const { data, error } = await db.clients.update(existingClientId, {
+        name: clientName, email: clientEmail, phone: clientPhone,
+        address: clientAddress, occupation: clientOccupation, insurer: insurer || undefined,
+      })
+      if (error || !data) { if (showToast) showToast('error', 'Failed to update client.'); return }
+      createdClient = data
+    } else {
+      const newClient: Client = {
+        id: `c${Date.now()}`,
+        name: clientName,
+        email: clientEmail,
+        phone: clientPhone,
+        nationalId: clientNationalId,
+        dob: clientDob,
+        address: clientAddress,
+        occupation: clientOccupation,
+        insurer: insurer || undefined,
+        createdAt: new Date().toISOString().split('T')[0],
+        policyCount: 0,
+        status: 'active',
+      }
+      const { data, error } = await db.clients.create(newClient)
+      if (error || !data) { if (showToast) showToast('error', 'Failed to create client.'); return }
+      createdClient = data
     }
-    
-    const { data: createdClient, error: clientError } = await db.clients.create(newClient)
-    if (clientError || !createdClient) {
-      if (showToast) showToast('error', 'Failed to create client.')
-      return
-    }
-    
-    // Create policy with the new client
+
+    // Create policy with the client
     const policyNumber = `EMA${new Date().getFullYear()}${String(Date.now()).slice(-3)}`
     const endDate = new Date(startDate)
     endDate.setFullYear(endDate.getFullYear() + 1)
@@ -146,10 +200,51 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
     <div className="modal-overlay">
       <div className="modal">
         <div className="modal-header">
-          <h3>New Policy (New Customer)</h3>
+          <h3>New Policy</h3>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
+          <div className="bubble-toggle" style={{ marginBottom: '1rem' }}>
+            <button
+              type="button"
+              className={`bubble-toggle-btn${customerMode === 'new' ? ' active' : ''}`}
+              onClick={() => switchMode('new')}
+            >
+              New Customer
+            </button>
+            <button
+              type="button"
+              className={`bubble-toggle-btn${customerMode === 'existing' ? ' active' : ''}`}
+              onClick={() => switchMode('existing')}
+            >
+              Existing Customer
+            </button>
+          </div>
+
+          {customerMode === 'existing' && (
+            <div className="form-group" style={{ position: 'relative', marginBottom: '1rem' }}>
+              <label>Search Customer * (name, phone, or ID number)</label>
+              <input
+                className="form-control"
+                placeholder="Start typing to search…"
+                value={clientSearch}
+                onChange={e => { setClientSearch(e.target.value); setExistingClientId('') }}
+              />
+              {clientSearchResults.length > 0 && !existingClientId && (
+                <div className="search-suggestions">
+                  {clientSearchResults.map(c => (
+                    <button type="button" key={c.id} className="search-suggestion-item" onClick={() => selectExistingClient(c)}>
+                      <strong>{c.name}</strong> · {c.phone} · {c.nationalId}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {existingClientId && (
+                <p style={{ fontSize: 12, color: 'var(--success)', marginTop: 4 }}>✓ Customer selected — details autofilled below.</p>
+              )}
+            </div>
+          )}
+
           <h4 style={{ marginBottom: '1rem', marginTop: 0 }}>Customer Information</h4>
           <div className="form-row">
             <div className="form-group">
@@ -168,13 +263,13 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
             </div>
             <div className="form-group">
               <label>National ID *</label>
-              <input className="form-control" placeholder="e.g. 632118532K12" value={clientNationalId} onChange={e => setClientNationalId(e.target.value)} />
+              <input className="form-control" placeholder="e.g. 632118532K12" value={clientNationalId} onChange={e => setClientNationalId(e.target.value)} disabled={!!existingClientId} style={existingClientId ? { opacity: 0.6 } : undefined} />
             </div>
           </div>
           <div className="form-row">
             <div className="form-group">
               <label>Date of Birth * (policyholder must be 18+)</label>
-              <input type="date" className="form-control" value={clientDob} onChange={e => setClientDob(e.target.value)} />
+              <input type="date" className="form-control" value={clientDob} onChange={e => setClientDob(e.target.value)} disabled={!!existingClientId} style={existingClientId ? { opacity: 0.6 } : undefined} />
             </div>
             <div className="form-group">
               <label>Occupation</label>
@@ -232,7 +327,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
 
           <div style={{ marginTop: '1rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <label>Dependants (optional — carried and paid for by the policyholder)</label>
+              <label>Dependants</label>
               <button type="button" className="btn btn-ghost btn-sm" onClick={addDependant}>+ Add Dependant</button>
             </div>
             {dependants.length === 0 ? (
@@ -266,8 +361,12 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={!clientName || !clientPhone || !clientNationalId || !productId}>
-            Create Policy & Register Client
+          <button
+            className="btn btn-primary"
+            onClick={handleSave}
+            disabled={!clientName || !clientPhone || !clientNationalId || !productId || (customerMode === 'existing' && !existingClientId)}
+          >
+            {customerMode === 'existing' ? 'Create Policy' : 'Create Policy & Register Client'}
           </button>
         </div>
       </div>

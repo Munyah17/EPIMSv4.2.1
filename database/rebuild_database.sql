@@ -124,6 +124,7 @@ CREATE TABLE public.policies (
                       CHECK (status IN ('active','lapsed','cancelled','pending','expired')),
   dependants        JSONB NOT NULL DEFAULT '[]',
   payment_method    TEXT NOT NULL,
+  documents         TEXT[] NOT NULL DEFAULT '{}',
   insurer           TEXT,
   agent_id          UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
   next_payment_date DATE,

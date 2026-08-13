@@ -136,7 +136,7 @@ export default function Claims({ showToast }: Props) {
       </div>
 
       {showNew && (
-        <NewClaimModal onClose={() => setShowNew(false)} onSave={handleAdd} />
+        <NewClaimModal onClose={() => setShowNew(false)} onSave={handleAdd} showToast={showToast} />
       )}
       {reviewClaim && (
         <ReviewClaimModal
