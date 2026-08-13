@@ -3,6 +3,7 @@ import type { Policy, Dependant, Insurer, Client, Product, AppUser } from '../..
 import { db } from '../../lib/db'
 import { useAuth } from '../../contexts/AuthContext'
 import PhoneInput from '../ui/PhoneInput'
+import DateInput from '../ui/DateInput'
 
 const INSURERS: Insurer[] = ['Motions', 'CBZ Life', 'EcoSure', 'ZB Life', 'Nyaradzo Funeral', 'Doves']
 
@@ -269,7 +270,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
               </div>
               <div className="form-group">
                 <label>Date of Birth * (18+)</label>
-                <input type="date" className="form-control" value={clientDob} onChange={e => setClientDob(e.target.value)} disabled={!!existingClientId} style={existingClientId ? { opacity: 0.6 } : undefined} />
+                <DateInput value={clientDob} onChange={setClientDob} disabled={!!existingClientId} className={existingClientId ? 'date-input-disabled' : undefined} />
               </div>
               <div className="form-group">
                 <label>Occupation</label>
@@ -303,7 +304,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
               )}
               <div className="form-group">
                 <label>Start Date *</label>
-                <input type="date" className="form-control" value={startDate} onChange={e => setStartDate(e.target.value)} />
+                <DateInput value={startDate} onChange={setStartDate} />
               </div>
               <div className="form-group">
                 <label>Payment Method *</label>
@@ -351,7 +352,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
                   <div key={i} className="new-policy-dependant-row" style={{ marginBottom: 8, alignItems: 'center' }}>
                     <input className="form-control" placeholder="Name" value={d.name} onChange={e => updateDependant(i, 'name', e.target.value)} />
                     <input className="form-control" placeholder="Relationship" value={d.relationship} onChange={e => updateDependant(i, 'relationship', e.target.value)} />
-                    <input type="date" className="form-control" value={d.dob} onChange={e => updateDependant(i, 'dob', e.target.value)} />
+                    <DateInput value={d.dob} onChange={v => updateDependant(i, 'dob', v)} />
                     <input className="form-control" placeholder="ID (16+) or birth record no." value={d.nationalId} onChange={e => updateDependant(i, 'nationalId', e.target.value)} />
                     <select className="form-control" value={d.productId ?? ''} onChange={e => updateDependant(i, 'productId', e.target.value)}>
                       <option value="">Select plan…</option>

@@ -3,6 +3,7 @@ import type { Claim, Policy } from '../../types'
 import { db } from '../../lib/db'
 import { scoreClaimFraud } from '../../lib/aiService'
 import { uploadDocument, deleteDocument, ACCEPTED_DOCUMENT_TYPES } from '../../lib/storage'
+import DateInput from '../ui/DateInput'
 
 interface Props {
   onClose: () => void
@@ -181,7 +182,7 @@ export default function NewClaimModal({ onClose, onSave, showToast }: Props) {
           </div>
           <div className="form-group">
             <label>Date of Event *</label>
-            <input type="date" className="form-control" value={dateOfEvent} onChange={e => setDateOfEvent(e.target.value)} />
+            <DateInput value={dateOfEvent} onChange={setDateOfEvent} />
           </div>
           <div className="form-group">
             <label>Description *</label>

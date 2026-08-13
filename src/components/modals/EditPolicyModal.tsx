@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { Policy, PolicyStatus, Insurer, AppUser } from '../../types'
 import { db } from '../../lib/db'
+import DateInput from '../ui/DateInput'
 
 const INSURERS: Insurer[] = ['Motions', 'CBZ Life', 'EcoSure', 'ZB Life', 'Nyaradzo Funeral', 'Doves']
 
@@ -88,7 +89,7 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
           )}
           <div className="form-group">
             <label>Next Payment Date</label>
-            <input type="date" className="form-control" value={nextPaymentDate} onChange={e => setNextPaymentDate(e.target.value)} />
+            <DateInput value={nextPaymentDate} onChange={setNextPaymentDate} />
           </div>
           <div className="form-group">
             <label>Agent</label>

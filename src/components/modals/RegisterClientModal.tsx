@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Client, Insurer } from '../../types'
 import PhoneInput from '../ui/PhoneInput'
+import DateInput from '../ui/DateInput'
 
 const INSURERS: Insurer[] = ['Motions', 'CBZ Life', 'EcoSure', 'ZB Life', 'Nyaradzo Funeral', 'Doves']
 
@@ -62,7 +63,7 @@ export default function RegisterClientModal({ onClose, onSave }: Props) {
           <div className="form-row">
             <div className="form-group">
               <label>Date of Birth</label>
-              <input type="date" className="form-control" value={dob} onChange={e => setDob(e.target.value)} />
+              <DateInput value={dob} onChange={setDob} />
             </div>
             <div className="form-group">
               <label>Occupation</label>

@@ -26,8 +26,8 @@ const CATEGORY_CLASS: Record<string, string> = {
 }
 
 const EMPTY_STATS: DashboardStats = {
-  activePolicies: 0, pendingClaims: 0, totalPremiums: 0, newLeads: 0, fraudAlerts: 0, lapseRate: 0,
-  productBreakdown: [], recentPolicies: [], latestClaim: null, latestPayment: null, latestLead: null, latestFraud: null,
+  activePolicies: 0, pendingClaims: 0, totalPremiums: 0, newLeads: 0, fraudAlerts: 0, lapseRate: 0, totalClients: 0,
+  productBreakdown: [], recentPolicies: [], latestClaim: null, latestPayment: null, latestLead: null, latestFraud: null, latestClient: null,
 }
 
 export default function Dashboard({ setActivePanel }: Props) {
@@ -43,6 +43,7 @@ export default function Dashboard({ setActivePanel }: Props) {
   const maxCount = Math.max(...stats.productBreakdown.map(p => p.count), 1)
 
   const activity = [
+    stats.latestClient && { icon: '👤', text: `New client registered: ${stats.latestClient.name}`, time: 'Recently', cls: 'activity-icon-purple' },
     recentPolicies[0] && { icon: '🛡', text: `New policy issued to ${recentPolicies[0].clientName}`, time: '2 hours ago', cls: 'activity-icon-blue' },
     stats.latestClaim && { icon: '📋', text: `Claim ${stats.latestClaim.claimNumber} submitted by ${stats.latestClaim.clientName}`, time: '4 hours ago', cls: 'activity-icon-gold' },
     stats.latestPayment && { icon: '💳', text: `Payment received from ${stats.latestPayment.clientName} — $${stats.latestPayment.amount}`, time: '5 hours ago', cls: 'activity-icon-teal' },
@@ -60,6 +61,13 @@ export default function Dashboard({ setActivePanel }: Props) {
           <div className="stat-body">
             <div className="stat-value">{stats.activePolicies}</div>
             <div className="stat-label">Active Policies</div>
+          </div>
+        </div>
+        <div className="stat-card stat-card-clickable" onClick={() => setActivePanel('clients')}>
+          <div className="stat-icon stat-icon-purple">👥</div>
+          <div className="stat-body">
+            <div className="stat-value">{stats.totalClients}</div>
+            <div className="stat-label">Total Clients</div>
           </div>
         </div>
         <div className="stat-card stat-card-clickable" onClick={() => setActivePanel('claims')}>

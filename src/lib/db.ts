@@ -1144,18 +1144,20 @@ export interface DashboardStats {
   newLeads: number
   fraudAlerts: number
   lapseRate: number
+  totalClients: number
   productBreakdown: { category: string; count: number }[]
   recentPolicies: Policy[]
   latestClaim: { claimNumber: string; clientName: string } | null
   latestPayment: { clientName: string; amount: number } | null
   latestLead: { name: string; source: string } | null
   latestFraud: { claimNumber: string; fraudScore: number } | null
+  latestClient: { name: string } | null
 }
 
 async function loadDashboardStatsLight(): Promise<DashboardStats | null> {
   const [
     activeRes, pendingRes, leadsRes, fraudRes, lapsedRes, totalRes, premiumsRes, categoryRes, recentRes,
-    latestClaimRes, latestPaymentRes, latestLeadRes, latestFraudRes,
+    latestClaimRes, latestPaymentRes, latestLeadRes, latestFraudRes, clientsCountRes, latestClientRes,
   ] = await Promise.all([
     supabase.from('policies').select('*', { count: 'exact', head: true }).eq('status', 'active'),
     supabase.from('claims').select('*', { count: 'exact', head: true }).in('status', ['pending', 'under_review']),
@@ -1170,11 +1172,14 @@ async function loadDashboardStatsLight(): Promise<DashboardStats | null> {
     supabase.from('payments').select('amount, policies!policy_id(clients!client_id(name))').order('payment_date', { ascending: false }).limit(1),
     supabase.from('leads').select('name, source').order('created_at', { ascending: false }).limit(1),
     supabase.from('fraud_cases').select('fraud_score, claims!claim_id(claim_number)').order('created_at', { ascending: false }).limit(1),
+    supabase.from('clients').select('*', { count: 'exact', head: true }),
+    supabase.from('clients').select('name').order('created_at', { ascending: false }).limit(1),
   ])
 
   const anyError = activeRes.error || pendingRes.error || leadsRes.error || fraudRes.error
     || lapsedRes.error || totalRes.error || premiumsRes.error || categoryRes.error || recentRes.error
     || latestClaimRes.error || latestPaymentRes.error || latestLeadRes.error || latestFraudRes.error
+    || clientsCountRes.error || latestClientRes.error
   if (anyError) return null
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1184,6 +1189,7 @@ async function loadDashboardStatsLight(): Promise<DashboardStats | null> {
   const l = latestLeadRes.data?.[0] as { name: string; source: string } | undefined
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const f = latestFraudRes.data?.[0] as any
+  const cl = latestClientRes.data?.[0] as { name: string } | undefined
 
   const totalPremiums = ((premiumsRes.data ?? []) as { amount: number }[]).reduce((s, p) => s + p.amount, 0)
 
@@ -1204,20 +1210,22 @@ async function loadDashboardStatsLight(): Promise<DashboardStats | null> {
     newLeads: leadsRes.count ?? 0,
     fraudAlerts: fraudRes.count ?? 0,
     lapseRate: total > 0 ? Number((lapsed / total * 100).toFixed(1)) : 0,
+    totalClients: clientsCountRes.count ?? 0,
     productBreakdown: [...categoryCounts.entries()].map(([category, count]) => ({ category, count })),
     recentPolicies: ((recentRes.data ?? []) as unknown[]).map(toPolicy),
     latestClaim: c ? { claimNumber: c.claim_number, clientName: c.policies?.clients?.name ?? '' } : null,
     latestPayment: p ? { clientName: p.policies?.clients?.name ?? '', amount: p.amount } : null,
     latestLead: l ? { name: l.name, source: l.source ?? '' } : null,
     latestFraud: f ? { claimNumber: f.claims?.claim_number ?? '', fraudScore: f.fraud_score } : null,
+    latestClient: cl ? { name: cl.name } : null,
   }
 }
 
 async function loadDashboardStatsFallback(): Promise<DashboardStats> {
-  const [{ data: allPolicies }, { data: allClaims }, { data: allPayments }, { data: allLeads }, { data: allFraud }] = await Promise.all([
-    policies.list(), claims.list(), payments.list(), leads.list(), fraudCases.list(),
+  const [{ data: allPolicies }, { data: allClaims }, { data: allPayments }, { data: allLeads }, { data: allFraud }, { data: allClients }] = await Promise.all([
+    policies.list(), claims.list(), payments.list(), leads.list(), fraudCases.list(), clients.list(),
   ])
-  const pol = allPolicies ?? [], cla = allClaims ?? [], pay = allPayments ?? [], lea = allLeads ?? [], fra = allFraud ?? []
+  const pol = allPolicies ?? [], cla = allClaims ?? [], pay = allPayments ?? [], lea = allLeads ?? [], fra = allFraud ?? [], cli = allClients ?? []
   const total = pol.length
   const lapsed = pol.filter(p => p.status === 'lapsed').length
   const categoryCounts = new Map<string, number>()
@@ -1229,12 +1237,14 @@ async function loadDashboardStatsFallback(): Promise<DashboardStats> {
     newLeads: lea.filter(l => l.status === 'new').length,
     fraudAlerts: fra.filter(f => f.status === 'open').length,
     lapseRate: total > 0 ? Number((lapsed / total * 100).toFixed(1)) : 0,
+    totalClients: cli.length,
     productBreakdown: [...categoryCounts.entries()].map(([category, count]) => ({ category, count })),
     recentPolicies: [...pol].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 5),
     latestClaim: cla[0] ? { claimNumber: cla[0].claimNumber, clientName: cla[0].clientName } : null,
     latestPayment: pay[0] ? { clientName: pay[0].clientName, amount: pay[0].amount } : null,
     latestLead: lea[0] ? { name: lea[0].name, source: lea[0].source } : null,
     latestFraud: fra[0] ? { claimNumber: fra[0].claimNumber, fraudScore: fra[0].fraudScore } : null,
+    latestClient: cli[0] ? { name: [...cli].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0].name } : null,
   }
 }
 

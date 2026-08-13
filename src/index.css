@@ -1060,6 +1060,14 @@ textarea.form-control{resize:vertical;min-height:80px}
   .livechat-window{min-height:400px}
 }
 
+/* ===== DD/MM/YYYY DATE INPUT ===== */
+.date-input{position:relative;display:flex}
+.date-input-text{padding-right:34px}
+.date-input-icon-btn{position:absolute;right:4px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:14px;padding:4px;line-height:1;color:var(--muted)}
+.date-input-icon-btn:hover{color:var(--text)}
+.date-input-native{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:22px;height:22px;opacity:0;border:none;padding:0}
+.date-input-disabled{opacity:0.6}
+
 /* ===== PHONE COUNTRY-CODE INPUT ===== */
 .phone-input{position:relative;display:flex;gap:6px}
 .phone-input-country{display:flex;align-items:center;gap:5px;padding:0 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);cursor:pointer;font-size:13px;white-space:nowrap}
