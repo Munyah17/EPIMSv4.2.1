@@ -791,6 +791,10 @@ CREATE TABLE IF NOT EXISTS public.api_keys (
   developer_id        UUID NOT NULL REFERENCES public.api_developers(id) ON DELETE CASCADE,
   key_prefix          TEXT NOT NULL,
   key_hash            TEXT NOT NULL UNIQUE,
+  -- Publishable half of the pair (mirrors Stripe's pk_/sk_ pattern) — safe
+  -- to store/display in plain text, grants nothing on its own.
+  publishable_key     TEXT,
+  environment         TEXT NOT NULL DEFAULT 'live' CHECK (environment IN ('sandbox','live')),
   scopes              TEXT[] NOT NULL DEFAULT ARRAY['products:read','quotes:read','clients:write','policies:write','policies:read','payments:write'],
   status              TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','revoked')),
   rate_limit_per_min  INT NOT NULL DEFAULT 60,

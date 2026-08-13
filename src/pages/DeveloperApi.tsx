@@ -30,7 +30,7 @@ export default function DeveloperApi({ showToast }: Props) {
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<string | null>(null)
   const [showNew, setShowNew] = useState(false)
-  const [newRawKey, setNewRawKey] = useState<string | null>(null)
+  const [newKey, setNewKey] = useState<{ rawKey: string; publishableKey: string; environment: 'sandbox' | 'live' } | null>(null)
   const [issueKeyFor, setIssueKeyFor] = useState<ApiDeveloper | null>(null)
   const [showDocs, setShowDocs] = useState(false)
 
@@ -53,10 +53,10 @@ export default function DeveloperApi({ showToast }: Props) {
     }
   }
 
-  const handleIssueKey = async (dev: ApiDeveloper, opts: { scopes: string[]; rateLimitPerMin: number }) => {
+  const handleIssueKey = async (dev: ApiDeveloper, opts: { scopes: string[]; rateLimitPerMin: number; environment: 'sandbox' | 'live' }) => {
     const { data, error } = await db.developerApi.issueKey(dev.id, opts)
     if (error || !data) { showToast('error', error ?? 'Failed to issue key.'); return }
-    setNewRawKey(data.rawKey)
+    setNewKey({ rawKey: data.rawKey, publishableKey: data.publishableKey, environment: data.environment })
     setIssueKeyFor(null)
     const { data: keys } = await db.developerApi.listKeys(dev.id)
     setKeysByDeveloper(prev => ({ ...prev, [dev.id]: keys }))
@@ -171,10 +171,12 @@ export default function DeveloperApi({ showToast }: Props) {
                             <div className="empty-state" style={{ padding: '12px 0' }}>No keys issued yet.</div>
                           ) : (
                             <table className="table">
-                              <thead><tr><th>Prefix</th><th>Scopes</th><th>Rate Limit</th><th>Status</th><th>Last Used</th><th></th></tr></thead>
+                              <thead><tr><th>Environment</th><th>Publishable Key</th><th>Secret Prefix</th><th>Scopes</th><th>Rate Limit</th><th>Status</th><th>Last Used</th><th></th></tr></thead>
                               <tbody>
                                 {keysByDeveloper[dev.id].map(k => (
                                   <tr key={k.id}>
+                                    <td><span className={`pill ${k.environment === 'live' ? 'pill-active' : 'pill-pending'}`}>{k.environment}</span></td>
+                                    <td className="mono" style={{ fontSize: 11 }}>{k.publishableKey || '—'}</td>
                                     <td className="mono">{k.keyPrefix}…</td>
                                     <td style={{ fontSize: 11 }}>{k.scopes.join(', ')}</td>
                                     <td>{k.rateLimitPerMin}/min</td>
@@ -261,25 +263,34 @@ export default function DeveloperApi({ showToast }: Props) {
         </div>
       )}
 
-      {newRawKey && (
+      {newKey && (
         <div className="modal-overlay">
-          <div className="modal" style={{ maxWidth: 520 }}>
+          <div className="modal" style={{ maxWidth: 560 }}>
             <div className="modal-header">
-              <h3>API Key Issued</h3>
-              <button className="modal-close" onClick={() => setNewRawKey(null)}>✕</button>
+              <h3>API Key Issued — <span style={{ textTransform: 'capitalize' }}>{newKey.environment}</span></h3>
+              <button className="modal-close" onClick={() => setNewKey(null)}>✕</button>
             </div>
             <div className="modal-body">
-              <div className="info-banner info-banner-warning" style={{ marginBottom: 14 }}>
-                ⚠ This is shown only once. Copy it now and hand it to the developer securely — it cannot be retrieved again.
+              <div className="form-group">
+                <label>Publishable Key <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(safe to share, identifies the key)</span></label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input className="form-control mono" readOnly value={newKey.publishableKey} onFocus={e => e.target.select()} />
+                  <button className="btn btn-ghost btn-sm" onClick={() => { navigator.clipboard?.writeText(newKey.publishableKey); showToast('success', 'Publishable key copied.') }}>Copy</button>
+                </div>
+              </div>
+              <div className="info-banner info-banner-warning" style={{ margin: '14px 0' }}>
+                ⚠ The secret key below is shown only once. Copy it now and hand it to the developer securely — it cannot be retrieved again.
               </div>
               <div className="form-group">
-                <label>API Key</label>
-                <input className="form-control mono" readOnly value={newRawKey} onFocus={e => e.target.select()} />
+                <label>Secret Key</label>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input className="form-control mono" readOnly value={newKey.rawKey} onFocus={e => e.target.select()} />
+                  <button className="btn btn-ghost btn-sm" onClick={() => { navigator.clipboard?.writeText(newKey.rawKey); showToast('success', 'Secret key copied.') }}>Copy</button>
+                </div>
               </div>
             </div>
             <div className="modal-footer">
-              <button className="btn btn-primary" onClick={() => { navigator.clipboard?.writeText(newRawKey); showToast('success', 'Copied to clipboard.') }}>Copy</button>
-              <button className="btn btn-ghost" onClick={() => setNewRawKey(null)}>Close</button>
+              <button className="btn btn-primary" onClick={() => setNewKey(null)}>Done</button>
             </div>
           </div>
         </div>
@@ -359,10 +370,11 @@ function NewDeveloperModal({ onClose, onSave }: { onClose: () => void; onSave: (
 function IssueKeyModal({ developer, onClose, onIssue }: {
   developer: ApiDeveloper
   onClose: () => void
-  onIssue: (opts: { scopes: string[]; rateLimitPerMin: number }) => Promise<void>
+  onIssue: (opts: { scopes: string[]; rateLimitPerMin: number; environment: 'sandbox' | 'live' }) => Promise<void>
 }) {
   const [scopes, setScopes] = useState<string[]>(ALL_SCOPES)
   const [rateLimitPerMin, setRateLimitPerMin] = useState(60)
+  const [environment, setEnvironment] = useState<'sandbox' | 'live'>('live')
   const [issuing, setIssuing] = useState(false)
 
   const toggleScope = (scope: string) => {
@@ -373,7 +385,7 @@ function IssueKeyModal({ developer, onClose, onIssue }: {
     if (scopes.length === 0) return
     setIssuing(true)
     try {
-      await onIssue({ scopes, rateLimitPerMin })
+      await onIssue({ scopes, rateLimitPerMin, environment })
     } finally {
       setIssuing(false)
     }
@@ -387,6 +399,13 @@ function IssueKeyModal({ developer, onClose, onIssue }: {
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
+          <div className="form-group">
+            <label>Environment</label>
+            <div className="bubble-toggle">
+              <button type="button" className={`bubble-toggle-btn${environment === 'live' ? ' active' : ''}`} onClick={() => setEnvironment('live')}>Live</button>
+              <button type="button" className={`bubble-toggle-btn${environment === 'sandbox' ? ' active' : ''}`} onClick={() => setEnvironment('sandbox')}>Sandbox</button>
+            </div>
+          </div>
           <div className="form-group">
             <label>Scopes (rights granted to this key)</label>
             {ALL_SCOPES.map(scope => (

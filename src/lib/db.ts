@@ -1244,6 +1244,10 @@ export interface ApiKeyRow {
   id: string
   developerId: string
   keyPrefix: string
+  /** Safe to display/copy at any time — identifies the key without
+   *  granting access on its own (mirrors Stripe's pk_/sk_ pattern). */
+  publishableKey: string
+  environment: 'sandbox' | 'live'
   scopes: string[]
   status: 'active' | 'revoked'
   rateLimitPerMin: number
@@ -1266,7 +1270,9 @@ function toApiDeveloper(r: any): ApiDeveloper {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function toApiKeyRow(r: any): ApiKeyRow {
   return {
-    id: r.id, developerId: r.developer_id, keyPrefix: r.key_prefix, scopes: r.scopes ?? [],
+    id: r.id, developerId: r.developer_id, keyPrefix: r.key_prefix,
+    publishableKey: r.publishable_key ?? '', environment: (r.environment as 'sandbox' | 'live') ?? 'live',
+    scopes: r.scopes ?? [],
     status: r.status, rateLimitPerMin: r.rate_limit_per_min, createdAt: r.created_at,
     lastUsedAt: r.last_used_at ?? undefined,
   }
@@ -1308,15 +1314,17 @@ export const developerApi = {
     }
   },
 
-  /** Calls create-api-key.ts. Returns the raw key ONCE — it is never stored or retrievable again. */
-  async issueKey(developerId: string, opts?: { scopes?: string[]; rateLimitPerMin?: number }) {
+  /** Calls create-api-key.ts. Returns the raw secret key ONCE — it is never
+   *  stored or retrievable again. The publishable key is safe to fetch and
+   *  display again later (it's just a display/lookup id, not a credential). */
+  async issueKey(developerId: string, opts?: { scopes?: string[]; rateLimitPerMin?: number; environment?: 'sandbox' | 'live' }) {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) return { data: null, error: 'Not signed in.' }
     try {
       const res = await fetch('/.netlify/functions/create-api-key', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
-        body: JSON.stringify({ developerId, scopes: opts?.scopes, rateLimitPerMin: opts?.rateLimitPerMin }),
+        body: JSON.stringify({ developerId, scopes: opts?.scopes, rateLimitPerMin: opts?.rateLimitPerMin, environment: opts?.environment ?? 'live' }),
       })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) return { data: null, error: body?.error ?? `Failed to issue key (HTTP ${res.status}).` }
