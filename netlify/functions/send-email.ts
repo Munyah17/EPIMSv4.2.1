@@ -29,6 +29,7 @@ interface SendEmailBody {
   text: string
   from?: string
   fromName?: string
+  replyTo?: string
   /** Base64 payload (no data: URI prefix) — e.g. a generated policy report PDF. */
   attachmentBase64?: string
   attachmentFilename?: string
@@ -88,6 +89,7 @@ export const handler: Handler = async (event) => {
       ...(process.env.SMTP_DEFAULT_USER ? {} : { auth: { user: fromAddress, pass: password } }),
       to: body.to,
       cc: body.cc,
+      replyTo: body.replyTo,
       subject: body.subject,
       text: body.text,
       attachments: body.attachmentBase64 && body.attachmentFilename ? [{

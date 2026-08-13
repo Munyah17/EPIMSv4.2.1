@@ -101,13 +101,14 @@ export default function NotificationSettings({ showToast }: Props) {
           </div>
         </div>
 
-        {/* NetOne Insurance */}
-        <div className="card">
+        {/* NetOne Insurance — suspended */}
+        <div className="card" style={{ opacity: 0.6 }}>
           <div className="card-header">
             <span className="card-title">📡 NetOne Insurance</span>
+            <span className="pill pill-lapsed">Suspended</span>
           </div>
           <p className="notif-settings-desc">
-            Distribution partner. Receives claim notifications for all policies distributed via NetOne USSD.
+            The NetOne distribution partnership is suspended for now — these details are kept but no claim notifications are sent here while suspended.
           </p>
           <div className="form-row">
             <div className="form-group">
@@ -118,6 +119,7 @@ export default function NotificationSettings({ showToast }: Props) {
                 value={settings.netoneEmail}
                 onChange={e => update('netoneEmail', e.target.value)}
                 placeholder="insurance@netone.co.zw"
+                disabled
               />
             </div>
             <div className="form-group">
@@ -127,6 +129,7 @@ export default function NotificationSettings({ showToast }: Props) {
                 value={settings.netonePhone}
                 onChange={e => update('netonePhone', e.target.value)}
                 placeholder="+263..."
+                disabled
               />
             </div>
           </div>
@@ -204,6 +207,19 @@ export default function NotificationSettings({ showToast }: Props) {
               />
             </div>
           </div>
+          <div className="form-group">
+            <label>Reply-To Address</label>
+            <input
+              className="form-control"
+              type="email"
+              value={settings.replyTo}
+              onChange={e => update('replyTo', e.target.value)}
+              placeholder="admin@motions.co.zw"
+            />
+            <p className="notif-settings-desc" style={{ marginTop: 4 }}>
+              The From address above is noreply — replies to any outgoing notification land here instead.
+            </p>
+          </div>
         </div>
 
         {/* SMS & Signature */}
@@ -257,8 +273,8 @@ export default function NotificationSettings({ showToast }: Props) {
             <div className="notif-flow-step">
               <div className="notif-flow-icon" style={{ background: '#D1FAE5' }}>✉</div>
               <div>
-                <div className="notif-flow-label">3 Emails Sent Simultaneously</div>
-                <div className="notif-flow-sub">All 3 parties CC'd on every message</div>
+                <div className="notif-flow-label">2 Emails Sent Simultaneously</div>
+                <div className="notif-flow-sub">Both parties CC'd on every message · NetOne suspended, not included</div>
               </div>
             </div>
             <div className="notif-flow-arrow">↓</div>
@@ -266,10 +282,6 @@ export default function NotificationSettings({ showToast }: Props) {
               <div className="notif-flow-recipient">
                 <span className="notif-flow-recipient-name">🏢 {settings.insurerName}</span>
                 <span className="notif-flow-recipient-email">{settings.insurerEmail || 'Not configured'}</span>
-              </div>
-              <div className="notif-flow-recipient">
-                <span className="notif-flow-recipient-name">📡 NetOne Insurance</span>
-                <span className="notif-flow-recipient-email">{settings.netoneEmail || 'Not configured'}</span>
               </div>
               <div className="notif-flow-recipient">
                 <span className="notif-flow-recipient-name">👤 Client</span>

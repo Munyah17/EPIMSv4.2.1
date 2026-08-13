@@ -21,6 +21,7 @@ import { db } from './db'
 import { MAILBOXES } from './mailboxes'
 import { sendEmail, getNotifSettings } from './mailService'
 import { sendSms } from './smsService'
+import { NETONE_SUSPENDED } from './claimNotifications'
 
 const CHECK_KEY = 'tqfy_reminder_last_check'
 
@@ -137,7 +138,7 @@ async function dispatchReminder(policy: Policy, client: Client | undefined, type
   const clientEmail = client?.email ?? ''
   const clientPhone = client?.phone ?? ''
 
-  const allCc = [cfg.insurerEmail, cfg.netoneEmail].filter(Boolean).join(', ')
+  const allCc = [cfg.insurerEmail, NETONE_SUSPENDED ? '' : cfg.netoneEmail].filter(Boolean).join(', ')
   const sig = cfg.signature
 
   if (clientEmail) {
@@ -156,8 +157,8 @@ async function dispatchReminder(policy: Policy, client: Client | undefined, type
 
   const staffBody = buildStaffEmail(policy, type, dueDate, sig)
   const staffSubject = `[Billing Alert] ${policy.policyNumber} — ${policy.clientName}`
-  if (cfg.insurerEmail) void sendEmail({ to: cfg.insurerEmail, cc: cfg.netoneEmail, subject: staffSubject, body: staffBody, folder: 'inbox', from: MAILBOXES.noreply })
-  if (cfg.netoneEmail) void sendEmail({ to: cfg.netoneEmail, subject: staffSubject, body: staffBody, folder: 'inbox', from: MAILBOXES.noreply })
+  if (cfg.insurerEmail) void sendEmail({ to: cfg.insurerEmail, cc: NETONE_SUSPENDED ? undefined : cfg.netoneEmail, subject: staffSubject, body: staffBody, folder: 'inbox', from: MAILBOXES.noreply })
+  if (!NETONE_SUSPENDED && cfg.netoneEmail) void sendEmail({ to: cfg.netoneEmail, subject: staffSubject, body: staffBody, folder: 'inbox', from: MAILBOXES.noreply })
 
   if (type === 'r3_due' && clientPhone) {
     sendSms(clientPhone,

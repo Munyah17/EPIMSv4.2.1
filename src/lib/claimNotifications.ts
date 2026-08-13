@@ -4,6 +4,10 @@ import { db } from './db'
 import { MAILBOXES } from './mailboxes'
 import { sendSms } from './smsService'
 
+/** NetOne distribution partnership is suspended for now — flip this back
+ *  once it resumes rather than re-wiring the notification pipeline. */
+export const NETONE_SUSPENDED = true
+
 async function getClientContact(claim: Claim): Promise<{ email: string; phone: string }> {
   const { data } = await db.clients.list()
   const client = data?.find(c => c.id === claim.clientId)
@@ -30,7 +34,7 @@ export async function notifyClaimCreated(claim: Claim): Promise<void> {
   const cfg = getNotifSettings()
   const client = await getClientContact(claim)
 
-  const allEmails = [cfg.insurerEmail, cfg.netoneEmail, client.email].filter(Boolean)
+  const allEmails = [cfg.insurerEmail, NETONE_SUSPENDED ? '' : cfg.netoneEmail, client.email].filter(Boolean)
   const cc = allEmails.join(', ')
 
   const subject = `[New Claim] ${claim.claimNumber} — ${claim.clientName}`
@@ -47,7 +51,9 @@ ${claimSummaryBlock(claim)}
 Please retain this email for your records. All parties will be copied on further updates.${signature(cfg.signature)}`
 
   void sendEmail({ to: cfg.insurerEmail, cc, subject, body: staffBody, linkedTo: claim.id, from: MAILBOXES.claims })
-  void sendEmail({ to: cfg.netoneEmail, cc, subject, body: staffBody, linkedTo: claim.id, from: MAILBOXES.claims })
+  if (!NETONE_SUSPENDED && cfg.netoneEmail) {
+    void sendEmail({ to: cfg.netoneEmail, cc, subject, body: staffBody, linkedTo: claim.id, from: MAILBOXES.claims })
+  }
   if (client.email) {
     void sendEmail({ to: client.email, cc, subject, body: clientBody, linkedTo: claim.id, folder: 'claims', from: MAILBOXES.claims })
   }
@@ -63,7 +69,7 @@ export async function notifyClaimStatusChanged(claim: Claim, previousStatus: Cla
   const cfg = getNotifSettings()
   const client = await getClientContact(claim)
 
-  const allEmails = [cfg.insurerEmail, cfg.netoneEmail, client.email].filter(Boolean)
+  const allEmails = [cfg.insurerEmail, NETONE_SUSPENDED ? '' : cfg.netoneEmail, client.email].filter(Boolean)
   const cc = allEmails.join(', ')
 
   const statusLabel = claim.status.replace('_', ' ')
@@ -82,7 +88,9 @@ ${claimSummaryBlock(claim)}
 We will keep you informed as this claim progresses. All parties are copied on this correspondence.${signature(cfg.signature)}`
 
   void sendEmail({ to: cfg.insurerEmail, cc, subject, body: staffBody, linkedTo: claim.id, folder: 'claims', from: MAILBOXES.claims })
-  void sendEmail({ to: cfg.netoneEmail, cc, subject, body: staffBody, linkedTo: claim.id, folder: 'claims', from: MAILBOXES.claims })
+  if (!NETONE_SUSPENDED && cfg.netoneEmail) {
+    void sendEmail({ to: cfg.netoneEmail, cc, subject, body: staffBody, linkedTo: claim.id, folder: 'claims', from: MAILBOXES.claims })
+  }
   if (client.email) {
     void sendEmail({ to: client.email, cc, subject, body: clientBody, linkedTo: claim.id, folder: 'claims', from: MAILBOXES.claims })
   }
@@ -190,7 +198,7 @@ async function notifyClaimResolved(claim: Claim): Promise<void> {
   const cfg = getNotifSettings()
   const client = await getClientContact(claim)
 
-  const allEmails = [cfg.insurerEmail, cfg.netoneEmail, client.email].filter(Boolean)
+  const allEmails = [cfg.insurerEmail, NETONE_SUSPENDED ? '' : cfg.netoneEmail, client.email].filter(Boolean)
   const cc = allEmails.join(', ')
 
   const subject = `[Claim Closed] ${claim.claimNumber} — Payment Processed`
@@ -208,7 +216,9 @@ ${claimSummaryBlock(claim)}
 Thank you for choosing our insurance services.${signature(cfg.signature)}`
 
   void sendEmail({ to: cfg.insurerEmail, cc, subject, body: staffBody, linkedTo: claim.id, folder: 'claims', from: MAILBOXES.claims })
-  void sendEmail({ to: cfg.netoneEmail, cc, subject, body: staffBody, linkedTo: claim.id, folder: 'claims', from: MAILBOXES.claims })
+  if (!NETONE_SUSPENDED && cfg.netoneEmail) {
+    void sendEmail({ to: cfg.netoneEmail, cc, subject, body: staffBody, linkedTo: claim.id, folder: 'claims', from: MAILBOXES.claims })
+  }
   if (client.email) {
     void sendEmail({ to: client.email, cc, subject, body: clientBody, linkedTo: claim.id, folder: 'claims', from: MAILBOXES.claims })
   }

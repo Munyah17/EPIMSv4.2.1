@@ -9,6 +9,10 @@ export interface NotifSettings {
   netonePhone: string
   fromAddress: string
   fromName: string
+  /** Where replies to outgoing notification emails should land — the sending
+   *  address is typically a noreply mailbox, so replies need somewhere real
+   *  to go instead of bouncing or vanishing. */
+  replyTo: string
   smsEnabled: boolean
   signature: string
   /** Receives an SMS at every claims-workflow stage transition (intake,
@@ -25,12 +29,17 @@ export interface NotifSettings {
 
 export const DEFAULT_NOTIF_SETTINGS: NotifSettings = {
   insurerName: 'Motions Microinsurance',
-  insurerEmail: 'claims@motionsmicroinsurance.co.zw',
+  insurerEmail: 'info@motions.co.zw',
   insurerPhone: '+263242000000',
+  // NetOne partnership is suspended for now — kept here (rather than
+  // deleted) purely so Settings has something to show/restore; nothing
+  // in the notification pipeline sends to it while suspended (see
+  // NETONE_SUSPENDED in claimNotifications.ts and reminderEngine.ts).
   netoneEmail: 'insurance@netone.co.zw',
   netonePhone: '+263712001234',
   fromAddress: 'noreply@enpassent.co.zw',
   fromName: 'Tariqify IMS',
+  replyTo: 'admin@motions.co.zw',
   smsEnabled: false,
   signature: 'Regards,\nTariqify Insurance Management System\nwww.tariqify.com',
   superAdminPhone: '',
@@ -70,6 +79,7 @@ export async function initNotifSettings(): Promise<void> {
 export interface SendEmailOptions {
   from?: string
   fromName?: string
+  replyTo?: string
   to: string
   cc?: string
   subject: string
@@ -99,6 +109,7 @@ export async function sendEmail(opts: SendEmailOptions): Promise<SendEmailResult
   const cfg = getNotifSettings()
   const from = opts.from ?? cfg.fromAddress
   const fromName = opts.fromName ?? cfg.fromName
+  const replyTo = opts.replyTo ?? cfg.replyTo
 
   const { data: saved } = await db.emails.create({
     from, fromName, to: opts.to, cc: opts.cc, subject: opts.subject, body: opts.body,
@@ -115,7 +126,7 @@ export async function sendEmail(opts: SendEmailOptions): Promise<SendEmailResult
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        to: opts.to, cc: opts.cc, subject: opts.subject, text: opts.body, from, fromName,
+        to: opts.to, cc: opts.cc, subject: opts.subject, text: opts.body, from, fromName, replyTo,
         attachmentBase64: opts.attachmentBase64, attachmentFilename: opts.attachmentFilename,
       }),
     })

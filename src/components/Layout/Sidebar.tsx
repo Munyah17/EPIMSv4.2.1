@@ -65,9 +65,12 @@ const STAFF_SECTIONS: NavSection[] = [
   {
     label: 'INTEGRATIONS',
     items: [
-      { id: 'mno_integration', label: 'NetOne Integration', icon: '📡', roles: ['super_admin', 'admin'] },
+      // NetOne Integration nav entry removed while the partnership is
+      // suspended — the page and route are untouched, just unreachable
+      // from the sidebar. Restore this line to bring it back.
+      // { id: 'mno_integration', label: 'NetOne Integration', icon: '📡', roles: ['super_admin', 'admin'] },
       { id: 'fraud', label: 'Fraud Detection', icon: '⚠', roles: ['super_admin', 'admin', 'claims_officer'] },
-      { id: 'developer_api', label: 'Developer API', icon: '🔌', roles: ['super_admin', 'admin'] },
+      { id: 'developer_api', label: 'Developers and API', icon: '🔌', roles: ['super_admin', 'admin'] },
     ],
   },
   {

@@ -114,10 +114,10 @@ export default function MnoIntegration({ showToast }: Props) {
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
               <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0, color: 'var(--text)' }}>NetOne Integration</h1>
               <span style={{ background: '#EDE9FE', color: '#6D28D9', fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 10, letterSpacing: '0.07em' }}>DUAL API v1</span>
-              <span style={{ background: '#D1FAE5', color: '#065F46', fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 10, letterSpacing: '0.05em' }}>🟢 LIVE</span>
+              <span style={{ background: '#FEE2E2', color: '#991B1B', fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 10, letterSpacing: '0.05em' }}>⏸ SUSPENDED</span>
             </div>
             <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--muted)' }}>
-              NetOne Insurance ↔ Tariqify · Bi-directional · Event-driven · HMAC-SHA256 signed
+              This partnership is suspended for now — no claim/billing notifications are sent to NetOne while suspended. Everything below is kept for reference and reactivation.
             </p>
           </div>
         </div>

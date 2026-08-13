@@ -28,7 +28,7 @@ const PANEL_TITLES: Record<ActivePanel, string> = {
   mno_integration: 'NetOne Integration',
   system_health: 'System Health',
   settings: 'Settings',
-  developer_api: 'Developer API',
+  developer_api: 'Developers and API',
   mass_messaging: 'Bulk SMS Messaging',
   billing_reminders: 'Billing & Reminders',
   system_access_roles: 'System Access Roles',
