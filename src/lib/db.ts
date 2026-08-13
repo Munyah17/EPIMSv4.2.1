@@ -634,6 +634,10 @@ export const payments = {
   async update(id: string, updates: Partial<Payment>) {
     const row: Record<string, unknown> = {}
     if (updates.status !== undefined) row.status = updates.status
+    if (updates.amount !== undefined) row.amount = updates.amount
+    if (updates.method !== undefined) row.method = updates.method
+    if (updates.date !== undefined) row.payment_date = updates.date
+    if (updates.splitPayments !== undefined) row.split_payments = updates.splitPayments ?? null
     const { ok, data } = await sb('payments', 'write',
       () => supabase.from('payments').update(row).eq('id', id).select(PAYMENT_SELECT).single(),
     )

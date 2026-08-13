@@ -26,6 +26,7 @@ export default function Payments({ showToast }: Props) {
   const [methodFilter, setMethodFilter] = useState<PaymentMethod | 'all'>('all')
   const [statusFilter, setStatusFilter] = useState<PaymentStatus | 'all'>('all')
   const [showRecord, setShowRecord] = useState(false)
+  const [editPayment, setEditPayment] = useState<Payment | null>(null)
 
   useEffect(() => {
     db.payments.list().then(({ data, error }) => {
@@ -66,6 +67,14 @@ export default function Payments({ showToast }: Props) {
     if (error || !data) { showToast('error', 'Failed to validate payment.'); return }
     setPayments(prev => prev.map(p => p.id === data.id ? data : p))
     showToast('success', `Payment ${data.reference} validated.`)
+  }
+
+  const handleEdit = async (updated: Payment) => {
+    const { data, error } = await db.payments.update(updated.id, updated)
+    if (error || !data) { showToast('error', 'Failed to update payment.'); return }
+    setPayments(prev => prev.map(p => p.id === data.id ? data : p))
+    showToast('success', `Payment ${data.reference} updated.`)
+    setEditPayment(null)
   }
 
   return (
@@ -156,9 +165,14 @@ export default function Payments({ showToast }: Props) {
                   <td>{formatDate(p.date)}</td>
                   <td><span className={`pill ${STATUS_CLASS[p.status]}`}>{p.status}</span></td>
                   <td>
-                    {p.status === 'pending' && hasPermission('payments.validate') && (
-                      <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--success)' }} onClick={() => handleValidate(p)}>Validate</button>
-                    )}
+                    <div className="action-btns">
+                      {hasPermission('payments.capture') && (
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditPayment(p)}>Edit</button>
+                      )}
+                      {p.status === 'pending' && hasPermission('payments.validate') && (
+                        <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--success)' }} onClick={() => handleValidate(p)}>Validate</button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -169,6 +183,9 @@ export default function Payments({ showToast }: Props) {
 
       {showRecord && (
         <RecordPaymentModal onClose={() => setShowRecord(false)} onSave={handleAdd} />
+      )}
+      {editPayment && (
+        <RecordPaymentModal payment={editPayment} onClose={() => setEditPayment(null)} onSave={handleEdit} />
       )}
     </div>
   )

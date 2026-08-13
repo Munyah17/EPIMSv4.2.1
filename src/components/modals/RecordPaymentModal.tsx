@@ -1,35 +1,42 @@
 import { useState, useEffect } from 'react'
-import type { Payment, PaymentMethod, SplitPayment, Policy } from '../../types'
+import type { Payment, PaymentMethod, PaymentStatus, SplitPayment, Policy } from '../../types'
 import { db } from '../../lib/db'
 import { premiumPeriodLabel } from '../../lib/productUtils'
+import DateInput from '../ui/DateInput'
 
 interface Props {
   /** When omitted, the modal lets the user pick a policy from a dropdown. */
   policyId?: string
+  /** When set, edits this existing payment instead of recording a new one —
+   *  the policy it's tied to is locked (a payment doesn't get reassigned to
+   *  a different policy after the fact). */
+  payment?: Payment
   onClose: () => void
   onSave: (payment: Payment) => void
 }
 
 const METHODS: PaymentMethod[] = ['OneMoney', 'InnBucks', 'Airtime Balance', 'Bank Transfer', 'Cash', 'Debit Order', 'Stop Order', 'EcoCash']
+const STATUSES: PaymentStatus[] = ['completed', 'pending', 'failed', 'reversed']
 
-export default function RecordPaymentModal({ policyId: initialPolicyId, onClose, onSave }: Props) {
+export default function RecordPaymentModal({ policyId: initialPolicyId, payment: editing, onClose, onSave }: Props) {
   const [allPolicies, setAllPolicies] = useState<Policy[] | null>(null)
-  const [policyId, setPolicyId] = useState(initialPolicyId ?? '')
+  const [policyId, setPolicyId] = useState(editing?.policyId ?? initialPolicyId ?? '')
   const [policy, setPolicy] = useState<Policy | null>(null)
   const [policyCategory, setPolicyCategory] = useState('')
-  const [amount, setAmount] = useState('')
-  const [method, setMethod] = useState<PaymentMethod>('OneMoney')
-  const [useSplit, setUseSplit] = useState(false)
-  const [splits, setSplits] = useState<SplitPayment[]>([
-    { method: 'EcoCash', amount: 0 },
-    { method: 'OneMoney', amount: 0 },
-  ])
+  const [amount, setAmount] = useState(editing ? String(editing.amount) : '')
+  const [method, setMethod] = useState<PaymentMethod>(editing?.method ?? 'OneMoney')
+  const [status, setStatus] = useState<PaymentStatus>(editing?.status ?? 'completed')
+  const [date, setDate] = useState(editing?.date ?? new Date().toISOString().split('T')[0])
+  const [useSplit, setUseSplit] = useState(!!editing?.splitPayments?.length)
+  const [splits, setSplits] = useState<SplitPayment[]>(
+    editing?.splitPayments?.length ? editing.splitPayments : [{ method: 'EcoCash', amount: 0 }, { method: 'OneMoney', amount: 0 }]
+  )
 
   useEffect(() => {
-    if (!initialPolicyId) {
+    if (!initialPolicyId && !editing) {
       db.policies.list().then(({ data }) => setAllPolicies(data ?? []))
     }
-  }, [initialPolicyId])
+  }, [initialPolicyId, editing])
 
   useEffect(() => {
     if (policyId) {
@@ -50,33 +57,39 @@ export default function RecordPaymentModal({ policyId: initialPolicyId, onClose,
     setSplits(prev => prev.map((s, idx) => idx === i ? { ...s, [field]: field === 'amount' ? Number(value) : value } : s))
   }
 
+  const addSplit = () => setSplits(prev => [...prev, { method: 'Cash', amount: 0 }])
+  const removeSplit = (i: number) => setSplits(prev => prev.filter((_, idx) => idx !== i))
+
+  const splitTotal = splits.reduce((sum, s) => sum + (s.amount || 0), 0)
+  const splitMismatch = useSplit && Math.abs(splitTotal - Number(amount || 0)) > 0.01
+
   const handleSave = () => {
-    if (!policyId || !amount) return
-    const reference = `PAY${new Date().toISOString().slice(0, 10).replace(/-/g, '')}${String(Date.now()).slice(-3)}`
-    const payment: Payment = {
-      id: `pay${Date.now()}`,
+    if (!policyId || !amount || !policy || splitMismatch) return
+    const reference = editing?.reference ?? `PAY${new Date().toISOString().slice(0, 10).replace(/-/g, '')}${String(Date.now()).slice(-3)}`
+    const paymentRecord: Payment = {
+      id: editing?.id ?? `pay${Date.now()}`,
       reference,
       policyId,
-      policyNumber: policy!.policyNumber,
-      clientName: policy!.clientName,
+      policyNumber: policy.policyNumber,
+      clientName: policy.clientName,
       amount: Number(amount),
       method,
-      status: 'completed',
-      date: new Date().toISOString().split('T')[0],
+      status,
+      date,
       splitPayments: useSplit ? splits.filter(s => s.amount > 0) : undefined,
     }
-    onSave(payment)
+    onSave(paymentRecord)
   }
 
   return (
     <div className="modal-overlay">
       <div className="modal" style={{ maxWidth: 500 }}>
         <div className="modal-header">
-          <h3>Record Payment</h3>
+          <h3>{editing ? `Edit Payment — ${editing.reference}` : 'Record Payment'}</h3>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
-          {!initialPolicyId && (
+          {!initialPolicyId && !editing && (
             <div className="form-group">
               <label>Policy *</label>
               <select className="form-control" value={policyId} onChange={e => setPolicyId(e.target.value)} disabled={!allPolicies}>
@@ -110,6 +123,20 @@ export default function RecordPaymentModal({ policyId: initialPolicyId, onClose,
               </select>
             </div>
           </div>
+          {editing && (
+            <div className="form-row">
+              <div className="form-group">
+                <label>Status</label>
+                <select className="form-control" value={status} onChange={e => setStatus(e.target.value as PaymentStatus)}>
+                  {STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Date</label>
+                <DateInput value={date} onChange={setDate} />
+              </div>
+            </div>
+          )}
           <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <input type="checkbox" id="split" checked={useSplit} onChange={e => setUseSplit(e.target.checked)} />
             <label htmlFor="split" style={{ marginBottom: 0, cursor: 'pointer' }}>Split payment across multiple methods</label>
@@ -117,20 +144,27 @@ export default function RecordPaymentModal({ policyId: initialPolicyId, onClose,
           {useSplit && (
             <div style={{ marginTop: '0.75rem' }}>
               {splits.map((s, i) => (
-                <div key={i} className="form-row" style={{ marginBottom: 8 }}>
+                <div key={i} className="form-row" style={{ marginBottom: 8, alignItems: 'center' }}>
                   <select className="form-control" value={s.method} onChange={e => updateSplit(i, 'method', e.target.value)}>
                     {METHODS.map(m => <option key={m} value={m}>{m}</option>)}
                   </select>
                   <input type="number" className="form-control" placeholder="Amount" value={s.amount || ''} onChange={e => updateSplit(i, 'amount', e.target.value)} />
+                  {splits.length > 1 && (
+                    <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => removeSplit(i)} title="Remove method">✕</button>
+                  )}
                 </div>
               ))}
+              <button type="button" className="btn btn-ghost btn-sm" onClick={addSplit}>+ Add Method</button>
+              <p style={{ fontSize: 12, marginTop: 6, color: splitMismatch ? 'var(--danger)' : 'var(--muted)' }}>
+                Split total: ${splitTotal.toFixed(2)} {splitMismatch && `— must equal the amount ($${Number(amount || 0).toFixed(2)})`}
+              </p>
             </div>
           )}
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={!policyId || !amount}>
-            Record Payment
+          <button className="btn btn-primary" onClick={handleSave} disabled={!policyId || !amount || splitMismatch}>
+            {editing ? 'Save Changes' : 'Record Payment'}
           </button>
         </div>
       </div>
