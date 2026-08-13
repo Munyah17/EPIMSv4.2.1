@@ -1094,12 +1094,16 @@ textarea.form-control{resize:vertical;min-height:80px}
 .date-input-disabled{opacity:0.6}
 
 /* ===== PHONE COUNTRY-CODE INPUT ===== */
-.phone-input{position:relative;display:flex;gap:6px}
-.phone-input-country{display:flex;align-items:center;gap:5px;padding:0 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface);cursor:pointer;font-size:13px;white-space:nowrap}
-.phone-input-country:hover{background:var(--surface2)}
+.phone-input{position:relative;display:flex;align-items:stretch;border:1px solid var(--border);border-radius:7px;background:var(--surface);overflow:hidden;transition:border-color 0.15s}
+.phone-input:focus-within{border-color:var(--blue)}
+.phone-input.disabled{opacity:0.6}
+.phone-input-country{display:flex;align-items:center;gap:4px;padding:0 8px;border:none;border-right:1px solid var(--border);background:transparent;cursor:pointer;font-size:13px;white-space:nowrap}
+.phone-input-country:hover{background:var(--surface)}
+.phone-input-country:disabled{cursor:not-allowed}
 .phone-input-dial{font-weight:500}
 .phone-input-caret{font-size:9px;color:var(--muted)}
-.phone-input-number{flex:1}
+.phone-input-number{flex:1;border:none!important;border-radius:0!important;background:transparent!important}
+.phone-input-number:focus{outline:none;box-shadow:none}
 .phone-input-dropdown{position:absolute;top:calc(100% + 4px);left:0;z-index:60;width:280px;max-width:calc(100vw - 40px);background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,0.14);overflow:hidden}
 .phone-input-search{margin:8px;width:calc(100% - 16px)}
 .phone-input-list{max-height:240px;overflow-y:auto;padding-bottom:6px}

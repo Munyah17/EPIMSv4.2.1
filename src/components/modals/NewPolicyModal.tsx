@@ -11,14 +11,18 @@ interface Props {
   onClose: () => void
   onSave: (policy: Policy) => void
   showToast?: (type: 'success' | 'error' | 'warning' | 'info', message: string) => void
+  /** Pre-selects and locks this client (e.g. "Assign Policy" from the
+   *  Clients page for someone registered with no policy yet) — skips the
+   *  New/Existing toggle and search step entirely. */
+  initialClient?: Client
 }
 
-export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
+export default function NewPolicyModal({ onClose, onSave, showToast, initialClient }: Props) {
   const { user } = useAuth()
   // A customer already on file can take out another policy without being
   // re-registered from scratch — that's what "existing" mode is for. It's
   // also how a client ends up holding more than one policy at all.
-  const [customerMode, setCustomerMode] = useState<'new' | 'existing'>('new')
+  const [customerMode, setCustomerMode] = useState<'new' | 'existing'>(initialClient ? 'existing' : 'new')
   const [clientSearch, setClientSearch] = useState('')
   const [existingClientId, setExistingClientId] = useState('')
   const [existingClients, setExistingClients] = useState<Client[]>([])
@@ -59,6 +63,8 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
       // serving the client — while still letting them reassign it below.
       if (user && active.some(s => s.id === user.id)) setAgentId(user.id)
     })
+    if (initialClient) selectExistingClient(initialClient)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
 
   const clearClientFields = () => {
@@ -208,24 +214,26 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
-          <div className="bubble-toggle" style={{ marginBottom: '1rem' }}>
-            <button
-              type="button"
-              className={`bubble-toggle-btn${customerMode === 'new' ? ' active' : ''}`}
-              onClick={() => switchMode('new')}
-            >
-              New Customer
-            </button>
-            <button
-              type="button"
-              className={`bubble-toggle-btn${customerMode === 'existing' ? ' active' : ''}`}
-              onClick={() => switchMode('existing')}
-            >
-              Existing Customer
-            </button>
-          </div>
+          {!initialClient && (
+            <div className="bubble-toggle" style={{ marginBottom: '1rem' }}>
+              <button
+                type="button"
+                className={`bubble-toggle-btn${customerMode === 'new' ? ' active' : ''}`}
+                onClick={() => switchMode('new')}
+              >
+                New Customer
+              </button>
+              <button
+                type="button"
+                className={`bubble-toggle-btn${customerMode === 'existing' ? ' active' : ''}`}
+                onClick={() => switchMode('existing')}
+              >
+                Existing Customer
+              </button>
+            </div>
+          )}
 
-          {customerMode === 'existing' && (
+          {customerMode === 'existing' && !initialClient && (
             <div className="form-group" style={{ position: 'relative', marginBottom: '1rem' }}>
               <label>Search Customer * (name, phone, or ID number)</label>
               <input
@@ -251,18 +259,18 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
 
           <div className="new-policy-cols">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <h4 style={{ margin: 0 }}>Customer Information</h4>
+              <h4 style={{ margin: 0 }}>Customer Information{existingClientId && <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--muted)' }}> (on file — read only)</span>}</h4>
               <div className="form-group">
                 <label>Full Name *</label>
-                <input className="form-control" placeholder="Enter full name" value={clientName} onChange={e => setClientName(e.target.value)} />
+                <input className="form-control" placeholder="Enter full name" value={clientName} onChange={e => setClientName(e.target.value)} disabled={!!existingClientId} style={existingClientId ? { opacity: 0.6 } : undefined} />
               </div>
               <div className="form-group">
                 <label>Phone Number *</label>
-                <PhoneInput value={clientPhone} onChange={setClientPhone} />
+                <PhoneInput value={clientPhone} onChange={setClientPhone} disabled={!!existingClientId} />
               </div>
               <div className="form-group">
                 <label>Email</label>
-                <input type="email" className="form-control" placeholder="email@example.com" value={clientEmail} onChange={e => setClientEmail(e.target.value)} />
+                <input type="email" className="form-control" placeholder="email@example.com" value={clientEmail} onChange={e => setClientEmail(e.target.value)} disabled={!!existingClientId} style={existingClientId ? { opacity: 0.6 } : undefined} />
               </div>
               <div className="form-group">
                 <label>National ID *</label>
@@ -274,11 +282,11 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
               </div>
               <div className="form-group">
                 <label>Occupation</label>
-                <input className="form-control" placeholder="e.g. Teacher" value={clientOccupation} onChange={e => setClientOccupation(e.target.value)} />
+                <input className="form-control" placeholder="e.g. Teacher" value={clientOccupation} onChange={e => setClientOccupation(e.target.value)} disabled={!!existingClientId} style={existingClientId ? { opacity: 0.6 } : undefined} />
               </div>
               <div className="form-group">
                 <label>Address</label>
-                <input className="form-control" placeholder="Street address, city" value={clientAddress} onChange={e => setClientAddress(e.target.value)} />
+                <input className="form-control" placeholder="Street address, city" value={clientAddress} onChange={e => setClientAddress(e.target.value)} disabled={!!existingClientId} style={existingClientId ? { opacity: 0.6 } : undefined} />
               </div>
             </div>
 

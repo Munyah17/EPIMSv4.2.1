@@ -5,9 +5,10 @@ interface Props {
   value: string
   onChange: (value: string) => void
   placeholder?: string
+  disabled?: boolean
 }
 
-export default function PhoneInput({ value, onChange, placeholder }: Props) {
+export default function PhoneInput({ value, onChange, placeholder, disabled }: Props) {
   const parsed = splitPhone(value)
   const [country, setCountry] = useState<Country>(parsed.country)
   const [local, setLocal] = useState(parsed.local)
@@ -44,8 +45,8 @@ export default function PhoneInput({ value, onChange, placeholder }: Props) {
   )
 
   return (
-    <div className="phone-input" ref={rootRef}>
-      <button type="button" className="phone-input-country" onClick={() => setOpen(o => !o)}>
+    <div className={`phone-input${disabled ? ' disabled' : ''}`} ref={rootRef}>
+      <button type="button" className="phone-input-country" disabled={disabled} onClick={() => !disabled && setOpen(o => !o)}>
         <span>{country.flag}</span>
         <span className="phone-input-dial">{country.dial}</span>
         <span className="phone-input-caret">▾</span>
@@ -55,9 +56,10 @@ export default function PhoneInput({ value, onChange, placeholder }: Props) {
         type="tel"
         value={local}
         placeholder={placeholder ?? '77 123 4567'}
+        disabled={disabled}
         onChange={e => { setLocal(e.target.value); commit(country, e.target.value) }}
       />
-      {open && (
+      {open && !disabled && (
         <div className="phone-input-dropdown">
           <input
             className="form-control phone-input-search"

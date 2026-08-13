@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
-import type { ToastMessage, Client } from '../types'
+import type { ToastMessage, Client, Policy } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
 import { useAuth } from '../contexts/AuthContext'
 import RegisterClientModal from '../components/modals/RegisterClientModal'
 import EditClientModal from '../components/modals/EditClientModal'
+import NewPolicyModal from '../components/modals/NewPolicyModal'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -19,6 +20,7 @@ export default function Clients({ showToast }: Props) {
   const [search, setSearch] = useState('')
   const [showRegister, setShowRegister] = useState(false)
   const [editClient, setEditClient] = useState<Client | null>(null)
+  const [assignPolicyClient, setAssignPolicyClient] = useState<Client | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
   useEffect(() => {
@@ -64,6 +66,14 @@ export default function Clients({ showToast }: Props) {
     setClients(prev => prev.map(c => c.id === data.id ? data : c))
     showToast('success', `Client ${data.name} updated.`)
     setEditClient(null)
+  }
+
+  const handleAssignPolicy = async (policy: Policy) => {
+    const { data, error } = await db.policies.create(policy)
+    if (error || !data) { showToast('error', 'Failed to create policy.'); return }
+    setClients(prev => prev.map(c => c.id === data.clientId ? { ...c, policyCount: c.policyCount + 1 } : c))
+    showToast('success', `Policy ${data.policyNumber} assigned to ${data.clientName}.`)
+    setAssignPolicyClient(null)
   }
 
   const handleDelete = async (client: Client) => {
@@ -142,6 +152,9 @@ export default function Clients({ showToast }: Props) {
                   <td>
                     <div className="action-btns">
                       <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditClient(c)}>Edit</button>
+                      {c.policyCount === 0 && (
+                        <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--blue)' }} onClick={() => setAssignPolicyClient(c)}>Assign Policy</button>
+                      )}
                       {user?.role === 'super_admin' && (
                         <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => handleDelete(c)}>Delete</button>
                       )}
@@ -159,6 +172,14 @@ export default function Clients({ showToast }: Props) {
       )}
       {editClient && (
         <EditClientModal client={editClient} onClose={() => setEditClient(null)} onSave={handleEdit} />
+      )}
+      {assignPolicyClient && (
+        <NewPolicyModal
+          initialClient={assignPolicyClient}
+          onClose={() => setAssignPolicyClient(null)}
+          onSave={handleAssignPolicy}
+          showToast={showToast}
+        />
       )}
     </div>
   )
