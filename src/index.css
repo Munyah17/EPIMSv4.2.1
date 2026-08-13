@@ -627,6 +627,11 @@ tbody tr:hover td{background:var(--surface)}
 .modal-close{cursor:pointer;color:var(--muted);font-size:20px;line-height:1;border:none;background:none;padding:0;font-family:inherit}.modal-close:hover{color:var(--text)}
 .modal-body{padding:18px 22px;display:flex;flex-direction:column;gap:12px}
 .modal-footer{display:flex;gap:8px;justify-content:flex-end;padding:14px 22px;border-top:1px solid var(--border)}
+.view-policy-footer{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:12px}
+.view-policy-footer>button:first-child{justify-self:start}
+.view-policy-print-btn{justify-self:center}
+.view-policy-footer>button:last-child{justify-self:end}
+@media(max-width:520px){.view-policy-footer{grid-template-columns:1fr;gap:8px}.view-policy-footer>button{justify-self:stretch;justify-content:center}}
 @media(max-width:768px){.modal{max-width:calc(100vw - 16px)!important;max-height:92dvh!important} .modal-header,.modal-body,.modal-footer{padding-left:14px!important;padding-right:14px!important}}
 
 /* --- NEW POLICY MODAL (wide 2-column layout, collapses on small screens) --- */

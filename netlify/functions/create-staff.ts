@@ -121,7 +121,7 @@ export const handler: Handler = async (event) => {
     return { statusCode: 400, body: JSON.stringify({ error: usernameError.code === '23505' ? 'That username is already taken.' : usernameError.message }) }
   }
 
-  const { data: profile } = await admin.from('profiles').select('*, custom_roles(name)').eq('id', created.user.id).single()
+  const { data: profile } = await admin.from('profiles').select('*, custom_roles!profiles_custom_role_id_fkey(name)').eq('id', created.user.id).single()
 
   return { statusCode: 200, body: JSON.stringify({ success: true, profile: { ...profile, email: created.user.email } }) }
 }

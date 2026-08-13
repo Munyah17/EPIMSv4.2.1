@@ -134,10 +134,6 @@ export default function Policies({ showToast }: Props) {
 
   const handlePrint = async (policy: Policy) => {
     const { client, category } = await getReportContext(policy)
-    if (category === 'funeral') {
-      showToast('warning', 'Printed policy reports are not available for funeral packages.')
-      return
-    }
     if (!client) { showToast('error', 'Could not load client details for this policy.'); return }
     await exportPolicyReport(policy, client, category)
   }

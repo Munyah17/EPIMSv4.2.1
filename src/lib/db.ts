@@ -822,7 +822,7 @@ export const leads = {
 export const staff = {
   async list() {
     const { ok, data } = await sb('profiles', 'read',
-      () => supabase.from('profiles').select('*, custom_roles(name)').order('name'),
+      () => supabase.from('profiles').select('*, custom_roles!profiles_custom_role_id_fkey(name)').order('name'),
       d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as Record<string,unknown>[]).map(toProfile), error: null }
@@ -869,7 +869,7 @@ export const staff = {
     if (updates.permissions !== undefined) row.permissions = updates.permissions
     if (updates.customRoleId !== undefined) row.custom_role_id = updates.customRoleId || null
     const start = Date.now()
-    const { data, error } = await supabase.from('profiles').update(row).eq('id', id).select('*, custom_roles(name)').single()
+    const { data, error } = await supabase.from('profiles').update(row).eq('id', id).select('*, custom_roles!profiles_custom_role_id_fkey(name)').single()
     health.record({ ts: Date.now(), type: 'write', table: 'profiles', success: !error, duration: Date.now() - start, source: 'supabase', detail: error ? String(error.message) : undefined })
     if (error) return { data: null, error: error.code === '23505' ? 'That username is already taken.' : error.message }
     return { data: toProfile(data as Record<string,unknown>), error: null }

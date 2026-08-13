@@ -61,7 +61,7 @@ async function fetchProfile(userId: string, email: string, metaFallback?: Record
   // contending with a concurrent call — see the onAuthStateChange comment
   // in AuthProvider) falls through to the metadata fallback below instead
   // of leaving the whole login() hung until its own 15s timeout.
-  const query = supabase.from('profiles').select('*, custom_roles(name)').eq('id', userId).single()
+  const query = supabase.from('profiles').select('*, custom_roles!profiles_custom_role_id_fkey(name)').eq('id', userId).single()
   const { data, error } = await withTimeout(
     Promise.resolve(query),
     5000,

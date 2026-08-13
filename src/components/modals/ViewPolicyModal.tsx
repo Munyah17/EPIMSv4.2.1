@@ -57,9 +57,9 @@ export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint }: Pr
             </div>
           )}
         </div>
-        <div className="modal-footer">
+        <div className="modal-footer view-policy-footer">
           <button className="btn btn-ghost" onClick={onClose}>Close</button>
-          {onPrint && <button className="btn btn-ghost" onClick={onPrint}>Print Policy</button>}
+          {onPrint && <button className="btn btn-success view-policy-print-btn" onClick={onPrint}>🖨 Print Policy Doc</button>}
           <button className="btn btn-primary" onClick={onEdit}>Edit Policy</button>
         </div>
       </div>
