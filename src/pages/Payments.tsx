@@ -3,6 +3,7 @@ import type { ToastMessage, Payment, PaymentMethod, PaymentStatus } from '../typ
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
+import { useAuth } from '../contexts/AuthContext'
 import RecordPaymentModal from '../components/modals/RecordPaymentModal'
 
 interface Props {
@@ -18,6 +19,7 @@ const STATUS_CLASS: Record<PaymentStatus, string> = {
 }
 
 export default function Payments({ showToast }: Props) {
+  const { hasPermission } = useAuth()
   const [payments, setPayments] = useState<Payment[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -57,6 +59,13 @@ export default function Payments({ showToast }: Props) {
     setPayments(prev => [data, ...prev])
     showToast('success', `Payment ${data.reference} recorded successfully.`)
     setShowRecord(false)
+  }
+
+  const handleValidate = async (payment: Payment) => {
+    const { data, error } = await db.payments.update(payment.id, { status: 'completed' })
+    if (error || !data) { showToast('error', 'Failed to validate payment.'); return }
+    setPayments(prev => prev.map(p => p.id === data.id ? data : p))
+    showToast('success', `Payment ${data.reference} validated.`)
   }
 
   return (
@@ -107,7 +116,9 @@ export default function Payments({ showToast }: Props) {
             <option value="reversed">Reversed</option>
           </select>
         </div>
-        <button type="button" className="btn btn-primary" onClick={() => setShowRecord(true)}>+ Record Payment</button>
+        {hasPermission('payments.capture') && (
+          <button type="button" className="btn btn-primary" onClick={() => setShowRecord(true)}>+ Record Payment</button>
+        )}
       </div>
 
       <div className="card">
@@ -124,11 +135,12 @@ export default function Payments({ showToast }: Props) {
                 <th>Method</th>
                 <th>Date</th>
                 <th>Status</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={7} className="td-empty">No payments found.</td></tr>
+                <tr><td colSpan={8} className="td-empty">No payments found.</td></tr>
               ) : filtered.map(p => (
                 <tr key={p.id}>
                   <td><span className="mono">{p.reference}</span></td>
@@ -143,6 +155,11 @@ export default function Payments({ showToast }: Props) {
                   </td>
                   <td>{formatDate(p.date)}</td>
                   <td><span className={`pill ${STATUS_CLASS[p.status]}`}>{p.status}</span></td>
+                  <td>
+                    {p.status === 'pending' && hasPermission('payments.validate') && (
+                      <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--success)' }} onClick={() => handleValidate(p)}>Validate</button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

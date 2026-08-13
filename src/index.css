@@ -695,6 +695,21 @@ textarea.form-control{resize:vertical;min-height:80px}
 .permissions-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
 .permission-item{display:flex;align-items:center;gap:7px;font-size:12px;padding:5px 0;cursor:pointer}
 .permission-item input{cursor:pointer}
+.permissions-groups{display:flex;flex-direction:column;gap:14px;max-height:360px;overflow-y:auto;padding-right:4px}
+.permissions-group-header{display:flex;align-items:center;justify-content:space-between;font-size:12px;font-weight:600;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.03em}
+
+/* --- ROLE MANAGER --- */
+.role-manager-layout{display:grid;grid-template-columns:220px 1fr;gap:20px}
+.role-manager-list{display:flex;flex-direction:column;gap:4px;max-height:460px;overflow-y:auto}
+.role-manager-item{display:flex;align-items:center;gap:4px;border-radius:8px}
+.role-manager-item.active{background:var(--surface2)}
+.role-manager-item-btn{flex:1;text-align:left;background:none;border:none;cursor:pointer;padding:8px 10px;display:flex;flex-direction:column;gap:2px;border-radius:8px;font-family:inherit}
+.role-manager-item-btn:hover{background:var(--surface2)}
+.role-manager-item-btn span{font-size:11px;color:var(--muted)}
+.role-manager-item-delete{background:none;border:none;color:var(--muted);cursor:pointer;padding:6px;font-size:12px}
+.role-manager-item-delete:hover{color:var(--danger)}
+.role-manager-editor{min-width:0}
+@media(max-width:680px){.role-manager-layout{grid-template-columns:1fr}.role-manager-list{max-height:160px;flex-direction:row;flex-wrap:wrap}}
 
 /* --- EMPTY STATE --- */
 .empty-state{text-align:center;padding:48px 20px;color:var(--muted);font-size:13px}

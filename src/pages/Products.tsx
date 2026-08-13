@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import type { ToastMessage, Product } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
+import { useAuth } from '../contexts/AuthContext'
 import AddProductModal from '../components/modals/AddProductModal'
 
 interface Props {
@@ -11,6 +12,7 @@ interface Props {
 
 
 export default function Products({ showToast }: Props) {
+  const { hasPermission } = useAuth()
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
@@ -53,7 +55,9 @@ export default function Products({ showToast }: Props) {
     <div className="panel">
       <div className="panel-toolbar">
         <div />
-        <button type="button" className="btn btn-primary" onClick={() => setShowAdd(true)}>+ Add Product</button>
+        {hasPermission('products.create') && (
+          <button type="button" className="btn btn-primary" onClick={() => setShowAdd(true)}>+ Add Product</button>
+        )}
       </div>
 
       {loading ? (
@@ -93,12 +97,14 @@ export default function Products({ showToast }: Props) {
                 ))}
                 {p.features.length > 3 && <span className="feature-more">+{p.features.length - 3} more</span>}
               </div>
-              <div className="product-actions">
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setEditProduct(p); setShowAdd(true) }}>Edit</button>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={() => toggleActive(p.id)}>
-                  {p.active ? 'Deactivate' : 'Activate'}
-                </button>
-              </div>
+              {hasPermission('products.edit') && (
+                <div className="product-actions">
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setEditProduct(p); setShowAdd(true) }}>Edit</button>
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => toggleActive(p.id)}>
+                    {p.active ? 'Deactivate' : 'Activate'}
+                  </button>
+                </div>
+              )}
             </div>
           ))}
         </div>

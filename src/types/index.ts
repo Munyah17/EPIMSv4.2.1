@@ -20,8 +20,23 @@ export interface AppUser {
   phone?: string
   active: boolean
   permissions: string[]
+  /** A Super Admin-defined named permission bundle assigned on top of the
+   *  base role above — see src/lib/permissions.ts. Assigning one snapshots
+   *  its permission list into `permissions`; further per-user tweaks via
+   *  PermissionsModal are still possible and will diverge from the role. */
+  customRoleId?: string
+  customRoleName?: string
   lastLogin?: string
   password?: string
+}
+
+export interface CustomRole {
+  id: string
+  name: string
+  description?: string
+  permissions: string[]
+  createdBy?: string
+  createdAt: string
 }
 
 export interface Client {

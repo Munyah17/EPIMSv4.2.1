@@ -52,7 +52,7 @@ function formatFull(ts: string) {
 }
 
 export default function Email({ showToast }: Props) {
-  const { user } = useAuth()
+  const { user, hasPermission } = useAuth()
   const [emails, setEmails] = useState<EmailMessage[]>([])
   const [loading, setLoading] = useState(true)
   const [folder, setFolder] = useState<Folder>('inbox')
@@ -361,7 +361,7 @@ export default function Email({ showToast }: Props) {
             </div>
             <div className="modal-footer">
               <button className="btn btn-ghost" onClick={() => setShowCompose(false)}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleSend} disabled={sending}>
+              <button className="btn btn-primary" onClick={handleSend} disabled={sending || !hasPermission('communications.send_email')}>
                 {sending ? 'Sending…' : '✉ Send'}
               </button>
             </div>

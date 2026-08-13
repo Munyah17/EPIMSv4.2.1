@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import type { AppUser, UserRole } from '../../types'
+import { useState, useEffect } from 'react'
+import type { AppUser, UserRole, CustomRole } from '../../types'
+import { db } from '../../lib/db'
 import PhoneInput from '../ui/PhoneInput'
 
 interface Props {
@@ -25,6 +26,10 @@ export default function AddStaffModal({ staff, onClose, onSave, onResetPassword 
   const [password, setPassword] = useState('')
   const [resetPwd, setResetPwd] = useState('')
   const [resettingPwd, setResettingPwd] = useState(false)
+  const [customRoleId, setCustomRoleId] = useState(staff?.customRoleId ?? '')
+  const [roles, setRoles] = useState<CustomRole[]>([])
+
+  useEffect(() => { db.customRoles.list().then(({ data }) => setRoles(data)) }, [])
 
   // New accounts are real Supabase Auth users now, so a real password is
   // required — no more silent 'staff1234' default. Editing an existing
@@ -35,11 +40,25 @@ export default function AddStaffModal({ staff, onClose, onSave, onResetPassword 
 
   const handleSave = () => {
     if (!canSave) return
+    // Only snapshot the role's permissions in when the custom role selection
+    // actually changed — otherwise re-saving this form for an unrelated edit
+    // (e.g. phone number) would silently wipe out any manual permission
+    // tweaks made afterwards via PermissionsModal.
+    const roleChanged = customRoleId !== (staff?.customRoleId ?? '')
+    const selectedRole = roleChanged ? roles.find(r => r.id === customRoleId) : undefined
+    // A brand-new account with no custom role picked still needs a sane
+    // default: Admin gets full access short of the two hard-gated Super
+    // Admin-only actions (same 'all_except_super' sentinel AuthContext's
+    // own fallback already uses), matching the 2026-08 access review.
+    // Other staff roles default to none — granted explicitly via the
+    // Permissions modal or a custom role, same as before this feature.
+    const defaultPermissions = !staff ? (role === 'admin' ? ['all_except_super'] : []) : (staff.permissions ?? [])
     const member: AppUser = {
       id: staff?.id ?? '',
       name, username: username.trim(), email, phone, role, department,
       active: staff?.active ?? true,
-      permissions: staff?.permissions ?? [],
+      permissions: selectedRole ? selectedRole.permissions : defaultPermissions,
+      customRoleId: customRoleId || undefined,
     }
     onSave(member, password)
   }
@@ -85,6 +104,13 @@ export default function AddStaffModal({ staff, onClose, onSave, onResetPassword 
                 {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
               </select>
             </div>
+          </div>
+          <div className="form-group">
+            <label>Custom Role (optional)</label>
+            <select className="form-control" value={customRoleId} onChange={e => setCustomRoleId(e.target.value)}>
+              <option value="">— None (default permissions for this role) —</option>
+              {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+            </select>
           </div>
           <div className="form-row">
             <div className="form-group">

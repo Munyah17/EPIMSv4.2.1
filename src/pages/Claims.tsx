@@ -6,6 +6,7 @@ import ScoreBar from '../components/ui/ScoreBar'
 import NewClaimModal from '../components/modals/NewClaimModal'
 import ReviewClaimModal from '../components/modals/ReviewClaimModal'
 import { notifyClaimCreated, notifyClaimStatusChanged } from '../lib/claimNotifications'
+import { useAuth } from '../contexts/AuthContext'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -13,6 +14,7 @@ interface Props {
 }
 
 export default function Claims({ showToast }: Props) {
+  const { hasPermission } = useAuth()
   const [claims, setClaims] = useState<Claim[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -72,6 +74,15 @@ export default function Claims({ showToast }: Props) {
     }
   }
 
+  const handleQuickDecision = async (claim: Claim, status: ClaimStatus) => {
+    const previous = claim.status
+    const { data, error } = await db.claims.update(claim.id, { status, resolvedAt: new Date().toISOString() })
+    if (error || !data) { showToast('error', `Failed to ${status} claim.`); return }
+    setClaims(prev => prev.map(c => c.id === data.id ? data : c))
+    showToast('success', `Claim ${data.claimNumber} ${status}.`)
+    try { notifyClaimStatusChanged(data, previous) } catch { /**/ }
+  }
+
   return (
     <div className="panel">
       <div className="panel-toolbar">
@@ -91,7 +102,9 @@ export default function Claims({ showToast }: Props) {
             <option value="paid">Paid ({counts.paid})</option>
           </select>
         </div>
-        <button type="button" className="btn btn-primary" onClick={() => setShowNew(true)}>+ New Claim</button>
+        {hasPermission('claims.create') && (
+          <button type="button" className="btn btn-primary" onClick={() => setShowNew(true)}>+ New Claim</button>
+        )}
       </div>
 
       <div className="card">
@@ -126,7 +139,17 @@ export default function Claims({ showToast }: Props) {
                   <td><ScoreBar score={c.fraudScore} /></td>
                   <td><span className={`pill pill-${c.status.replace('_', '-')}`}>{c.status.replace('_', ' ')}</span></td>
                   <td>
-                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => setReviewClaim(c)}>Review</button>
+                    <div className="action-btns">
+                      {hasPermission('claims.edit') && (
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setReviewClaim(c)}>Review</button>
+                      )}
+                      {['pending', 'under_review'].includes(c.status) && hasPermission('claims.approve') && (
+                        <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--success)' }} onClick={() => handleQuickDecision(c, 'approved')}>Approve</button>
+                      )}
+                      {['pending', 'under_review'].includes(c.status) && hasPermission('claims.reject') && (
+                        <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => handleQuickDecision(c, 'rejected')}>Reject</button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

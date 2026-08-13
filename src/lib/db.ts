@@ -5,7 +5,7 @@ import type {
   AppUser, Client, Product, Policy, Claim, Payment,
   Ticket, EmailMessage, Lead, FraudCase, Reminder, CautionFlag,
   PolicyStatus, ClaimStatus, PaymentStatus, PaymentMethod,
-  TicketStatus, TicketPriority, LeadStatus, FraudCaseStatus,
+  TicketStatus, TicketPriority, LeadStatus, FraudCaseStatus, CustomRole,
 } from '../types'
 
 // ── helpers ───────────────────────────────────────────────────────
@@ -58,7 +58,20 @@ function toProfile(r: Record<string, unknown>): AppUser {
     phone:       r.phone as string | undefined,
     active:      r.active as boolean,
     permissions: (r.permissions as string[]) ?? [],
+    customRoleId:   (r.custom_role_id as string | null) ?? undefined,
+    customRoleName: (r.custom_roles as { name?: string } | null)?.name ?? undefined,
     lastLogin:   r.last_login as string | undefined,
+  }
+}
+
+function toCustomRole(r: Record<string, unknown>): CustomRole {
+  return {
+    id:          r.id as string,
+    name:        r.name as string,
+    description: (r.description as string | null) ?? undefined,
+    permissions: (r.permissions as string[]) ?? [],
+    createdBy:   (r.created_by as string | null) ?? undefined,
+    createdAt:   r.created_at as string,
   }
 }
 
@@ -380,6 +393,15 @@ export const policies = {
     local('policies', 'write')
     return { data: localStore.policies.update(id, updates), error: null }
   },
+
+  /** RLS (policies_delete_admin) restricts this to admin/super_admin already;
+   *  hasPermission('policies.delete') additionally gates the button itself
+   *  so a custom role can hide it from a given admin/staff member too. */
+  async remove(id: string) {
+    const { error } = await supabase.from('policies').delete().eq('id', id)
+    if (error) return { error: error.code === '23503' ? 'This policy has related claims or payments and cannot be deleted.' : error.message }
+    return { error: null }
+  },
 }
 
 // ── CLIENTS ───────────────────────────────────────────────────────
@@ -594,6 +616,59 @@ export const payments = {
     const item = { ...payment, id: uid() } as Payment
     return { data: localStore.payments.create(item), error: null }
   },
+
+  /** Marks a captured payment as validated (completed) or otherwise updates
+   *  its status — the "payments capturing and validation" split from the
+   *  2026-08 access review: capture = record(), validation = this. */
+  async update(id: string, updates: Partial<Payment>) {
+    const row: Record<string, unknown> = {}
+    if (updates.status !== undefined) row.status = updates.status
+    const { ok, data } = await sb('payments', 'write',
+      () => supabase.from('payments').update(row).eq('id', id).select(PAYMENT_SELECT).single(),
+    )
+    if (ok && data) return { data: toPayment(data), error: null }
+    local('payments', 'write')
+    return { data: localStore.payments.update(id, updates), error: null }
+  },
+}
+
+// ── CUSTOM ROLES ──────────────────────────────────────────────────
+export const customRoles = {
+  async list() {
+    const { ok, data } = await sb('custom_roles', 'read',
+      () => supabase.from('custom_roles').select('*').order('name'),
+      d => Array.isArray(d),
+    )
+    if (ok && data) return { data: (data as Record<string, unknown>[]).map(toCustomRole), error: null }
+    return { data: [], error: null }
+  },
+
+  async create(role: { name: string; description?: string; permissions: string[] }) {
+    const { data: { user } } = await supabase.auth.getUser()
+    const row = { name: role.name, description: role.description ?? null, permissions: role.permissions, created_by: user?.id ?? null }
+    const { data, error } = await supabase.from('custom_roles').insert(row).select().single()
+    if (error) return { data: null, error: error.code === '23505' ? 'A role with that name already exists.' : error.message }
+    return { data: toCustomRole(data as Record<string, unknown>), error: null }
+  },
+
+  async update(id: string, updates: { name?: string; description?: string; permissions?: string[] }) {
+    const row: Record<string, unknown> = {}
+    if (updates.name !== undefined) row.name = updates.name
+    if (updates.description !== undefined) row.description = updates.description
+    if (updates.permissions !== undefined) row.permissions = updates.permissions
+    const { data, error } = await supabase.from('custom_roles').update(row).eq('id', id).select().single()
+    if (error) return { data: null, error: error.code === '23505' ? 'A role with that name already exists.' : error.message }
+    return { data: toCustomRole(data as Record<string, unknown>), error: null }
+  },
+
+  /** Deleting a role clears custom_role_id on any staff it's assigned to
+   *  (ON DELETE SET NULL) rather than failing — their permissions array is
+   *  unaffected since it was only ever a snapshot copied at assignment time. */
+  async remove(id: string) {
+    const { error } = await supabase.from('custom_roles').delete().eq('id', id)
+    if (error) return { error: error.message }
+    return { error: null }
+  },
 }
 
 // ── TICKETS ───────────────────────────────────────────────────────
@@ -736,7 +811,7 @@ export const leads = {
 export const staff = {
   async list() {
     const { ok, data } = await sb('profiles', 'read',
-      () => supabase.from('profiles').select('*').order('name'),
+      () => supabase.from('profiles').select('*, custom_roles(name)').order('name'),
       d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as Record<string,unknown>[]).map(toProfile), error: null }
@@ -752,7 +827,7 @@ export const staff = {
    * that only exists in browser state was never real, so a failure must be
    * surfaced as an error rather than silently faked.
    */
-  async create(input: { name: string; username?: string; email: string; password: string; phone?: string; role: string; department: string }) {
+  async create(input: { name: string; username?: string; email: string; password: string; phone?: string; role: string; department: string; customRoleId?: string; permissions?: string[] }) {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) return { data: null, error: 'Not signed in.' }
     try {
@@ -781,8 +856,9 @@ export const staff = {
     if (updates.phone       !== undefined) row.phone       = updates.phone ?? null
     if (updates.active      !== undefined) row.active      = updates.active
     if (updates.permissions !== undefined) row.permissions = updates.permissions
+    if (updates.customRoleId !== undefined) row.custom_role_id = updates.customRoleId || null
     const start = Date.now()
-    const { data, error } = await supabase.from('profiles').update(row).eq('id', id).select().single()
+    const { data, error } = await supabase.from('profiles').update(row).eq('id', id).select('*, custom_roles(name)').single()
     health.record({ ts: Date.now(), type: 'write', table: 'profiles', success: !error, duration: Date.now() - start, source: 'supabase', detail: error ? String(error.message) : undefined })
     if (error) return { data: null, error: error.code === '23505' ? 'That username is already taken.' : error.message }
     return { data: toProfile(data as Record<string,unknown>), error: null }
@@ -1307,6 +1383,7 @@ export function subscribeToTable(table: string, callback: () => void) {
 export const db = {
   policies, clients, products, claims, payments,
   tickets, emails, leads, staff, fraudCases, reminders, cautionFlags, settings, loginAttempts, developerApi,
+  customRoles,
   dashboardStats, sidebarCounts,
   subscribeToTable,
   resetLocalData: () => localStore.reset(),

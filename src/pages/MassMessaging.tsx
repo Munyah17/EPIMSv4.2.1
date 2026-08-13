@@ -4,6 +4,7 @@ import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { sendBulkSms, getSmsSettings, saveSmsSettings, getSmsLog, clearSmsLog } from '../lib/smsService'
 import type { SmsSettings, SmsLogEntry } from '../lib/smsService'
+import { useAuth } from '../contexts/AuthContext'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -13,6 +14,7 @@ interface Props {
 const MAX_SMS_CHARS = 160
 
 export default function MassMessaging({ showToast }: Props) {
+  const { hasPermission } = useAuth()
   const [clients, setClients] = useState<Client[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [message, setMessage] = useState('')
@@ -183,10 +185,13 @@ export default function MassMessaging({ showToast }: Props) {
                   className="btn btn-primary btn-full"
                   style={{ marginTop: 10 }}
                   onClick={handleSend}
-                  disabled={sending || selected.size === 0 || !message.trim()}
+                  disabled={sending || selected.size === 0 || !message.trim() || !hasPermission('communications.send_sms')}
                 >
                   {sending ? '📨 Sending…' : `📱 Send to ${selected.size} client${selected.size !== 1 ? 's' : ''}`}
                 </button>
+                {!hasPermission('communications.send_sms') && (
+                  <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>You don't have permission to send bulk SMS.</p>
+                )}
               </div>
             </div>
           </div>

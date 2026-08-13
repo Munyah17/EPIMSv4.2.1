@@ -6,6 +6,7 @@ import { formatDate } from '../lib/dateUtils'
 import { exportPolicyReport, getPolicyReportPdfBase64 } from '../lib/exportUtils'
 import { sendSystemEmail } from '../lib/mailService'
 import { MAILBOXES } from '../lib/mailboxes'
+import { useAuth } from '../contexts/AuthContext'
 import NewPolicyModal from '../components/modals/NewPolicyModal'
 import ViewPolicyModal from '../components/modals/ViewPolicyModal'
 import EditPolicyModal from '../components/modals/EditPolicyModal'
@@ -17,6 +18,7 @@ interface Props {
 }
 
 export default function Policies({ showToast }: Props) {
+  const { hasPermission } = useAuth()
   const [policies, setPolicies] = useState<Policy[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -108,6 +110,28 @@ export default function Policies({ showToast }: Props) {
     setEditPolicy(null)
   }
 
+  const handleApprove = async (policy: Policy) => {
+    const { data, error } = await db.policies.update(policy.id, { status: 'active' })
+    if (error || !data) { showToast('error', 'Failed to approve policy.'); return }
+    setPolicies(prev => prev.map(p => p.id === data.id ? data : p))
+    showToast('success', `Policy ${data.policyNumber} approved.`)
+  }
+
+  const handleReject = async (policy: Policy) => {
+    const { data, error } = await db.policies.update(policy.id, { status: 'cancelled' })
+    if (error || !data) { showToast('error', 'Failed to reject policy.'); return }
+    setPolicies(prev => prev.map(p => p.id === data.id ? data : p))
+    showToast('success', `Policy ${data.policyNumber} rejected.`)
+  }
+
+  const handleDelete = async (policy: Policy) => {
+    if (!window.confirm(`Permanently delete policy ${policy.policyNumber}? This cannot be undone.`)) return
+    const { error } = await db.policies.remove(policy.id)
+    if (error) { showToast('error', error); return }
+    setPolicies(prev => prev.filter(p => p.id !== policy.id))
+    showToast('success', `Policy ${policy.policyNumber} deleted.`)
+  }
+
   const handlePrint = async (policy: Policy) => {
     const { client, category } = await getReportContext(policy)
     if (category === 'funeral') {
@@ -141,7 +165,9 @@ export default function Policies({ showToast }: Props) {
             {products.map(pr => <option key={pr} value={pr}>{pr}</option>)}
           </select>
         </div>
-        <button type="button" className="btn btn-primary" onClick={() => setShowNew(true)}>+ New Policy</button>
+        {hasPermission('policies.create') && (
+          <button type="button" className="btn btn-primary" onClick={() => setShowNew(true)}>+ New Policy</button>
+        )}
       </div>
 
       <div className="card">
@@ -183,8 +209,19 @@ export default function Policies({ showToast }: Props) {
                   <td>
                     <div className="action-btns">
                       <button type="button" className="btn btn-ghost btn-sm" onClick={() => setViewPolicy(p)}>View</button>
-                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditPolicy(p)}>Edit</button>
+                      {hasPermission('policies.edit') && (
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditPolicy(p)}>Edit</button>
+                      )}
+                      {p.status === 'pending' && hasPermission('policies.approve') && (
+                        <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--success)' }} onClick={() => handleApprove(p)}>Approve</button>
+                      )}
+                      {p.status === 'pending' && hasPermission('policies.reject') && (
+                        <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => handleReject(p)}>Reject</button>
+                      )}
                       <button type="button" className="btn btn-primary btn-sm" onClick={() => setPayPolicy(p)}>Pay Online</button>
+                      {hasPermission('policies.delete') && (
+                        <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => handleDelete(p)}>Delete</button>
+                      )}
                     </div>
                   </td>
                 </tr>

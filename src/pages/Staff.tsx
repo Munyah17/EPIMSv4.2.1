@@ -6,6 +6,7 @@ import { formatDate } from '../lib/dateUtils'
 import { useAuth } from '../contexts/AuthContext'
 import AddStaffModal from '../components/modals/AddStaffModal'
 import PermissionsModal from '../components/modals/PermissionsModal'
+import RoleManagerModal from '../components/modals/RoleManagerModal'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -38,6 +39,7 @@ export default function Staff({ showToast }: Props) {
   const [showAdd, setShowAdd] = useState(false)
   const [editStaff, setEditStaff] = useState<AppUser | null>(null)
   const [permStaff, setPermStaff] = useState<AppUser | null>(null)
+  const [showRoles, setShowRoles] = useState(false)
 
   useEffect(() => {
     db.staff.list().then(({ data, error }) => {
@@ -63,6 +65,7 @@ export default function Staff({ showToast }: Props) {
     } else {
       const { data, error } = await db.staff.create({
         name: s.name, username: s.username, email: s.email, password, phone: s.phone, role: s.role, department: s.department,
+        customRoleId: s.customRoleId, permissions: s.permissions,
       })
       if (error || !data) { showToast('error', error ?? 'Failed to add staff member.'); return }
       setStaff(prev => [...prev, data])
@@ -73,7 +76,7 @@ export default function Staff({ showToast }: Props) {
   }
 
   const handlePermissions = async (updated: AppUser) => {
-    const { data, error } = await db.staff.update(updated.id, { permissions: updated.permissions })
+    const { data, error } = await db.staff.update(updated.id, { permissions: updated.permissions, customRoleId: updated.customRoleId ?? '' })
     if (error || !data) { showToast('error', error ?? 'Failed to update permissions.'); return }
     setStaff(prev => prev.map(s => s.id === data.id ? data : s))
     showToast('success', `Permissions updated for ${data.name}.`)
@@ -112,6 +115,9 @@ export default function Staff({ showToast }: Props) {
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
+        {user?.role === 'super_admin' && (
+          <button type="button" className="btn btn-ghost" onClick={() => setShowRoles(true)}>Manage Roles</button>
+        )}
         <button type="button" className="btn btn-primary" onClick={() => setShowAdd(true)}>+ Add Staff</button>
       </div>
 
@@ -146,7 +152,10 @@ export default function Staff({ showToast }: Props) {
                   </td>
                   <td>{s.username ?? '—'}</td>
                   <td>{s.email}</td>
-                  <td><span className={`pill ${ROLE_CLASS[s.role] ?? 'role-admin'}`}>{s.role.replace(/_/g, ' ')}</span></td>
+                  <td>
+                    <span className={`pill ${ROLE_CLASS[s.role] ?? 'role-admin'}`}>{s.role.replace(/_/g, ' ')}</span>
+                    {s.customRoleName && <span className="pill pill-active" style={{ marginLeft: 4 }}>{s.customRoleName}</span>}
+                  </td>
                   <td>{s.department}</td>
                   <td>{s.phone ?? '—'}</td>
                   <td>{formatDate(s.lastLogin)}</td>
@@ -186,6 +195,9 @@ export default function Staff({ showToast }: Props) {
           onClose={() => setPermStaff(null)}
           onSave={handlePermissions}
         />
+      )}
+      {showRoles && (
+        <RoleManagerModal onClose={() => setShowRoles(false)} showToast={showToast} />
       )}
     </div>
   )

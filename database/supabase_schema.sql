@@ -30,6 +30,22 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Custom roles — Super Admin-defined, named permission bundles (see
+-- src/lib/permissions.ts) assignable to a staff member on top of their base
+-- system role. Staff/client deletion are never part of this catalog and
+-- stay hard-gated to role = 'super_admin', so no custom role can grant them.
+CREATE TABLE IF NOT EXISTS public.custom_roles (
+  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name        TEXT NOT NULL UNIQUE,
+  description TEXT,
+  permissions TEXT[] NOT NULL DEFAULT '{}',
+  created_by  UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS custom_role_id UUID REFERENCES public.custom_roles(id) ON DELETE SET NULL;
+
 -- Clients (insured persons / policyholders)
 CREATE TABLE IF NOT EXISTS public.clients (
   id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -378,6 +394,13 @@ CREATE POLICY "profiles_update_admin" ON public.profiles FOR UPDATE TO authentic
 CREATE POLICY "profiles_delete_super" ON public.profiles FOR DELETE TO authenticated USING (current_user_role() = 'super_admin');
 CREATE POLICY "profiles_insert_trigger" ON public.profiles FOR INSERT TO authenticated WITH CHECK (true);
 
+-- Custom roles
+ALTER TABLE public.custom_roles ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "custom_roles_select_staff" ON public.custom_roles FOR SELECT TO authenticated USING (is_staff());
+CREATE POLICY "custom_roles_write_super_admin" ON public.custom_roles FOR ALL TO authenticated
+  USING (current_user_role() = 'super_admin')
+  WITH CHECK (current_user_role() = 'super_admin');
+
 -- RLS only filters which ROWS a policy applies to, not which columns —
 -- without this trigger, profiles_update_own would let any user change their
 -- own role/active/permissions/department (privilege escalation). Self-edits
@@ -387,10 +410,11 @@ CREATE OR REPLACE FUNCTION public.lock_privileged_profile_fields_on_self_update(
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER AS $$
 BEGIN
   IF auth.uid() = OLD.id THEN
-    NEW.role        := OLD.role;
-    NEW.active       := OLD.active;
-    NEW.permissions  := OLD.permissions;
-    NEW.department   := OLD.department;
+    NEW.role           := OLD.role;
+    NEW.active          := OLD.active;
+    NEW.permissions     := OLD.permissions;
+    NEW.department      := OLD.department;
+    NEW.custom_role_id  := OLD.custom_role_id;
   END IF;
   RETURN NEW;
 END;
@@ -500,12 +524,12 @@ INSERT INTO auth.users (
 ON CONFLICT (id) DO NOTHING;
 
 -- 6b. Update profiles
-UPDATE public.profiles SET name='Munyaradzi Choto',  role='super_admin',      department='Management',            phone='+263 77 100 0001', active=true WHERE id='10000000-0000-0000-0000-000000000001';
-UPDATE public.profiles SET name='Farai Mutasa',       role='admin',            department='Administration',        phone='+263 77 100 0002', active=true WHERE id='10000000-0000-0000-0000-000000000002';
-UPDATE public.profiles SET name='Rudo Chikwanda',     role='claims_officer',   department='Claims',                phone='+263 77 100 0003', active=true WHERE id='10000000-0000-0000-0000-000000000003';
-UPDATE public.profiles SET name='Blessing Moyo',      role='policy_admin',     department='Policy Administration', phone='+263 77 100 0004', active=true WHERE id='10000000-0000-0000-0000-000000000004';
-UPDATE public.profiles SET name='Tendai Nhamo',       role='finance',          department='Finance',               phone='+263 77 100 0005', active=true WHERE id='10000000-0000-0000-0000-000000000005';
-UPDATE public.profiles SET name='Chipo Sibanda',      role='client_relations', department='Client Relations',      phone='+263 77 100 0006', active=true WHERE id='10000000-0000-0000-0000-000000000006';
+UPDATE public.profiles SET name='Munyaradzi Choto',  role='super_admin',      department='Management',            phone='+263 77 100 0001', active=true, permissions=ARRAY['all'] WHERE id='10000000-0000-0000-0000-000000000001';
+UPDATE public.profiles SET name='Farai Mutasa',       role='admin',            department='Administration',        phone='+263 77 100 0002', active=true, permissions=ARRAY['all_except_super'] WHERE id='10000000-0000-0000-0000-000000000002';
+UPDATE public.profiles SET name='Rudo Chikwanda',     role='claims_officer',   department='Claims',                phone='+263 77 100 0003', active=true, permissions=ARRAY['claims.view','claims.create','claims.edit','claims.approve','claims.reject','communications.send_email'] WHERE id='10000000-0000-0000-0000-000000000003';
+UPDATE public.profiles SET name='Blessing Moyo',      role='policy_admin',     department='Policy Administration', phone='+263 77 100 0004', active=true, permissions=ARRAY['policies.view','policies.create','policies.edit','products.view','products.create','products.edit','clients.view','clients.create','clients.edit','communications.send_email'] WHERE id='10000000-0000-0000-0000-000000000004';
+UPDATE public.profiles SET name='Tendai Nhamo',       role='finance',          department='Finance',               phone='+263 77 100 0005', active=true, permissions=ARRAY['payments.view','payments.capture','payments.validate','reports.view','communications.send_email'] WHERE id='10000000-0000-0000-0000-000000000005';
+UPDATE public.profiles SET name='Chipo Sibanda',      role='client_relations', department='Client Relations',      phone='+263 77 100 0006', active=true, permissions=ARRAY['clients.view','clients.create','clients.edit','communications.send_email','communications.send_sms'] WHERE id='10000000-0000-0000-0000-000000000006';
 
 -- ================================================================
 -- DONE. All tables, RLS, and triggers created. No demo business data.

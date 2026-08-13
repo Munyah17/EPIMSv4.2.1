@@ -26,6 +26,8 @@ interface CreateStaffBody {
   phone?: string
   role: string
   department: string
+  customRoleId?: string
+  permissions?: string[]
 }
 
 /** Next free "Agent N" / "Admin N" default for a role's group, so a blank
@@ -111,12 +113,15 @@ export const handler: Handler = async (event) => {
   }
 
   const username = body.username?.trim() || await nextDefaultUsername(admin, body.role)
-  const { error: usernameError } = await admin.from('profiles').update({ username }).eq('id', created.user.id)
+  const extra: Record<string, unknown> = { username }
+  if (body.customRoleId) extra.custom_role_id = body.customRoleId
+  if (body.permissions) extra.permissions = body.permissions
+  const { error: usernameError } = await admin.from('profiles').update(extra).eq('id', created.user.id)
   if (usernameError) {
     return { statusCode: 400, body: JSON.stringify({ error: usernameError.code === '23505' ? 'That username is already taken.' : usernameError.message }) }
   }
 
-  const { data: profile } = await admin.from('profiles').select('*').eq('id', created.user.id).single()
+  const { data: profile } = await admin.from('profiles').select('*, custom_roles(name)').eq('id', created.user.id).single()
 
   return { statusCode: 200, body: JSON.stringify({ success: true, profile: { ...profile, email: created.user.email } }) }
 }
