@@ -177,6 +177,12 @@ async function dispatchReminder(policy: Policy, client: Client | undefined, type
       monthsDefaulted: 1,
       cleared: false,
     })
+    // A payment missed by 5 days lapses the policy outright — reinstating
+    // later drops it back to a fresh waiting_period rather than straight
+    // back to active (see applyCompletedPaymentToPolicy in db.ts).
+    if (policy.status !== 'lapsed') {
+      await db.policies.update(policy.id, { status: 'lapsed' })
+    }
   }
 
   // Logged after sending — this row IS the dedup record for this stage.
@@ -206,7 +212,7 @@ export async function runReminderCheck() {
   if (!type) { try { localStorage.setItem(CHECK_KEY, today.toISOString()) } catch { /**/ }; return }
 
   const [{ data: allPolicies }, { data: allClients }] = await Promise.all([db.policies.list(), db.clients.list()])
-  const policies = (allPolicies ?? []).filter(p => p.status === 'active')
+  const policies = (allPolicies ?? []).filter(p => p.status === 'active' || p.status === 'waiting_period')
   const clientById = new Map((allClients ?? []).map(c => [c.id, c]))
 
   for (const policy of policies) {
@@ -214,6 +220,29 @@ export async function runReminderCheck() {
   }
 
   try { localStorage.setItem(CHECK_KEY, today.toISOString()) } catch { /**/ }
+}
+
+const WAITING_PERIOD_DAYS = 90
+
+/** Lifts a non-agriculture policy out of its waiting period once 90 days
+ *  have passed since its start date, as long as payment is current —
+ *  agriculture never sits in waiting_period this long since it activates
+ *  instantly on first payment (see applyCompletedPaymentToPolicy in db.ts),
+ *  so it's excluded here rather than accidentally auto-activated by date. */
+export async function checkWaitingPeriodElapsed() {
+  const [{ data: allPolicies }, { data: allProducts }] = await Promise.all([db.policies.list(), db.products.list()])
+  const categoryByProductId = new Map((allProducts ?? []).map(p => [p.id, p.category]))
+  const today = new Date()
+
+  for (const policy of allPolicies ?? []) {
+    if (policy.status !== 'waiting_period') continue
+    if (categoryByProductId.get(policy.productId) === 'agriculture') continue
+    const daysSinceStart = Math.round((today.getTime() - new Date(policy.startDate).getTime()) / 86400000)
+    if (daysSinceStart < WAITING_PERIOD_DAYS) continue
+    const overdue = policy.nextPaymentDate ? new Date(policy.nextPaymentDate) < today : false
+    if (overdue) continue
+    await db.policies.update(policy.id, { status: 'active' })
+  }
 }
 
 export function getLastCheckTime(): string | null {
@@ -233,6 +262,10 @@ export function getUpcomingDueCount(): number {
 /** Start hourly in-app checker. Call once from App.tsx. */
 export function startReminderEngine(): () => void {
   void runReminderCheck()
-  const interval = setInterval(() => { void runReminderCheck() }, 3600000) // every hour
+  void checkWaitingPeriodElapsed()
+  const interval = setInterval(() => {
+    void runReminderCheck()
+    void checkWaitingPeriodElapsed()
+  }, 3600000) // every hour
   return () => clearInterval(interval)
 }

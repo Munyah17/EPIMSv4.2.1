@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import PhoneInput from '../ui/PhoneInput'
 import DateInput from '../ui/DateInput'
 import { premiumPeriodLabel } from '../../lib/productUtils'
+import { computeAssignedStartDate } from '../../lib/policyLifecycle'
 
 const INSURERS: Insurer[] = ['Motions', 'CBZ Life', 'EcoSure', 'ZB Life', 'Nyaradzo Funeral', 'Doves']
 
@@ -43,7 +44,10 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   // Policy fields
   const [productId, setProductId] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('OneMoney')
-  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0])
+  // Cover starts on the 1st of the aligned month (see computeAssignedStartDate),
+  // not the day it was captured — only Super Admin/Admin may override this.
+  const [startDate, setStartDate] = useState(computeAssignedStartDate())
+  const canOverrideStartDate = user?.role === 'super_admin' || user?.role === 'admin'
   // Optional — a policy can carry zero dependants, so this starts empty
   // rather than seeding a mandatory first row.
   const [dependants, setDependants] = useState<Dependant[]>([])
@@ -194,13 +198,17 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
       coverAmount: product!.coverAmount,
       startDate,
       endDate: endDate.toISOString().split('T')[0],
-      status: 'active',
+      // Every new policy starts in a waiting period — lifted to active
+      // after 90 days (or instantly on first payment for agriculture); see
+      // src/lib/reminderEngine.ts and src/lib/db.ts's
+      // applyCompletedPaymentToPolicy.
+      status: 'waiting_period',
       dependants,
       paymentMethod,
       insurer: insurer || undefined,
       growerNumber: product!.category === 'agriculture' ? (growerNumber || undefined) : undefined,
       createdAt: new Date().toISOString().split('T')[0],
-      nextPaymentDate: new Date(new Date(startDate).setMonth(new Date(startDate).getMonth() + 1)).toISOString().split('T')[0],
+      nextPaymentDate: new Date(new Date(startDate).setMonth(new Date(startDate).getMonth() + (product!.category === 'agriculture' ? 12 : 1))).toISOString().split('T')[0],
       agentId: agentId || undefined,
       agentName: staff.find(s => s.id === agentId)?.name,
     }
@@ -313,7 +321,10 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
               )}
               <div className="form-group">
                 <label>Start Date *</label>
-                <DateInput value={startDate} onChange={setStartDate} />
+                <DateInput value={startDate} onChange={setStartDate} disabled={!canOverrideStartDate} className={!canOverrideStartDate ? 'date-input-disabled' : undefined} />
+                {!canOverrideStartDate && (
+                  <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>Auto-set from today's date. Only Super Admin/Admin can change it.</p>
+                )}
               </div>
               <div className="form-group">
                 <label>Payment Method *</label>

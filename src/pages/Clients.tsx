@@ -171,7 +171,12 @@ export default function Clients({ showToast }: Props) {
         <RegisterClientModal onClose={() => setShowRegister(false)} onSave={handleRegister} />
       )}
       {editClient && (
-        <EditClientModal client={editClient} onClose={() => setEditClient(null)} onSave={handleEdit} />
+        <EditClientModal
+          client={editClient}
+          onClose={() => setEditClient(null)}
+          onSave={handleEdit}
+          onAssignPolicy={editClient.policyCount === 0 ? () => { setAssignPolicyClient(editClient); setEditClient(null) } : undefined}
+        />
       )}
       {assignPolicyClient && (
         <NewPolicyModal

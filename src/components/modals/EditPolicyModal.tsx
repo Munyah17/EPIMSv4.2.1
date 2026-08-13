@@ -59,6 +59,7 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
               <label>Status</label>
               <select className="form-control" value={status} onChange={e => setStatus(e.target.value as PolicyStatus)}>
                 <option value="active">Active</option>
+                <option value="waiting_period">Waiting Period</option>
                 <option value="lapsed">Lapsed</option>
                 <option value="pending">Pending</option>
                 <option value="cancelled">Cancelled</option>

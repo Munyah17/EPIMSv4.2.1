@@ -7,6 +7,7 @@ import { exportPolicyReport, getPolicyReportPdfBase64 } from '../lib/exportUtils
 import { sendSystemEmail } from '../lib/mailService'
 import { MAILBOXES } from '../lib/mailboxes'
 import { useAuth } from '../contexts/AuthContext'
+import { paymentCurrencyStatus, PAYMENT_CURRENCY_LABEL, PAYMENT_CURRENCY_CLASS } from '../lib/policyLifecycle'
 import NewPolicyModal from '../components/modals/NewPolicyModal'
 import ViewPolicyModal from '../components/modals/ViewPolicyModal'
 import EditPolicyModal from '../components/modals/EditPolicyModal'
@@ -52,6 +53,7 @@ export default function Policies({ showToast }: Props) {
   const statusCounts = {
     all: policies.length,
     active: policies.filter(p => p.status === 'active').length,
+    waiting_period: policies.filter(p => p.status === 'waiting_period').length,
     lapsed: policies.filter(p => p.status === 'lapsed').length,
     pending: policies.filter(p => p.status === 'pending').length,
     cancelled: policies.filter(p => p.status === 'cancelled').length,
@@ -111,7 +113,7 @@ export default function Policies({ showToast }: Props) {
   }
 
   const handleApprove = async (policy: Policy) => {
-    const { data, error } = await db.policies.update(policy.id, { status: 'active' })
+    const { data, error } = await db.policies.update(policy.id, { status: 'waiting_period' })
     if (error || !data) { showToast('error', 'Failed to approve policy.'); return }
     setPolicies(prev => prev.map(p => p.id === data.id ? data : p))
     showToast('success', `Policy ${data.policyNumber} approved.`)
@@ -151,6 +153,7 @@ export default function Policies({ showToast }: Props) {
           <select className="filter-select" value={statusFilter} onChange={e => setStatusFilter(e.target.value as PolicyStatus | 'all')}>
             <option value="all">All Status ({statusCounts.all})</option>
             <option value="active">Active ({statusCounts.active})</option>
+            <option value="waiting_period">Waiting Period ({statusCounts.waiting_period})</option>
             <option value="lapsed">Lapsed ({statusCounts.lapsed})</option>
             <option value="pending">Pending ({statusCounts.pending})</option>
             <option value="cancelled">Cancelled ({statusCounts.cancelled})</option>
@@ -197,7 +200,8 @@ export default function Policies({ showToast }: Props) {
                   <td>{p.insurer ?? '—'}</td>
                   <td>{formatDate(p.startDate)}</td>
                   <td>
-                    <span className={`pill pill-${p.status}`}>{p.status}</span>
+                    <span className={`pill pill-${p.status}`}>{p.status.replace('_', ' ')}</span>
+                    <span className={`pill pill-inline ${PAYMENT_CURRENCY_CLASS[paymentCurrencyStatus(p)]}`}>{PAYMENT_CURRENCY_LABEL[paymentCurrencyStatus(p)]}</span>
                     {cautionFlags.some(f => f.policyId === p.id) && (
                       <span className="pill pill-caution" title="Payment overdue — caution flag active">⚠ OVERDUE</span>
                     )}

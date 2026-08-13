@@ -36,12 +36,19 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const [client, setClient] = useState<{ phone?: string; email?: string } | null>(null)
+  const [category, setCategory] = useState('')
+  const [periods, setPeriods] = useState(1)
   useEffect(() => {
     db.clients.list().then(({ data }) => {
       setClient(data?.find(c => c.id === policy.clientId) ?? null)
     })
-  }, [policy.clientId])
+    db.products.list().then(({ data }) => {
+      setCategory(data?.find(p => p.id === policy.productId)?.category ?? '')
+    })
+  }, [policy.clientId, policy.productId])
+  const isAgriculture = category === 'agriculture'
   const ref = `${policy.policyNumber}${Date.now().toString(36).toUpperCase()}`
+  const totalAmount = policy.premium * periods
 
   const req = {
     policyId: policy.id,
@@ -49,7 +56,7 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
     clientName: policy.clientName,
     clientPhone: phone || client?.phone || '',
     clientEmail: client?.email || '',
-    amount: policy.premium,
+    amount: totalAmount,
     reference: ref,
   }
 
@@ -78,7 +85,7 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
       policyId: policy.id,
       policyNumber: policy.policyNumber,
       clientName: policy.clientName,
-      amount: policy.premium,
+      amount: totalAmount,
       method: method === 'zipit' ? 'Zipit' : method.startsWith('paynow') ? 'Paynow' : 'EcoCash',
       status: 'completed',
       date: new Date().toISOString().split('T')[0],
@@ -155,9 +162,18 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
               <div style={{ background: 'var(--surface)', borderRadius: 9, padding: '12px 14px', marginBottom: 16, fontSize: 13 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
                   <span>{policy.clientName}</span>
-                  <strong>${policy.premium.toFixed(2)}</strong>
+                  <strong>${totalAmount.toFixed(2)}</strong>
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--muted)' }}>{policy.productName} · {policy.policyNumber}</div>
+              </div>
+
+              <div className="form-group" style={{ marginBottom: 14 }}>
+                <label>Number of {isAgriculture ? 'Years' : 'Months'} to Pay</label>
+                <select className="form-control" value={periods} onChange={e => setPeriods(Number(e.target.value))}>
+                  {Array.from({ length: 12 }, (_, i) => i + 1).map(n => (
+                    <option key={n} value={n}>{n} {isAgriculture ? (n === 1 ? 'year' : 'years') : (n === 1 ? 'month' : 'months')} — ${(policy.premium * n).toFixed(2)}</option>
+                  ))}
+                </select>
               </div>
 
               <div className="form-group" style={{ marginBottom: 14 }}>
@@ -232,7 +248,7 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
             <div style={{ textAlign: 'center', padding: '24px 0' }}>
               <div style={{ fontSize: 42, marginBottom: 12 }}>✅</div>
               <h4 style={{ marginBottom: 8 }}>Payment Confirmed</h4>
-              <p style={{ color: 'var(--muted)', fontSize: 13 }}>${policy.premium.toFixed(2)} received for {policy.policyNumber}.</p>
+              <p style={{ color: 'var(--muted)', fontSize: 13 }}>${totalAmount.toFixed(2)} received for {policy.policyNumber}.</p>
               {hadCaution && <p style={{ color: 'var(--success)', marginTop: 8, fontSize: 12 }}>✓ Caution flag cleared.</p>}
             </div>
           )}

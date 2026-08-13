@@ -132,6 +132,30 @@ export default function NotificationSettings({ showToast }: Props) {
           </div>
         </div>
 
+        {/* Company / document branding */}
+        <div className="card">
+          <div className="card-header">
+            <span className="card-title">🏢 Company Details (Policy Documents)</span>
+          </div>
+          <p className="notif-settings-desc">
+            Shown in the header of the Policy Report/Certificate PDF. Left blank by default rather than guessed.
+          </p>
+          <div className="form-group">
+            <label>Company Address</label>
+            <input className="form-control" value={settings.companyAddress} onChange={e => update('companyAddress', e.target.value)} placeholder="Street address, city" disabled={!canEdit} />
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label>Company Phone</label>
+              <input className="form-control" value={settings.companyPhone} onChange={e => update('companyPhone', e.target.value)} placeholder="+263..." disabled={!canEdit} />
+            </div>
+            <div className="form-group">
+              <label>Company Email</label>
+              <input className="form-control" type="email" value={settings.companyEmail} onChange={e => update('companyEmail', e.target.value)} disabled={!canEdit} />
+            </div>
+          </div>
+        </div>
+
         {/* Claims escalation */}
         <div className="card">
           <div className="card-header">

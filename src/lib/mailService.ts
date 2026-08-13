@@ -15,6 +15,12 @@ export interface NotifSettings {
    *  assessment, final decision) — set once by Super Admin, on top of the
    *  client and whichever staff member is picking the claim up next. */
   superAdminPhone: string
+  /** Shown in the Policy Report/Certificate PDF header — left blank rather
+   *  than guessed, since a wrong address/phone on an official document is
+   *  worse than an empty one. */
+  companyAddress: string
+  companyPhone: string
+  companyEmail: string
 }
 
 export const DEFAULT_NOTIF_SETTINGS: NotifSettings = {
@@ -28,6 +34,9 @@ export const DEFAULT_NOTIF_SETTINGS: NotifSettings = {
   smsEnabled: false,
   signature: 'Regards,\nTariqify Insurance Management System\nwww.tariqify.com',
   superAdminPhone: '',
+  companyAddress: '',
+  companyPhone: '',
+  companyEmail: 'info@motions.co.zw',
 }
 
 export function getNotifSettings(): NotifSettings {

@@ -91,7 +91,7 @@ CREATE TABLE IF NOT EXISTS public.policies (
   start_date        DATE NOT NULL,
   end_date          DATE NOT NULL,
   status            TEXT NOT NULL DEFAULT 'active'
-                      CHECK (status IN ('active','lapsed','cancelled','pending','expired')),
+                      CHECK (status IN ('active','waiting_period','lapsed','cancelled','pending','expired')),
   dependants        JSONB NOT NULL DEFAULT '[]',
   payment_method    TEXT NOT NULL,
   documents         TEXT[] NOT NULL DEFAULT '{}',

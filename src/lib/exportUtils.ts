@@ -4,6 +4,7 @@
 // when a user actually exports something.
 import type { Policy, Client } from '../types'
 import { formatDate } from './dateUtils'
+import { getNotifSettings } from './mailService'
 
 function triggerDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
@@ -57,6 +58,7 @@ export async function exportToPdf(filename: string, title: string, headers: stri
 
 const AGRICULTURE_COVER = ['Barn Fire', 'Hail Storm', 'Wind Storm']
 const BRAND_BLUE: [number, number, number] = [65, 105, 225]
+const BRAND_RED: [number, number, number] = [200, 30, 40]
 const MUTED: [number, number, number] = [107, 126, 153]
 const TEXT: [number, number, number] = [15, 28, 46]
 
@@ -72,18 +74,34 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   const doc = new jsPDF()
   const insurerName = policy.insurer ?? 'the insurer'
   const pageWidth = doc.internal.pageSize.getWidth()
+  const cfg = getNotifSettings()
 
-  // Header band — a clean, branded top strip rather than a plain text title.
+  // Header band — blue with a thin red accent underline (Motions brand
+  // colours), plus company contact details if configured (Settings ->
+  // Notifications -> Company Details) rather than a guessed address/phone.
   doc.setFillColor(...BRAND_BLUE)
   doc.rect(0, 0, pageWidth, 24, 'F')
+  doc.setFillColor(...BRAND_RED)
+  doc.rect(0, 24, pageWidth, 1.5, 'F')
   doc.setTextColor(255, 255, 255)
   doc.setFontSize(15)
-  doc.text('POLICY REPORT', 14, 15)
+  doc.text('MOTIONS', 14, 12)
+  doc.setFontSize(9)
+  doc.text('POLICY REPORT', 14, 19)
   doc.setFontSize(9)
   doc.text(policy.policyNumber, pageWidth - 14, 15, { align: 'right' })
   doc.setTextColor(...TEXT)
 
-  let y = 34
+  let y = 31
+  const contactLine = [cfg.companyAddress, cfg.companyPhone, cfg.companyEmail].filter(Boolean).join('  ·  ')
+  if (contactLine) {
+    doc.setFontSize(7.5)
+    doc.setTextColor(...MUTED)
+    doc.text(contactLine, 14, y)
+    doc.setTextColor(...TEXT)
+    y += 6
+  }
+  y += 3
 
   const sectionHeading = (n: number, title: string) => {
     doc.setFontSize(12)
@@ -159,17 +177,22 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
     y = (doc as any).lastAutoTable.finalY + 8
   }
 
-  sectionHeading(4, 'KEY TERMS AND CONDITIONS')
-  doc.setFontSize(8.5)
-  doc.setTextColor(...MUTED)
-  const terms = doc.splitTextToSize(
-    `This policy is subject to the full Policy Terms and Conditions of ${insurerName}, available at any ${insurerName} office nationwide or on request. Cover incepts on the start date above, subject to any applicable waiting period. Claims must be reported as soon as reasonably possible and are subject to verification. Premiums must be kept up to date for cover to remain in force — a lapsed policy may require reinstatement. This document is a summary and does not itself constitute the full policy contract.`,
-    pageWidth - 28,
-  )
-  doc.text(terms, 14, y)
-  doc.setTextColor(...TEXT)
-  y += terms.length * 4 + 8
+  const keyTermsSection = () => {
+    sectionHeading(category === 'agriculture' ? 5 : 4, 'KEY TERMS AND CONDITIONS')
+    doc.setFontSize(8.5)
+    doc.setTextColor(...MUTED)
+    const terms = doc.splitTextToSize(
+      `This policy is subject to the full Policy Terms and Conditions of ${insurerName}, available at any ${insurerName} office nationwide or on request. Cover incepts on the start date above, subject to any applicable waiting period. Claims must be reported as soon as reasonably possible and are subject to verification. Premiums must be kept up to date for cover to remain in force — a lapsed policy may require reinstatement. This document is a summary and does not itself constitute the full policy contract.`,
+      pageWidth - 28,
+    )
+    doc.text(terms, 14, y)
+    doc.setTextColor(...TEXT)
+    y += terms.length * 4 + 8
+  }
 
+  // Agriculture-specific numbering: Section 4 is Cover Provided, Section 5
+  // is Key Terms and Conditions — swapped from the generic order so the
+  // perils covered are front and centre for this policy type.
   if (category === 'agriculture') {
     if (policy.growerNumber) {
       doc.setFontSize(9.5)
@@ -179,12 +202,17 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
       doc.text(policy.growerNumber, 50, y)
       y += 8
     }
-    sectionHeading(5, 'COVER PROVIDED')
+    sectionHeading(4, 'COVER PROVIDED')
+    doc.setFillColor(...BRAND_RED)
     doc.setFontSize(9.5)
     AGRICULTURE_COVER.forEach((peril, i) => {
-      doc.text(`•  ${peril}`, 14, y + i * 5.5)
+      doc.circle(15.5, y + i * 5.5 - 1.3, 0.9, 'F')
+      doc.text(peril, 19, y + i * 5.5)
     })
     y += AGRICULTURE_COVER.length * 5.5 + 4
+    keyTermsSection()
+  } else {
+    keyTermsSection()
   }
 
   const pageHeight = doc.internal.pageSize.getHeight()

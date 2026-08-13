@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import type { Policy } from '../../types'
 import { formatDate } from '../../lib/dateUtils'
 import { premiumPeriodLabel } from '../../lib/productUtils'
+import { paymentCurrencyStatus, PAYMENT_CURRENCY_LABEL, PAYMENT_CURRENCY_CLASS } from '../../lib/policyLifecycle'
 import { db } from '../../lib/db'
 
 interface Props {
@@ -32,7 +33,13 @@ export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint }: Pr
         <div className="modal-body">
           <div className="detail-grid">
             <div className="detail-item"><span className="detail-label">Policy Number</span><span className="mono">{policy.policyNumber}</span></div>
-            <div className="detail-item"><span className="detail-label">Status</span><span className={`pill pill-${policy.status}`}>{policy.status}</span></div>
+            <div className="detail-item">
+              <span className="detail-label">Status</span>
+              <span>
+                <span className={`pill pill-${policy.status}`}>{policy.status.replace('_', ' ')}</span>
+                <span className={`pill pill-inline ${PAYMENT_CURRENCY_CLASS[paymentCurrencyStatus(policy)]}`}>{PAYMENT_CURRENCY_LABEL[paymentCurrencyStatus(policy)]}</span>
+              </span>
+            </div>
             <div className="detail-item"><span className="detail-label">Client</span><span>{policy.clientName}</span></div>
             <div className="detail-item"><span className="detail-label">Product</span><span>{policy.productName}</span></div>
             <div className="detail-item"><span className="detail-label">Premium</span><span>${policy.premium.toFixed(2)}{premiumPeriodLabel(category)}</span></div>

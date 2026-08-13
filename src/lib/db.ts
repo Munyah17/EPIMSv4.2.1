@@ -601,6 +601,40 @@ export const claims = {
   },
 }
 
+/**
+ * Advances a policy's payment cursor and status whenever a completed
+ * payment lands against it — called from every completion path (create or
+ * update-to-completed) so the lifecycle stays consistent everywhere rather
+ * than being reimplemented per call site. Agriculture goes straight to
+ * 'active' on its first payment (no waiting period); a lapsed policy that
+ * gets caught up is reinstated to 'waiting_period', not straight to
+ * 'active', per the 2026-08 access review. Fire-and-forget — a failure here
+ * shouldn't roll back an already-recorded payment.
+ */
+async function applyCompletedPaymentToPolicy(policyId: string, amountPaid: number): Promise<void> {
+  const [{ data: policy }, { data: prods }] = await Promise.all([policies.get(policyId), products.list()])
+  if (!policy) return
+  const category = prods?.find(p => p.id === policy.productId)?.category ?? ''
+  const cycleMonths = category === 'agriculture' ? 12 : 1
+  const periodsPaid = Math.max(1, Math.round(amountPaid / (policy.premium || amountPaid)))
+  const monthsToAdvance = cycleMonths * periodsPaid
+
+  const today = new Date()
+  const base = policy.nextPaymentDate && new Date(policy.nextPaymentDate) > today ? new Date(policy.nextPaymentDate) : today
+  const next = new Date(base)
+  next.setMonth(next.getMonth() + monthsToAdvance)
+
+  let status = policy.status
+  if (policy.status === 'lapsed') status = 'waiting_period'
+  else if (category === 'agriculture' && policy.status === 'waiting_period') status = 'active'
+
+  await policies.update(policyId, {
+    status,
+    lastPaymentDate: today.toISOString().split('T')[0],
+    nextPaymentDate: next.toISOString().split('T')[0],
+  })
+}
+
 // ── PAYMENTS ──────────────────────────────────────────────────────
 export const payments = {
   async list() {
@@ -622,7 +656,11 @@ export const payments = {
     const { ok, data } = await sb('payments', 'write',
       () => supabase.from('payments').insert(row).select(PAYMENT_SELECT).single(),
     )
-    if (ok && data) return { data: toPayment(data), error: null }
+    if (ok && data) {
+      const result = toPayment(data)
+      if (result.status === 'completed') void applyCompletedPaymentToPolicy(result.policyId, result.amount)
+      return { data: result, error: null }
+    }
     local('payments', 'write')
     const item = { ...payment, id: uid() } as Payment
     return { data: localStore.payments.create(item), error: null }
@@ -641,7 +679,11 @@ export const payments = {
     const { ok, data } = await sb('payments', 'write',
       () => supabase.from('payments').update(row).eq('id', id).select(PAYMENT_SELECT).single(),
     )
-    if (ok && data) return { data: toPayment(data), error: null }
+    if (ok && data) {
+      const result = toPayment(data)
+      if (updates.status === 'completed') void applyCompletedPaymentToPolicy(result.policyId, result.amount)
+      return { data: result, error: null }
+    }
     local('payments', 'write')
     return { data: localStore.payments.update(id, updates), error: null }
   },

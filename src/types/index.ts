@@ -80,7 +80,12 @@ export interface Dependant {
   phone?: string
 }
 
-export type PolicyStatus = 'active' | 'lapsed' | 'cancelled' | 'pending' | 'expired'
+// pending = awaiting admin approval; waiting_period = approved (or created
+// directly) but not yet claims-eligible — lifted to active either after the
+// standard 90-day wait (non-agriculture) or instantly on first payment
+// (agriculture); lapsed = a missed payment reinstates to waiting_period, not
+// straight back to active.
+export type PolicyStatus = 'active' | 'waiting_period' | 'lapsed' | 'cancelled' | 'pending' | 'expired'
 
 export interface Policy {
   id: string
