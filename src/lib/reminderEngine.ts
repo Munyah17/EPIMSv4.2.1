@@ -18,6 +18,7 @@
  */
 import type { Policy, Client, Reminder } from '../types'
 import { db } from './db'
+import { MAILBOXES } from './mailboxes'
 import { sendEmail, getNotifSettings } from './mailService'
 import { sendSms } from './smsService'
 
@@ -149,13 +150,14 @@ async function dispatchReminder(policy: Policy, client: Client | undefined, type
       body: buildReminderEmail(policy, type, dueDate, sig),
       folder: 'inbox',
       linkedTo: policy.id,
+      from: MAILBOXES.noreply,
     })
   }
 
   const staffBody = buildStaffEmail(policy, type, dueDate, sig)
   const staffSubject = `[Billing Alert] ${policy.policyNumber} — ${policy.clientName}`
-  if (cfg.insurerEmail) void sendEmail({ to: cfg.insurerEmail, cc: cfg.netoneEmail, subject: staffSubject, body: staffBody, folder: 'inbox' })
-  if (cfg.netoneEmail) void sendEmail({ to: cfg.netoneEmail, subject: staffSubject, body: staffBody, folder: 'inbox' })
+  if (cfg.insurerEmail) void sendEmail({ to: cfg.insurerEmail, cc: cfg.netoneEmail, subject: staffSubject, body: staffBody, folder: 'inbox', from: MAILBOXES.noreply })
+  if (cfg.netoneEmail) void sendEmail({ to: cfg.netoneEmail, subject: staffSubject, body: staffBody, folder: 'inbox', from: MAILBOXES.noreply })
 
   if (type === 'r3_due' && clientPhone) {
     sendSms(clientPhone,

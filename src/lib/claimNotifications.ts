@@ -1,6 +1,7 @@
 import type { Claim, ClaimStatus } from '../types'
 import { sendEmail, getNotifSettings } from './mailService'
 import { db } from './db'
+import { MAILBOXES } from './mailboxes'
 
 async function getClientContact(claim: Claim): Promise<{ email: string; phone: string }> {
   const { data } = await db.clients.list()
@@ -44,10 +45,10 @@ ${claimSummaryBlock(claim)}
 
 Please retain this email for your records. All parties will be copied on further updates.${signature(cfg.signature)}`
 
-  void sendEmail({ to: cfg.insurerEmail, cc, subject, body: staffBody, linkedTo: claim.id })
-  void sendEmail({ to: cfg.netoneEmail, cc, subject, body: staffBody, linkedTo: claim.id })
+  void sendEmail({ to: cfg.insurerEmail, cc, subject, body: staffBody, linkedTo: claim.id, from: MAILBOXES.claims })
+  void sendEmail({ to: cfg.netoneEmail, cc, subject, body: staffBody, linkedTo: claim.id, from: MAILBOXES.claims })
   if (client.email) {
-    void sendEmail({ to: client.email, cc, subject, body: clientBody, linkedTo: claim.id, folder: 'claims' })
+    void sendEmail({ to: client.email, cc, subject, body: clientBody, linkedTo: claim.id, folder: 'claims', from: MAILBOXES.claims })
   }
 }
 
@@ -79,10 +80,10 @@ ${claimSummaryBlock(claim)}
 
 We will keep you informed as this claim progresses. All parties are copied on this correspondence.${signature(cfg.signature)}`
 
-  void sendEmail({ to: cfg.insurerEmail, cc, subject, body: staffBody, linkedTo: claim.id, folder: 'claims' })
-  void sendEmail({ to: cfg.netoneEmail, cc, subject, body: staffBody, linkedTo: claim.id, folder: 'claims' })
+  void sendEmail({ to: cfg.insurerEmail, cc, subject, body: staffBody, linkedTo: claim.id, folder: 'claims', from: MAILBOXES.claims })
+  void sendEmail({ to: cfg.netoneEmail, cc, subject, body: staffBody, linkedTo: claim.id, folder: 'claims', from: MAILBOXES.claims })
   if (client.email) {
-    void sendEmail({ to: client.email, cc, subject, body: clientBody, linkedTo: claim.id, folder: 'claims' })
+    void sendEmail({ to: client.email, cc, subject, body: clientBody, linkedTo: claim.id, folder: 'claims', from: MAILBOXES.claims })
   }
 }
 
@@ -107,9 +108,9 @@ ${claimSummaryBlock(claim)}
 
 Thank you for choosing our insurance services.${signature(cfg.signature)}`
 
-  void sendEmail({ to: cfg.insurerEmail, cc, subject, body: staffBody, linkedTo: claim.id, folder: 'claims' })
-  void sendEmail({ to: cfg.netoneEmail, cc, subject, body: staffBody, linkedTo: claim.id, folder: 'claims' })
+  void sendEmail({ to: cfg.insurerEmail, cc, subject, body: staffBody, linkedTo: claim.id, folder: 'claims', from: MAILBOXES.claims })
+  void sendEmail({ to: cfg.netoneEmail, cc, subject, body: staffBody, linkedTo: claim.id, folder: 'claims', from: MAILBOXES.claims })
   if (client.email) {
-    void sendEmail({ to: client.email, cc, subject, body: clientBody, linkedTo: claim.id, folder: 'claims' })
+    void sendEmail({ to: client.email, cc, subject, body: clientBody, linkedTo: claim.id, folder: 'claims', from: MAILBOXES.claims })
   }
 }

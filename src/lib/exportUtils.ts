@@ -56,21 +56,46 @@ export async function exportToPdf(filename: string, title: string, headers: stri
 }
 
 const AGRICULTURE_COVER = ['Barn Fire', 'Hail Storm', 'Wind Storm']
+const BRAND_BLUE: [number, number, number] = [65, 105, 225]
+const MUTED: [number, number, number] = [107, 126, 153]
+const TEXT: [number, number, number] = [15, 28, 46]
 
-/** Structured policy report/certificate: overview, policyholder detail,
- *  dependants, key terms, and (agriculture only) the defined perils
- *  covered. Not offered for funeral packages — funeral policies use a
- *  different document elsewhere in the flow. */
-export async function exportPolicyReport(policy: Policy, client: Client, category: string) {
+/** Builds the policy report/certificate PDF (overview, policyholder
+ *  detail, dependants, key terms, and — agriculture only — the defined
+ *  perils covered) and returns the jsPDF doc, so callers can either save
+ *  it to disk or pull it out as a base64 attachment for email. Not offered
+ *  for funeral packages — funeral policies use a different document
+ *  elsewhere in the flow. */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function buildPolicyReportDoc(policy: Policy, client: Client, category: string): Promise<any> {
   const [{ jsPDF }, { default: autoTable }] = await Promise.all([import('jspdf'), import('jspdf-autotable')])
   const doc = new jsPDF()
   const insurerName = policy.insurer ?? 'the insurer'
-  let y = 18
+  const pageWidth = doc.internal.pageSize.getWidth()
 
-  doc.setFontSize(16)
-  doc.text('POLICY REPORT — OVERVIEW', 14, y)
-  y += 10
+  // Header band — a clean, branded top strip rather than a plain text title.
+  doc.setFillColor(...BRAND_BLUE)
+  doc.rect(0, 0, pageWidth, 24, 'F')
+  doc.setTextColor(255, 255, 255)
+  doc.setFontSize(15)
+  doc.text('POLICY REPORT', 14, 15)
+  doc.setFontSize(9)
+  doc.text(policy.policyNumber, pageWidth - 14, 15, { align: 'right' })
+  doc.setTextColor(...TEXT)
 
+  let y = 34
+
+  const sectionHeading = (n: number, title: string) => {
+    doc.setFontSize(12)
+    doc.setTextColor(...BRAND_BLUE)
+    doc.text(`${n}.  ${title}`, 14, y)
+    doc.setDrawColor(220, 226, 240)
+    doc.line(14, y + 2, pageWidth - 14, y + 2)
+    doc.setTextColor(...TEXT)
+    y += 9
+  }
+
+  sectionHeading(1, 'OVERVIEW')
   autoTable(doc, {
     startY: y,
     head: [['Policy No.', 'Client', 'Product', 'Premium', 'Status', 'Start Date']],
@@ -79,14 +104,12 @@ export async function exportPolicyReport(policy: Policy, client: Client, categor
       `$${policy.premium.toFixed(2)}`, policy.status.toUpperCase(), formatDate(policy.startDate),
     ]],
     styles: { fontSize: 9 },
-    headStyles: { fillColor: [65, 105, 225] },
+    headStyles: { fillColor: BRAND_BLUE },
+    margin: { left: 14, right: 14 },
   })
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  y = (doc as any).lastAutoTable.finalY + 12
+  y = (doc as any).lastAutoTable.finalY + 10
 
-  doc.setFontSize(13)
-  doc.text('1. POLICY DETAILS', 14, y)
-  y += 8
+  sectionHeading(2, 'POLICY DETAILS')
   doc.setFontSize(10)
   const leftRows: [string, string][] = [
     ['Date of Birth', formatDate(client.dob)],
@@ -102,62 +125,77 @@ export async function exportPolicyReport(policy: Policy, client: Client, categor
   ]
   const rowY = y
   leftRows.forEach(([label, value], i) => {
-    doc.setTextColor(107, 126, 153)
-    doc.text(`${label}:`, 14, rowY + i * 7)
-    doc.setTextColor(15, 28, 46)
-    doc.text(value, 55, rowY + i * 7)
+    doc.setTextColor(...MUTED)
+    doc.text(`${label}:`, 14, rowY + i * 6.5)
+    doc.setTextColor(...TEXT)
+    doc.text(value, 50, rowY + i * 6.5)
   })
   rightRows.forEach(([label, value], i) => {
-    doc.setTextColor(107, 126, 153)
-    doc.text(`${label}:`, 115, rowY + i * 7)
-    doc.setTextColor(15, 28, 46)
-    doc.text(value, 155, rowY + i * 7)
+    doc.setTextColor(...MUTED)
+    doc.text(`${label}:`, 115, rowY + i * 6.5)
+    doc.setTextColor(...TEXT)
+    doc.text(value, 150, rowY + i * 6.5)
   })
-  doc.setTextColor(15, 28, 46)
-  y = rowY + leftRows.length * 7 + 10
+  y = rowY + leftRows.length * 6.5 + 8
 
-  doc.setFontSize(13)
-  doc.text('2. POLICY DEPENDANTS', 14, y)
-  y += 4
+  sectionHeading(3, 'POLICY DEPENDANTS')
   if (policy.dependants.length === 0) {
-    y += 6
-    doc.setFontSize(10)
-    doc.setTextColor(107, 126, 153)
+    doc.setFontSize(9)
+    doc.setTextColor(...MUTED)
     doc.text('No dependants on this policy.', 14, y)
-    doc.setTextColor(15, 28, 46)
+    doc.setTextColor(...TEXT)
     y += 8
   } else {
     autoTable(doc, {
-      startY: y + 4,
-      head: [['Name', 'Relationship', 'Date of Birth', 'ID Number']],
+      startY: y,
+      head: [['Name', 'Relationship', 'Date of Birth', 'ID / Birth Record No.']],
       body: policy.dependants.map(d => [d.name, d.relationship, formatDate(d.dob), d.nationalId]),
       styles: { fontSize: 9 },
-      headStyles: { fillColor: [65, 105, 225] },
+      headStyles: { fillColor: BRAND_BLUE },
+      margin: { left: 14, right: 14 },
+      foot: [['A dependant\'s plan can never exceed the policyholder\'s own premium or cover amount.']],
+      footStyles: { fillColor: [255, 255, 255], textColor: MUTED, fontSize: 7, fontStyle: 'italic' },
     })
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    y = (doc as any).lastAutoTable.finalY + 10
+    y = (doc as any).lastAutoTable.finalY + 8
   }
 
-  doc.setFontSize(13)
-  doc.text('3. KEY TERMS AND CONDITIONS', 14, y)
-  y += 8
-  doc.setFontSize(9)
+  sectionHeading(4, 'KEY TERMS AND CONDITIONS')
+  doc.setFontSize(8.5)
+  doc.setTextColor(...MUTED)
   const terms = doc.splitTextToSize(
     `This policy is subject to the full Policy Terms and Conditions of ${insurerName}, available at any ${insurerName} office nationwide or on request. Cover incepts on the start date above, subject to any applicable waiting period. Claims must be reported as soon as reasonably possible and are subject to verification. Premiums must be kept up to date for cover to remain in force — a lapsed policy may require reinstatement. This document is a summary and does not itself constitute the full policy contract.`,
-    182,
+    pageWidth - 28,
   )
   doc.text(terms, 14, y)
-  y += terms.length * 4.5 + 8
+  doc.setTextColor(...TEXT)
+  y += terms.length * 4 + 8
 
   if (category === 'agriculture') {
-    doc.setFontSize(13)
-    doc.text('4. COVER PROVIDED', 14, y)
-    y += 8
-    doc.setFontSize(10)
+    sectionHeading(5, 'COVER PROVIDED')
+    doc.setFontSize(9.5)
     AGRICULTURE_COVER.forEach((peril, i) => {
-      doc.text(`•  ${peril}`, 14, y + i * 6)
+      doc.text(`•  ${peril}`, 14, y + i * 5.5)
     })
+    y += AGRICULTURE_COVER.length * 5.5 + 4
   }
 
+  const pageHeight = doc.internal.pageSize.getHeight()
+  doc.setFontSize(7.5)
+  doc.setTextColor(...MUTED)
+  doc.text(`Generated ${formatDate(new Date())} · Tariqify IMS`, 14, pageHeight - 10)
+
+  return doc
+}
+
+/** Downloads the policy report as a PDF file. */
+export async function exportPolicyReport(policy: Policy, client: Client, category: string) {
+  const doc = await buildPolicyReportDoc(policy, client, category)
   doc.save(`${policy.policyNumber}-Policy-Report.pdf`)
+}
+
+/** Same report as a base64 payload (no data: URI prefix), for attaching to
+ *  an outgoing email rather than downloading it. */
+export async function getPolicyReportPdfBase64(policy: Policy, client: Client, category: string): Promise<string> {
+  const doc = await buildPolicyReportDoc(policy, client, category)
+  return doc.output('datauristring').split(',')[1]
 }

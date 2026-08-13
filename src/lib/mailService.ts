@@ -19,7 +19,7 @@ export const DEFAULT_NOTIF_SETTINGS: NotifSettings = {
   insurerPhone: '+263242000000',
   netoneEmail: 'insurance@netone.co.zw',
   netonePhone: '+263712001234',
-  fromAddress: 'noreply@tariqify.com',
+  fromAddress: 'noreply@enpassent.co.zw',
   fromName: 'Tariqify IMS',
   smsEnabled: false,
   signature: 'Regards,\nTariqify Insurance Management System\nwww.tariqify.com',
@@ -62,6 +62,9 @@ export interface SendEmailOptions {
   body: string
   folder?: EmailMessage['folder']
   linkedTo?: string
+  /** Base64 payload (no data: URI prefix) — e.g. from getPolicyReportPdfBase64(). */
+  attachmentBase64?: string
+  attachmentFilename?: string
 }
 
 export interface SendEmailResult {
@@ -97,7 +100,10 @@ export async function sendEmail(opts: SendEmailOptions): Promise<SendEmailResult
     const res = await fetch('/.netlify/functions/send-email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to: opts.to, cc: opts.cc, subject: opts.subject, text: opts.body, from, fromName }),
+      body: JSON.stringify({
+        to: opts.to, cc: opts.cc, subject: opts.subject, text: opts.body, from, fromName,
+        attachmentBase64: opts.attachmentBase64, attachmentFilename: opts.attachmentFilename,
+      }),
     })
     if (!res.ok) {
       const detail = await res.json().catch(() => ({}))

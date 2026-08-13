@@ -3,7 +3,9 @@ import type { ToastMessage, Policy, PolicyStatus, CautionFlag } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
-import { exportPolicyReport } from '../lib/exportUtils'
+import { exportPolicyReport, getPolicyReportPdfBase64 } from '../lib/exportUtils'
+import { sendSystemEmail } from '../lib/mailService'
+import { MAILBOXES } from '../lib/mailboxes'
 import NewPolicyModal from '../components/modals/NewPolicyModal'
 import ViewPolicyModal from '../components/modals/ViewPolicyModal'
 import EditPolicyModal from '../components/modals/EditPolicyModal'
@@ -54,12 +56,48 @@ export default function Policies({ showToast }: Props) {
     expired: policies.filter(p => p.status === 'expired').length,
   }
 
+  // Shared by auto-send-on-creation and the manual Print action — funeral
+  // packages use a different document elsewhere in the flow, so both skip
+  // the report for those.
+  const getReportContext = async (policy: Policy) => {
+    const [{ data: client }, { data: allProducts }] = await Promise.all([
+      db.clients.get(policy.clientId),
+      db.products.list(),
+    ])
+    const category = allProducts?.find(pr => pr.id === policy.productId)?.category
+    return { client, category: category ?? '' }
+  }
+
   const handleAdd = async (policy: Policy) => {
     const { data, error } = await db.policies.create(policy)
     if (error || !data) { showToast('error', 'Failed to create policy.'); return }
     setPolicies(prev => [data, ...prev])
     showToast('success', `Policy ${data.policyNumber} created successfully.`)
     setShowNew(false)
+
+    // Best-effort — a failed report email shouldn't block policy creation
+    // (already succeeded above), just show a heads-up if it doesn't go out.
+    const { client, category } = await getReportContext(data)
+    if (category !== 'funeral' && client?.email) {
+      try {
+        const attachmentBase64 = await getPolicyReportPdfBase64(data, client, category)
+        const result = await sendSystemEmail({
+          from: MAILBOXES.noreply,
+          to: client.email,
+          subject: `Your Policy ${data.policyNumber} — Documents Enclosed`,
+          body: `Dear ${client.name},\n\nThank you for choosing us. Your policy ${data.policyNumber} (${data.productName}) is now active. Your policy report is attached for your records.\n\nRegards,\nTariqify IMS`,
+          linkedTo: data.id,
+          attachmentBase64,
+          attachmentFilename: `${data.policyNumber}-Policy-Report.pdf`,
+        })
+        if (!result.delivered) showToast('warning', 'Policy created, but the document email could not be sent — check Settings → Notifications.')
+      } catch {
+        showToast('warning', 'Policy created, but the document email could not be sent.')
+      }
+    }
+    // WhatsApp delivery of this document isn't wired up yet — it needs a
+    // WhatsApp Business API integration (Twilio or Meta Cloud API) with its
+    // own account/credentials, which don't exist in this project yet.
   }
 
   const handleEdit = async (updated: Policy) => {
@@ -70,20 +108,14 @@ export default function Policies({ showToast }: Props) {
     setEditPolicy(null)
   }
 
-  // Funeral packages use a different document elsewhere in the flow —
-  // this report is for all other product categories.
   const handlePrint = async (policy: Policy) => {
-    const [{ data: client }, { data: allProducts }] = await Promise.all([
-      db.clients.get(policy.clientId),
-      db.products.list(),
-    ])
-    const category = allProducts?.find(pr => pr.id === policy.productId)?.category
+    const { client, category } = await getReportContext(policy)
     if (category === 'funeral') {
       showToast('warning', 'Printed policy reports are not available for funeral packages.')
       return
     }
     if (!client) { showToast('error', 'Could not load client details for this policy.'); return }
-    await exportPolicyReport(policy, client, category ?? '')
+    await exportPolicyReport(policy, client, category)
   }
 
   return (
@@ -150,7 +182,6 @@ export default function Policies({ showToast }: Props) {
                     <div className="action-btns">
                       <button type="button" className="btn btn-ghost btn-sm" onClick={() => setViewPolicy(p)}>View</button>
                       <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditPolicy(p)}>Edit</button>
-                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => handlePrint(p)}>Print</button>
                       <button type="button" className="btn btn-primary btn-sm" onClick={() => setPayPolicy(p)}>Pay Online</button>
                     </div>
                   </td>
