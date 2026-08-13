@@ -3,6 +3,7 @@ import type { ToastMessage, Product } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { useAuth } from '../contexts/AuthContext'
+import { premiumPeriodLabel } from '../lib/productUtils'
 import AddProductModal from '../components/modals/AddProductModal'
 
 interface Props {
@@ -76,7 +77,7 @@ export default function Products({ showToast }: Props) {
               <div className="product-stats">
                 <div className="product-stat">
                   <span className="product-stat-label">Premium</span>
-                  <span className="product-stat-value">${p.premium}/mo</span>
+                  <span className="product-stat-value">${p.premium}{premiumPeriodLabel(p.category)}</span>
                 </div>
                 <div className="product-stat">
                   <span className="product-stat-label">Cover</span>

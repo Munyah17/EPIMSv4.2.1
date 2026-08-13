@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { Payment, PaymentMethod, SplitPayment, Policy } from '../../types'
 import { db } from '../../lib/db'
+import { premiumPeriodLabel } from '../../lib/productUtils'
 
 interface Props {
   /** When omitted, the modal lets the user pick a policy from a dropdown. */
@@ -15,6 +16,7 @@ export default function RecordPaymentModal({ policyId: initialPolicyId, onClose,
   const [allPolicies, setAllPolicies] = useState<Policy[] | null>(null)
   const [policyId, setPolicyId] = useState(initialPolicyId ?? '')
   const [policy, setPolicy] = useState<Policy | null>(null)
+  const [policyCategory, setPolicyCategory] = useState('')
   const [amount, setAmount] = useState('')
   const [method, setMethod] = useState<PaymentMethod>('OneMoney')
   const [useSplit, setUseSplit] = useState(false)
@@ -32,10 +34,15 @@ export default function RecordPaymentModal({ policyId: initialPolicyId, onClose,
   useEffect(() => {
     if (policyId) {
       db.policies.get(policyId).then(({ data }) => {
-        if (data) setPolicy(data)
+        if (!data) return
+        setPolicy(data)
+        db.products.list().then(({ data: products }) => {
+          setPolicyCategory(products?.find(pr => pr.id === data.productId)?.category ?? '')
+        })
       })
     } else {
       setPolicy(null)
+      setPolicyCategory('')
     }
   }, [policyId])
 
@@ -83,7 +90,7 @@ export default function RecordPaymentModal({ policyId: initialPolicyId, onClose,
           {policy && (
             <div className="info-banner info-banner-info" style={{ marginBottom: '1rem' }}>
               Policy: {policy.policyNumber} — {policy.clientName}<br />
-              Expected premium: ${policy.premium.toFixed(2)}/mo
+              Expected premium: ${policy.premium.toFixed(2)}{premiumPeriodLabel(policyCategory)}
             </div>
           )}
           {!policy && policyId && (

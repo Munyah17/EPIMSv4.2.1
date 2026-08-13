@@ -71,7 +71,7 @@ export default function AddProductModal({ product, onClose, onSave }: Props) {
               </select>
             </div>
             <div className="form-group">
-              <label>Monthly Premium ($) *</label>
+              <label>{category === 'agriculture' ? 'Annual Premium ($) *' : 'Monthly Premium ($) *'}</label>
               <input type="number" className="form-control" min={0} value={premium} onChange={e => setPremium(e.target.value)} />
             </div>
           </div>

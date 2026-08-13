@@ -5,6 +5,7 @@ import { db } from '../../lib/db'
 import { formatDate } from '../../lib/dateUtils'
 import type { Policy } from '../../types'
 import { useAuth } from '../../contexts/AuthContext'
+import { premiumPeriodLabel } from '../../lib/productUtils'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -14,12 +15,16 @@ interface Props {
 export default function MyPolicies({ setActivePanel }: Props) {
   const { user } = useAuth()
   const [policies, setPolicies] = useState<Policy[]>([])
+  const [categoryByProductId, setCategoryByProductId] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     db.policies.list().then(({ data }) => {
       if (data) setPolicies(data)
       setLoading(false)
+    })
+    db.products.list().then(({ data }) => {
+      if (data) setCategoryByProductId(Object.fromEntries(data.map(p => [p.id, p.category])))
     })
   }, [])
 
@@ -48,7 +53,7 @@ export default function MyPolicies({ setActivePanel }: Props) {
               <div className="product-stats">
                 <div className="product-stat">
                   <span className="product-stat-label">Premium</span>
-                  <span className="product-stat-value">${p.premium}/mo</span>
+                  <span className="product-stat-value">${p.premium}{premiumPeriodLabel(categoryByProductId[p.productId] ?? '')}</span>
                 </div>
                 <div className="product-stat">
                   <span className="product-stat-label">Cover Amount</span>

@@ -4,6 +4,7 @@ import { db } from '../../lib/db'
 import { useAuth } from '../../contexts/AuthContext'
 import PhoneInput from '../ui/PhoneInput'
 import DateInput from '../ui/DateInput'
+import { premiumPeriodLabel } from '../../lib/productUtils'
 
 const INSURERS: Insurer[] = ['Motions', 'CBZ Life', 'EcoSure', 'ZB Life', 'Nyaradzo Funeral', 'Doves']
 
@@ -296,12 +297,12 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                 <label>Product *</label>
                 <select className="form-control" value={productId} onChange={e => setProductId(e.target.value)} disabled={productsLoading}>
                   <option value="">{productsLoading ? 'Loading products…' : 'Select product…'}</option>
-                  {products.filter(p => p.active).map(p => <option key={p.id} value={p.id}>{p.name} (${p.premium}/mo)</option>)}
+                  {products.filter(p => p.active).map(p => <option key={p.id} value={p.id}>{p.name} (${p.premium}{premiumPeriodLabel(p.category)})</option>)}
                 </select>
               </div>
               {product && (
                 <div className="info-banner info-banner-info">
-                  Cover: ${product.coverAmount.toLocaleString()} · Premium: ${product.premium}/mo · Commission: {product.commissionPct}%
+                  Cover: ${product.coverAmount.toLocaleString()} · Premium: ${product.premium}{premiumPeriodLabel(product.category)} · Commission: {product.commissionPct}%
                 </div>
               )}
               {product?.category === 'agriculture' && (

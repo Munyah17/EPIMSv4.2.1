@@ -1,5 +1,8 @@
+import { useState, useEffect } from 'react'
 import type { Policy } from '../../types'
 import { formatDate } from '../../lib/dateUtils'
+import { premiumPeriodLabel } from '../../lib/productUtils'
+import { db } from '../../lib/db'
 
 interface Props {
   policy: Policy
@@ -11,6 +14,14 @@ interface Props {
 }
 
 export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint }: Props) {
+  const [category, setCategory] = useState('')
+
+  useEffect(() => {
+    db.products.list().then(({ data }) => {
+      setCategory(data?.find(p => p.id === policy.productId)?.category ?? '')
+    })
+  }, [policy.productId])
+
   return (
     <div className="modal-overlay">
       <div className="modal">
@@ -24,7 +35,7 @@ export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint }: Pr
             <div className="detail-item"><span className="detail-label">Status</span><span className={`pill pill-${policy.status}`}>{policy.status}</span></div>
             <div className="detail-item"><span className="detail-label">Client</span><span>{policy.clientName}</span></div>
             <div className="detail-item"><span className="detail-label">Product</span><span>{policy.productName}</span></div>
-            <div className="detail-item"><span className="detail-label">Premium</span><span>${policy.premium.toFixed(2)}/mo</span></div>
+            <div className="detail-item"><span className="detail-label">Premium</span><span>${policy.premium.toFixed(2)}{premiumPeriodLabel(category)}</span></div>
             <div className="detail-item"><span className="detail-label">Cover Amount</span><span>${policy.coverAmount.toLocaleString()}</span></div>
             <div className="detail-item"><span className="detail-label">Start Date</span><span>{formatDate(policy.startDate)}</span></div>
             <div className="detail-item"><span className="detail-label">End Date</span><span>{formatDate(policy.endDate)}</span></div>
