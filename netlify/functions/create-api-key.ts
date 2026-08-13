@@ -69,13 +69,19 @@ export const handler: Handler = async (event) => {
   const keyHash = crypto.createHash('sha256').update(rawKey).digest('hex')
   const keyPrefix = rawKey.slice(0, 22)
 
+  // support:write (submit a ticket, see api-v1.ts) is always granted
+  // regardless of what's chosen — it's a developer's only path to flag a
+  // problem at all, since the API has no update/delete endpoints.
+  const chosenScopes = body.scopes?.length ? body.scopes : DEFAULT_SCOPES
+  const scopes = chosenScopes.includes('support:write') ? chosenScopes : [...chosenScopes, 'support:write']
+
   const { data: keyRow, error } = await admin.from('api_keys').insert({
     developer_id: body.developerId,
     key_prefix: keyPrefix,
     key_hash: keyHash,
     publishable_key: publishableKey,
     environment,
-    scopes: body.scopes?.length ? body.scopes : DEFAULT_SCOPES,
+    scopes,
     rate_limit_per_min: body.rateLimitPerMin && body.rateLimitPerMin > 0 ? body.rateLimitPerMin : 60,
     status: 'active',
   }).select('id, key_prefix, publishable_key, environment, scopes, rate_limit_per_min, status, created_at').single()

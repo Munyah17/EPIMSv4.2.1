@@ -15,6 +15,7 @@ const ENDPOINTS: { method: string; path: string; scope: string; desc: string }[]
   { method: 'POST', path: '/api/v1/policies', scope: 'policies:write', desc: 'Create a policy for a client. Attributed to the developer as agent.' },
   { method: 'GET', path: '/api/v1/policies/:policyNumber', scope: 'policies:read', desc: 'Look up a policy the developer created.' },
   { method: 'POST', path: '/api/v1/payments', scope: 'payments:write', desc: 'Record a premium payment against a policy.' },
+  { method: 'POST', path: '/api/v1/tickets', scope: 'support:write (always granted)', desc: "File a support ticket for one of your clients — the only way to request a correction. There is no update/delete endpoint for clients or policies." },
 ]
 
 interface Props {

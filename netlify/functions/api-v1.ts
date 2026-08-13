@@ -15,9 +15,19 @@ import crypto from 'crypto'
  *
  * Isolation: every read/write is scoped server-side to the caller's own
  * agent_profile_id. A key can never see or touch another developer's
- * clients or policies, and the product catalog only ever exposes the
+ * clients or policies — creating a client only ever reveals/reuses an
+ * existing record if THIS developer already has a policy against it,
+ * otherwise the write is rejected outright rather than silently attaching
+ * to someone else's client. The product catalog only ever exposes the
  * fields a storefront actually needs (never commission_pct or internal
  * notes/documents).
+ *
+ * Deliberately create/read-only: there is no update or delete endpoint for
+ * clients or policies. Developers have the exact same standing as an
+ * on-the-ground agent, not more — a correction to sensitive data (wrong
+ * DOB, wrong cover amount, etc.) goes through POST /api/v1/tickets, which
+ * files a real support ticket for Super Admin to action, never a direct
+ * write from the API caller.
  */
 
 type Json = Record<string, unknown>
@@ -55,6 +65,11 @@ function scopeFor(resource: string, method: string): string | null {
   if (resource === 'policies' && method === 'POST') return 'policies:write'
   if (resource === 'policies' && method === 'GET') return 'policies:read'
   if (resource === 'payments' && method === 'POST') return 'payments:write'
+  // Always granted regardless of issued scopes (see create-api-key.ts) — a
+  // developer must always be able to flag a problem even with a narrowly
+  // scoped key, since this is their only path to a correction at all: the
+  // API has no update/delete endpoints on purpose (see module doc comment).
+  if (resource === 'tickets' && method === 'POST') return 'support:write'
   return null
 }
 
@@ -127,13 +142,15 @@ export const handler: Handler = async (event) => {
     } else if (resource === 'quotes' && method === 'POST') {
       result = await getQuote(admin, body)
     } else if (resource === 'clients' && method === 'POST') {
-      result = await createClient_(admin, body)
+      result = await createClient_(admin, body, agentId)
     } else if (resource === 'policies' && method === 'POST') {
       result = await createPolicy(admin, body, agentId)
     } else if (resource === 'policies' && method === 'GET' && segments[1]) {
       result = await getPolicy(admin, segments[1], agentId)
     } else if (resource === 'payments' && method === 'POST') {
       result = await recordPayment(admin, body, agentId)
+    } else if (resource === 'tickets' && method === 'POST') {
+      result = await submitApiTicket(admin, body, agentId, dev.company_name as string)
     } else {
       result = { status: 404, body: { error: 'Unknown endpoint or missing path parameter.' } }
     }
@@ -191,14 +208,11 @@ async function getQuote(admin: SupabaseClient, body: Json) {
   }
 }
 
-async function createClient_(admin: SupabaseClient, body: Json) {
+async function createClient_(admin: SupabaseClient, body: Json, agentId: string) {
   const name = String(body.name ?? '').trim()
   const phone = String(body.phone ?? '').trim()
   const nationalId = String(body.nationalId ?? '').trim()
   if (!name || !phone || !nationalId) return { status: 400, body: { error: 'name, phone, and nationalId are required.' } }
-
-  const { data: existing } = await admin.from('clients').select('id').eq('national_id', nationalId).maybeSingle()
-  if (existing) return { status: 200, body: { data: { id: existing.id, existing: true } } }
 
   const { data, error } = await admin.from('clients').insert({
     name, phone, national_id: nationalId,
@@ -208,8 +222,22 @@ async function createClient_(admin: SupabaseClient, body: Json) {
     occupation: body.occupation ? String(body.occupation) : null,
     status: 'active',
   }).select('id').single()
-  if (error) return { status: 400, body: { error: error.code === '23505' ? 'A client with that national ID already exists.' : error.message } }
-  return { status: 201, body: { data: { id: data.id, existing: false } } }
+  if (!error) return { status: 201, body: { data: { id: data.id, existing: false } } }
+  if (error.code !== '23505') return { status: 400, body: { error: error.message } }
+
+  // Already exists — only hand back the id (and let the caller treat it as
+  // "their" client) if this developer already has a policy against them.
+  // Otherwise this lookup would let any key harvest another developer's
+  // client ids just by guessing national ID numbers.
+  const { data: existingClient } = await admin.from('clients').select('id').eq('national_id', nationalId).maybeSingle()
+  if (existingClient) {
+    const { data: ownPolicy } = await admin.from('policies').select('id').eq('client_id', existingClient.id).eq('agent_id', agentId).limit(1).maybeSingle()
+    if (ownPolicy) return { status: 200, body: { data: { id: existingClient.id, existing: true } } }
+  }
+  return {
+    status: 409,
+    body: { error: 'A client with that national ID already exists under a different agent. Submit a support ticket (POST /api/v1/tickets) if you believe this is an error.' },
+  }
 }
 
 async function createPolicy(admin: SupabaseClient, body: Json, agentId: string) {
@@ -221,6 +249,15 @@ async function createPolicy(admin: SupabaseClient, body: Json, agentId: string) 
 
   const { data: client } = await admin.from('clients').select('id').eq('id', clientId).maybeSingle()
   if (!client) return { status: 404, body: { error: 'Client not found.' } }
+
+  // A client with no policies yet is fair game (this developer would be
+  // the first); one with existing policies all belonging to other agents
+  // is not — never let this key attribute a policy to itself for someone
+  // else's client.
+  const { data: existingPolicies } = await admin.from('policies').select('agent_id').eq('client_id', clientId)
+  if (existingPolicies && existingPolicies.length > 0 && !existingPolicies.some(p => p.agent_id === agentId)) {
+    return { status: 403, body: { error: 'This client is already associated with a different agent. Submit a support ticket (POST /api/v1/tickets) to request access.' } }
+  }
 
   const { data: product } = await admin.from('products').select('id, premium, cover_amount').eq('id', productId).eq('active', true).maybeSingle()
   if (!product) return { status: 404, body: { error: 'Product not found or inactive.' } }
@@ -288,7 +325,44 @@ async function recordPayment(admin: SupabaseClient, body: Json, agentId: string)
   }).select('id, reference').single()
   if (error) return { status: 400, body: { error: error.message } }
 
+  // NOTE: this bypasses the waiting_period/lapse-reinstatement lifecycle
+  // that staff-recorded payments go through (see applyCompletedPaymentToPolicy
+  // in src/lib/db.ts) — an API-recorded payment always jumps straight to
+  // 'active'. Worth reconciling later; flagged rather than silently left.
   await admin.from('policies').update({ status: 'active', last_payment_date: new Date().toISOString().split('T')[0] }).eq('id', policy.id)
 
   return { status: 201, body: { data: { id: data.id, reference: data.reference, status: 'completed' } } }
+}
+
+/**
+ * The API's only path for anything that isn't a straightforward create —
+ * a wrong DOB, a wrong cover amount, a client who needs re-linking, etc.
+ * Files a real ticket for staff to action rather than exposing any kind of
+ * update/delete endpoint to external callers. clientId is required and
+ * must belong to the calling developer, same as every other endpoint.
+ */
+async function submitApiTicket(admin: SupabaseClient, body: Json, agentId: string, companyName: string) {
+  const subject = String(body.subject ?? '').trim()
+  const description = String(body.description ?? '').trim()
+  const clientId = body.clientId ? String(body.clientId) : ''
+  if (!subject || !description || !clientId) {
+    return { status: 400, body: { error: 'subject, description, and clientId are required.' } }
+  }
+  if (!isUuid(clientId)) return { status: 400, body: { error: 'clientId must be a valid UUID.' } }
+
+  const { data: ownPolicy } = await admin.from('policies').select('id').eq('client_id', clientId).eq('agent_id', agentId).limit(1).maybeSingle()
+  if (!ownPolicy) return { status: 403, body: { error: 'clientId is not associated with this API key.' } }
+
+  const { data, error } = await admin.from('tickets').insert({
+    ticket_number: refNumber('TKT'),
+    client_id: clientId,
+    subject: `[API Partner: ${companyName}] ${subject}`.slice(0, 200),
+    description,
+    status: 'open',
+    priority: 'high',
+    category: 'API Partner Request',
+  }).select('id, ticket_number').single()
+  if (error) return { status: 400, body: { error: error.message } }
+
+  return { status: 201, body: { data: { id: data.id, ticketNumber: data.ticket_number, status: 'open' } } }
 }
