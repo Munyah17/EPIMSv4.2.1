@@ -390,6 +390,15 @@ tbody tr:hover td{background:var(--surface)}
 .mono{font-family:'Courier New',monospace;font-size:11px;letter-spacing:0.02em}
 .action-btns{display:flex;gap:4px;flex-wrap:wrap}
 
+/* --- ACTION MENU (kebab dropdown for table row actions) --- */
+.action-menu{position:relative;display:inline-block}
+.action-menu-trigger{width:28px;height:28px;border-radius:6px;border:1px solid transparent;background:transparent;color:var(--muted);font-size:16px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.action-menu-trigger:hover{background:var(--surface);color:var(--text);border-color:var(--border)}
+.action-menu-dropdown{position:absolute;right:0;top:calc(100% + 4px);min-width:140px;background:var(--card);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.15);z-index:30;padding:4px;display:flex;flex-direction:column}
+.action-menu-item{display:block;width:100%;text-align:left;padding:7px 10px;font-size:12px;border-radius:5px;border:none;background:transparent;color:var(--text);cursor:pointer;white-space:nowrap}
+.action-menu-item:hover{background:var(--surface)}
+.action-menu-item.danger{color:var(--danger)}
+
 /* --- PILLS (status variants) --- */
 .pill-active{background:#D1FAE5;color:#065f46}
 .pill-lapsed{background:#FEE2E2;color:#991b1b}

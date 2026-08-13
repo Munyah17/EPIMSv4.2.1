@@ -8,6 +8,7 @@ import { useAuth } from '../contexts/AuthContext'
 import AddStaffModal from '../components/modals/AddStaffModal'
 import PermissionsModal from '../components/modals/PermissionsModal'
 import RoleManagerModal from '../components/modals/RoleManagerModal'
+import ActionMenu from '../components/ui/ActionMenu'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -162,18 +163,12 @@ export default function Staff({ showToast }: Props) {
                   <td>{formatDate(s.lastLogin)}</td>
                   <td><span className={`pill ${s.active ? 'pill-active' : 'pill-cancelled'}`}>{s.active ? 'Active' : 'Inactive'}</span></td>
                   <td>
-                    <div className="action-btns">
-                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setEditStaff(s); setShowAdd(true) }}>Edit</button>
-                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPermStaff(s)}>Perms</button>
-                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => toggleActive(s.id)}>
-                        {s.active ? 'Disable' : 'Enable'}
-                      </button>
-                      {user?.role === 'super_admin' && s.role !== 'super_admin' && s.id !== user.id && (
-                        <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => handleDelete(s)}>
-                          Delete
-                        </button>
-                      )}
-                    </div>
+                    <ActionMenu items={[
+                      { label: 'Edit', onClick: () => { setEditStaff(s); setShowAdd(true) } },
+                      { label: 'Perms', onClick: () => setPermStaff(s) },
+                      { label: s.active ? 'Disable' : 'Enable', onClick: () => toggleActive(s.id) },
+                      { label: 'Delete', onClick: () => handleDelete(s), danger: true, hidden: !(user?.role === 'super_admin' && s.role !== 'super_admin' && s.id !== user.id) },
+                    ]} />
                   </td>
                 </tr>
               ))}

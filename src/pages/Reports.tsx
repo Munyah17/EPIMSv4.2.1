@@ -12,7 +12,7 @@ interface Props {
 
 export default function Reports({ showToast }: Props) {
   const [period, setPeriod] = useState<'month' | 'quarter' | 'year' | 'custom'>('month')
-  const [activeTab, setActiveTab] = useState<'overview' | 'claims' | 'ipec'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'claims' | 'financials' | 'ipec'>('overview')
   const [policies, setPolicies] = useState<Policy[]>([])
   const [claims, setClaims] = useState<Claim[]>([])
   const [payments, setPayments] = useState<Payment[]>([])
@@ -55,6 +55,65 @@ export default function Reports({ showToast }: Props) {
     }, {}),
   ).sort((a, b) => b.policies - a.policies)
 
+  const completedPayments = payments.filter(p => p.status === 'completed')
+  const pendingPayments = payments.filter(p => p.status === 'pending')
+  const failedPayments = payments.filter(p => p.status === 'failed')
+  const outstanding = pendingPayments.reduce((s, p) => s + p.amount, 0)
+  const failedValue = failedPayments.reduce((s, p) => s + p.amount, 0)
+  const collectionRate = payments.length > 0 ? ((completedPayments.length / payments.length) * 100).toFixed(1) : '0'
+  const avgPremium = totalPolicies > 0 ? (policies.reduce((s, p) => s + p.premium, 0) / totalPolicies) : 0
+
+  const methodBreakdown = Object.values(
+    payments.reduce<Record<string, { method: string; count: number; amount: number }>>((acc, p) => {
+      const key = p.method || 'Unknown'
+      if (!acc[key]) acc[key] = { method: key, count: 0, amount: 0 }
+      acc[key].count += 1
+      acc[key].amount += p.amount
+      return acc
+    }, {}),
+  ).sort((a, b) => b.amount - a.amount)
+
+  const insurerBreakdown = Object.values(
+    policies.reduce<Record<string, { name: string; policies: number; revenue: number }>>((acc, p) => {
+      const key = p.insurer || 'Unassigned'
+      if (!acc[key]) acc[key] = { name: key, policies: 0, revenue: 0 }
+      acc[key].policies += 1
+      acc[key].revenue += p.premium
+      return acc
+    }, {}),
+  ).sort((a, b) => b.revenue - a.revenue)
+
+  const monthlyCollections = Object.values(
+    completedPayments.reduce<Record<string, { month: string; amount: number; count: number }>>((acc, p) => {
+      const key = (p.date || '').slice(0, 7) || 'Unknown'
+      if (!acc[key]) acc[key] = { month: key, amount: 0, count: 0 }
+      acc[key].amount += p.amount
+      acc[key].count += 1
+      return acc
+    }, {}),
+  ).sort((a, b) => a.month.localeCompare(b.month)).slice(-6)
+
+  const topClients = Object.values(
+    policies.reduce<Record<string, { name: string; policies: number; premium: number }>>((acc, p) => {
+      if (!acc[p.clientId]) acc[p.clientId] = { name: p.clientName, policies: 0, premium: 0 }
+      acc[p.clientId].policies += 1
+      acc[p.clientId].premium += p.premium
+      return acc
+    }, {}),
+  ).sort((a, b) => b.premium - a.premium).slice(0, 8)
+
+  const claimsByStage = Object.values(
+    claims.reduce<Record<string, { stage: string; count: number; amount: number }>>((acc, c) => {
+      const key = c.stage || 'Unknown'
+      if (!acc[key]) acc[key] = { stage: key, count: 0, amount: 0 }
+      acc[key].count += 1
+      acc[key].amount += c.amount
+      return acc
+    }, {}),
+  ).sort((a, b) => b.count - a.count)
+
+  const maxMonthlyAmount = Math.max(1, ...monthlyCollections.map(m => m.amount))
+
   const dateStamp = new Date().toISOString().split('T')[0]
 
   const handleExport = async (format: 'PDF' | 'Excel' | 'CSV' | 'IPEC PDF') => {
@@ -88,6 +147,11 @@ export default function Reports({ showToast }: Props) {
       baseName = 'claims-analysis'
       headers = ['Claim No.', 'Client', 'Amount', 'Type', 'Fraud Score', 'Status']
       rows = claims.map(c => [c.claimNumber, c.clientName, c.amount, c.claimType, `${c.fraudScore}%`, c.status])
+    } else if (activeTab === 'financials') {
+      title = 'Financials Report'
+      baseName = 'financials-report'
+      headers = ['Reference', 'Client', 'Amount', 'Method', 'Status', 'Date']
+      rows = payments.map(p => [p.reference, p.clientName, `$${p.amount.toFixed(2)}`, p.method, p.status, p.date])
     } else if (activeTab === 'ipec') {
       title = 'IPEC Quarterly Return'
       baseName = 'ipec-return'
@@ -121,7 +185,7 @@ export default function Reports({ showToast }: Props) {
     <div className="panel">
       <div className="panel-toolbar">
         <div className="tabs" style={{ marginBottom: 0 }}>
-          {([['overview', 'Overview'], ['claims', 'Claims Analysis'], ['ipec', 'IPEC Report']] as [typeof activeTab, string][]).map(([t, label]) => (
+          {([['overview', 'Overview'], ['claims', 'Claims Analysis'], ['financials', 'Financials'], ['ipec', 'IPEC Report']] as [typeof activeTab, string][]).map(([t, label]) => (
             <button key={t} className={`tab${activeTab === t ? ' active' : ''}`} onClick={() => setActiveTab(t)}>{label}</button>
           ))}
         </div>
@@ -189,13 +253,29 @@ export default function Reports({ showToast }: Props) {
                 <div className="stat-delta positive">{clients.filter(c => c.status === 'active').length} active</div>
               </div>
             </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: 'rgba(16,185,129,0.15)', color: 'var(--teal)' }}>📈</div>
+              <div className="stat-body">
+                <div className="stat-value">${avgPremium.toFixed(2)}</div>
+                <div className="stat-label">Avg. Premium / Policy</div>
+                <div className="stat-delta">Per year</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: 'rgba(245,158,11,0.15)', color: 'var(--gold)' }}>⏳</div>
+              <div className="stat-body">
+                <div className="stat-value">${outstanding.toFixed(0)}</div>
+                <div className="stat-label">Outstanding Payments</div>
+                <div className="stat-delta">{pendingPayments.length} pending</div>
+              </div>
+            </div>
           </div>
 
           <div className="card" style={{ marginTop: '1.5rem' }}>
             <div className="card-header"><h3 className="card-title">Product Performance</h3></div>
             <table className="table">
               <thead>
-                <tr><th>Product</th><th>Policies</th><th>Monthly Revenue ($)</th><th>Share</th></tr>
+                <tr><th>Product</th><th>Policies</th><th>Annual Revenue ($)</th><th>Share</th></tr>
               </thead>
               <tbody>
                 {productBreakdown.map(p => (
@@ -215,6 +295,47 @@ export default function Reports({ showToast }: Props) {
                 ))}
               </tbody>
             </table>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginTop: '1.5rem' }}>
+            <div className="card">
+              <div className="card-header"><h3 className="card-title">Top Clients by Premium</h3></div>
+              <table className="table">
+                <thead>
+                  <tr><th>Client</th><th>Policies</th><th>Annual Premium</th></tr>
+                </thead>
+                <tbody>
+                  {topClients.length === 0 ? (
+                    <tr><td colSpan={3} className="td-empty">No policies yet.</td></tr>
+                  ) : topClients.map(c => (
+                    <tr key={c.name}>
+                      <td><strong>{c.name}</strong></td>
+                      <td>{c.policies}</td>
+                      <td>${c.premium.toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="card">
+              <div className="card-header"><h3 className="card-title">Business by Insurer</h3></div>
+              <table className="table">
+                <thead>
+                  <tr><th>Insurer</th><th>Policies</th><th>Revenue</th></tr>
+                </thead>
+                <tbody>
+                  {insurerBreakdown.length === 0 ? (
+                    <tr><td colSpan={3} className="td-empty">No policies yet.</td></tr>
+                  ) : insurerBreakdown.map(i => (
+                    <tr key={i.name}>
+                      <td>{i.name}</td>
+                      <td>{i.policies}</td>
+                      <td>${i.revenue.toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </>
       )}
@@ -249,7 +370,132 @@ export default function Reports({ showToast }: Props) {
               ))}
             </tbody>
           </table>
+
+          <h3 style={{ margin: '1.5rem 0 1rem' }}>Claims by Workflow Stage</h3>
+          <table className="table">
+            <thead>
+              <tr><th>Stage</th><th>Count</th><th>Value</th></tr>
+            </thead>
+            <tbody>
+              {claimsByStage.length === 0 ? (
+                <tr><td colSpan={3} className="td-empty">No claims yet.</td></tr>
+              ) : claimsByStage.map(s => (
+                <tr key={s.stage}>
+                  <td style={{ textTransform: 'capitalize' }}>{s.stage.replace('_', ' ')}</td>
+                  <td>{s.count}</td>
+                  <td>${s.amount.toLocaleString()}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
+      )}
+
+      {activeTab === 'financials' && (
+        <>
+          <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: 'rgba(16,185,129,0.15)', color: 'var(--teal)' }}>✅</div>
+              <div className="stat-body">
+                <div className="stat-value">${completedPayments.reduce((s, p) => s + p.amount, 0).toFixed(0)}</div>
+                <div className="stat-label">Collected</div>
+                <div className="stat-delta positive">{completedPayments.length} payments</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: 'rgba(245,158,11,0.15)', color: 'var(--gold)' }}>⏳</div>
+              <div className="stat-body">
+                <div className="stat-value">${outstanding.toFixed(0)}</div>
+                <div className="stat-label">Pending</div>
+                <div className="stat-delta">{pendingPayments.length} payments</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: 'rgba(239,68,68,0.15)', color: 'var(--danger)' }}>✕</div>
+              <div className="stat-body">
+                <div className="stat-value">${failedValue.toFixed(0)}</div>
+                <div className="stat-label">Failed</div>
+                <div className="stat-delta negative">{failedPayments.length} payments</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: 'rgba(91,127,232,0.15)', color: 'var(--blue)' }}>%</div>
+              <div className="stat-body">
+                <div className="stat-value">{collectionRate}%</div>
+                <div className="stat-label">Collection Rate</div>
+                <div className="stat-delta">Completed / total</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="card" style={{ marginTop: '1.5rem' }}>
+            <div className="card-header"><h3 className="card-title">Monthly Collections (last 6 months)</h3></div>
+            <table className="table">
+              <thead>
+                <tr><th>Month</th><th>Payments</th><th>Amount</th><th></th></tr>
+              </thead>
+              <tbody>
+                {monthlyCollections.length === 0 ? (
+                  <tr><td colSpan={4} className="td-empty">No completed payments yet.</td></tr>
+                ) : monthlyCollections.map(m => (
+                  <tr key={m.month}>
+                    <td>{m.month}</td>
+                    <td>{m.count}</td>
+                    <td>${m.amount.toFixed(2)}</td>
+                    <td>
+                      <div className="bar-track" style={{ height: 8, width: 140, display: 'inline-block' }}>
+                        <div className="bar-fill" style={{ width: `${(m.amount / maxMonthlyAmount) * 100}%`, background: 'var(--teal)', height: '100%', borderRadius: 4 }} />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="card" style={{ marginTop: '1.5rem' }}>
+            <div className="card-header"><h3 className="card-title">Payments by Method</h3></div>
+            <table className="table">
+              <thead>
+                <tr><th>Method</th><th>Payments</th><th>Amount</th></tr>
+              </thead>
+              <tbody>
+                {methodBreakdown.length === 0 ? (
+                  <tr><td colSpan={3} className="td-empty">No payments yet.</td></tr>
+                ) : methodBreakdown.map(m => (
+                  <tr key={m.method}>
+                    <td style={{ textTransform: 'capitalize' }}>{m.method.replace('_', ' ')}</td>
+                    <td>{m.count}</td>
+                    <td>${m.amount.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="card" style={{ marginTop: '1.5rem' }}>
+            <div className="card-header"><h3 className="card-title">Recent Payments</h3></div>
+            <table className="table">
+              <thead>
+                <tr><th>Reference</th><th>Client</th><th>Amount</th><th>Method</th><th>Status</th><th>Date</th></tr>
+              </thead>
+              <tbody>
+                {payments.length === 0 ? (
+                  <tr><td colSpan={6} className="td-empty">No payments yet.</td></tr>
+                ) : [...payments].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 15).map(p => (
+                  <tr key={p.id}>
+                    <td><span className="mono">{p.reference}</span></td>
+                    <td>{p.clientName}</td>
+                    <td>${p.amount.toFixed(2)}</td>
+                    <td style={{ textTransform: 'capitalize' }}>{p.method.replace('_', ' ')}</td>
+                    <td><span className={`pill pill-${p.status === 'completed' ? 'active' : p.status === 'pending' ? 'lapsed' : 'lapsed'}`}>{p.status}</span></td>
+                    <td>{p.date}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       {activeTab === 'ipec' && (
@@ -274,9 +520,6 @@ export default function Reports({ showToast }: Props) {
           </table>
           <div style={{ marginTop: '1.5rem' }}>
             <button className="btn btn-primary" onClick={() => handleExport('IPEC PDF')}>↓ Download IPEC Return</button>
-            <p style={{ marginTop: 10, fontSize: 12, color: 'var(--muted)' }}>
-              IPEC does not provide a public electronic-submission API — download the return above and submit it through IPEC's own portal or email.
-            </p>
           </div>
         </div>
       )}

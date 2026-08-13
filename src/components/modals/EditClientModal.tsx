@@ -8,8 +8,7 @@ interface Props {
   client: Client
   onClose: () => void
   onSave: (client: Client) => void
-  /** Only passed when this client has zero policies. */
-  onAssignPolicy?: () => void
+  onAssignPolicy: () => void
 }
 
 export default function EditClientModal({ client, onClose, onSave, onAssignPolicy }: Props) {
@@ -80,9 +79,7 @@ export default function EditClientModal({ client, onClose, onSave, onAssignPolic
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          {onAssignPolicy && (
-            <button type="button" className="btn btn-success" onClick={onAssignPolicy}>+ Assign Policy</button>
-          )}
+          <button type="button" className="btn btn-success" onClick={onAssignPolicy}>+ Assign Policy</button>
           <button className="btn btn-primary" onClick={handleSave}>Save Changes</button>
         </div>
       </div>

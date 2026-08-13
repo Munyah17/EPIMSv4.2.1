@@ -283,7 +283,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
               </div>
               <div className="form-group">
                 <label>National ID *</label>
-                <input className="form-control" placeholder="e.g. 632118532K12" value={clientNationalId} onChange={e => setClientNationalId(e.target.value)} disabled={!!existingClientId} style={existingClientId ? { opacity: 0.6 } : undefined} />
+                <input className="form-control" placeholder="e.g. 632118532K12" value={clientNationalId} onChange={e => setClientNationalId(e.target.value.replace(/-/g, ''))} disabled={!!existingClientId} style={existingClientId ? { opacity: 0.6 } : undefined} />
               </div>
               <div className="form-group">
                 <label>Date of Birth * (18+)</label>
@@ -373,7 +373,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                     <input className="form-control" placeholder="Name" value={d.name} onChange={e => updateDependant(i, 'name', e.target.value)} />
                     <input className="form-control" placeholder="Relationship" value={d.relationship} onChange={e => updateDependant(i, 'relationship', e.target.value)} />
                     <DateInput value={d.dob} onChange={v => updateDependant(i, 'dob', v)} />
-                    <input className="form-control" placeholder="ID (16+) or birth record no." value={d.nationalId} onChange={e => updateDependant(i, 'nationalId', e.target.value)} />
+                    <input className="form-control" placeholder="ID (16+) or birth record no." value={d.nationalId} onChange={e => updateDependant(i, 'nationalId', e.target.value.replace(/-/g, ''))} />
                     <select className="form-control" value={d.productId ?? ''} onChange={e => updateDependant(i, 'productId', e.target.value)}>
                       <option value="">Select plan…</option>
                       {products.filter(p => p.active).map(p => <option key={p.id} value={p.id}>{p.name} (${p.premium})</option>)}

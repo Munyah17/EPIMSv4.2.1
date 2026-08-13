@@ -7,6 +7,7 @@ import { useAuth } from '../contexts/AuthContext'
 import RegisterClientModal from '../components/modals/RegisterClientModal'
 import EditClientModal from '../components/modals/EditClientModal'
 import NewPolicyModal from '../components/modals/NewPolicyModal'
+import ActionMenu from '../components/ui/ActionMenu'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -150,15 +151,11 @@ export default function Clients({ showToast }: Props) {
                   <td>{formatDate(c.createdAt)}</td>
                   <td><span className={`pill ${c.status === 'active' ? 'pill-active' : 'pill-lapsed'}`}>{c.status}</span></td>
                   <td>
-                    <div className="action-btns">
-                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditClient(c)}>Edit</button>
-                      {c.policyCount === 0 && (
-                        <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--blue)' }} onClick={() => setAssignPolicyClient(c)}>Assign Policy</button>
-                      )}
-                      {user?.role === 'super_admin' && (
-                        <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => handleDelete(c)}>Delete</button>
-                      )}
-                    </div>
+                    <ActionMenu items={[
+                      { label: 'Edit', onClick: () => setEditClient(c) },
+                      { label: 'Assign Policy', onClick: () => setAssignPolicyClient(c) },
+                      { label: 'Delete', onClick: () => handleDelete(c), danger: true, hidden: user?.role !== 'super_admin' },
+                    ]} />
                   </td>
                 </tr>
               ))}
@@ -175,7 +172,7 @@ export default function Clients({ showToast }: Props) {
           client={editClient}
           onClose={() => setEditClient(null)}
           onSave={handleEdit}
-          onAssignPolicy={editClient.policyCount === 0 ? () => { setAssignPolicyClient(editClient); setEditClient(null) } : undefined}
+          onAssignPolicy={() => { setAssignPolicyClient(editClient); setEditClient(null) }}
         />
       )}
       {assignPolicyClient && (

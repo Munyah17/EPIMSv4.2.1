@@ -57,7 +57,7 @@ export default function RegisterClientModal({ onClose, onSave }: Props) {
             </div>
             <div className="form-group">
               <label>National ID *</label>
-              <input className="form-control" placeholder="e.g. 632118532K12" value={nationalId} onChange={e => setNationalId(e.target.value)} />
+              <input className="form-control" placeholder="e.g. 632118532K12" value={nationalId} onChange={e => setNationalId(e.target.value.replace(/-/g, ''))} />
             </div>
           </div>
           <div className="form-row">
