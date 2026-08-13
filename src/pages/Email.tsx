@@ -3,7 +3,9 @@ import type { ToastMessage, EmailMessage } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { sendEmail } from '../lib/mailService'
+import { MAILBOXES } from '../lib/mailboxes'
 import { useAuth } from '../contexts/AuthContext'
+import { ACCEPTED_DOCUMENT_TYPES } from '../lib/storage'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -18,7 +20,10 @@ interface ComposeState {
   subject: string
   body: string
   replyTo?: string
+  from?: string
 }
+
+const MAILBOX_LIST = Object.values(MAILBOXES)
 
 const FOLDER_ICONS: Record<Folder, string> = {
   inbox: '📥',
@@ -53,12 +58,14 @@ function formatFull(ts: string) {
 
 export default function Email({ showToast }: Props) {
   const { user, hasPermission } = useAuth()
+  const canChooseSender = user?.role === 'super_admin' || user?.role === 'admin'
   const [emails, setEmails] = useState<EmailMessage[]>([])
   const [loading, setLoading] = useState(true)
   const [folder, setFolder] = useState<Folder>('inbox')
   const [selected, setSelected] = useState<EmailMessage | null>(null)
   const [showCompose, setShowCompose] = useState(false)
   const [compose, setCompose] = useState<ComposeState>({ to: '', cc: '', subject: '', body: '' })
+  const [attachment, setAttachment] = useState<File | null>(null)
   const [search, setSearch] = useState('')
   const [sending, setSending] = useState(false)
 
@@ -114,8 +121,17 @@ export default function Email({ showToast }: Props) {
     }
     setSending(true)
     try {
-      const fromAddr = user?.email ?? 'noreply@tariqify.com'
+      const fromAddr = (canChooseSender && compose.from) || user?.email || 'noreply@enpassent.co.zw'
       const fromName = user?.name ?? 'Tariqify IMS'
+      let attachmentBase64: string | undefined
+      if (attachment) {
+        attachmentBase64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve((reader.result as string).split(',')[1] ?? '')
+          reader.onerror = reject
+          reader.readAsDataURL(attachment)
+        })
+      }
       const { email: sent, delivered, error } = await sendEmail({
         from: fromAddr,
         fromName,
@@ -124,10 +140,13 @@ export default function Email({ showToast }: Props) {
         subject: compose.subject.trim(),
         body: compose.body.trim(),
         folder: 'sent',
+        attachmentBase64,
+        attachmentFilename: attachment?.name,
       })
       setEmails(prev => [sent, ...prev])
       setShowCompose(false)
       setCompose({ to: '', cc: '', subject: '', body: '' })
+      setAttachment(null)
       if (delivered) showToast('success', `Email sent to ${compose.to}.`)
       else showToast('warning', error ?? `Email to ${compose.to} was recorded but not actually delivered.`)
     } finally {
@@ -171,7 +190,7 @@ export default function Email({ showToast }: Props) {
         <div className="email3-topbar">
           <button
             className="btn btn-primary"
-            onClick={() => { setCompose({ to: '', cc: '', subject: '', body: '' }); setShowCompose(true) }}
+            onClick={() => { setCompose({ to: '', cc: '', subject: '', body: '' }); setAttachment(null); setShowCompose(true) }}
           >
             ✉ Compose
           </button>
@@ -321,6 +340,15 @@ export default function Email({ showToast }: Props) {
               <button className="modal-close" onClick={() => setShowCompose(false)}>✕</button>
             </div>
             <div className="modal-body">
+              {canChooseSender && (
+                <div className="form-group">
+                  <label>From</label>
+                  <select className="form-control" value={compose.from ?? user?.email ?? ''} onChange={e => setCompose(p => ({ ...p, from: e.target.value }))}>
+                    <option value={user?.email ?? ''}>{user?.email} (my account)</option>
+                    {MAILBOX_LIST.map(addr => <option key={addr} value={addr}>{addr}</option>)}
+                  </select>
+                </div>
+              )}
               <div className="form-group">
                 <label>To *</label>
                 <input
@@ -357,6 +385,18 @@ export default function Email({ showToast }: Props) {
                   value={compose.body}
                   onChange={e => setCompose(p => ({ ...p, body: e.target.value }))}
                 />
+              </div>
+              <div className="form-group">
+                <label>Attachment</label>
+                {attachment ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+                    <span>📎 {attachment.name}</span>
+                    <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => setAttachment(null)}>Remove</button>
+                  </div>
+                ) : (
+                  <input type="file" accept={ACCEPTED_DOCUMENT_TYPES} onChange={e => setAttachment(e.target.files?.[0] ?? null)} style={{ fontSize: 12 }} />
+                )}
+                <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>PDF, Word, Excel, CSV, JPG, PNG, or WEBP — keep it under ~4MB for reliable delivery (it travels as base64 through the email function).</p>
               </div>
             </div>
             <div className="modal-footer">
