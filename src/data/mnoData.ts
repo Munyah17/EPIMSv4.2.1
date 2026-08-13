@@ -213,7 +213,7 @@ export const USSD_SESSIONS: UssdSession[] = Array.from({ length: 20 }, (_, i) =>
     startedAt: start,
     updatedAt: new Date(ago(i * 120000 + (done ? 3000 : 15000))).toISOString(),
     completedAt: done ? new Date(ago(i * 120000 + 2000)).toISOString() : undefined,
-    outcome: done ? (flow === 'register' ? 'Policy POL-2024-' + (9000 + i) + ' created' : 'Enquiry completed') : undefined,
+    outcome: done ? (flow === 'register' ? 'Policy POL2024' + (9000 + i) + ' created' : 'Enquiry completed') : undefined,
   }
 })
 
@@ -233,8 +233,8 @@ export const EXTERNAL_TRANSACTIONS: ExternalTransaction[] = Array.from({ length:
     currency: 'USD',
     type,
     status: confirmed ? 'confirmed' : (Math.random() > 0.5 ? 'pending' : 'failed'),
-    policyId: `POL-2024-${9000 + i}`,
-    policyNumber: `POL-2024-${String(9000 + i).padStart(6, '0')}`,
+    policyId: `POL2024${9000 + i}`,
+    policyNumber: `POL2024${String(9000 + i).padStart(6, '0')}`,
     ts: new Date(ago(i * 3600000 + Math.floor(Math.random() * 1800000))).toISOString(),
     confirmedAt: confirmed ? new Date(ago(i * 3600000)).toISOString() : undefined,
     failureReason: confirmed ? undefined : 'Insufficient wallet balance',

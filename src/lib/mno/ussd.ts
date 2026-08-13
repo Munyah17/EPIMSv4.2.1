@@ -203,7 +203,7 @@ export async function handleUssdAction(
           productId: prod.id, productName: prod.name, premium: prod.premium,
           coverAmount: prod.coverAmount, startDate: shortDate(),
           endDate: `${new Date().getFullYear() + 1}-${shortDate().slice(5)}`,
-          status: 'active', beneficiaries: [], paymentMethod: 'OneMoney',
+          status: 'active', dependants: [], paymentMethod: 'OneMoney',
           createdAt: shortDate(),
         })
         mnoStore.ussdSessions.update(session.id, { policyId: policy.id, customerId: client.id, outcome: `Policy ${policyNumber} created` })

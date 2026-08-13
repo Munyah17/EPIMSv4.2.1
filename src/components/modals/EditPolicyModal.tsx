@@ -60,7 +60,7 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
             <div className="form-group">
               <label>Payment Method</label>
               <select className="form-control" value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}>
-                {['OneMoney', 'InnBucks', 'Airtime Balance', 'Bank Transfer', 'Cash', 'Debit Order', 'EcoCash'].map(m => (
+                {['OneMoney', 'InnBucks', 'Airtime Balance', 'Bank Transfer', 'Cash', 'Debit Order', 'Stop Order', 'EcoCash'].map(m => (
                   <option key={m} value={m}>{m}</option>
                 ))}
               </select>

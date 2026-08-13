@@ -230,7 +230,7 @@ async function createPolicy(admin: SupabaseClient, body: Json, agentId: string) 
   const endDate = new Date(startDate)
   endDate.setFullYear(endDate.getFullYear() + 1)
 
-  const beneficiaries = Array.isArray(body.beneficiaries) ? body.beneficiaries : []
+  const dependants = Array.isArray(body.dependants) ? body.dependants : []
 
   const { data, error } = await admin.from('policies').insert({
     policy_number: refNumber('API'),
@@ -241,7 +241,7 @@ async function createPolicy(admin: SupabaseClient, body: Json, agentId: string) 
     start_date: startDate.toISOString().split('T')[0],
     end_date: endDate.toISOString().split('T')[0],
     status: 'pending',
-    beneficiaries,
+    dependants,
     payment_method: paymentMethod,
     agent_id: agentId,
   }).select('id, policy_number').single()

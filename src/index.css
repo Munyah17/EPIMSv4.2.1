@@ -491,6 +491,7 @@ tbody tr:hover td{background:var(--surface)}
 .product-card-header-accident{border-bottom-color:var(--gold)}
 .product-card-header-motor{border-bottom-color:var(--danger)}
 .product-card-header-property{border-bottom-color:var(--muted)}
+.product-card-header-agriculture{border-bottom-color:var(--success)}
 .product-name{font-size:14px;font-weight:500;color:var(--text)}
 .product-code{font-size:10px;color:var(--muted);margin-top:2px;font-family:monospace}
 .product-stats{display:grid;grid-template-columns:1fr 1fr;gap:8px}

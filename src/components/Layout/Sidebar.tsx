@@ -25,15 +25,21 @@ interface NavSection {
   items: NavItem[]
 }
 
+// Policies and Products live together under one collapsible group rather
+// than as two separate top-level items — they're closely related, and it
+// keeps the main section shorter.
+const POLICIES_PRODUCTS_GROUP: NavItem[] = [
+  { id: 'policies', label: 'Policies', icon: '🛡' },
+  { id: 'products', label: 'Products', icon: '📦', roles: ['super_admin', 'admin', 'policy_admin'] },
+]
+
 const STAFF_SECTIONS: NavSection[] = [
   {
     label: 'MAIN',
     items: [
       { id: 'dashboard', label: 'Dashboard', icon: '⊞' },
-      { id: 'policies', label: 'Policies', icon: '🛡' },
       { id: 'claims', label: 'Claims', icon: '📋' },
       { id: 'payments', label: 'Payments', icon: '💳' },
-      { id: 'products', label: 'Products', icon: '📦', roles: ['super_admin', 'admin', 'policy_admin'] },
     ],
   },
   {
@@ -93,6 +99,7 @@ const CLIENT_NAV: NavItem[] = [
 export default function Sidebar({ activePanel, setActivePanel, isOpen, onClose }: SidebarProps) {
   const { user, canAccess } = useAuth()
   const [counts, setCounts] = useState<SidebarCounts | null>(null)
+  const [policiesGroupOpen, setPoliciesGroupOpen] = useState(activePanel === 'policies' || activePanel === 'products')
 
   useEffect(() => {
     if (!user || user.role === 'policyholder') return
@@ -130,7 +137,13 @@ export default function Sidebar({ activePanel, setActivePanel, isOpen, onClose }
             if (item.roles && !item.roles.includes(user.role)) return false
             return canAccess(item.id)
           })
-          if (!visible.length) return null
+          const groupItems = section.label === 'MAIN'
+            ? POLICIES_PRODUCTS_GROUP.filter(item => {
+              if (item.roles && !item.roles.includes(user.role)) return false
+              return canAccess(item.id)
+            })
+            : []
+          if (!visible.length && !groupItems.length) return null
           return (
             <div key={section.label}>
               <span className="nav-sec">{section.label}</span>
@@ -142,6 +155,29 @@ export default function Sidebar({ activePanel, setActivePanel, isOpen, onClose }
                   <NavBtn key={item.id} item={{ ...item, badge: resolved }} active={activePanel === item.id} onClick={() => setActivePanel(item.id)} />
                 )
               })}
+              {groupItems.length > 0 && (
+                <>
+                  <button
+                    type="button"
+                    className={`nav-item${groupItems.some(i => i.id === activePanel) ? ' active' : ''}`}
+                    onClick={() => setPoliciesGroupOpen(o => !o)}
+                  >
+                    <span className="nav-icon">🛡</span>
+                    <span className="nav-label">Policies &amp; Products</span>
+                    <span style={{ fontSize: 10, opacity: 0.6 }}>{policiesGroupOpen ? '▾' : '▸'}</span>
+                  </button>
+                  {policiesGroupOpen && groupItems.map(item => {
+                    const countKey = BADGE_COUNT_KEYS[item.id]
+                    const liveBadge = countKey && counts ? counts[countKey] : undefined
+                    const resolved = liveBadge !== undefined ? (liveBadge > 0 ? liveBadge : undefined) : item.badge
+                    return (
+                      <div key={item.id} style={{ paddingLeft: 16 }}>
+                        <NavBtn item={{ ...item, badge: resolved }} active={activePanel === item.id} onClick={() => setActivePanel(item.id)} />
+                      </div>
+                    )
+                  })}
+                </>
+              )}
             </div>
           )
         })}

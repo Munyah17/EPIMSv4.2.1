@@ -112,7 +112,7 @@ function toPolicy(r: any): Policy {
     startDate:       date(r.start_date),
     endDate:         date(r.end_date),
     status:          r.status as PolicyStatus,
-    beneficiaries:   r.beneficiaries ?? [],
+    dependants:      r.dependants ?? [],
     paymentMethod:   r.payment_method,
     insurer:         r.insurer ?? undefined,
     agentId:         r.profiles?.id ?? r.agent_id,
@@ -275,7 +275,7 @@ function toCautionFlag(r: any): CautionFlag {
 // ── SELECT strings ────────────────────────────────────────────────
 const POLICY_SELECT = `
   id, policy_number, client_id, product_id, premium, cover_amount,
-  start_date, end_date, status, beneficiaries, payment_method, insurer,
+  start_date, end_date, status, dependants, payment_method, insurer,
   agent_id, next_payment_date, last_payment_date, created_at,
   clients!client_id(id, name),
   products!product_id(id, name),
@@ -347,7 +347,7 @@ export const policies = {
       product_id: policy.productId, premium: policy.premium,
       cover_amount: policy.coverAmount, start_date: policy.startDate,
       end_date: policy.endDate, status: policy.status,
-      beneficiaries: policy.beneficiaries, payment_method: policy.paymentMethod,
+      dependants: policy.dependants, payment_method: policy.paymentMethod,
       insurer: policy.insurer ?? null,
       agent_id: policy.agentId ?? null, next_payment_date: policy.nextPaymentDate ?? null,
     }
@@ -366,7 +366,7 @@ export const policies = {
     if (updates.paymentMethod)                       row.payment_method     = updates.paymentMethod
     if (updates.insurer !== undefined)               row.insurer            = updates.insurer ?? null
     if (updates.nextPaymentDate !== undefined)        row.next_payment_date  = updates.nextPaymentDate ?? null
-    if (updates.beneficiaries)                       row.beneficiaries      = updates.beneficiaries
+    if (updates.dependants)                          row.dependants         = updates.dependants
     if (updates.premium !== undefined)               row.premium            = updates.premium
     if (updates.coverAmount !== undefined)           row.cover_amount       = updates.coverAmount
     if (updates.endDate !== undefined)               row.end_date           = updates.endDate
@@ -395,6 +395,18 @@ export const clients = {
     }
     local('clients', 'read')
     return { data: localStore.clients.list(), error: null }
+  },
+
+  async get(id: string) {
+    const { ok, data } = await sb('clients', 'read',
+      () => supabase.from('clients').select('*, policies(count)').eq('id', id).single(),
+    )
+    if (ok && data) return {
+      data: toClient({ ...(data as Record<string, unknown>), policy_count: ((data as Record<string, unknown>).policies as {count:number}[])?.[0]?.count ?? 0 }),
+      error: null,
+    }
+    local('clients', 'read')
+    return { data: localStore.clients.list().find(c => c.id === id) ?? null, error: null }
   },
 
   async create(client: Omit<Client, 'id' | 'policyCount'>) {

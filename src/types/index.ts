@@ -39,10 +39,19 @@ export interface Client {
   status: 'active' | 'inactive'
 }
 
-export interface Beneficiary {
+/** A person the policyholder carries on their policy and pays cover for
+ *  independently — not a payout-share beneficiary. Each dependant is tied
+ *  to their own chosen plan/premium (never more than the policyholder's
+ *  own premium); the policyholder's plan does not automatically cover
+ *  them. Optional — a policy can have zero dependants. */
+export interface Dependant {
   name: string
   relationship: string
-  percentage: number
+  dob: string
+  nationalId: string
+  productId?: string
+  productName?: string
+  premium?: number
   phone?: string
 }
 
@@ -60,7 +69,7 @@ export interface Policy {
   startDate: string
   endDate: string
   status: PolicyStatus
-  beneficiaries: Beneficiary[]
+  dependants: Dependant[]
   paymentMethod: string
   insurer?: Insurer
   agentId?: string
@@ -74,7 +83,7 @@ export interface Product {
   id: string
   name: string
   code: string
-  category: 'life' | 'funeral' | 'health' | 'accident' | 'motor' | 'property'
+  category: 'life' | 'funeral' | 'health' | 'accident' | 'motor' | 'property' | 'agriculture'
   premium: number
   coverAmount: number
   waitingPeriodDays: number
@@ -110,7 +119,7 @@ export interface Claim {
   resolvedAt?: string
 }
 
-export type PaymentMethod = 'OneMoney' | 'InnBucks' | 'Airtime Balance' | 'Bank Transfer' | 'Cash' | 'Debit Order' | 'Paynow' | 'Zipit' | 'EcoCash'
+export type PaymentMethod = 'OneMoney' | 'InnBucks' | 'Airtime Balance' | 'Bank Transfer' | 'Cash' | 'Debit Order' | 'Stop Order' | 'Paynow' | 'Zipit' | 'EcoCash'
 
 export type PaymentStatus = 'completed' | 'pending' | 'failed' | 'reversed'
 

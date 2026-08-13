@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import type { Policy, Beneficiary, Insurer, Client, Product, AppUser } from '../../types'
+import type { Policy, Dependant, Insurer, Client, Product, AppUser } from '../../types'
 import { db } from '../../lib/db'
 import { useAuth } from '../../contexts/AuthContext'
 import PhoneInput from '../ui/PhoneInput'
@@ -22,16 +22,17 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
   const [clientDob, setClientDob] = useState('')
   const [clientAddress, setClientAddress] = useState('')
   const [clientOccupation, setClientOccupation] = useState('')
-  const [clientInsurer, setClientInsurer] = useState<Insurer | ''>('')
-  
+  // One insurer per policy — asked once, applied to both the client record
+  // and the policy itself (this modal used to ask twice for the same thing).
+  const [insurer, setInsurer] = useState<Insurer | ''>('')
+
   // Policy fields
   const [productId, setProductId] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('OneMoney')
-  const [policyInsurer, setPolicyInsurer] = useState<Insurer | ''>('')
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0])
-  const [beneficiaries, setBeneficiaries] = useState<Beneficiary[]>([
-    { name: '', relationship: '', percentage: 100 }
-  ])
+  // Optional — a policy can carry zero dependants, so this starts empty
+  // rather than seeding a mandatory first row.
+  const [dependants, setDependants] = useState<Dependant[]>([])
   const [agentId, setAgentId] = useState('')
   const [products, setProducts] = useState<Product[]>([])
   const [productsLoading, setProductsLoading] = useState(true)
@@ -49,22 +50,46 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
     })
   }, [user])
 
-  const addBeneficiary = () => {
-    setBeneficiaries(prev => [...prev, { name: '', relationship: '', percentage: 0 }])
+  const addDependant = () => {
+    setDependants(prev => [...prev, { name: '', relationship: '', dob: '', nationalId: '' }])
   }
 
-  const updateBeneficiary = (i: number, field: keyof Beneficiary, value: string | number) => {
-    setBeneficiaries(prev => prev.map((b, idx) => idx === i ? { ...b, [field]: value } : b))
+  const removeDependant = (i: number) => {
+    setDependants(prev => prev.filter((_, idx) => idx !== i))
   }
+
+  const updateDependant = (i: number, field: keyof Dependant, value: string) => {
+    setDependants(prev => prev.map((d, idx) => {
+      if (idx !== i) return d
+      const next = { ...d, [field]: value }
+      if (field === 'productId') {
+        const plan = products.find(p => p.id === value)
+        next.productName = plan?.name
+        next.premium = plan?.premium
+      }
+      return next
+    }))
+  }
+
+  const clientAge = clientDob ? Math.floor((Date.now() - new Date(clientDob).getTime()) / (365.25 * 24 * 3600 * 1000)) : null
 
   const handleSave = async () => {
-    if (!clientName || !clientPhone || !clientNationalId || !productId) {
-      if (showToast) showToast('error', 'Please fill in all required fields.')
+    if (!clientName || !clientPhone || !clientNationalId || !clientDob || !productId) {
+      if (showToast) showToast('error', 'Please fill in all required fields, including date of birth.')
       return
     }
-    const incompleteBeneficiary = beneficiaries.find(b => b.percentage > 0 && !b.name.trim())
-    if (incompleteBeneficiary) {
-      if (showToast) showToast('error', 'Enter a name for every beneficiary with a share percentage.')
+    if (clientAge !== null && clientAge < 18) {
+      if (showToast) showToast('error', 'The policyholder must be at least 18 years old.')
+      return
+    }
+    const incompleteDependant = dependants.find(d => d.name.trim() && (!d.dob || !d.nationalId.trim()))
+    if (incompleteDependant) {
+      if (showToast) showToast('error', 'Enter date of birth and ID number for every dependant.')
+      return
+    }
+    const overPremium = dependants.find(d => (d.premium ?? 0) > product!.premium)
+    if (overPremium) {
+      if (showToast) showToast('error', `${overPremium.name || 'A dependant'}'s plan premium cannot exceed the policyholder's premium.`)
       return
     }
 
@@ -78,7 +103,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
       dob: clientDob,
       address: clientAddress,
       occupation: clientOccupation,
-      insurer: clientInsurer || undefined,
+      insurer: insurer || undefined,
       createdAt: new Date().toISOString().split('T')[0],
       policyCount: 0,
       status: 'active',
@@ -106,9 +131,9 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
       startDate,
       endDate: endDate.toISOString().split('T')[0],
       status: 'active',
-      beneficiaries,
+      dependants,
       paymentMethod,
-      insurer: policyInsurer || undefined,
+      insurer: insurer || undefined,
       createdAt: new Date().toISOString().split('T')[0],
       nextPaymentDate: new Date(new Date(startDate).setMonth(new Date(startDate).getMonth() + 1)).toISOString().split('T')[0],
       agentId: agentId || undefined,
@@ -143,12 +168,12 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
             </div>
             <div className="form-group">
               <label>National ID *</label>
-              <input className="form-control" placeholder="e.g. 12-345678-A-12" value={clientNationalId} onChange={e => setClientNationalId(e.target.value)} />
+              <input className="form-control" placeholder="e.g. 632118532K12" value={clientNationalId} onChange={e => setClientNationalId(e.target.value)} />
             </div>
           </div>
           <div className="form-row">
             <div className="form-group">
-              <label>Date of Birth</label>
+              <label>Date of Birth * (policyholder must be 18+)</label>
               <input type="date" className="form-control" value={clientDob} onChange={e => setClientDob(e.target.value)} />
             </div>
             <div className="form-group">
@@ -160,21 +185,14 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
             <label>Address</label>
             <input className="form-control" placeholder="Street address, city" value={clientAddress} onChange={e => setClientAddress(e.target.value)} />
           </div>
-          <div className="form-group">
-            <label>Client Insurer</label>
-            <select className="form-control" value={clientInsurer} onChange={e => setClientInsurer(e.target.value as Insurer)}>
-              <option value="">Select insurer…</option>
-              {INSURERS.map(i => <option key={i} value={i}>{i}</option>)}
-            </select>
-          </div>
-          
+
           <h4 style={{ marginBottom: '1rem', marginTop: '1.5rem' }}>Policy Information</h4>
           <div className="form-row">
             <div className="form-group">
               <label>Product *</label>
               <select className="form-control" value={productId} onChange={e => setProductId(e.target.value)} disabled={productsLoading}>
                 <option value="">{productsLoading ? 'Loading products…' : 'Select product…'}</option>
-                {products.filter(p => p.active).map(p => <option key={p.id} value={p.id}>{p.name} — ${p.premium}/mo</option>)}
+                {products.filter(p => p.active).map(p => <option key={p.id} value={p.id}>{p.name} (${p.premium}/mo)</option>)}
               </select>
             </div>
             <div className="form-group">
@@ -191,14 +209,14 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
             <div className="form-group">
               <label>Payment Method *</label>
               <select className="form-control" value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}>
-                {['OneMoney', 'InnBucks', 'Airtime Balance', 'Bank Transfer', 'Cash', 'Debit Order', 'EcoCash'].map(m => (
+                {['OneMoney', 'InnBucks', 'Airtime Balance', 'Bank Transfer', 'Cash', 'Debit Order', 'Stop Order', 'EcoCash'].map(m => (
                   <option key={m} value={m}>{m}</option>
                 ))}
               </select>
             </div>
             <div className="form-group">
-              <label>Policy Insurer</label>
-              <select className="form-control" value={policyInsurer} onChange={e => setPolicyInsurer(e.target.value as Insurer)}>
+              <label>Insurer</label>
+              <select className="form-control" value={insurer} onChange={e => setInsurer(e.target.value as Insurer)}>
                 <option value="">Select insurer…</option>
                 {INSURERS.map(i => <option key={i} value={i}>{i}</option>)}
               </select>
@@ -208,27 +226,42 @@ export default function NewPolicyModal({ onClose, onSave, showToast }: Props) {
             <label>Agent</label>
             <select className="form-control" value={agentId} onChange={e => setAgentId(e.target.value)}>
               <option value="">Unassigned</option>
-              {staff.map(s => <option key={s.id} value={s.id}>{s.name} — {s.role.replace(/_/g, ' ')}</option>)}
+              {staff.map(s => <option key={s.id} value={s.id}>{s.name} ({s.role.replace(/_/g, ' ')})</option>)}
             </select>
           </div>
 
           <div style={{ marginTop: '1rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <label>Beneficiaries</label>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={addBeneficiary}>+ Add</button>
+              <label>Dependants (optional — carried and paid for by the policyholder)</label>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={addDependant}>+ Add Dependant</button>
             </div>
-            <div className="form-row" style={{ marginBottom: 4 }}>
-              <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>Name</span>
-              <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>Relationship</span>
-              <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, width: 80 }}>Share %</span>
-            </div>
-            {beneficiaries.map((b, i) => (
-              <div key={i} className="form-row" style={{ marginBottom: 8 }}>
-                <input className="form-control" placeholder="Name" value={b.name} onChange={e => updateBeneficiary(i, 'name', e.target.value)} />
-                <input className="form-control" placeholder="Relationship" value={b.relationship} onChange={e => updateBeneficiary(i, 'relationship', e.target.value)} />
-                <input className="form-control" type="number" placeholder="Share %" min={0} max={100} value={b.percentage} onChange={e => updateBeneficiary(i, 'percentage', Number(e.target.value))} style={{ width: 80 }} />
-              </div>
-            ))}
+            {dependants.length === 0 ? (
+              <p style={{ fontSize: 12, color: 'var(--muted)' }}>No dependants added.</p>
+            ) : (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr 1fr auto', gap: 8, marginBottom: 4 }}>
+                  <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>Name</span>
+                  <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>Relationship</span>
+                  <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>Date of Birth</span>
+                  <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>ID Number</span>
+                  <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>Plan</span>
+                  <span />
+                </div>
+                {dependants.map((d, i) => (
+                  <div key={i} style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr 1fr 1fr auto', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+                    <input className="form-control" placeholder="Name" value={d.name} onChange={e => updateDependant(i, 'name', e.target.value)} />
+                    <input className="form-control" placeholder="Relationship" value={d.relationship} onChange={e => updateDependant(i, 'relationship', e.target.value)} />
+                    <input type="date" className="form-control" value={d.dob} onChange={e => updateDependant(i, 'dob', e.target.value)} />
+                    <input className="form-control" placeholder="e.g. 632118532K12" value={d.nationalId} onChange={e => updateDependant(i, 'nationalId', e.target.value)} />
+                    <select className="form-control" value={d.productId ?? ''} onChange={e => updateDependant(i, 'productId', e.target.value)}>
+                      <option value="">Select plan…</option>
+                      {products.filter(p => p.active).map(p => <option key={p.id} value={p.id}>{p.name} (${p.premium})</option>)}
+                    </select>
+                    <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => removeDependant(i)} title="Remove dependant">✕</button>
+                  </div>
+                ))}
+              </>
+            )}
           </div>
         </div>
         <div className="modal-footer">

@@ -9,7 +9,7 @@ interface Props {
   onSave: (payment: Payment) => void
 }
 
-const METHODS: PaymentMethod[] = ['OneMoney', 'InnBucks', 'Airtime Balance', 'Bank Transfer', 'Cash', 'Debit Order', 'EcoCash']
+const METHODS: PaymentMethod[] = ['OneMoney', 'InnBucks', 'Airtime Balance', 'Bank Transfer', 'Cash', 'Debit Order', 'Stop Order', 'EcoCash']
 
 export default function RecordPaymentModal({ policyId: initialPolicyId, onClose, onSave }: Props) {
   const [allPolicies, setAllPolicies] = useState<Policy[] | null>(null)

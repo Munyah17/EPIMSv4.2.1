@@ -95,7 +95,7 @@ export default function Payments({ showToast }: Props) {
           />
           <select title="Filter by method" className="filter-select" value={methodFilter} onChange={e => setMethodFilter(e.target.value as PaymentMethod | 'all')}>
             <option value="all">All Methods</option>
-            {(['OneMoney', 'InnBucks', 'Airtime Balance', 'Bank Transfer', 'Cash', 'Debit Order', 'EcoCash'] as PaymentMethod[]).map(m => (
+            {(['OneMoney', 'InnBucks', 'Airtime Balance', 'Bank Transfer', 'Cash', 'Debit Order', 'Stop Order', 'EcoCash'] as PaymentMethod[]).map(m => (
               <option key={m} value={m}>{m}</option>
             ))}
           </select>

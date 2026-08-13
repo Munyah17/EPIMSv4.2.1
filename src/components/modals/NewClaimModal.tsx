@@ -12,7 +12,7 @@ export default function NewClaimModal({ onClose, onSave }: Props) {
   const [policies, setPolicies] = useState<Policy[]>([])
   const [allClaims, setAllClaims] = useState<Claim[]>([])
   const [loading, setLoading] = useState(true)
-  const [policyId, setPolicyId] = useState('')
+  const [policyNumberInput, setPolicyNumberInput] = useState('')
   const [claimType, setClaimType] = useState('Death Benefit')
   const [amount, setAmount] = useState('')
   const [dateOfEvent, setDateOfEvent] = useState('')
@@ -27,7 +27,8 @@ export default function NewClaimModal({ onClose, onSave }: Props) {
     })
   }, [])
 
-  const policy = policies.find(p => p.id === policyId)
+  const policy = policies.find(p => p.policyNumber.toLowerCase() === policyNumberInput.trim().toLowerCase())
+  const policyId = policy?.id ?? ''
 
   // Auto-fill amount when policy is selected
   useEffect(() => {
@@ -88,23 +89,27 @@ export default function NewClaimModal({ onClose, onSave }: Props) {
         </div>
         <div className="modal-body">
           <div className="form-group">
-            <label>Policy *</label>
-            {loading ? (
-              <select className="form-control" disabled>
-                <option>Loading policies…</option>
-              </select>
-            ) : (
-              <select className="form-control" value={policyId} onChange={e => setPolicyId(e.target.value)}>
-                <option value="">Select policy…</option>
-                {policies.map(p => (
-                  <option key={p.id} value={p.id}>{p.policyNumber} — {p.clientName} ({p.productName})</option>
-                ))}
-              </select>
-            )}
+            <label>Policy Number *</label>
+            <input
+              className="form-control"
+              list="claim-policy-numbers"
+              placeholder={loading ? 'Loading policies…' : 'Enter or select a policy number'}
+              value={policyNumberInput}
+              onChange={e => setPolicyNumberInput(e.target.value)}
+              disabled={loading}
+            />
+            <datalist id="claim-policy-numbers">
+              {policies.map(p => <option key={p.id} value={p.policyNumber} />)}
+            </datalist>
           </div>
+          {policyNumberInput.trim() && !policy && !loading && (
+            <div className="info-banner info-banner-warning" style={{ marginBottom: '1rem' }}>
+              No policy found with that number.
+            </div>
+          )}
           {policy && (
             <div className="info-banner info-banner-info" style={{ marginBottom: '1rem' }}>
-              Max cover: ${policy.coverAmount.toLocaleString()} · Status: {policy.status}
+              {policy.clientName} · {policy.productName} · Max cover: ${policy.coverAmount.toLocaleString()} · Status: {policy.status}
             </div>
           )}
           <div className="form-row">

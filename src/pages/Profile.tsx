@@ -82,11 +82,11 @@ export default function Profile({ showToast }: Props) {
   }
 
   const auditLog = [
-    { action: 'Login', detail: 'Signed in from 192.168.1.1', time: '2026-05-09 08:00' },
-    { action: 'Policy Created', detail: 'Policy EMA-2024-010 for Munyaradzi Gumbo', time: '2026-05-08 14:30' },
-    { action: 'Claim Updated', detail: 'Claim CLM-2026-001 status → under_review', time: '2026-05-08 10:15' },
-    { action: 'Login', detail: 'Signed in from 192.168.1.1', time: '2026-05-08 08:00' },
-    { action: 'Staff Password Reset', detail: 'Reset for Blessing Moyo', time: '2026-05-07 16:45' },
+    { action: 'Login', detail: 'Signed in from 192.168.1.1', time: '09-MAY-2026 08:00' },
+    { action: 'Policy Created', detail: 'Policy EMA2024010 for Munyaradzi Gumbo', time: '08-MAY-2026 14:30' },
+    { action: 'Claim Updated', detail: 'Claim CLM2026001 status changed to under_review', time: '08-MAY-2026 10:15' },
+    { action: 'Login', detail: 'Signed in from 192.168.1.1', time: '08-MAY-2026 08:00' },
+    { action: 'Staff Password Reset', detail: 'Reset for Blessing Moyo', time: '07-MAY-2026 16:45' },
   ]
 
   return (

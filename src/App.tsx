@@ -70,7 +70,9 @@ function AppInner() {
   const showToast = useCallback((type: ToastMessage['type'], message: string) => {
     const id = Date.now().toString()
     setToasts(prev => [...prev, { id, type, message }])
-    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000)
+    // Stays up to 15s so it's actually readable — the user can also close
+    // it early via the toast's own dismiss button (see Toast.tsx).
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 15000)
   }, [])
 
   const dismissToast = useCallback((id: string) => {

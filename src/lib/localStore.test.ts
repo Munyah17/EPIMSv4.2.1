@@ -15,7 +15,7 @@ describe('localStore (browser-local fallback used by db.ts)', () => {
     const before = localStore.clients.list().length
     const created = localStore.clients.create({
       id: 'test-client-1', name: 'Test Client', email: 't@example.com', phone: '0770000000',
-      nationalId: '00-000000-A00', dob: '1990-01-01', address: 'Test address',
+      nationalId: '00000000A00', dob: '1990-01-01', address: 'Test address',
       createdAt: '2026-01-01', policyCount: 0, status: 'active',
     })
     expect(created.id).toBe('test-client-1')
@@ -27,7 +27,7 @@ describe('localStore (browser-local fallback used by db.ts)', () => {
   it('update() patches an existing row and returns it', () => {
     localStore.clients.create({
       id: 'test-client-2', name: 'Before', email: 't2@example.com', phone: '0770000001',
-      nationalId: '00-000001-A00', dob: '1990-01-01', address: 'Addr',
+      nationalId: '00000001A00', dob: '1990-01-01', address: 'Addr',
       createdAt: '2026-01-01', policyCount: 0, status: 'active',
     })
     const updated = localStore.clients.update('test-client-2', { name: 'After' })
@@ -42,7 +42,7 @@ describe('localStore (browser-local fallback used by db.ts)', () => {
   it('delete() removes the row', () => {
     localStore.clients.create({
       id: 'test-client-3', name: 'ToDelete', email: 't3@example.com', phone: '0770000002',
-      nationalId: '00-000002-A00', dob: '1990-01-01', address: 'Addr',
+      nationalId: '00000002A00', dob: '1990-01-01', address: 'Addr',
       createdAt: '2026-01-01', policyCount: 0, status: 'active',
     })
     localStore.clients.delete('test-client-3')

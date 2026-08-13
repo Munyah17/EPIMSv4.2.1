@@ -3,6 +3,7 @@ import type { ToastMessage, Policy, PolicyStatus, CautionFlag } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
+import { exportPolicyReport } from '../lib/exportUtils'
 import NewPolicyModal from '../components/modals/NewPolicyModal'
 import ViewPolicyModal from '../components/modals/ViewPolicyModal'
 import EditPolicyModal from '../components/modals/EditPolicyModal'
@@ -69,6 +70,22 @@ export default function Policies({ showToast }: Props) {
     setEditPolicy(null)
   }
 
+  // Funeral packages use a different document elsewhere in the flow —
+  // this report is for all other product categories.
+  const handlePrint = async (policy: Policy) => {
+    const [{ data: client }, { data: allProducts }] = await Promise.all([
+      db.clients.get(policy.clientId),
+      db.products.list(),
+    ])
+    const category = allProducts?.find(pr => pr.id === policy.productId)?.category
+    if (category === 'funeral') {
+      showToast('warning', 'Printed policy reports are not available for funeral packages.')
+      return
+    }
+    if (!client) { showToast('error', 'Could not load client details for this policy.'); return }
+    await exportPolicyReport(policy, client, category ?? '')
+  }
+
   return (
     <div className="panel">
       <div className="panel-toolbar">
@@ -133,6 +150,7 @@ export default function Policies({ showToast }: Props) {
                     <div className="action-btns">
                       <button type="button" className="btn btn-ghost btn-sm" onClick={() => setViewPolicy(p)}>View</button>
                       <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditPolicy(p)}>Edit</button>
+                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => handlePrint(p)}>Print</button>
                       <button type="button" className="btn btn-primary btn-sm" onClick={() => setPayPolicy(p)}>Pay Online</button>
                     </div>
                   </td>
@@ -155,6 +173,7 @@ export default function Policies({ showToast }: Props) {
           policy={viewPolicy}
           onClose={() => setViewPolicy(null)}
           onEdit={() => { setEditPolicy(viewPolicy); setViewPolicy(null) }}
+          onPrint={() => handlePrint(viewPolicy)}
         />
       )}
       {editPolicy && (

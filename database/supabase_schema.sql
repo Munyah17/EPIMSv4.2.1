@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS public.products (
   id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name                TEXT NOT NULL,
   code                TEXT NOT NULL UNIQUE,
-  category            TEXT NOT NULL CHECK (category IN ('life','funeral','health','accident','motor','property')),
+  category            TEXT NOT NULL CHECK (category IN ('life','funeral','health','accident','motor','property','agriculture')),
   premium             NUMERIC(10,2) NOT NULL,
   cover_amount        NUMERIC(14,2) NOT NULL,
   waiting_period_days INT NOT NULL DEFAULT 30,
@@ -76,7 +76,7 @@ CREATE TABLE IF NOT EXISTS public.policies (
   end_date          DATE NOT NULL,
   status            TEXT NOT NULL DEFAULT 'active'
                       CHECK (status IN ('active','lapsed','cancelled','pending','expired')),
-  beneficiaries     JSONB NOT NULL DEFAULT '[]',
+  dependants        JSONB NOT NULL DEFAULT '[]',
   payment_method    TEXT NOT NULL,
   insurer           TEXT,
   agent_id          UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
@@ -112,7 +112,7 @@ CREATE TABLE IF NOT EXISTS public.payments (
   reference      TEXT NOT NULL UNIQUE,
   policy_id      UUID NOT NULL REFERENCES public.policies(id) ON DELETE RESTRICT,
   amount         NUMERIC(10,2) NOT NULL,
-  method         TEXT NOT NULL CHECK (method IN ('EcoCash','OneMoney','InnBucks','Bank Transfer','Cash','Debit Order')),
+  method         TEXT NOT NULL CHECK (method IN ('EcoCash','OneMoney','InnBucks','Airtime Balance','Bank Transfer','Cash','Debit Order','Stop Order','Paynow','Zipit')),
   status         TEXT NOT NULL DEFAULT 'completed'
                    CHECK (status IN ('completed','pending','failed','reversed')),
   payment_date   DATE NOT NULL DEFAULT CURRENT_DATE,

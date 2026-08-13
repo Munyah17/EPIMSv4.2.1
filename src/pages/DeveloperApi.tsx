@@ -73,10 +73,6 @@ export default function DeveloperApi({ showToast }: Props) {
 
   return (
     <div className="panel">
-      <div className="info-banner info-banner-info" style={{ marginBottom: 16 }}>
-        🔌 External developers integrate with <code>/api/v1/…</code> using an issued API key to sell your insurance products through their own apps. Every policy they create is attributed to them as an agent, so their commission is tracked automatically using the rate below (or the default rate set in Settings → Agent Commission).
-      </div>
-
       {!canEdit && (
         <div className="info-banner info-banner-warning" style={{ marginBottom: 16 }}>
           🔒 Read-only — only Super Admin or Admin accounts can register developers or issue keys.

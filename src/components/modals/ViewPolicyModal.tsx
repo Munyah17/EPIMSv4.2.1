@@ -5,9 +5,12 @@ interface Props {
   policy: Policy
   onClose: () => void
   onEdit: () => void
+  /** Omitted when the policy's product isn't loaded yet or is a funeral
+   *  package — printed reports aren't offered for those. */
+  onPrint?: () => void
 }
 
-export default function ViewPolicyModal({ policy, onClose, onEdit }: Props) {
+export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint }: Props) {
   return (
     <div className="modal-overlay">
       <div className="modal">
@@ -31,17 +34,19 @@ export default function ViewPolicyModal({ policy, onClose, onEdit }: Props) {
             <div className="detail-item"><span className="detail-label">Agent</span><span>{policy.agentName ?? '—'}</span></div>
           </div>
 
-          {policy.beneficiaries.length > 0 && (
+          {policy.dependants.length > 0 && (
             <div style={{ marginTop: '1.5rem' }}>
-              <h4 style={{ marginBottom: '0.75rem' }}>Beneficiaries</h4>
+              <h4 style={{ marginBottom: '0.75rem' }}>Dependants</h4>
               <table className="table">
-                <thead><tr><th>Name</th><th>Relationship</th><th>Share</th></tr></thead>
+                <thead><tr><th>Name</th><th>Relationship</th><th>Date of Birth</th><th>ID Number</th><th>Plan</th></tr></thead>
                 <tbody>
-                  {policy.beneficiaries.map((b, i) => (
+                  {policy.dependants.map((d, i) => (
                     <tr key={i}>
-                      <td>{b.name}</td>
-                      <td>{b.relationship}</td>
-                      <td>{b.percentage}%</td>
+                      <td>{d.name}</td>
+                      <td>{d.relationship}</td>
+                      <td>{formatDate(d.dob)}</td>
+                      <td>{d.nationalId}</td>
+                      <td>{d.productName ?? '—'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -51,6 +56,7 @@ export default function ViewPolicyModal({ policy, onClose, onEdit }: Props) {
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Close</button>
+          {onPrint && <button className="btn btn-ghost" onClick={onPrint}>Print Policy</button>}
           <button className="btn btn-primary" onClick={onEdit}>Edit Policy</button>
         </div>
       </div>

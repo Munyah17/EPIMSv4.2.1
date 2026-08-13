@@ -67,6 +67,7 @@ export default function AddProductModal({ product, onClose, onSave }: Props) {
                 <option value="accident">Accident</option>
                 <option value="motor">Motor</option>
                 <option value="property">Property</option>
+                <option value="agriculture">Agriculture (Annual)</option>
               </select>
             </div>
             <div className="form-group">

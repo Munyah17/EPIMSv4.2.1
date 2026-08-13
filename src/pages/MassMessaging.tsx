@@ -165,7 +165,7 @@ export default function MassMessaging({ showToast }: Props) {
                     'Dear client, your insurance premium is due. Please pay to maintain your cover.',
                     'Important: Our offices will be closed on [DATE]. Normal operations resume [DATE].',
                     'Exciting news! New affordable insurance products now available. Reply YES for details.',
-                    'Reminder: Please update your contact details and beneficiaries. Visit our office or app.',
+                    'Reminder: Please update your contact details and dependants. Visit our office or app.',
                   ].map((t, i) => (
                     <button key={i} className="btn btn-secondary btn-sm" onClick={() => setMessage(t)}>
                       Template {i + 1}
