@@ -2,7 +2,7 @@ import { useState, useEffect, Fragment } from 'react'
 import type { ToastMessage } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
-import type { ApiDeveloper, ApiKeyRow } from '../lib/db'
+import type { ApiDeveloper, ApiKeyRow, ApiRequestLogRow, ApiUsageStats } from '../lib/db'
 import { useAuth } from '../contexts/AuthContext'
 import { API_TERMS_TEXT, API_TERMS_VERSION } from '../lib/apiTerms'
 import { sendSystemEmail } from '../lib/mailService'
@@ -30,6 +30,9 @@ export default function DeveloperApi({ showToast }: Props) {
   const canEdit = user?.role === 'super_admin' || user?.role === 'admin'
   const [developers, setDevelopers] = useState<ApiDeveloper[]>([])
   const [keysByDeveloper, setKeysByDeveloper] = useState<Record<string, ApiKeyRow[]>>({})
+  const [usageByDeveloper, setUsageByDeveloper] = useState<Record<string, ApiUsageStats>>({})
+  const [auditByDeveloper, setAuditByDeveloper] = useState<Record<string, ApiRequestLogRow[]>>({})
+  const [showAudit, setShowAudit] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<string | null>(null)
   const [showNew, setShowNew] = useState(false)
@@ -37,6 +40,7 @@ export default function DeveloperApi({ showToast }: Props) {
   const [sendingToPartner, setSendingToPartner] = useState(false)
   const [issueKeyFor, setIssueKeyFor] = useState<ApiDeveloper | null>(null)
   const [showDocs, setShowDocs] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
 
   const load = () => {
     db.developerApi.listDevelopers().then(({ data, error }) => {
@@ -55,6 +59,35 @@ export default function DeveloperApi({ showToast }: Props) {
       const { data } = await db.developerApi.listKeys(dev.id)
       setKeysByDeveloper(prev => ({ ...prev, [dev.id]: data }))
     }
+    if (!usageByDeveloper[dev.id]) {
+      const { data } = await db.developerApi.getUsageStats(dev.id)
+      setUsageByDeveloper(prev => ({ ...prev, [dev.id]: data }))
+    }
+  }
+
+  const toggleAudit = async (devId: string) => {
+    if (showAudit === devId) { setShowAudit(null); return }
+    setShowAudit(devId)
+    if (!auditByDeveloper[devId]) {
+      const { data } = await db.developerApi.listRequestLog(devId, 100)
+      setAuditByDeveloper(prev => ({ ...prev, [devId]: data }))
+    }
+  }
+
+  const handlePauseKey = async (keyId: string, developerId: string) => {
+    const { error } = await db.developerApi.pauseKey(keyId)
+    if (error) { showToast('error', error); return }
+    const { data: keys } = await db.developerApi.listKeys(developerId)
+    setKeysByDeveloper(prev => ({ ...prev, [developerId]: keys }))
+    showToast('info', 'Key paused — it can be resumed at any time.')
+  }
+
+  const handleResumeKey = async (keyId: string, developerId: string) => {
+    const { error } = await db.developerApi.resumeKey(keyId)
+    if (error) { showToast('error', error); return }
+    const { data: keys } = await db.developerApi.listKeys(developerId)
+    setKeysByDeveloper(prev => ({ ...prev, [developerId]: keys }))
+    showToast('success', 'Key resumed.')
   }
 
   const handleIssueKey = async (dev: ApiDeveloper, opts: { scopes: string[]; rateLimitPerMin: number; environment: 'sandbox' | 'live' }) => {
@@ -143,14 +176,24 @@ Tariqify IMS`,
 
       <div className="panel-toolbar">
         <button className="btn btn-ghost" onClick={() => setShowDocs(true)}>📖 API Documentation</button>
-        <button className="btn btn-primary" onClick={() => setShowNew(true)} disabled={!canEdit}>+ New Developer</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-ghost" onClick={() => setShowHelp(true)}>💬 Assistance</button>
+          <button className="btn btn-primary" onClick={() => setShowNew(true)} disabled={!canEdit}>+ New Developer</button>
+        </div>
       </div>
 
       <div className="card">
         {loading ? (
           <div className="empty-state">Loading developers…</div>
         ) : developers.length === 0 ? (
-          <div className="empty-state">No API developers registered yet.</div>
+          <div className="empty-state" style={{ padding: '3rem 1.5rem', textAlign: 'center' }}>
+            <div style={{ fontSize: 40, marginBottom: 10 }}>🔌</div>
+            <h3 style={{ marginBottom: 6 }}>No API developers yet</h3>
+            <p style={{ color: 'var(--muted)', fontSize: 13, maxWidth: 420, margin: '0 auto 18px' }}>
+              To issue an API key, first register the partner as a developer — a key is always tied to one. Register them below, then use <strong>Manage → Issue New Key</strong> on their row to generate credentials.
+            </p>
+            <button className="btn btn-primary" onClick={() => setShowNew(true)} disabled={!canEdit}>+ Register First Developer</button>
+          </div>
         ) : (
           <table className="table">
             <thead>
@@ -195,12 +238,71 @@ Tariqify IMS`,
                             <button className="btn btn-ghost btn-sm" onClick={() => handleSuspend(dev)} disabled={!canEdit || dev.status === 'terminated'}>
                               {dev.status === 'active' ? 'Suspend Developer' : 'Reactivate Developer'}
                             </button>
+                            <button className="btn btn-ghost btn-sm" onClick={() => toggleAudit(dev.id)}>
+                              {showAudit === dev.id ? 'Hide Audit Log' : '📜 View Audit Log'}
+                            </button>
                             {dev.status !== 'terminated' && (
                               <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => handleTerminate(dev)} disabled={!canEdit}>
                                 Terminate Developer
                               </button>
                             )}
                           </div>
+
+                          {usageByDeveloper[dev.id] && (
+                            <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)', marginBottom: 14 }}>
+                              <div className="stat-card">
+                                <div className="stat-body">
+                                  <div className="stat-value">{usageByDeveloper[dev.id].requestsToday}</div>
+                                  <div className="stat-label">Requests Today</div>
+                                </div>
+                              </div>
+                              <div className="stat-card">
+                                <div className="stat-body">
+                                  <div className="stat-value">{usageByDeveloper[dev.id].requests7d}</div>
+                                  <div className="stat-label">Last 7 Days</div>
+                                </div>
+                              </div>
+                              <div className="stat-card">
+                                <div className="stat-body">
+                                  <div className="stat-value">{usageByDeveloper[dev.id].requestsTotal}</div>
+                                  <div className="stat-label">Total Requests</div>
+                                </div>
+                              </div>
+                              <div className="stat-card">
+                                <div className="stat-body">
+                                  <div className="stat-value" style={{ color: usageByDeveloper[dev.id].errorRate7d >= 20 ? 'var(--danger)' : 'inherit' }}>
+                                    {usageByDeveloper[dev.id].errorRate7d}%
+                                  </div>
+                                  <div className="stat-label">Error Rate (7d)</div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+
+                          {showAudit === dev.id && (
+                            <div style={{ marginBottom: 14 }}>
+                              {(auditByDeveloper[dev.id]?.length ?? 0) === 0 ? (
+                                <div className="empty-state" style={{ padding: '12px 0' }}>No API requests logged yet.</div>
+                              ) : (
+                                <div style={{ maxHeight: 260, overflowY: 'auto' }}>
+                                  <table className="table">
+                                    <thead><tr><th>Time</th><th>Key</th><th>Endpoint</th><th>Status</th></tr></thead>
+                                    <tbody>
+                                      {auditByDeveloper[dev.id].map(row => (
+                                        <tr key={row.id}>
+                                          <td style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{new Date(row.ts).toLocaleString('en-GB')}</td>
+                                          <td className="mono" style={{ fontSize: 11 }}>{row.keyPrefix ?? '—'}…</td>
+                                          <td className="mono" style={{ fontSize: 11 }}>{row.endpoint}</td>
+                                          <td><span className={`pill ${row.statusCode < 300 ? 'pill-active' : row.statusCode < 500 ? 'pill-lapsed' : 'pill-cancelled'}`}>{row.statusCode}</span></td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
                           {(keysByDeveloper[dev.id]?.length ?? 0) === 0 ? (
                             <div className="empty-state" style={{ padding: '12px 0' }}>No keys issued yet.</div>
                           ) : (
@@ -214,12 +316,20 @@ Tariqify IMS`,
                                     <td className="mono">{k.keyPrefix}…</td>
                                     <td style={{ fontSize: 11 }}>{k.scopes.join(', ')}</td>
                                     <td>{k.rateLimitPerMin}/min</td>
-                                    <td><span className={`pill ${k.status === 'active' ? 'pill-active' : 'pill-lapsed'}`}>{k.status}</span></td>
+                                    <td><span className={`pill ${k.status === 'active' ? 'pill-active' : k.status === 'paused' ? 'pill-lapsed' : 'pill-cancelled'}`}>{k.status}</span></td>
                                     <td>{k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString('en-GB') : 'Never'}</td>
                                     <td>
-                                      {k.status === 'active' && (
-                                        <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => handleRevoke(k.id, dev.id)} disabled={!canEdit}>Revoke</button>
-                                      )}
+                                      <div style={{ display: 'flex', gap: 4 }}>
+                                        {k.status === 'active' && (
+                                          <button className="btn btn-ghost btn-sm" onClick={() => handlePauseKey(k.id, dev.id)} disabled={!canEdit}>Pause</button>
+                                        )}
+                                        {k.status === 'paused' && (
+                                          <button className="btn btn-ghost btn-sm" style={{ color: 'var(--success)' }} onClick={() => handleResumeKey(k.id, dev.id)} disabled={!canEdit}>Resume</button>
+                                        )}
+                                        {k.status !== 'revoked' && (
+                                          <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => handleRevoke(k.id, dev.id)} disabled={!canEdit}>Revoke</button>
+                                        )}
+                                      </div>
                                     </td>
                                   </tr>
                                 ))}
@@ -236,6 +346,47 @@ Tariqify IMS`,
           </table>
         )}
       </div>
+
+      {showHelp && (
+        <div className="modal-overlay">
+          <div className="modal" style={{ maxWidth: 520 }}>
+            <div className="modal-header">
+              <h3>💬 Assistance</h3>
+              <button className="modal-close" onClick={() => setShowHelp(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label style={{ textTransform: 'none', fontSize: 13, fontWeight: 600 }}>A partner's key isn't working</label>
+                <p style={{ fontSize: 12, color: 'var(--muted)' }}>
+                  Open their row and check the key's status — <strong>Paused</strong> or <strong>Revoked</strong> keys are rejected by the API. Resume a paused key, or issue a new one if it was revoked. Also check the Developer's own status hasn't been suspended or terminated.
+                </p>
+              </div>
+              <div className="form-group">
+                <label style={{ textTransform: 'none', fontSize: 13, fontWeight: 600 }}>They're getting HTTP 429</label>
+                <p style={{ fontSize: 12, color: 'var(--muted)' }}>
+                  Rate limit exceeded (default 60 requests/min). Raise it by issuing a new key with a higher limit, or check the Audit Log to see their actual request volume first.
+                </p>
+              </div>
+              <div className="form-group">
+                <label style={{ textTransform: 'none', fontSize: 13, fontWeight: 600 }}>They're getting HTTP 403</label>
+                <p style={{ fontSize: 12, color: 'var(--muted)' }}>
+                  Their key is missing the scope for that endpoint, or they're trying to touch a client/policy that belongs to a different developer — see the Isolation note in the API Documentation.
+                </p>
+              </div>
+              <div className="form-group">
+                <label style={{ textTransform: 'none', fontSize: 13, fontWeight: 600 }}>Something else</label>
+                <p style={{ fontSize: 12, color: 'var(--muted)' }}>
+                  The Audit Log on each developer's row shows every request they've made with its status code — start there. For anything unresolved, reach the partner via their contact email on file and loop in a Super Admin.
+                </p>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={() => { setShowHelp(false); setShowDocs(true) }}>📖 Open Documentation</button>
+              <button className="btn btn-primary" onClick={() => setShowHelp(false)}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showNew && (
         <NewDeveloperModal

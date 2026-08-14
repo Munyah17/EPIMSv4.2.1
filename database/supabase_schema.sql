@@ -796,7 +796,7 @@ CREATE TABLE IF NOT EXISTS public.api_keys (
   publishable_key     TEXT,
   environment         TEXT NOT NULL DEFAULT 'live' CHECK (environment IN ('sandbox','live')),
   scopes              TEXT[] NOT NULL DEFAULT ARRAY['products:read','quotes:read','clients:write','policies:write','policies:read','payments:write'],
-  status              TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','revoked')),
+  status              TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','paused','revoked')),
   rate_limit_per_min  INT NOT NULL DEFAULT 60,
   created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   last_used_at        TIMESTAMPTZ

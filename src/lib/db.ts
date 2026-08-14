@@ -1255,10 +1255,27 @@ export interface ApiKeyRow {
   publishableKey: string
   environment: 'sandbox' | 'live'
   scopes: string[]
-  status: 'active' | 'revoked'
+  status: 'active' | 'paused' | 'revoked'
   rateLimitPerMin: number
   createdAt: string
   lastUsedAt?: string
+}
+
+export interface ApiRequestLogRow {
+  id: string
+  keyId: string
+  keyPrefix?: string
+  endpoint: string
+  statusCode: number
+  ts: string
+}
+
+export interface ApiUsageStats {
+  requestsToday: number
+  requests7d: number
+  requestsTotal: number
+  lastRequestAt?: string
+  errorRate7d: number
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1343,6 +1360,75 @@ export const developerApi = {
   async revokeKey(keyId: string) {
     const { error } = await supabase.from('api_keys').update({ status: 'revoked' }).eq('id', keyId)
     return { error: error?.message ?? null }
+  },
+
+  /** Reversible, unlike revoke — a paused key can be resumed. Rejected by
+   *  the external API exactly like a revoked one in the meantime (only
+   *  status = 'active' is accepted there). */
+  async pauseKey(keyId: string) {
+    const { error } = await supabase.from('api_keys').update({ status: 'paused' }).eq('id', keyId)
+    return { error: error?.message ?? null }
+  },
+
+  async resumeKey(keyId: string) {
+    const { error } = await supabase.from('api_keys').update({ status: 'active' }).eq('id', keyId)
+    return { error: error?.message ?? null }
+  },
+
+  /** Recent raw request log for one developer's keys — the audit trail
+   *  behind the usage stats below. */
+  async listRequestLog(developerId: string, limit = 100): Promise<{ data: ApiRequestLogRow[]; error: string | null }> {
+    const { data: keys } = await supabase.from('api_keys').select('id, key_prefix').eq('developer_id', developerId)
+    const keyIds = (keys ?? []).map(k => k.id)
+    if (keyIds.length === 0) return { data: [], error: null }
+    const prefixById = new Map((keys ?? []).map(k => [k.id, k.key_prefix as string]))
+    const { data, error } = await supabase
+      .from('api_request_log')
+      .select('id, key_id, endpoint, status_code, ts')
+      .in('key_id', keyIds)
+      .order('ts', { ascending: false })
+      .limit(limit)
+    if (error) return { data: [], error: error.message }
+    return {
+      data: (data ?? []).map(r => ({
+        id: r.id, keyId: r.key_id, keyPrefix: prefixById.get(r.key_id), endpoint: r.endpoint, statusCode: r.status_code, ts: r.ts,
+      })),
+      error: null,
+    }
+  },
+
+  /** Aggregate usage counts for one developer across all their keys —
+   *  today, last 7 days, all-time, and a rough error rate so a suspiciously
+   *  high failure/rate-limit ratio is visible at a glance. */
+  async getUsageStats(developerId: string): Promise<{ data: ApiUsageStats; error: string | null }> {
+    const empty: ApiUsageStats = { requestsToday: 0, requests7d: 0, requestsTotal: 0, errorRate7d: 0 }
+    const { data: keys } = await supabase.from('api_keys').select('id').eq('developer_id', developerId)
+    const keyIds = (keys ?? []).map(k => k.id)
+    if (keyIds.length === 0) return { data: empty, error: null }
+
+    const startOfToday = new Date(); startOfToday.setHours(0, 0, 0, 0)
+    const sevenDaysAgo = new Date(Date.now() - 7 * 86400000)
+
+    const [todayRes, weekRes, totalRes, lastRes] = await Promise.all([
+      supabase.from('api_request_log').select('*', { count: 'exact', head: true }).in('key_id', keyIds).gte('ts', startOfToday.toISOString()),
+      supabase.from('api_request_log').select('status_code').in('key_id', keyIds).gte('ts', sevenDaysAgo.toISOString()),
+      supabase.from('api_request_log').select('*', { count: 'exact', head: true }).in('key_id', keyIds),
+      supabase.from('api_request_log').select('ts').in('key_id', keyIds).order('ts', { ascending: false }).limit(1).maybeSingle(),
+    ])
+
+    const weekRows = (weekRes.data ?? []) as { status_code: number }[]
+    const errors7d = weekRows.filter(r => r.status_code >= 400).length
+
+    return {
+      data: {
+        requestsToday: todayRes.count ?? 0,
+        requests7d: weekRows.length,
+        requestsTotal: totalRes.count ?? 0,
+        lastRequestAt: (lastRes.data as { ts: string } | null)?.ts,
+        errorRate7d: weekRows.length > 0 ? Math.round((errors7d / weekRows.length) * 100) : 0,
+      },
+      error: null,
+    }
   },
 
   async setDeveloperStatus(developerId: string, status: 'active' | 'suspended') {
