@@ -20,18 +20,27 @@ interface NavItem {
   roles?: string[]
 }
 
-interface NavSection {
+/** A collapsible bundle of related nav items — same pattern as the old
+ *  one-off "Policies & Products" group, generalized so any section can fold
+ *  several closely-related pages under one row instead of listing them
+ *  flat. Keeps the sidebar scannable now that there are 25+ pages. */
+interface NavGroup {
+  groupId: string
   label: string
+  icon: string
   items: NavItem[]
 }
 
-// Policies and Products live together under one collapsible group rather
-// than as two separate top-level items — they're closely related, and it
-// keeps the main section shorter.
-const POLICIES_PRODUCTS_GROUP: NavItem[] = [
-  { id: 'policies', label: 'Policies', icon: '🛡' },
-  { id: 'products', label: 'Products', icon: '📦', roles: ['super_admin', 'admin', 'policy_admin'] },
-]
+type NavEntry = NavItem | NavGroup
+
+function isGroup(entry: NavEntry): entry is NavGroup {
+  return 'groupId' in entry
+}
+
+interface NavSection {
+  label: string
+  items: NavEntry[]
+}
 
 const STAFF_SECTIONS: NavSection[] = [
   {
@@ -40,6 +49,15 @@ const STAFF_SECTIONS: NavSection[] = [
       { id: 'dashboard', label: 'Dashboard', icon: '⊞' },
       { id: 'claims', label: 'Claims', icon: '📋' },
       { id: 'payments', label: 'Payments', icon: '💳' },
+      {
+        groupId: 'policies_products',
+        label: 'Policies & Products',
+        icon: '🛡',
+        items: [
+          { id: 'policies', label: 'Policies', icon: '🛡' },
+          { id: 'products', label: 'Products', icon: '📦', roles: ['super_admin', 'admin', 'policy_admin'] },
+        ],
+      },
     ],
   },
   {
@@ -53,13 +71,27 @@ const STAFF_SECTIONS: NavSection[] = [
     label: 'OPERATIONS',
     items: [
       { id: 'staff', label: 'Staff', icon: '✅', roles: ['super_admin', 'admin'] },
-      { id: 'reminders', label: 'Reminders', icon: '🔔' },
       { id: 'reports', label: 'Reports', icon: '📊', roles: ['super_admin', 'admin', 'finance'] },
-      { id: 'email', label: 'Email', icon: '✉' },
-      { id: 'tickets', label: 'Tickets', icon: '💬' },
-      { id: 'live_chat', label: 'Live Chat', icon: '🟢', roles: ['super_admin', 'admin', 'client_relations'] },
-      { id: 'mass_messaging', label: 'Bulk SMS Messaging', icon: '📱', roles: ['super_admin', 'admin'] },
-      { id: 'billing_reminders', label: 'Billing & Reminders', icon: '💳', roles: ['super_admin', 'admin', 'finance'] },
+      {
+        groupId: 'communications',
+        label: 'Communications',
+        icon: '✉',
+        items: [
+          { id: 'email', label: 'Email', icon: '✉' },
+          { id: 'tickets', label: 'Tickets', icon: '💬' },
+          { id: 'live_chat', label: 'Live Chat', icon: '🟢', roles: ['super_admin', 'admin', 'client_relations'] },
+          { id: 'mass_messaging', label: 'Bulk SMS Messaging', icon: '📱', roles: ['super_admin', 'admin'] },
+        ],
+      },
+      {
+        groupId: 'billing',
+        label: 'Billing & Reminders',
+        icon: '💳',
+        items: [
+          { id: 'reminders', label: 'Reminders', icon: '🔔' },
+          { id: 'billing_reminders', label: 'Billing & Reminders', icon: '💳', roles: ['super_admin', 'admin', 'finance'] },
+        ],
+      },
     ],
   },
   {
@@ -76,10 +108,17 @@ const STAFF_SECTIONS: NavSection[] = [
   {
     label: 'SYSTEM',
     items: [
-      { id: 'system_access_roles', label: 'System Access Roles', icon: '🔐', roles: ['super_admin'] },
-      { id: 'system_health', label: 'System Health', icon: '🖥', roles: ['super_admin', 'admin'] },
-      { id: 'settings', label: 'Settings', icon: '⚙', roles: ['super_admin', 'admin'] },
       { id: 'profile', label: 'My Profile', icon: '👤' },
+      {
+        groupId: 'administration',
+        label: 'Administration',
+        icon: '⚙',
+        items: [
+          { id: 'system_access_roles', label: 'System Access Roles', icon: '🔐', roles: ['super_admin'] },
+          { id: 'system_health', label: 'System Health', icon: '🖥', roles: ['super_admin', 'admin'] },
+          { id: 'settings', label: 'Settings', icon: '⚙', roles: ['super_admin', 'admin'] },
+        ],
+      },
     ],
   },
 ]
@@ -104,7 +143,26 @@ const CLIENT_NAV: NavItem[] = [
 export default function Sidebar({ activePanel, setActivePanel, isOpen, onClose }: SidebarProps) {
   const { user, canAccess } = useAuth()
   const [counts, setCounts] = useState<SidebarCounts | null>(null)
-  const [policiesGroupOpen, setPoliciesGroupOpen] = useState(activePanel === 'policies' || activePanel === 'products')
+  // Whichever group contains the current page starts open; the rest start
+  // collapsed. Track open groups by id so any number of groups can be
+  // expanded independently instead of one bespoke boolean per group.
+  const [openGroups, setOpenGroups] = useState<Set<string>>(() => {
+    const initial = new Set<string>()
+    for (const section of STAFF_SECTIONS) {
+      for (const entry of section.items) {
+        if (isGroup(entry) && entry.items.some(i => i.id === activePanel)) initial.add(entry.groupId)
+      }
+    }
+    return initial
+  })
+  const toggleGroup = (groupId: string) => {
+    setOpenGroups(prev => {
+      const next = new Set(prev)
+      if (next.has(groupId)) next.delete(groupId)
+      else next.add(groupId)
+      return next
+    })
+  }
 
   useEffect(() => {
     if (!user || user.role === 'policyholder') return
@@ -133,56 +191,60 @@ export default function Sidebar({ activePanel, setActivePanel, isOpen, onClose }
     )
   }
 
+  const badgeFor = (item: NavItem) => {
+    const countKey = BADGE_COUNT_KEYS[item.id]
+    const liveBadge = countKey && counts ? counts[countKey] : undefined
+    return liveBadge !== undefined ? (liveBadge > 0 ? liveBadge : undefined) : item.badge
+  }
+  const itemAllowed = (item: NavItem) => {
+    if (item.roles && !item.roles.includes(user.role)) return false
+    return canAccess(item.id)
+  }
+
   return (
     <aside className={`sidebar${isOpen ? ' sidebar-open' : ''}`}>
       <SidebarHeader onClose={onClose} />
       <nav className="sidebar-nav">
         {STAFF_SECTIONS.map(section => {
-          const visible = section.items.filter(item => {
-            if (item.roles && !item.roles.includes(user.role)) return false
-            return canAccess(item.id)
-          })
-          const groupItems = section.label === 'MAIN'
-            ? POLICIES_PRODUCTS_GROUP.filter(item => {
-              if (item.roles && !item.roles.includes(user.role)) return false
-              return canAccess(item.id)
+          const visibleEntries = section.items
+            .map((entry): NavEntry | null => {
+              if (isGroup(entry)) {
+                const visibleItems = entry.items.filter(itemAllowed)
+                return visibleItems.length > 0 ? { ...entry, items: visibleItems } : null
+              }
+              return itemAllowed(entry) ? entry : null
             })
-            : []
-          if (!visible.length && !groupItems.length) return null
+            .filter((e): e is NavEntry => e !== null)
+          if (!visibleEntries.length) return null
           return (
             <div key={section.label}>
               <span className="nav-sec">{section.label}</span>
-              {visible.map(item => {
-                const countKey = BADGE_COUNT_KEYS[item.id]
-                const liveBadge = countKey && counts ? counts[countKey] : undefined
-                const resolved = liveBadge !== undefined ? (liveBadge > 0 ? liveBadge : undefined) : item.badge
+              {visibleEntries.map(entry => {
+                if (isGroup(entry)) {
+                  const open = openGroups.has(entry.groupId)
+                  return (
+                    <div key={entry.groupId}>
+                      <button
+                        type="button"
+                        className={`nav-item${entry.items.some(i => i.id === activePanel) ? ' active' : ''}`}
+                        onClick={() => toggleGroup(entry.groupId)}
+                      >
+                        <span className="nav-icon">{entry.icon}</span>
+                        <span className="nav-label">{entry.label}</span>
+                        <span style={{ fontSize: 10, opacity: 0.6 }}>{open ? '▾' : '▸'}</span>
+                      </button>
+                      {open && entry.items.map(item => (
+                        <div key={item.id} style={{ paddingLeft: 16 }}>
+                          <NavBtn item={{ ...item, badge: badgeFor(item) }} active={activePanel === item.id} onClick={() => setActivePanel(item.id)} />
+                        </div>
+                      ))}
+                    </div>
+                  )
+                }
                 return (
-                  <NavBtn key={item.id} item={{ ...item, badge: resolved }} active={activePanel === item.id} onClick={() => setActivePanel(item.id)} />
+                  <NavBtn key={entry.id} item={{ ...entry, badge: badgeFor(entry) }} active={activePanel === entry.id} onClick={() => setActivePanel(entry.id)} />
                 )
               })}
-              {groupItems.length > 0 && (
-                <>
-                  <button
-                    type="button"
-                    className={`nav-item${groupItems.some(i => i.id === activePanel) ? ' active' : ''}`}
-                    onClick={() => setPoliciesGroupOpen(o => !o)}
-                  >
-                    <span className="nav-icon">🛡</span>
-                    <span className="nav-label">Policies &amp; Products</span>
-                    <span style={{ fontSize: 10, opacity: 0.6 }}>{policiesGroupOpen ? '▾' : '▸'}</span>
-                  </button>
-                  {policiesGroupOpen && groupItems.map(item => {
-                    const countKey = BADGE_COUNT_KEYS[item.id]
-                    const liveBadge = countKey && counts ? counts[countKey] : undefined
-                    const resolved = liveBadge !== undefined ? (liveBadge > 0 ? liveBadge : undefined) : item.badge
-                    return (
-                      <div key={item.id} style={{ paddingLeft: 16 }}>
-                        <NavBtn item={{ ...item, badge: resolved }} active={activePanel === item.id} onClick={() => setActivePanel(item.id)} />
-                      </div>
-                    )
-                  })}
-                </>
-              )}
             </div>
           )
         })}
