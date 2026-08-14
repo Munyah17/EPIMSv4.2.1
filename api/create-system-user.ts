@@ -25,12 +25,13 @@ interface CreateSystemUserBody {
   department: string
 }
 
-async function nextDefaultUsername(admin: ReturnType<typeof createClient>, role: string): Promise<string> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function nextDefaultUsername(admin: any, role: string): Promise<string> {
   const group = role === 'super_admin' || role === 'admin' ? 'Admin' : 'Tech'
   const { data } = await admin
     .from('profiles')
     .select('username')
-    .ilike('username', `${group} %`)
+    .ilike('username', `${group} %`) as { data: { username: string }[] | null }
   const maxN = (data ?? []).reduce((max, row) => {
     const n = parseInt(String(row.username).slice(group.length + 1), 10)
     return Number.isFinite(n) && n > max ? n : max
