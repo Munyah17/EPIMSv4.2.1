@@ -41,7 +41,7 @@ export const DEFAULT_NOTIF_SETTINGS: NotifSettings = {
   fromName: 'Tariqify IMS',
   replyTo: 'admin@motions.co.zw',
   smsEnabled: false,
-  signature: 'Regards,\nTariqify Insurance Management System\nwww.tariqify.com',
+  signature: 'Regards,\nMotions Microinsurance\nwww.motions.co.zw',
   superAdminPhone: '',
   companyAddress: '',
   companyPhone: '',
