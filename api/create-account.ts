@@ -2,25 +2,27 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 
 /**
- * Creates a real Supabase Auth user + profiles row for a new staff member.
- * Requires the service-role key (server-side only — never sent to the
- * client), so this can't run in the browser. profiles.name/role/department
- * are populated by the existing `on_auth_user_created` DB trigger from
- * user_metadata; phone is set in a follow-up update since the trigger
- * doesn't set it.
+ * Creates a real Supabase Auth user + profiles row — merges what used to be
+ * two separate functions (create-staff.ts for work roles, create-system-user.ts
+ * for Super Admin/Admin/Tech Support) into one file so the Vercel Hobby
+ * plan's 12-serverless-functions-per-deployment cap isn't exceeded. Which
+ * path runs is decided by which role list `body.role` falls into — the two
+ * lists are disjoint, so there's no ambiguity.
  *
- * Authorization: the caller must send their own Supabase access token
- * (Authorization: Bearer <token>) and must already be an admin/super_admin
- * — this function has no other access control of its own, and the service
- * role key bypasses RLS entirely, so this check is the only thing standing
- * between this endpoint and anyone on the internet creating accounts.
+ * Work roles (claims_officer, policy_admin, finance, client_relations,
+ * agent): caller must be admin or super_admin, matching the old
+ * create-staff.ts bar.
+ *
+ * System roles (super_admin, admin, tech_support): caller must be
+ * super_admin, matching the old create-system-user.ts bar — only a Super
+ * Admin may provision another system-tier account. The DB also enforces
+ * this independently via trg_block_non_super_admin_system_role_changes.
  */
 
-// Work roles only — super_admin/admin/tech_support are system access roles,
-// created via create-system-user.ts (Super Admin only).
 const STAFF_ROLES = ['claims_officer', 'policy_admin', 'finance', 'client_relations', 'agent'] as const
+const SYSTEM_ROLES = ['super_admin', 'admin', 'tech_support'] as const
 
-interface CreateStaffBody {
+interface CreateAccountBody {
   name: string
   username?: string
   email: string
@@ -32,12 +34,13 @@ interface CreateStaffBody {
   permissions?: string[]
 }
 
-/** Next free "Agent N" / "Admin N" default for a role's group, so a blank
- *  username field still gets something usable — matches the convention
- *  used to backfill existing accounts (see database/reset_default_usernames.sql). */
+/** Next free "Agent N" / "Admin N" / "Tech N" default for a role's group, so
+ *  a blank username field still gets something usable — matches the
+ *  convention used to backfill existing accounts. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function nextDefaultUsername(admin: any, role: string): Promise<string> {
   const group = role === 'super_admin' || role === 'admin' ? 'Admin'
+    : role === 'tech_support' ? 'Tech'
     : role === 'policyholder' ? 'User'
     : 'Agent'
   const { data } = await admin
@@ -68,7 +71,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(401).json({ error: 'Missing Authorization header.' })
   }
 
-  const body: CreateStaffBody = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body ?? {})
+  const body: CreateAccountBody = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body ?? {})
 
   if (!body.name || !body.email || !body.password || !body.role || !body.department) {
     return res.status(400).json({ error: 'name, email, password, role, and department are required.' })
@@ -76,8 +79,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (body.password.length < 8) {
     return res.status(400).json({ error: 'Password must be at least 8 characters.' })
   }
-  if (!STAFF_ROLES.includes(body.role as typeof STAFF_ROLES[number])) {
-    return res.status(400).json({ error: 'Invalid role for this endpoint — system access roles (Super Admin, Admin, Tech Support) are created on the System Access Roles page.' })
+
+  const isSystemRole = (SYSTEM_ROLES as readonly string[]).includes(body.role)
+  const isStaffRole = (STAFF_ROLES as readonly string[]).includes(body.role)
+  if (!isSystemRole && !isStaffRole) {
+    return res.status(400).json({ error: 'Invalid role.' })
   }
 
   const admin = createClient(supabaseUrl, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } })
@@ -92,7 +98,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .select('role, active')
     .eq('id', caller.id)
     .single()
-  if (profileError || !callerProfile || !callerProfile.active || !['admin', 'super_admin'].includes(callerProfile.role)) {
+  if (profileError || !callerProfile || !callerProfile.active) {
+    return res.status(403).json({ error: 'You do not have permission to create accounts.' })
+  }
+  if (isSystemRole && callerProfile.role !== 'super_admin') {
+    return res.status(403).json({ error: 'Only a Super Admin can create system access accounts.' })
+  }
+  if (isStaffRole && !['admin', 'super_admin'].includes(callerProfile.role)) {
     return res.status(403).json({ error: 'You do not have permission to create staff accounts.' })
   }
 
@@ -112,8 +124,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const username = body.username?.trim() || await nextDefaultUsername(admin, body.role)
   const extra: Record<string, unknown> = { username }
-  if (body.customRoleId) extra.custom_role_id = body.customRoleId
-  if (body.permissions) extra.permissions = body.permissions
+  if (isSystemRole) {
+    // super_admin/admin get blanket-access sentinels (matching every other
+    // system-tier account); tech_support starts with none, granted explicitly.
+    extra.permissions = body.role === 'super_admin' ? ['all'] : body.role === 'admin' ? ['all_except_super'] : []
+  } else {
+    if (body.customRoleId) extra.custom_role_id = body.customRoleId
+    if (body.permissions) extra.permissions = body.permissions
+  }
   const { error: usernameError } = await admin.from('profiles').update(extra).eq('id', created.user.id)
   if (usernameError) {
     return res.status(400).json({ error: usernameError.code === '23505' ? 'That username is already taken.' : usernameError.message })

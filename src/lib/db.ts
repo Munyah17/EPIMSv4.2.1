@@ -997,7 +997,7 @@ export const staff = {
 
   /**
    * Creates a real Supabase Auth user + profiles row via a Netlify function
-   * (netlify/functions/create-staff.ts), which alone holds the service-role
+   * (api/create-account.ts), which alone holds the service-role
    * key needed for account creation. Unlike every other method in this
    * module, there is no local-storage fallback here — a "staff member"
    * that only exists in browser state was never real, so a failure must be
@@ -1007,7 +1007,7 @@ export const staff = {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) return { data: null, error: 'Not signed in.' }
     try {
-      const res = await fetch('/api/create-staff', {
+      const res = await fetch('/api/create-account', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
         body: JSON.stringify(input),
@@ -1065,16 +1065,17 @@ export const staff = {
   },
 
   /**
-   * Creates a Super Admin / Admin / Tech Support account via
-   * create-system-user.ts — the System Access Roles page's counterpart to
-   * staff.create() (Staff Management, work roles only). Super Admin caller
-   * only, enforced both here and again by the DB trigger.
+   * Creates a Super Admin / Admin / Tech Support account — same
+   * api/create-account.ts endpoint as staff.create() (Staff Management,
+   * work roles only), which branches on whether body.role falls into the
+   * system-role or work-role list. Super Admin caller only, enforced both
+   * here and again by the DB trigger.
    */
   async createSystemUser(input: { name: string; username?: string; email: string; password: string; phone?: string; role: string; department: string }) {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) return { data: null, error: 'Not signed in.' }
     try {
-      const res = await fetch('/api/create-system-user', {
+      const res = await fetch('/api/create-account', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
         body: JSON.stringify(input),
