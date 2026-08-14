@@ -9,6 +9,7 @@ export type UserRole =
   | 'policy_admin'
   | 'finance'
   | 'client_relations'
+  | 'agent'
   | 'policyholder'
 
 export const SYSTEM_ROLES: UserRole[] = ['super_admin', 'admin', 'tech_support']

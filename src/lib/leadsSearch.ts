@@ -21,7 +21,7 @@ export interface LeadSearchResponse {
  *  app's AI-backed calls. */
 export async function searchForLeads(query: string, location?: string): Promise<LeadSearchResponse> {
   try {
-    const res = await fetch('/.netlify/functions/search-leads', {
+    const res = await fetch('/api/search-leads', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query, location }),

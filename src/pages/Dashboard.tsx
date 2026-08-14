@@ -25,6 +25,20 @@ const CATEGORY_CLASS: Record<string, string> = {
   accident: 'bar-fill-gold',
 }
 
+function timeAgo(iso: string | undefined): string {
+  if (!iso) return ''
+  const ms = Date.now() - new Date(iso).getTime()
+  if (!Number.isFinite(ms) || ms < 0) return 'Just now'
+  const mins = Math.floor(ms / 60000)
+  if (mins < 1) return 'Just now'
+  if (mins < 60) return `${mins}m ago`
+  const hours = Math.floor(mins / 60)
+  if (hours < 24) return `${hours}h ago`
+  const days = Math.floor(hours / 24)
+  if (days < 7) return `${days}d ago`
+  return new Date(iso).toLocaleDateString('en-GB')
+}
+
 const EMPTY_STATS: DashboardStats = {
   activePolicies: 0, pendingClaims: 0, totalPremiums: 0, newLeads: 0, fraudAlerts: 0, lapseRate: 0, totalClients: 0,
   productBreakdown: [], recentPolicies: [], latestClaim: null, latestPayment: null, latestLead: null, latestFraud: null, latestClient: null,
@@ -43,13 +57,14 @@ export default function Dashboard({ setActivePanel }: Props) {
   const maxCount = Math.max(...stats.productBreakdown.map(p => p.count), 1)
 
   const activity = [
-    stats.latestClient && { icon: '👤', text: `New client registered: ${stats.latestClient.name}`, time: 'Recently', cls: 'activity-icon-purple' },
-    recentPolicies[0] && { icon: '🛡', text: `New policy issued to ${recentPolicies[0].clientName}`, time: '2 hours ago', cls: 'activity-icon-blue' },
-    stats.latestClaim && { icon: '📋', text: `Claim ${stats.latestClaim.claimNumber} submitted by ${stats.latestClaim.clientName}`, time: '4 hours ago', cls: 'activity-icon-gold' },
-    stats.latestPayment && { icon: '💳', text: `Payment received from ${stats.latestPayment.clientName} — $${stats.latestPayment.amount}`, time: '5 hours ago', cls: 'activity-icon-teal' },
-    stats.latestLead && { icon: '🎯', text: `New lead: ${stats.latestLead.name} via ${stats.latestLead.source}`, time: '1 day ago', cls: 'activity-icon-purple' },
-    stats.latestFraud && { icon: '⚠', text: `Fraud alert on claim ${stats.latestFraud.claimNumber} — Score ${stats.latestFraud.fraudScore}%`, time: '2 days ago', cls: 'activity-icon-danger' },
-  ].filter(Boolean) as { icon: string; text: string; time: string; cls: string }[]
+    stats.latestClient && { icon: '👤', text: `New client registered: ${stats.latestClient.name}`, at: stats.latestClient.at, cls: 'activity-icon-purple' },
+    recentPolicies[0] && { icon: '🛡', text: `New policy issued to ${recentPolicies[0].clientName}`, at: recentPolicies[0].createdAt, cls: 'activity-icon-blue' },
+    stats.latestClaim && { icon: '📋', text: `Claim ${stats.latestClaim.claimNumber} submitted by ${stats.latestClaim.clientName}`, at: stats.latestClaim.at, cls: 'activity-icon-gold' },
+    stats.latestPayment && { icon: '💳', text: `Payment received from ${stats.latestPayment.clientName} — $${stats.latestPayment.amount}`, at: stats.latestPayment.at, cls: 'activity-icon-teal' },
+    stats.latestLead && { icon: '🎯', text: `New lead: ${stats.latestLead.name} via ${stats.latestLead.source}`, at: stats.latestLead.at, cls: 'activity-icon-purple' },
+    stats.latestFraud && { icon: '⚠', text: `Fraud alert on claim ${stats.latestFraud.claimNumber} — Score ${stats.latestFraud.fraudScore}%`, at: stats.latestFraud.at, cls: 'activity-icon-danger' },
+  ].filter(Boolean).map(a => ({ ...(a as { icon: string; text: string; at: string; cls: string }), time: timeAgo((a as { at: string }).at) }))
+    .sort((a, b) => new Date(b.at || 0).getTime() - new Date(a.at || 0).getTime())
 
   if (loading) return <div className="panel"><div className="empty-state">Loading dashboard…</div></div>
 

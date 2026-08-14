@@ -1007,7 +1007,7 @@ export const staff = {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) return { data: null, error: 'Not signed in.' }
     try {
-      const res = await fetch('/.netlify/functions/create-staff', {
+      const res = await fetch('/api/create-staff', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
         body: JSON.stringify(input),
@@ -1051,7 +1051,7 @@ export const staff = {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) return { error: 'Not signed in.' }
     try {
-      const res = await fetch('/.netlify/functions/delete-staff', {
+      const res = await fetch('/api/delete-staff', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
         body: JSON.stringify({ staffId }),
@@ -1074,7 +1074,7 @@ export const staff = {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) return { data: null, error: 'Not signed in.' }
     try {
-      const res = await fetch('/.netlify/functions/create-system-user', {
+      const res = await fetch('/api/create-system-user', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
         body: JSON.stringify(input),
@@ -1099,7 +1099,7 @@ export const staff = {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) return { error: 'Not signed in.' }
     try {
-      const res = await fetch('/.netlify/functions/reset-staff-password', {
+      const res = await fetch('/api/reset-staff-password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
         body: JSON.stringify({ staffId, newPassword }),
@@ -1306,7 +1306,7 @@ export const developerApi = {
       // so by the time this fires the admin has confirmed it on the client's
       // behalf. termsVersion still travels through from the caller so the
       // stored record reflects exactly what was shown at registration time.
-      const res = await fetch('/.netlify/functions/create-api-developer', {
+      const res = await fetch('/api/create-api-developer', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
         body: JSON.stringify({ ...input, termsAccepted: true }),
@@ -1326,7 +1326,7 @@ export const developerApi = {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) return { data: null, error: 'Not signed in.' }
     try {
-      const res = await fetch('/.netlify/functions/create-api-key', {
+      const res = await fetch('/api/create-api-key', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
         body: JSON.stringify({ developerId, scopes: opts?.scopes, rateLimitPerMin: opts?.rateLimitPerMin, environment: opts?.environment ?? 'live' }),
@@ -1430,11 +1430,11 @@ export interface DashboardStats {
   totalClients: number
   productBreakdown: { category: string; count: number }[]
   recentPolicies: Policy[]
-  latestClaim: { claimNumber: string; clientName: string } | null
-  latestPayment: { clientName: string; amount: number } | null
-  latestLead: { name: string; source: string } | null
-  latestFraud: { claimNumber: string; fraudScore: number } | null
-  latestClient: { name: string } | null
+  latestClaim: { claimNumber: string; clientName: string; at: string } | null
+  latestPayment: { clientName: string; amount: number; at: string } | null
+  latestLead: { name: string; source: string; at: string } | null
+  latestFraud: { claimNumber: string; fraudScore: number; at: string } | null
+  latestClient: { name: string; at: string } | null
 }
 
 async function loadDashboardStatsLight(): Promise<DashboardStats | null> {
@@ -1451,12 +1451,12 @@ async function loadDashboardStatsLight(): Promise<DashboardStats | null> {
     supabase.from('payments').select('amount').eq('status', 'completed').limit(5000),
     supabase.from('policies').select('products!product_id(category)').limit(5000),
     supabase.from('policies').select(POLICY_SELECT).order('created_at', { ascending: false }).limit(5),
-    supabase.from('claims').select('claim_number, policies!policy_id(clients!client_id(name))').order('created_at', { ascending: false }).limit(1),
-    supabase.from('payments').select('amount, policies!policy_id(clients!client_id(name))').order('payment_date', { ascending: false }).limit(1),
-    supabase.from('leads').select('name, source').order('created_at', { ascending: false }).limit(1),
-    supabase.from('fraud_cases').select('fraud_score, claims!claim_id(claim_number)').order('created_at', { ascending: false }).limit(1),
+    supabase.from('claims').select('claim_number, created_at, policies!policy_id(clients!client_id(name))').order('created_at', { ascending: false }).limit(1),
+    supabase.from('payments').select('amount, payment_date, policies!policy_id(clients!client_id(name))').order('payment_date', { ascending: false }).limit(1),
+    supabase.from('leads').select('name, source, created_at').order('created_at', { ascending: false }).limit(1),
+    supabase.from('fraud_cases').select('fraud_score, created_at, claims!claim_id(claim_number)').order('created_at', { ascending: false }).limit(1),
     supabase.from('clients').select('*', { count: 'exact', head: true }),
-    supabase.from('clients').select('name').order('created_at', { ascending: false }).limit(1),
+    supabase.from('clients').select('name, created_at').order('created_at', { ascending: false }).limit(1),
   ])
 
   const anyError = activeRes.error || pendingRes.error || leadsRes.error || fraudRes.error
@@ -1469,10 +1469,10 @@ async function loadDashboardStatsLight(): Promise<DashboardStats | null> {
   const c = latestClaimRes.data?.[0] as any
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const p = latestPaymentRes.data?.[0] as any
-  const l = latestLeadRes.data?.[0] as { name: string; source: string } | undefined
+  const l = latestLeadRes.data?.[0] as { name: string; source: string; created_at: string } | undefined
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const f = latestFraudRes.data?.[0] as any
-  const cl = latestClientRes.data?.[0] as { name: string } | undefined
+  const cl = latestClientRes.data?.[0] as { name: string; created_at: string } | undefined
 
   const totalPremiums = ((premiumsRes.data ?? []) as { amount: number }[]).reduce((s, p) => s + p.amount, 0)
 
@@ -1496,11 +1496,11 @@ async function loadDashboardStatsLight(): Promise<DashboardStats | null> {
     totalClients: clientsCountRes.count ?? 0,
     productBreakdown: [...categoryCounts.entries()].map(([category, count]) => ({ category, count })),
     recentPolicies: ((recentRes.data ?? []) as unknown[]).map(toPolicy),
-    latestClaim: c ? { claimNumber: c.claim_number, clientName: c.policies?.clients?.name ?? '' } : null,
-    latestPayment: p ? { clientName: p.policies?.clients?.name ?? '', amount: p.amount } : null,
-    latestLead: l ? { name: l.name, source: l.source ?? '' } : null,
-    latestFraud: f ? { claimNumber: f.claims?.claim_number ?? '', fraudScore: f.fraud_score } : null,
-    latestClient: cl ? { name: cl.name } : null,
+    latestClaim: c ? { claimNumber: c.claim_number, clientName: c.policies?.clients?.name ?? '', at: c.created_at } : null,
+    latestPayment: p ? { clientName: p.policies?.clients?.name ?? '', amount: p.amount, at: p.payment_date } : null,
+    latestLead: l ? { name: l.name, source: l.source ?? '', at: l.created_at } : null,
+    latestFraud: f ? { claimNumber: f.claims?.claim_number ?? '', fraudScore: f.fraud_score, at: f.created_at } : null,
+    latestClient: cl ? { name: cl.name, at: cl.created_at } : null,
   }
 }
 
@@ -1523,11 +1523,11 @@ async function loadDashboardStatsFallback(): Promise<DashboardStats> {
     totalClients: cli.length,
     productBreakdown: [...categoryCounts.entries()].map(([category, count]) => ({ category, count })),
     recentPolicies: [...pol].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 5),
-    latestClaim: cla[0] ? { claimNumber: cla[0].claimNumber, clientName: cla[0].clientName } : null,
-    latestPayment: pay[0] ? { clientName: pay[0].clientName, amount: pay[0].amount } : null,
-    latestLead: lea[0] ? { name: lea[0].name, source: lea[0].source } : null,
-    latestFraud: fra[0] ? { claimNumber: fra[0].claimNumber, fraudScore: fra[0].fraudScore } : null,
-    latestClient: cli[0] ? { name: [...cli].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0].name } : null,
+    latestClaim: cla[0] ? { claimNumber: cla[0].claimNumber, clientName: cla[0].clientName, at: cla[0].dateSubmitted } : null,
+    latestPayment: pay[0] ? { clientName: pay[0].clientName, amount: pay[0].amount, at: pay[0].date } : null,
+    latestLead: lea[0] ? { name: lea[0].name, source: lea[0].source, at: lea[0].createdAt } : null,
+    latestFraud: fra[0] ? { claimNumber: fra[0].claimNumber, fraudScore: fra[0].fraudScore, at: fra[0].createdAt } : null,
+    latestClient: cli[0] ? (() => { const c = [...cli].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]; return { name: c.name, at: c.createdAt } })() : null,
   }
 }
 

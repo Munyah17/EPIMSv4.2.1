@@ -20,7 +20,7 @@ async function proxyFetch(
   url: string,
   init: { method?: 'GET' | 'POST'; headers?: Record<string, string>; body?: string } = {},
 ): Promise<{ ok: boolean; status: number; text: () => Promise<string>; json: () => Promise<unknown> }> {
-  const res = await fetch('/.netlify/functions/gateway-proxy', {
+  const res = await fetch('/api/gateway-proxy', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ url, method: init.method ?? 'POST', headers: init.headers, body: init.body }),

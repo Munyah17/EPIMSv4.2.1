@@ -2,7 +2,7 @@
 
 export async function scoreLead(input: { name: string; source: string; productInterest: string; notes?: string }): Promise<{ score: number; reasoning: string }> {
   try {
-    const res = await fetch('/.netlify/functions/score-lead', {
+    const res = await fetch('/api/score-lead', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),
@@ -19,7 +19,7 @@ export async function scoreClaimFraud(input: {
   policyStartDate: string; dateSubmitted: string; description: string; priorClaimsOnPolicy: number
 }): Promise<{ score: number; signals: string[]; reasoning: string }> {
   try {
-    const res = await fetch('/.netlify/functions/score-claim-fraud', {
+    const res = await fetch('/api/score-claim-fraud', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input),

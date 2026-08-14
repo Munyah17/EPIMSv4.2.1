@@ -15,8 +15,8 @@ interface Props {
 
 // Work roles only — Super Admin, Admin, and Tech Support are system access
 // roles, managed on the System Access Roles page instead.
-const ROLES: UserRole[] = ['claims_officer', 'policy_admin', 'finance', 'client_relations']
-const DEPARTMENTS = ['Claims', 'Policy Administration', 'Finance', 'Client Relations', 'Administration', 'IT']
+const ROLES: UserRole[] = ['claims_officer', 'policy_admin', 'finance', 'client_relations', 'agent']
+const DEPARTMENTS = ['Claims', 'Policy Administration', 'Finance', 'Client Relations', 'Sales & Agents', 'Administration', 'IT']
 
 export default function AddStaffModal({ staff, onClose, onSave, onResetPassword }: Props) {
   const [name, setName] = useState(staff?.name ?? '')

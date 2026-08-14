@@ -25,7 +25,7 @@ export async function analyzePhotoForFraud(
   imageBase64: string, mediaType: string, label: string, claimDescription?: string,
 ): Promise<PhotoAnalysisResult> {
   try {
-    const res = await fetch('/.netlify/functions/analyze-assessment-photo', {
+    const res = await fetch('/api/analyze-assessment-photo', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ imageBase64, mediaType, label, claimDescription }),
