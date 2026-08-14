@@ -1476,6 +1476,20 @@ export const loginAttempts = {
     }
     return { data: [...byEmail.values()].sort((a, b) => b.count - a.count), error: null }
   },
+
+  /** Real sign-in history for one account — powers Profile > Audit Log,
+   *  which used to show hardcoded sample rows regardless of who was
+   *  actually logged in or what they'd actually done. */
+  async historyFor(email: string, limit = 50): Promise<{ data: { success: boolean; ts: string }[]; error: string | null }> {
+    const { data, error } = await supabase
+      .from('login_attempts')
+      .select('success, ts')
+      .eq('email', email.toLowerCase())
+      .order('ts', { ascending: false })
+      .limit(limit)
+    if (error) return { data: [], error: error.message }
+    return { data: (data ?? []) as { success: boolean; ts: string }[], error: null }
+  },
 }
 
 // ── APP SETTINGS ──────────────────────────────────────────────────

@@ -344,7 +344,7 @@ $$;
 CREATE OR REPLACE FUNCTION public.is_staff()
 RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER AS $$
   SELECT COALESCE(
-    (SELECT role IN ('super_admin','admin','tech_support','claims_officer','policy_admin','finance','client_relations')
+    (SELECT role IN ('super_admin','admin','tech_support','claims_officer','policy_admin','finance','client_relations','agent')
      FROM public.profiles WHERE id = auth.uid()),
     FALSE
   )

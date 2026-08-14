@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { ToastMessage } from '../types'
 import type { ActivePanel } from '../App'
 import { useAuth } from '../contexts/AuthContext'
@@ -27,6 +27,19 @@ export default function Profile({ showToast }: Props) {
   const [newPwd, setNewPwd] = useState('')
   const [confirmPwd, setConfirmPwd] = useState('')
   const [savingPwd, setSavingPwd] = useState(false)
+  const [signingOutOthers, setSigningOutOthers] = useState(false)
+
+  const signOutOtherSessions = async () => {
+    if (!window.confirm('Sign this account out everywhere except this device? Anyone else currently signed in as you will be logged out immediately.')) return
+    setSigningOutOthers(true)
+    try {
+      const { error } = await supabase.auth.signOut({ scope: 'others' })
+      if (error) { showToast('error', `Failed to sign out other sessions: ${error.message}`); return }
+      showToast('success', 'All other sessions have been signed out.')
+    } finally {
+      setSigningOutOthers(false)
+    }
+  }
 
   const saveInfo = async () => {
     if (!user) return
@@ -81,13 +94,16 @@ export default function Profile({ showToast }: Props) {
     }
   }
 
-  const auditLog = [
-    { action: 'Login', detail: 'Signed in from 192.168.1.1', time: '09-MAY-2026 08:00' },
-    { action: 'Policy Created', detail: 'Policy EMA2024010 for Munyaradzi Gumbo', time: '08-MAY-2026 14:30' },
-    { action: 'Claim Updated', detail: 'Claim CLM2026001 status changed to under_review', time: '08-MAY-2026 10:15' },
-    { action: 'Login', detail: 'Signed in from 192.168.1.1', time: '08-MAY-2026 08:00' },
-    { action: 'Staff Password Reset', detail: 'Reset for Blessing Moyo', time: '07-MAY-2026 16:45' },
-  ]
+  const [loginHistory, setLoginHistory] = useState<{ success: boolean; ts: string }[] | null>(null)
+
+  useEffect(() => {
+    if (activeTab !== 'audit' || !user || loginHistory !== null) return
+    db.loginAttempts.historyFor(user.email).then(({ data }) => setLoginHistory(data))
+  }, [activeTab, user, loginHistory])
+
+  const last24h = (loginHistory ?? []).filter(h => Date.now() - new Date(h.ts).getTime() < 86400000)
+  const failedLast24h = last24h.filter(h => !h.success).length
+  const lastSuccess = (loginHistory ?? []).find(h => h.success)
 
   return (
     <div className="panel">
@@ -165,23 +181,35 @@ export default function Profile({ showToast }: Props) {
           )}
 
           {activeTab === 'password' && (
-            <div className="card" style={{ maxWidth: 440 }}>
-              <div className="form-group">
-                <label>Current Password</label>
-                <input type="password" className="form-control" value={currentPwd} onChange={e => setCurrentPwd(e.target.value)} />
+            <>
+              <div className="card" style={{ maxWidth: 440 }}>
+                <div className="form-group">
+                  <label>Current Password</label>
+                  <input type="password" className="form-control" value={currentPwd} onChange={e => setCurrentPwd(e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label>New Password</label>
+                  <input type="password" className="form-control" value={newPwd} onChange={e => setNewPwd(e.target.value)} />
+                </div>
+                <div className="form-group">
+                  <label>Confirm New Password</label>
+                  <input type="password" className="form-control" value={confirmPwd} onChange={e => setConfirmPwd(e.target.value)} />
+                </div>
+                <button className="btn btn-primary" onClick={changePwd} disabled={savingPwd} style={{ alignSelf: 'flex-start' }}>
+                  {savingPwd ? 'Changing…' : 'Change Password'}
+                </button>
               </div>
-              <div className="form-group">
-                <label>New Password</label>
-                <input type="password" className="form-control" value={newPwd} onChange={e => setNewPwd(e.target.value)} />
+
+              <div className="card" style={{ maxWidth: 440 }}>
+                <h3>Sessions</h3>
+                <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>
+                  If you suspect this account is signed in somewhere it shouldn't be, sign every other session out immediately. This device stays signed in.
+                </p>
+                <button className="btn btn-ghost" style={{ color: 'var(--danger)', alignSelf: 'flex-start' }} onClick={signOutOtherSessions} disabled={signingOutOthers}>
+                  {signingOutOthers ? 'Signing out…' : '⎋ Sign Out Other Sessions'}
+                </button>
               </div>
-              <div className="form-group">
-                <label>Confirm New Password</label>
-                <input type="password" className="form-control" value={confirmPwd} onChange={e => setConfirmPwd(e.target.value)} />
-              </div>
-              <button className="btn btn-primary" onClick={changePwd} disabled={savingPwd} style={{ alignSelf: 'flex-start' }}>
-                {savingPwd ? 'Changing…' : 'Change Password'}
-              </button>
-            </div>
+            </>
           )}
 
           {activeTab === 'notifications' && (
@@ -206,23 +234,57 @@ export default function Profile({ showToast }: Props) {
           )}
 
           {activeTab === 'audit' && (
-            <div className="card">
-              <h3>Audit Log</h3>
-              <table className="table">
-                <thead>
-                  <tr><th>Action</th><th>Detail</th><th>Time</th></tr>
-                </thead>
-                <tbody>
-                  {auditLog.map((entry, i) => (
-                    <tr key={i}>
-                      <td><span className="pill pill-active" style={{ fontSize: '0.7rem' }}>{entry.action}</span></td>
-                      <td>{entry.detail}</td>
-                      <td className="mono" style={{ fontSize: '0.8rem' }}>{entry.time}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <>
+              <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: 16 }}>
+                <div className="stat-card">
+                  <div className="stat-body">
+                    <div className="stat-value">{lastSuccess ? new Date(lastSuccess.ts).toLocaleString('en-GB') : '—'}</div>
+                    <div className="stat-label">Last Successful Sign-In</div>
+                  </div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-body">
+                    <div className="stat-value" style={{ color: failedLast24h >= 3 ? 'var(--danger)' : 'inherit' }}>{failedLast24h}</div>
+                    <div className="stat-label">Failed Attempts (24h)</div>
+                  </div>
+                </div>
+                <div className="stat-card">
+                  <div className="stat-body">
+                    <div className="stat-value">{(loginHistory ?? []).length}</div>
+                    <div className="stat-label">Recorded Sign-In Attempts</div>
+                  </div>
+                </div>
+              </div>
+
+              {failedLast24h >= 3 && (
+                <div className="info-banner info-banner-danger" style={{ marginBottom: 16 }}>
+                  ⚠ {failedLast24h} failed sign-in attempts on this account in the last 24 hours. If this wasn't you, change your password now.
+                </div>
+              )}
+
+              <div className="card">
+                <h3>Sign-In History</h3>
+                {loginHistory === null ? (
+                  <div className="empty-state">Loading…</div>
+                ) : loginHistory.length === 0 ? (
+                  <div className="empty-state">No sign-in attempts recorded yet.</div>
+                ) : (
+                  <table className="table">
+                    <thead>
+                      <tr><th>Result</th><th>Time</th></tr>
+                    </thead>
+                    <tbody>
+                      {loginHistory.map((entry, i) => (
+                        <tr key={i}>
+                          <td><span className={`pill ${entry.success ? 'pill-active' : 'pill-lapsed'}`} style={{ fontSize: '0.7rem' }}>{entry.success ? 'Success' : 'Failed'}</span></td>
+                          <td className="mono" style={{ fontSize: '0.8rem' }}>{new Date(entry.ts).toLocaleString('en-GB')}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </>
           )}
         </div>
       </div>
