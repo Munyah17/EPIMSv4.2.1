@@ -13,14 +13,30 @@ export default function SignaturePad({ label, onChange }: Props) {
   const drawing = useRef(false)
   const [hasSignature, setHasSignature] = useState(false)
 
+  // The canvas's internal pixel buffer is sized from its actual rendered
+  // width (not a fixed 360px) so it never overflows a narrow phone screen —
+  // two of these sit side-by-side in a .form-row, which on mobile is well
+  // under 360px per pad — and drawing coordinates line up correctly at
+  // whatever size it's actually displayed at instead of only ever covering
+  // part of the canvas.
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
-    const ctx = canvas.getContext('2d')
-    if (!ctx) return
-    ctx.lineWidth = 2
-    ctx.lineCap = 'round'
-    ctx.strokeStyle = '#0f1c2e'
+    const resize = () => {
+      const rect = canvas.getBoundingClientRect()
+      const ratio = window.devicePixelRatio || 1
+      canvas.width = rect.width * ratio
+      canvas.height = rect.height * ratio
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+      ctx.scale(ratio, ratio)
+      ctx.lineWidth = 2
+      ctx.lineCap = 'round'
+      ctx.strokeStyle = '#0f1c2e'
+    }
+    resize()
+    window.addEventListener('resize', resize)
+    return () => window.removeEventListener('resize', resize)
   }, [])
 
   const getPoint = (e: React.PointerEvent<HTMLCanvasElement>) => {
@@ -54,7 +70,8 @@ export default function SignaturePad({ label, onChange }: Props) {
   const clear = () => {
     const canvas = canvasRef.current!
     const ctx = canvas.getContext('2d')!
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    const rect = canvas.getBoundingClientRect()
+    ctx.clearRect(0, 0, rect.width, rect.height)
     setHasSignature(false)
     onChange(undefined)
   }
