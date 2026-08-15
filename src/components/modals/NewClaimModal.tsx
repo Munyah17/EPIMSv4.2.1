@@ -4,6 +4,7 @@ import { db } from '../../lib/db'
 import { scoreClaimFraud } from '../../lib/aiService'
 import { uploadDocument, deleteDocument, ACCEPTED_DOCUMENT_TYPES } from '../../lib/storage'
 import DateInput from '../ui/DateInput'
+import FraudNoticeModal from './FraudNoticeModal'
 
 interface Props {
   onClose: () => void
@@ -110,6 +111,7 @@ export default function NewClaimModal({ onClose, onSave, showToast, claimKind, o
   }
 
   const requiredDocsMissing = !docSlots[0]?.path || !docSlots[1]?.path
+  const [showFraudNotice, setShowFraudNotice] = useState(false)
 
   const handleSave = async () => {
     if (!policyId || !amount || !dateOfEvent || !description || !policy || requiredDocsMissing) return
@@ -284,11 +286,18 @@ export default function NewClaimModal({ onClose, onSave, showToast, claimKind, o
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={saving || !policyId || !amount || !dateOfEvent || !description || requiredDocsMissing}>
+          <button className="btn btn-primary" onClick={() => setShowFraudNotice(true)} disabled={saving || !policyId || !amount || !dateOfEvent || !description || requiredDocsMissing}>
             {saving ? 'Analysing & Submitting…' : 'Submit Claim'}
           </button>
         </div>
       </div>
+      {showFraudNotice && (
+        <FraudNoticeModal
+          confirming={saving}
+          onCancel={() => setShowFraudNotice(false)}
+          onConfirm={() => { setShowFraudNotice(false); void handleSave() }}
+        />
+      )}
     </div>
   )
 }

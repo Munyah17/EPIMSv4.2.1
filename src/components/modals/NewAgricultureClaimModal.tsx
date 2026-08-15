@@ -8,6 +8,7 @@ import { useAuth } from '../../contexts/AuthContext'
 import DateInput from '../ui/DateInput'
 import PhotoCaptureField from '../ui/PhotoCaptureField'
 import SignaturePad from '../ui/SignaturePad'
+import FraudNoticeModal from './FraudNoticeModal'
 
 export interface PendingOfflinePhoto {
   label: string
@@ -30,6 +31,14 @@ interface Props {
 }
 
 const CLAIM_TYPES = ['Crop Damage', 'Drought', 'Flood', 'Hail', 'Wind Storm', 'Fire', 'Pest/Disease Outbreak', 'Other']
+
+const THREE_DAYS_MS = 3 * 24 * 3600 * 1000
+function isPhotoStale(p: AssessmentPhoto): boolean {
+  const dateStr = p.exifDate || p.visibleDateStamp
+  if (!dateStr) return false
+  const ts = new Date(dateStr).getTime()
+  return Number.isFinite(ts) && Date.now() - ts > THREE_DAYS_MS
+}
 
 // At least 6 clearly-labeled damage photos, matching what a real assessment
 // needs to hold up — "+ Add Another" appends more beyond these.
@@ -69,6 +78,7 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
   const [assessorSignature, setAssessorSignature] = useState<string | undefined>()
   const [farmerSelfie, setFarmerSelfie] = useState<AssessmentPhoto | undefined>()
   const [offlinePending, setOfflinePending] = useState<{ label: string; file: File }[]>([])
+  const [showFraudNotice, setShowFraudNotice] = useState(false)
 
   // Stable draft id so uploaded photos land in one folder before the claim's
   // real id exists — same pattern as NewClaimModal.
@@ -139,6 +149,27 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
       })
       fraudScore = result.score
       signals = result.signals
+
+      // Agriculture-specific signals the generic text-based scorer above has
+      // no visibility into — these come from the physical evidence actually
+      // captured in this modal, so they're folded in here rather than
+      // bolted on after the claim (and its fraudScore) already exist.
+      const allCapturedPhotos = [...Object.values(photos).filter((p): p is AssessmentPhoto => !!p), ...(farmerSelfie ? [farmerSelfie] : [])]
+      const flaggedCount = allCapturedPhotos.filter(p => p.aiFlagged).length
+      const staleCount = allCapturedPhotos.filter(isPhotoStale).length
+      if (flaggedCount > 0) {
+        fraudScore = Math.min(100, fraudScore + flaggedCount * 15)
+        signals.push(`${flaggedCount} submitted photo${flaggedCount !== 1 ? 's' : ''} flagged by AI review.`)
+      }
+      if (staleCount > 0) {
+        fraudScore = Math.min(100, fraudScore + staleCount * 10)
+        signals.push(`${staleCount} submitted photo${staleCount !== 1 ? 's are' : ' is'} more than 3 days old.`)
+      }
+      const { data: priorAssessments } = await db.policyAssessments.listForPolicy(policyId)
+      if (priorAssessments.length === 0) {
+        fraudScore = Math.min(100, fraudScore + 10)
+        signals.push('No pre-loss assessment on record for this policy — crop/farm baseline unverified.')
+      }
     } finally {
       const claimNumber = `CLM${new Date().getFullYear()}${String(Date.now()).slice(-3)}`
       const claim: Claim & { fraudSignals?: string[] } = {
@@ -350,11 +381,18 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={!canSave}>
+          <button className="btn btn-primary" onClick={() => setShowFraudNotice(true)} disabled={!canSave}>
             {saving ? 'Analysing & Submitting…' : 'Submit Agriculture Claim'}
           </button>
         </div>
       </div>
+      {showFraudNotice && (
+        <FraudNoticeModal
+          confirming={saving}
+          onCancel={() => setShowFraudNotice(false)}
+          onConfirm={() => { setShowFraudNotice(false); void handleSave() }}
+        />
+      )}
     </div>
   )
 }
