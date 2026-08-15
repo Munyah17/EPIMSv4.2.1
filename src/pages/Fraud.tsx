@@ -35,6 +35,19 @@ export default function Fraud({ showToast }: Props) {
     cleared: cases.filter(c => c.status === 'cleared').length,
   }
 
+  const resolved = cases.filter(c => c.status === 'confirmed' || c.status === 'cleared')
+  const confirmedRate = resolved.length > 0 ? Math.round((counts.confirmed / resolved.length) * 100) : 0
+  const activeCases = cases.filter(c => c.status === 'open' || c.status === 'investigating')
+  const valueAtRisk = activeCases.reduce((s, c) => s + (c.amount ?? 0), 0)
+  const avgFraudScore = cases.length > 0 ? Math.round(cases.reduce((s, c) => s + c.fraudScore, 0) / cases.length) : 0
+  const agricultureCases = cases.filter(c => c.category === 'agriculture').length
+
+  const signalCounts = new Map<string, number>()
+  for (const c of cases) {
+    for (const s of c.signals) signalCounts.set(s, (signalCounts.get(s) ?? 0) + 1)
+  }
+  const topSignals = [...signalCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6)
+
   const assign = async (id: string, staffId: string) => {
     const { data, error } = await db.fraudCases.update(id, { assignedTo: staffId, status: 'investigating' })
     if (error || !data) { showToast('error', 'Failed to assign case.'); return }
@@ -57,6 +70,70 @@ export default function Fraud({ showToast }: Props) {
       <div className="info-banner info-banner-danger">
         ⚠ AI Fraud Detection analyses claims for anomalies. High-score cases require manual investigation before approval.
       </div>
+
+      {!loading && (
+        <>
+          <div className="stats-grid" style={{ marginBottom: 18 }}>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: 'rgba(239,68,68,0.15)', color: 'var(--danger)' }}>⚠</div>
+              <div className="stat-body">
+                <div className="stat-value">{counts.open + counts.investigating}</div>
+                <div className="stat-label">Active Cases</div>
+                <div className="stat-delta">{counts.open} open · {counts.investigating} investigating</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: 'rgba(245,158,11,0.15)', color: 'var(--gold)' }}>$</div>
+              <div className="stat-body">
+                <div className="stat-value">${valueAtRisk.toLocaleString()}</div>
+                <div className="stat-label">Value at Risk</div>
+                <div className="stat-delta">Open + investigating claims</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: 'rgba(91,127,232,0.15)', color: 'var(--blue)' }}>📊</div>
+              <div className="stat-body">
+                <div className="stat-value">{avgFraudScore}%</div>
+                <div className="stat-label">Avg. Fraud Score</div>
+                <div className="stat-delta">Across all cases</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: 'rgba(16,185,129,0.15)', color: 'var(--teal)' }}>✓</div>
+              <div className="stat-body">
+                <div className="stat-value">{confirmedRate}%</div>
+                <div className="stat-label">Confirmed Fraud Rate</div>
+                <div className="stat-delta">Of {resolved.length} resolved case{resolved.length !== 1 ? 's' : ''}</div>
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: 'rgba(139,92,246,0.15)', color: 'var(--purple)' }}>🌾</div>
+              <div className="stat-body">
+                <div className="stat-value">{agricultureCases}</div>
+                <div className="stat-label">Agriculture Cases</div>
+                <div className="stat-delta">{cases.length > 0 ? Math.round((agricultureCases / cases.length) * 100) : 0}% of total</div>
+              </div>
+            </div>
+          </div>
+
+          {topSignals.length > 0 && (
+            <div className="card" style={{ marginBottom: 18 }}>
+              <div className="card-header"><h3 className="card-title">Most Common Fraud Signals</h3></div>
+              <table className="table">
+                <thead><tr><th>Signal</th><th>Cases</th></tr></thead>
+                <tbody>
+                  {topSignals.map(([signal, count]) => (
+                    <tr key={signal}>
+                      <td>{signal}</td>
+                      <td>{count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
 
       <div className="panel-toolbar">
         <div className="filter-row">
@@ -85,6 +162,13 @@ export default function Fraud({ showToast }: Props) {
                   <strong>{fc.clientName}</strong>
                   <span className="fraud-case-sep">·</span>
                   <span className="mono">{fc.policyNumber}</span>
+                  {fc.amount !== undefined && (
+                    <>
+                      <span className="fraud-case-sep">·</span>
+                      <span>${fc.amount.toLocaleString()}</span>
+                    </>
+                  )}
+                  {fc.category === 'agriculture' && <span className="pill pill-active" style={{ marginLeft: 6, fontSize: 10 }}>🌾 Agriculture</span>}
                 </div>
                 <FraudGauge score={fc.fraudScore} />
               </div>

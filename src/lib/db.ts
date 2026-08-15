@@ -253,6 +253,8 @@ function toFraudCase(r: any): FraudCase {
     claimNumber:  r.claims?.claim_number ?? '',
     policyNumber: r.claims?.policies?.policy_number ?? '',
     clientName:   r.claims?.policies?.clients?.name ?? '',
+    category:     r.claims?.category ?? undefined,
+    amount:       r.claims?.amount ?? undefined,
     fraudScore:   r.fraud_score,
     signals:      r.signals ?? [],
     status:       r.status as FraudCaseStatus,
@@ -333,7 +335,7 @@ const TICKET_SELECT = `
 const FRAUD_SELECT = `
   id, claim_id, fraud_score, signals, status, assigned_to, notes, resolved_at, created_at,
   claims!claim_id(
-    claim_number,
+    claim_number, category, amount,
     policies!policy_id(
       policy_number,
       clients!client_id(name)

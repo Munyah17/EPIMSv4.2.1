@@ -265,6 +265,10 @@ export interface FraudCase {
   claimNumber: string
   policyNumber: string
   clientName: string
+  /** Denormalized from the underlying claim — lets the Fraud page break
+   *  down cases by category (e.g. agriculture) without a second lookup. */
+  category?: string
+  amount?: number
   fraudScore: number
   signals: string[]
   status: FraudCaseStatus
