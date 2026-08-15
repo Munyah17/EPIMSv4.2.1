@@ -1,9 +1,7 @@
 import { useState, useEffect } from 'react'
-import type { Policy, PolicyStatus, Insurer, AppUser } from '../../types'
+import type { Policy, PolicyStatus, Insurer, InsurerRecord, AppUser } from '../../types'
 import { db } from '../../lib/db'
 import DateInput from '../ui/DateInput'
-
-const INSURERS: Insurer[] = ['Motions', 'CBZ Life', 'EcoSure', 'ZB Life', 'Nyaradzo Funeral', 'Doves']
 
 interface Props {
   policy: Policy
@@ -20,6 +18,7 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
   const [growerNumber, setGrowerNumber] = useState(policy.growerNumber ?? '')
   const [staff, setStaff] = useState<AppUser[]>([])
   const [isAgriculture, setIsAgriculture] = useState(false)
+  const [insurerOptions, setInsurerOptions] = useState<InsurerRecord[]>([])
 
   useEffect(() => {
     db.staff.list().then(({ data }) => { if (data) setStaff(data.filter(s => s.active)) })
@@ -27,6 +26,7 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
       const category = data?.find(p => p.id === policy.productId)?.category
       setIsAgriculture(category === 'agriculture')
     })
+    db.insurers.list().then(({ data }) => setInsurerOptions(data.filter(i => i.status === 'active')))
   }, [policy.productId])
 
   const handleSave = () => {
@@ -79,7 +79,7 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
             <label>Insurer</label>
             <select className="form-control" value={insurer} onChange={e => setInsurer(e.target.value as Insurer)}>
               <option value="">Select insurer…</option>
-              {INSURERS.map(i => <option key={i} value={i}>{i}</option>)}
+              {insurerOptions.map(i => <option key={i.id} value={i.name}>{i.name}</option>)}
             </select>
           </div>
           {isAgriculture && (

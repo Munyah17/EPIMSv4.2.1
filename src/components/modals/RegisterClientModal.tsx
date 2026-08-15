@@ -1,9 +1,8 @@
-import { useState } from 'react'
-import type { Client, Insurer } from '../../types'
+import { useState, useEffect } from 'react'
+import type { Client, Insurer, InsurerRecord } from '../../types'
+import { db } from '../../lib/db'
 import PhoneInput from '../ui/PhoneInput'
 import DateInput from '../ui/DateInput'
-
-const INSURERS: Insurer[] = ['Motions', 'CBZ Life', 'EcoSure', 'ZB Life', 'Nyaradzo Funeral', 'Doves']
 
 interface Props {
   onClose: () => void
@@ -19,6 +18,11 @@ export default function RegisterClientModal({ onClose, onSave }: Props) {
   const [address, setAddress] = useState('')
   const [occupation, setOccupation] = useState('')
   const [insurer, setInsurer] = useState<Insurer | ''>('')
+  const [insurerOptions, setInsurerOptions] = useState<InsurerRecord[]>([])
+
+  useEffect(() => {
+    db.insurers.list().then(({ data }) => setInsurerOptions(data.filter(i => i.status === 'active')))
+  }, [])
 
   const handleSave = () => {
     if (!name || !phone || !nationalId) return
@@ -74,7 +78,7 @@ export default function RegisterClientModal({ onClose, onSave }: Props) {
             <label>Insurer</label>
             <select className="form-control" value={insurer} onChange={e => setInsurer(e.target.value as Insurer)}>
               <option value="">Select insurer…</option>
-              {INSURERS.map(i => <option key={i} value={i}>{i}</option>)}
+              {insurerOptions.map(i => <option key={i.id} value={i.name}>{i.name}</option>)}
             </select>
           </div>
           <div className="form-group">

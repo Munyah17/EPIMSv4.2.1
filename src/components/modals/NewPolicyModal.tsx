@@ -1,13 +1,11 @@
 import { useState, useEffect } from 'react'
-import type { Policy, Dependant, Insurer, Client, Product, AppUser } from '../../types'
+import type { Policy, Dependant, Insurer, InsurerRecord, Client, Product, AppUser } from '../../types'
 import { db } from '../../lib/db'
 import { useAuth } from '../../contexts/AuthContext'
 import PhoneInput from '../ui/PhoneInput'
 import DateInput from '../ui/DateInput'
 import { premiumPeriodLabel } from '../../lib/productUtils'
 import { computeAssignedStartDate } from '../../lib/policyLifecycle'
-
-const INSURERS: Insurer[] = ['Motions', 'CBZ Life', 'EcoSure', 'ZB Life', 'Nyaradzo Funeral', 'Doves']
 
 interface Props {
   onClose: () => void
@@ -56,11 +54,13 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   const [products, setProducts] = useState<Product[]>([])
   const [productsLoading, setProductsLoading] = useState(true)
   const [staff, setStaff] = useState<AppUser[]>([])
+  const [insurerOptions, setInsurerOptions] = useState<InsurerRecord[]>([])
   const product = products.find(p => p.id === productId)
 
   useEffect(() => {
     db.products.list().then(({ data }) => { if (data) setProducts(data); setProductsLoading(false) })
     db.clients.list().then(({ data }) => { if (data) setExistingClients(data) })
+    db.insurers.list().then(({ data }) => setInsurerOptions(data.filter(i => i.status === 'active')))
     db.staff.list().then(({ data }) => {
       const active = (data ?? []).filter(s => s.active)
       setStaff(active)
@@ -338,7 +338,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                 <label>Insurer</label>
                 <select className="form-control" value={insurer} onChange={e => setInsurer(e.target.value as Insurer)}>
                   <option value="">Select insurer…</option>
-                  {INSURERS.map(i => <option key={i} value={i}>{i}</option>)}
+                  {insurerOptions.map(i => <option key={i.id} value={i.name}>{i.name}</option>)}
                 </select>
               </div>
               <div className="form-group">

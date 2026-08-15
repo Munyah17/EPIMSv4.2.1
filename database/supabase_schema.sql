@@ -874,3 +874,21 @@ CREATE POLICY "claim_assessments_select_staff" ON public.claim_assessments FOR S
 CREATE POLICY "claim_assessments_write_staff" ON public.claim_assessments FOR ALL TO authenticated USING (is_staff()) WITH CHECK (is_staff());
 CREATE POLICY "policy_assessments_select_staff" ON public.policy_assessments FOR SELECT TO authenticated USING (is_staff());
 CREATE POLICY "policy_assessments_write_staff" ON public.policy_assessments FOR ALL TO authenticated USING (is_staff()) WITH CHECK (is_staff());
+
+-- Insurer partner management — see database/add_insurers.sql
+CREATE TABLE IF NOT EXISTS public.insurers (
+  id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name                  TEXT NOT NULL UNIQUE,
+  contact_email         TEXT,
+  contact_phone         TEXT,
+  address               TEXT,
+  reg_number            TEXT,
+  commission_percent    NUMERIC(5,2),
+  status                TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','inactive')),
+  notes                 TEXT,
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE public.insurers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.insurers FORCE ROW LEVEL SECURITY;
+CREATE POLICY "insurers_select_staff" ON public.insurers FOR SELECT TO authenticated USING (is_staff());
+CREATE POLICY "insurers_write_admin" ON public.insurers FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());

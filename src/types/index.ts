@@ -14,7 +14,23 @@ export type UserRole =
 
 export const SYSTEM_ROLES: UserRole[] = ['super_admin', 'admin', 'tech_support']
 
-export type Insurer = 'Motions' | 'CBZ Life' | 'EcoSure' | 'ZB Life' | 'Nyaradzo Funeral' | 'Doves'
+/** No longer a fixed union — insurer partners are now managed records (see
+ *  InsurerRecord/Insurer Management page) rather than a hardcoded list
+ *  duplicated across every client/policy modal. */
+export type Insurer = string
+
+export interface InsurerRecord {
+  id: string
+  name: string
+  contactEmail?: string
+  contactPhone?: string
+  address?: string
+  regNumber?: string
+  commissionPercent?: number
+  status: 'active' | 'inactive'
+  notes?: string
+  createdAt: string
+}
 
 export interface AppUser {
   id: string
