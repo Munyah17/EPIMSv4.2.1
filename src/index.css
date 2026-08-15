@@ -1161,6 +1161,8 @@ textarea.form-control{resize:vertical;min-height:80px}
 .phone-input-option{display:flex;align-items:center;gap:8px;width:100%;padding:7px 12px;background:transparent;border:none;cursor:pointer;font-size:13px;text-align:left}
 .phone-input-option:hover{background:var(--surface)}
 .phone-input-option.active{background:var(--blue-light);color:var(--blue)}
+.phone-input-option.highlighted{background:var(--surface2)}
 .phone-input-option-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .phone-input-option-dial{color:var(--muted);font-size:12px}
+.phone-input-match{background:var(--gold-bg);color:var(--text);border-radius:2px;padding:0 1px}
 .phone-input-empty{padding:12px;text-align:center;font-size:12px;color:var(--muted)}
