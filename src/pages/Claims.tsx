@@ -1,12 +1,14 @@
 import { useState, useEffect } from 'react'
-import type { ToastMessage, Claim, ClaimStatus } from '../types'
+import type { ToastMessage, Claim, ClaimStatus, ClaimAssessment } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import ScoreBar from '../components/ui/ScoreBar'
 import NewClaimModal from '../components/modals/NewClaimModal'
+import NewAgricultureClaimModal, { type PendingOfflinePhoto } from '../components/modals/NewAgricultureClaimModal'
 import ReviewClaimModal from '../components/modals/ReviewClaimModal'
 import { notifyClaimCreated } from '../lib/claimNotifications'
 import { useAuth } from '../contexts/AuthContext'
+import { queueAssessment } from '../lib/offlineQueue'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -19,7 +21,7 @@ export default function Claims({ showToast }: Props) {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<ClaimStatus | 'all'>('all')
-  const [showNew, setShowNew] = useState(false)
+  const [newClaimKind, setNewClaimKind] = useState<'ordinary' | 'agriculture' | null>(null)
   const [reviewClaim, setReviewClaim] = useState<Claim | null>(null)
 
   useEffect(() => {
@@ -46,20 +48,62 @@ export default function Claims({ showToast }: Props) {
     paid: claims.filter(c => c.status === 'paid').length,
   }
 
-  const handleAdd = async (claim: Claim & { fraudSignals?: string[] }) => {
-    const { data, error } = await db.claims.create(claim)
-    if (error || !data) { showToast('error', 'Failed to submit claim.'); return }
+  const finishClaimSubmission = async (data: Claim, fraudSignals: string[] | undefined) => {
     setClaims(prev => [data, ...prev])
-    setShowNew(false)
+    setNewClaimKind(null)
     try { notifyClaimCreated(data) } catch { /**/ }
 
     const FRAUD_REVIEW_THRESHOLD = 55
     if (data.fraudScore >= FRAUD_REVIEW_THRESHOLD) {
-      await db.fraudCases.create(data.id, data.fraudScore, claim.fraudSignals ?? [])
+      await db.fraudCases.create(data.id, data.fraudScore, fraudSignals ?? [])
       showToast('warning', `Claim ${data.claimNumber} submitted — flagged for fraud review (score ${data.fraudScore}).`)
     } else {
       showToast('success', `Claim ${data.claimNumber} submitted successfully.`)
     }
+  }
+
+  const handleAdd = async (claim: Claim & { fraudSignals?: string[] }) => {
+    const { data, error } = await db.claims.create(claim)
+    if (error || !data) { showToast('error', 'Failed to submit claim.'); return }
+    await finishClaimSubmission(data, claim.fraudSignals)
+  }
+
+  /** Agriculture claims capture the full physical assessment (photos, GPS,
+   *  farmer + assessor signatures) at intake time in one modal rather than
+   *  as a separate later step — the claim still starts at the normal
+   *  'intake' stage and flows through assessment/final_review exactly like
+   *  any other claim, but by the time it reaches the assessment stage the
+   *  assessment is already there and complete (ReviewClaimModal's
+   *  hasCompletedAssessment check picks it up automatically).
+   *
+   *  Any photos that couldn't upload while offline, or a failure attaching
+   *  the assessment even when online, both fall back to the same
+   *  offline-queue AgricultureAssessmentModal already uses — the claim
+   *  itself is never left without its assessment silently. */
+  const handleAddAgriculture = async (
+    claim: Claim & { fraudSignals?: string[] },
+    assessment: Omit<ClaimAssessment, 'id' | 'claimId' | 'claimNumber' | 'assessorName' | 'createdAt'>,
+    offlinePhotos: PendingOfflinePhoto[],
+  ) => {
+    const { data, error } = await db.claims.create(claim)
+    if (error || !data) { showToast('error', 'Failed to submit claim.'); return }
+
+    const queueFallback = () => {
+      const { photos, ...formData } = assessment
+      queueAssessment('claim', data.id, { ...formData, _alreadyUploadedPhotos: photos }, offlinePhotos)
+    }
+
+    if (!navigator.onLine || offlinePhotos.length > 0) {
+      queueFallback()
+      showToast('warning', `Claim ${data.claimNumber} submitted — the assessment is saved on this device and will sync once you're back online.`)
+    } else {
+      const { error: assessError } = await db.claimAssessments.create({ ...assessment, claimId: data.id })
+      if (assessError) {
+        queueFallback()
+        showToast('warning', `Claim ${data.claimNumber} submitted — the assessment couldn't attach (${assessError}), so it's queued to retry automatically.`)
+      }
+    }
+    await finishClaimSubmission(data, claim.fraudSignals)
   }
 
   const handleUpdate = async (updated: Claim, notify: () => Promise<void>) => {
@@ -91,7 +135,7 @@ export default function Claims({ showToast }: Props) {
           </select>
         </div>
         {hasPermission('claims.create') && (
-          <button type="button" className="btn btn-primary" onClick={() => setShowNew(true)}>+ New Claim</button>
+          <button type="button" className="btn btn-primary" onClick={() => setNewClaimKind('ordinary')}>+ New Claim</button>
         )}
       </div>
 
@@ -149,8 +193,23 @@ export default function Claims({ showToast }: Props) {
         )}
       </div>
 
-      {showNew && (
-        <NewClaimModal onClose={() => setShowNew(false)} onSave={handleAdd} showToast={showToast} />
+      {newClaimKind === 'ordinary' && (
+        <NewClaimModal
+          onClose={() => setNewClaimKind(null)}
+          onSave={handleAdd}
+          showToast={showToast}
+          claimKind={newClaimKind}
+          onSwitchKind={setNewClaimKind}
+        />
+      )}
+      {newClaimKind === 'agriculture' && (
+        <NewAgricultureClaimModal
+          onClose={() => setNewClaimKind(null)}
+          onSave={handleAddAgriculture}
+          showToast={showToast}
+          claimKind={newClaimKind}
+          onSwitchKind={setNewClaimKind}
+        />
       )}
       {reviewClaim && (
         <ReviewClaimModal

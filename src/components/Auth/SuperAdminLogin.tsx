@@ -22,7 +22,7 @@ export default function SuperAdminLogin() {
     // user_metadata.role right after sign-in and would occasionally see a
     // not-yet-settled session, signing the user straight back out a moment
     // after a genuinely successful login.
-    const profile = await login(email, password)
+    const { profile, error: loginError } = await login(email, password)
     setLoading(false)
     if (profile) {
       if (profile.role === 'super_admin') {
@@ -32,7 +32,7 @@ export default function SuperAdminLogin() {
         setError('Access denied. Super Admin credentials required.')
       }
     } else {
-      setError('Invalid credentials. Please try again.')
+      setError(loginError ?? 'Invalid credentials. Please try again.')
     }
   }
 

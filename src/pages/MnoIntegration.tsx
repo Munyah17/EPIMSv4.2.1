@@ -430,8 +430,8 @@ function ApiKeysTab({ apiKeys, partners, reload, showToast }: {
           </div>
           <div style={{ marginBottom: 14 }}>
             <label className="form-label">Rate Limit (req/min)</label>
-            <input type="number" className="form-input" style={{ width: 120 }} value={newKey.rateLimit}
-              onChange={e => setNewKey(p => ({ ...p, rateLimit: parseInt(e.target.value) || 100 }))} />
+            <input type="number" className="form-input" style={{ width: 120 }} value={newKey.rateLimit === 0 ? '' : newKey.rateLimit}
+              onChange={e => setNewKey(p => ({ ...p, rateLimit: e.target.value === '' ? 0 : parseInt(e.target.value) || 0 }))} />
           </div>
           <div style={{ marginBottom: 16 }}>
             <label className="form-label">Permissions</label>

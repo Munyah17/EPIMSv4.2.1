@@ -79,9 +79,9 @@ export default function CommissionSettings({ showToast }: Props) {
             min={0}
             max={100}
             step={0.5}
-            value={rates.defaultRatePercent}
+            value={rates.defaultRatePercent === 0 ? '' : rates.defaultRatePercent}
             disabled={!canEdit}
-            onChange={e => setRates(prev => ({ ...prev, defaultRatePercent: Number(e.target.value) }))}
+            onChange={e => setRates(prev => ({ ...prev, defaultRatePercent: e.target.value === '' ? 0 : Number(e.target.value) }))}
           />
         </div>
       </div>

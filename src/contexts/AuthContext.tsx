@@ -11,7 +11,7 @@ interface AuthContextValue {
    *  the JWT's user_metadata.role, which can be stale) so callers that
    *  need to gate on role (AdminLogin, SuperAdminLogin) don't have to
    *  re-derive it from a separate, racy supabase.auth.getSession() call. */
-  login: (identifier: string, password: string) => Promise<AppUser | null>
+  login: (identifier: string, password: string) => Promise<{ profile: AppUser | null; error: string | null }>
   logout: () => Promise<void>
   hasPermission: (permission: string) => boolean
   canAccess: (panel: string) => boolean
@@ -151,43 +151,59 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe()
   }, [])
 
-  const login = useCallback(async (identifier: string, password: string): Promise<AppUser | null> => {
+  const login = useCallback(async (identifier: string, password: string): Promise<{ profile: AppUser | null; error: string | null }> => {
     return withTimeout((async () => {
       let result: AppUser | null = null
+      // Distinct from the generic "wrong password" case shown to the user —
+      // this is surfaced verbatim so a real infrastructure problem (RLS,
+      // RPC missing, a stuck query) doesn't just look identical to a typo'd
+      // password with no way to tell the two apart.
+      let errorDetail: string | null = null
       const trimmed = identifier.trim()
       // A bare email is used as-is; anything else (a username) is resolved
       // to its email server-side, since profiles isn't readable pre-auth.
       let email = trimmed
       try {
         if (!trimmed.includes('@')) {
-          const { data: resolved } = await supabase.rpc('resolve_login_email', { p_identifier: trimmed })
+          const { data: resolved, error: rpcError } = await supabase.rpc('resolve_login_email', { p_identifier: trimmed })
+          if (rpcError) {
+            errorDetail = `Could not look up that username: ${rpcError.message}`
+          } else if (!resolved) {
+            errorDetail = 'No account found with that username.'
+          }
           if (!resolved) {
             void supabase.from('login_attempts').insert({ email: trimmed.toLowerCase(), success: false }).then(() => {})
-            return null
+            return { profile: null, error: errorDetail }
           }
           email = resolved as string
         }
         const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-        if (!error && data.user) {
+        if (error) {
+          errorDetail = error.message
+        } else if (data.user) {
           const meta = data.user.user_metadata as Record<string, unknown>
           const profile = await fetchProfile(data.user.id, data.user.email ?? email, meta)
           if (profile && profile.active) {
             setUser(profile)
             result = profile
+          } else if (profile && !profile.active) {
+            errorDetail = 'This account has been disabled. Contact a Super Admin.'
+            await supabase.auth.signOut().catch(() => {})
           } else {
+            errorDetail = 'Signed in, but could not load your account profile.'
             await supabase.auth.signOut().catch(() => {})
           }
         }
-      } catch {
-        // fall through — result stays null
+      } catch (e) {
+        errorDetail = `Unexpected error: ${e}`
       }
       // Direct insert (not via db.ts) so this always-loaded auth module
       // doesn't drag the whole data layer + Supabase SDK into the eager
       // bundle — everything else in the app reaches Supabase through
       // lazy-loaded pages, only auth is loaded up front.
       void supabase.from('login_attempts').insert({ email: email.toLowerCase(), success: !!result }).then(() => {})
-      return result
-    })(), 15000, null)
+      return { profile: result, error: errorDetail }
+    })(), 15000, { profile: null, error: 'The sign-in request timed out. Check your connection and try again.' })
   }, [])
 
   const logout = useCallback(async () => {

@@ -9,6 +9,12 @@ interface Props {
   onClose: () => void
   onSave: (claim: Claim) => void
   showToast?: (type: 'success' | 'error' | 'warning' | 'info', message: string) => void
+  /** Bubble-toggle at the top switches between this modal and
+   *  NewAgricultureClaimModal — same trigger, same accessibility, but
+   *  agriculture gets its own dedicated modal given how much more it needs
+   *  to capture (6+ damage photos, GPS, farmer + assessor signatures). */
+  claimKind?: 'ordinary' | 'agriculture'
+  onSwitchKind?: (kind: 'ordinary' | 'agriculture') => void
 }
 
 interface DocSlot {
@@ -17,7 +23,7 @@ interface DocSlot {
   uploading: boolean
 }
 
-export default function NewClaimModal({ onClose, onSave, showToast }: Props) {
+export default function NewClaimModal({ onClose, onSave, showToast, claimKind, onSwitchKind }: Props) {
   const [policies, setPolicies] = useState<Policy[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [allClaims, setAllClaims] = useState<Claim[]>([])
@@ -156,6 +162,14 @@ export default function NewClaimModal({ onClose, onSave, showToast }: Props) {
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
+          {onSwitchKind && (
+            <div className="form-group">
+              <div className="bubble-toggle">
+                <button type="button" className={`bubble-toggle-btn${claimKind === 'ordinary' ? ' active' : ''}`} onClick={() => onSwitchKind('ordinary')}>Ordinary Claims</button>
+                <button type="button" className={`bubble-toggle-btn${claimKind === 'agriculture' ? ' active' : ''}`} onClick={() => onSwitchKind('agriculture')}>Agriculture Claims</button>
+              </div>
+            </div>
+          )}
           <div className="form-group">
             <label>Policy Number *</label>
             <input

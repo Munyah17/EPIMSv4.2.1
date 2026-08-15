@@ -605,7 +605,7 @@ function IssueKeyModal({ developer, onClose, onIssue }: {
           </div>
           <div className="form-group">
             <label>Rate Limit (requests/min)</label>
-            <input type="number" className="form-control" min={1} value={rateLimitPerMin} onChange={e => setRateLimitPerMin(Number(e.target.value))} />
+            <input type="number" className="form-control" min={1} value={rateLimitPerMin === 0 ? '' : rateLimitPerMin} onChange={e => setRateLimitPerMin(e.target.value === '' ? 0 : Number(e.target.value))} />
           </div>
         </div>
         <div className="modal-footer">

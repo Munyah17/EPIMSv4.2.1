@@ -14,9 +14,9 @@ export default function LoginScreen() {
     e.preventDefault()
     setError('')
     setLoading(true)
-    const ok = await login(email, password)
+    const { profile, error: loginError } = await login(email, password)
     setLoading(false)
-    if (!ok) setError('Invalid credentials. Please try again.')
+    if (!profile) setError(loginError ?? 'Invalid credentials. Please try again.')
   }
 
   return (
