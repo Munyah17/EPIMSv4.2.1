@@ -2,7 +2,7 @@
 // most visits to a page with export buttons never click one — dynamic
 // import() keeps them out of the page's own chunk entirely, fetched only
 // when a user actually exports something.
-import type { Policy, Client, ClaimAssessment } from '../types'
+import type { Policy, Client, ClaimAssessment, PolicyAssessment } from '../types'
 import { formatDate } from './dateUtils'
 import { getNotifSettings } from './mailService'
 import { getDocumentUrl } from './storage'
@@ -388,4 +388,111 @@ export async function exportClaimAssessmentReport(
   doc.text(`Generated ${formatDate(new Date())} · Tariqify IMS`, 14, pageHeight - 10)
 
   doc.save(`${claimNumber}-Assessment-Report.pdf`)
+}
+
+/** Printable record of a pre-loss baseline assessment — the same report
+ *  family as exportClaimAssessmentReport, but for what's established on a
+ *  farm before any claim exists rather than the damage evidence after one. */
+export async function exportPolicyAssessmentReport(
+  assessment: PolicyAssessment, policyNumber: string, clientName: string,
+) {
+  const { jsPDF } = await import('jspdf')
+  const doc = new jsPDF()
+  const pageWidth = doc.internal.pageSize.getWidth()
+  const cfg = getNotifSettings()
+
+  doc.setFillColor(...BRAND_BLUE)
+  doc.rect(0, 0, pageWidth, 24, 'F')
+  doc.setFillColor(...BRAND_RED)
+  doc.rect(0, 24, pageWidth, 1.5, 'F')
+  doc.setTextColor(255, 255, 255)
+  doc.setFontSize(15)
+  doc.text('MOTIONS', 14, 12)
+  doc.setFontSize(9)
+  doc.text('AGRICULTURE PRE-LOSS ASSESSMENT REPORT', 14, 19)
+  doc.text(policyNumber, pageWidth - 14, 15, { align: 'right' })
+  doc.setTextColor(...TEXT)
+
+  let y = 31
+  const contactLine = [cfg.companyAddress, cfg.companyPhone, cfg.companyEmail].filter(Boolean).join('  ·  ')
+  if (contactLine) {
+    doc.setFontSize(7.5)
+    doc.setTextColor(...MUTED)
+    doc.text(contactLine, 14, y)
+    doc.setTextColor(...TEXT)
+    y += 6
+  }
+  y += 3
+
+  const sectionHeading = (n: number, title: string) => {
+    doc.setFontSize(12)
+    doc.setTextColor(...BRAND_BLUE)
+    doc.text(`${n}.  ${title}`, 14, y)
+    doc.setDrawColor(220, 226, 240)
+    doc.line(14, y + 2, pageWidth - 14, y + 2)
+    doc.setTextColor(...TEXT)
+    y += 9
+  }
+
+  const kvRows = (rows: [string, string][]) => {
+    doc.setFontSize(10)
+    rows.forEach(([l, v], i) => {
+      doc.setTextColor(...MUTED)
+      doc.text(`${l}:`, 14, y + i * 6.5)
+      doc.setTextColor(...TEXT)
+      doc.text(v, 60, y + i * 6.5)
+    })
+    y += rows.length * 6.5 + 8
+  }
+
+  sectionHeading(1, 'POLICY OVERVIEW')
+  kvRows([
+    ['Policy Number', policyNumber], ['Client', clientName],
+    ['Assessor', assessment.assessorName], ['Recorded', formatDate(assessment.createdAt)],
+  ])
+
+  sectionHeading(2, 'FARM / CROP DETAILS')
+  kvRows([
+    ['Crop Type', assessment.cropType || '—'],
+    ['Crop Population', assessment.cropPopulation || '—'],
+    ['Plant Date', assessment.plantDate ? formatDate(assessment.plantDate) : '—'],
+    ['GPS Coordinates', assessment.gpsLat !== undefined ? `${assessment.gpsLat.toFixed(6)}, ${assessment.gpsLng?.toFixed(6)}` : '—'],
+  ])
+
+  sectionHeading(3, 'NOTES')
+  doc.setFontSize(9)
+  const notes = doc.splitTextToSize(assessment.notes || '—', pageWidth - 28)
+  doc.text(notes, 14, y)
+  y += notes.length * 4.5 + 8
+
+  if (assessment.photos.length > 0) {
+    if (y > 230) { doc.addPage(); y = 20 }
+    sectionHeading(4, 'PHOTOGRAPHIC EVIDENCE')
+    for (const photo of assessment.photos) {
+      if (y > 220) { doc.addPage(); y = 20 }
+      doc.setFontSize(9)
+      doc.setTextColor(...TEXT)
+      doc.text(photo.label, 14, y)
+      const dateLabel = photo.exifDate || photo.visibleDateStamp
+      doc.setFontSize(7.5)
+      doc.setTextColor(...MUTED)
+      if (dateLabel) doc.text(`Captured: ${dateLabel}`, 14, y + 4.5)
+      const dataUrl = await fetchImageAsDataUrl(photo.path)
+      if (dataUrl) {
+        try {
+          const format = dataUrl.includes('image/png') ? 'PNG' : 'JPEG'
+          doc.addImage(dataUrl, format, 14, y + 7, 60, 45)
+        } catch { /* skip if the image can't be decoded into the PDF */ }
+      }
+      doc.setTextColor(...TEXT)
+      y += 58
+    }
+  }
+
+  const pageHeight = doc.internal.pageSize.getHeight()
+  doc.setFontSize(7.5)
+  doc.setTextColor(...MUTED)
+  doc.text(`Generated ${formatDate(new Date())} · Tariqify IMS`, 14, pageHeight - 10)
+
+  doc.save(`${policyNumber}-PreLoss-Assessment-Report.pdf`)
 }

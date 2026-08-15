@@ -728,6 +728,7 @@ function toPolicyAssessment(r: any): PolicyAssessment {
     id:               r.id,
     policyId:         r.policy_id,
     policyNumber:     r.policies?.policy_number ?? '',
+    clientName:       r.policies?.clients?.name ?? undefined,
     assessorId:       r.assessor_id ?? '',
     assessorName:     r.profiles?.name ?? '',
     cropType:         r.crop_type ?? '',
@@ -752,7 +753,7 @@ const CLAIM_ASSESSMENT_SELECT = `
 const POLICY_ASSESSMENT_SELECT = `
   id, policy_id, assessor_id, crop_type, crop_population, plant_date, photos, notes,
   gps_lat, gps_lng, sync_status, created_at,
-  policies!policy_id(policy_number),
+  policies!policy_id(policy_number, clients!client_id(name)),
   profiles!assessor_id(name)
 `
 
@@ -785,6 +786,19 @@ export const policyAssessments = {
   async listForPolicy(policyId: string) {
     const { ok, data } = await sb('policy_assessments', 'read',
       () => supabase.from('policy_assessments').select(POLICY_ASSESSMENT_SELECT).eq('policy_id', policyId).order('created_at', { ascending: false }),
+      d => Array.isArray(d),
+    )
+    if (ok && data) return { data: (data as unknown[]).map(toPolicyAssessment), error: null }
+    return { data: [], error: null }
+  },
+
+  /** Every pre-loss assessment across every policy — powers the dedicated
+   *  Pre-Loss Assessments management page (there was previously no way to
+   *  browse this history at all, only record a new one from inside a
+   *  policy). */
+  async listAll() {
+    const { ok, data } = await sb('policy_assessments', 'read',
+      () => supabase.from('policy_assessments').select(POLICY_ASSESSMENT_SELECT).order('created_at', { ascending: false }).limit(500),
       d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as unknown[]).map(toPolicyAssessment), error: null }

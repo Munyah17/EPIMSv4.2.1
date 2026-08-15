@@ -56,6 +56,7 @@ const STAFF_SECTIONS: NavSection[] = [
         items: [
           { id: 'policies', label: 'Policies', icon: '🛡' },
           { id: 'products', label: 'Products', icon: '📦', roles: ['super_admin', 'admin', 'policy_admin'] },
+          { id: 'pre_loss_assessments', label: 'Pre-Loss Assessments', icon: '🌾', roles: ['super_admin', 'admin', 'policy_admin', 'claims_officer'] },
         ],
       },
     ],

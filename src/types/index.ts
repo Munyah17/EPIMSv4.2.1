@@ -429,6 +429,9 @@ export interface PolicyAssessment {
   id: string
   policyId: string
   policyNumber: string
+  /** Only populated by listAll() (the cross-policy management view) — per-
+   *  policy fetches already have the client in view via the policy page. */
+  clientName?: string
   assessorId: string
   assessorName: string
   cropType: string

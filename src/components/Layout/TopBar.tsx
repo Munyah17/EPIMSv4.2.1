@@ -31,6 +31,7 @@ const PANEL_TITLES: Record<ActivePanel, string> = {
   developer_api: 'Developers and API',
   mass_messaging: 'Bulk SMS Messaging',
   billing_reminders: 'Billing & Reminders',
+  pre_loss_assessments: 'Pre-Loss Assessments',
   system_access_roles: 'System Access Roles',
   profile: 'My Profile',
   my_policies: 'My Policies',
