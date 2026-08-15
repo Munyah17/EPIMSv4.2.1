@@ -23,6 +23,8 @@ export default function Tickets({ showToast }: Props) {
   const [staff, setStaff] = useState<AppUser[]>([])
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState<TicketStatus | 'all'>('all')
+  const [search, setSearch] = useState('')
+  const [assigneeFilter, setAssigneeFilter] = useState('')
   const [showNew, setShowNew] = useState(false)
   const [viewTicket, setViewTicket] = useState<Ticket | null>(null)
 
@@ -35,9 +37,13 @@ export default function Tickets({ showToast }: Props) {
     })
   }, [showToast])
 
-  const filtered = tickets.filter(t =>
-    statusFilter === 'all' || t.status === statusFilter
-  )
+  const filtered = tickets.filter(t => {
+    const matchStatus = statusFilter === 'all' || t.status === statusFilter
+    const matchAssignee = !assigneeFilter || (assigneeFilter === 'unassigned' ? !t.assignedTo : t.assignedTo === assigneeFilter)
+    const q = search.toLowerCase()
+    const matchSearch = !q || t.ticketNumber.toLowerCase().includes(q) || t.clientName.toLowerCase().includes(q) || t.subject.toLowerCase().includes(q)
+    return matchStatus && matchAssignee && matchSearch
+  })
 
   const counts = {
     all: tickets.length,
@@ -67,12 +73,23 @@ export default function Tickets({ showToast }: Props) {
     <div className="panel">
       <div className="panel-toolbar">
         <div className="filter-row">
+          <input
+            className="search-input"
+            placeholder="Search ticket number, client, subject…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
           <select title="Filter by status" className="filter-select" value={statusFilter} onChange={e => setStatusFilter(e.target.value as TicketStatus | 'all')}>
             <option value="all">All ({counts.all})</option>
             <option value="open">Open ({counts.open})</option>
             <option value="in_progress">In Progress ({counts.in_progress})</option>
             <option value="resolved">Resolved ({counts.resolved})</option>
             <option value="closed">Closed ({counts.closed})</option>
+          </select>
+          <select title="Filter by assignee" className="filter-select" value={assigneeFilter} onChange={e => setAssigneeFilter(e.target.value)}>
+            <option value="">All Staff</option>
+            <option value="unassigned">Unassigned</option>
+            {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         </div>
         <button type="button" className="btn btn-primary" onClick={() => setShowNew(true)}>+ New Ticket</button>

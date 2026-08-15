@@ -14,6 +14,21 @@ export type UserRole =
 
 export const SYSTEM_ROLES: UserRole[] = ['super_admin', 'admin', 'tech_support']
 
+/** Seniority ranking used to gate task delegation (Tickets) — a staff
+ *  member can delegate to their own rank or below, not upward. Peers
+ *  (the four work roles) share a rank since none outranks another. */
+export const ROLE_RANK: Record<UserRole, number> = {
+  super_admin: 6,
+  admin: 5,
+  tech_support: 5,
+  claims_officer: 3,
+  policy_admin: 3,
+  finance: 3,
+  client_relations: 3,
+  agent: 2,
+  policyholder: 0,
+}
+
 /** No longer a fixed union — insurer partners are now managed records (see
  *  InsurerRecord/Insurer Management page) rather than a hardcoded list
  *  duplicated across every client/policy modal. */
