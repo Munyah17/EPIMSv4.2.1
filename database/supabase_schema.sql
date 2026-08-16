@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   username    TEXT,
   email       TEXT,
   role        TEXT NOT NULL DEFAULT 'policy_admin'
-                CHECK (role IN ('super_admin','admin','tech_support','claims_officer','policy_admin','finance','client_relations','policyholder')),
+                CHECK (role IN ('super_admin','admin','tech_support','claims_officer','policy_admin','finance','client_relations','agent','policyholder','api_partner')),
   department  TEXT NOT NULL DEFAULT 'Administration',
   phone       TEXT,
   active      BOOLEAN NOT NULL DEFAULT TRUE,
@@ -770,10 +770,10 @@ $$;
 -- building a parallel system. api_partner accounts are never given a
 -- usable login; all traffic goes through the service-role-backed Netlify
 -- function using their API key, never a Supabase session.
-
-ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS profiles_role_check;
-ALTER TABLE public.profiles ADD CONSTRAINT profiles_role_check
-  CHECK (role IN ('super_admin','admin','claims_officer','policy_admin','finance','client_relations','policyholder','api_partner'));
+-- (role check constraint already includes 'api_partner' — see the
+-- profiles table definition above; this used to be a second, incomplete
+-- ALTER here that silently dropped 'tech_support' and 'agent' on a fresh
+-- rebuild — see database/fix_profiles_role_check_missing_roles.sql.)
 
 CREATE TABLE IF NOT EXISTS public.api_developers (
   id                           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
