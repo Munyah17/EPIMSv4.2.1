@@ -3,6 +3,7 @@ import type { AssessmentPhoto } from '../../types'
 import { uploadDocument, getDocumentUrl } from '../../lib/storage'
 import { readExifDateTaken } from '../../lib/exifDate'
 import { analyzePhotoForFraud, fileToBase64 } from '../../lib/photoAnalysis'
+import { computePerceptualHash } from '../../lib/photoHash'
 
 interface Props {
   label: string
@@ -67,7 +68,9 @@ export default function PhotoCaptureField({ label, folder, recordId, claimDescri
       }
     } catch { /* AI check is best-effort — never block on it */ }
 
-    onChange({ path: data.path, label, exifDate: exifDate ?? undefined, visibleDateStamp, aiNote, aiFlagged, capturedAt })
+    const phash = await computePerceptualHash(file)
+
+    onChange({ path: data.path, label, exifDate: exifDate ?? undefined, visibleDateStamp, aiNote, aiFlagged, capturedAt, phash: phash ?? undefined })
     setBusy(false)
   }
 

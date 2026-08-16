@@ -5,6 +5,7 @@ import { db } from '../../lib/db'
 import { getCurrentCoordinates } from '../../lib/geolocation'
 import { queueAssessment } from '../../lib/offlineQueue'
 import { fileToBase64 } from '../../lib/photoAnalysis'
+import { checkAndRecordPhotoDuplicates } from '../../lib/duplicatePhotoCheck'
 import PhotoCaptureField from '../ui/PhotoCaptureField'
 
 interface Props {
@@ -75,7 +76,12 @@ export default function PolicyAssessmentModal({ policyId, policyNumber, onClose,
     })
     setSubmitting(false)
     if (error) { showToast('error', error); return }
-    showToast('success', 'Pre-loss assessment recorded.')
+    const dupes = await checkAndRecordPhotoDuplicates(photos, 'policy', policyId, policyNumber)
+    if (dupes.length > 0) {
+      showToast('warning', `⚠ This photo appears to match one already used on another claim/policy — worth a second look.`)
+    } else {
+      showToast('success', 'Pre-loss assessment recorded.')
+    }
     onSubmitted()
   }
 

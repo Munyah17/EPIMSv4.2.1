@@ -9,6 +9,7 @@ import ReviewClaimModal from '../components/modals/ReviewClaimModal'
 import { notifyClaimCreated } from '../lib/claimNotifications'
 import { useAuth } from '../contexts/AuthContext'
 import { queueAssessment } from '../lib/offlineQueue'
+import { checkAndRecordPhotoDuplicates } from '../lib/duplicatePhotoCheck'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -101,6 +102,10 @@ export default function Claims({ showToast }: Props) {
       if (assessError) {
         queueFallback()
         showToast('warning', `Claim ${data.claimNumber} submitted — the assessment couldn't attach (${assessError}), so it's queued to retry automatically.`)
+      } else {
+        // Index this claim's photos for future duplicate-detection lookups
+        // — best-effort, never blocks the claim that's already been created.
+        void checkAndRecordPhotoDuplicates(assessment.photos, 'claim', data.id, data.claimNumber)
       }
     }
     await finishClaimSubmission(data, claim.fraudSignals)

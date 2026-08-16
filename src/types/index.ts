@@ -426,6 +426,11 @@ export interface AssessmentPhoto {
   aiNote?: string
   aiFlagged?: boolean
   capturedAt: string
+  /** Perceptual (difference) hash of the image content — computed at
+   *  capture time, compared against every other assessment photo on
+   *  submit to catch a recycled photo from another claim/policy being
+   *  resubmitted as new evidence. See lib/photoHash.ts. */
+  phash?: string
 }
 
 export type AssessmentSyncStatus = 'synced' | 'pending_sync'

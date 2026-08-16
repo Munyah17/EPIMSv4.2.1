@@ -170,6 +170,23 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
         fraudScore = Math.min(100, fraudScore + 10)
         signals.push('No pre-loss assessment on record for this policy — crop/farm baseline unverified.')
       }
+
+      // Duplicate/reused photo check — draftId can't match anything real yet
+      // (the claim doesn't exist until db.claims.create below), so this is
+      // purely a lookup against every OTHER claim/policy's photos. The hash
+      // itself gets recorded post-creation, once the real claim id exists —
+      // see handleAddAgriculture in Claims.tsx.
+      const duplicateMatches: { photoLabel: string; reference: string; sourceType: string }[] = []
+      for (const p of allCapturedPhotos) {
+        if (!p.phash) continue
+        const matches = await db.photoHashes.findMatches(p.phash, draftId)
+        for (const m of matches) duplicateMatches.push({ photoLabel: p.label, reference: m.reference, sourceType: m.sourceType })
+      }
+      if (duplicateMatches.length > 0) {
+        fraudScore = Math.min(100, fraudScore + duplicateMatches.length * 20)
+        const examples = duplicateMatches.slice(0, 3).map(m => `"${m.photoLabel}" matches a photo on ${m.sourceType} ${m.reference}`).join('; ')
+        signals.push(`${duplicateMatches.length} submitted photo${duplicateMatches.length !== 1 ? 's appear' : ' appears'} to be reused from elsewhere — ${examples}.`)
+      }
     } finally {
       const claimNumber = `CLM${new Date().getFullYear()}${String(Date.now()).slice(-3)}`
       const claim: Claim & { fraudSignals?: string[] } = {

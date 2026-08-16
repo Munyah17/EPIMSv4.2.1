@@ -892,3 +892,21 @@ ALTER TABLE public.insurers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.insurers FORCE ROW LEVEL SECURITY;
 CREATE POLICY "insurers_select_staff" ON public.insurers FOR SELECT TO authenticated USING (is_staff());
 CREATE POLICY "insurers_write_admin" ON public.insurers FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
+
+-- Perceptual-hash index for duplicate/reused photo detection — see database/add_photo_hashes.sql
+CREATE TABLE IF NOT EXISTS public.photo_hashes (
+  id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  hash         TEXT NOT NULL,
+  source_type  TEXT NOT NULL CHECK (source_type IN ('claim','policy')),
+  source_id    UUID NOT NULL,
+  reference    TEXT NOT NULL,
+  label        TEXT NOT NULL,
+  photo_path   TEXT NOT NULL,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_photo_hashes_hash ON public.photo_hashes(hash);
+CREATE INDEX IF NOT EXISTS idx_photo_hashes_created ON public.photo_hashes(created_at DESC);
+ALTER TABLE public.photo_hashes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.photo_hashes FORCE ROW LEVEL SECURITY;
+CREATE POLICY "photo_hashes_select_staff" ON public.photo_hashes FOR SELECT TO authenticated USING (is_staff());
+CREATE POLICY "photo_hashes_insert_staff" ON public.photo_hashes FOR INSERT TO authenticated WITH CHECK (is_staff());

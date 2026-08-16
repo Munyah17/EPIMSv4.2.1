@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import { health } from './health'
 import { localStore } from './localStore'
+import { hammingDistance, DUPLICATE_THRESHOLD } from './photoHash'
 import type {
   AppUser, Client, Product, Policy, Claim, Payment,
   Ticket, EmailMessage, Lead, FraudCase, Reminder, CautionFlag,
@@ -604,6 +605,43 @@ export const insurers = {
     const { data, error } = await supabase.from('insurers').update(row).eq('id', id).select().single()
     if (error) return { data: null, error: error.code === '23505' ? 'An insurer with that name already exists.' : error.message }
     return { data: toInsurer(data), error: null }
+  },
+}
+
+// ── PHOTO HASHES (duplicate/reused photo detection) ─────────────────
+export interface PhotoHashMatch {
+  reference: string
+  label: string
+  sourceType: 'claim' | 'policy'
+  createdAt: string
+  distance: number
+}
+
+export const photoHashes = {
+  async record(input: { hash: string; sourceType: 'claim' | 'policy'; sourceId: string; reference: string; label: string; photoPath: string }) {
+    await supabase.from('photo_hashes').insert({
+      hash: input.hash, source_type: input.sourceType, source_id: input.sourceId,
+      reference: input.reference, label: input.label, photo_path: input.photoPath,
+    })
+  },
+
+  /** First-version duplicate check: pulls the most recent hashes and
+   *  compares client-side via Hamming distance (see lib/photoHash.ts) —
+   *  fine at the volumes a single insurer sees, not meant to scale to
+   *  millions of rows without moving the comparison server-side. */
+  async findMatches(hash: string, excludeSourceId: string): Promise<PhotoHashMatch[]> {
+    const { data, error } = await supabase
+      .from('photo_hashes')
+      .select('hash, source_type, source_id, reference, label, created_at')
+      .neq('source_id', excludeSourceId)
+      .order('created_at', { ascending: false })
+      .limit(2000)
+    if (error || !data) return []
+    return (data as { hash: string; source_type: 'claim' | 'policy'; reference: string; label: string; created_at: string }[])
+      .map(row => ({ ...row, distance: hammingDistance(hash, row.hash) }))
+      .filter(row => row.distance <= DUPLICATE_THRESHOLD)
+      .sort((a, b) => a.distance - b.distance)
+      .map(row => ({ reference: row.reference, label: row.label, sourceType: row.source_type, createdAt: row.created_at, distance: row.distance }))
   },
 }
 
@@ -1759,7 +1797,7 @@ export function subscribeToTable(table: string, callback: () => void) {
 export const db = {
   policies, clients, products, claims, payments,
   tickets, emails, leads, staff, fraudCases, reminders, cautionFlags, settings, loginAttempts, developerApi,
-  customRoles, claimAssessments, policyAssessments, insurers,
+  customRoles, claimAssessments, policyAssessments, insurers, photoHashes,
   dashboardStats, sidebarCounts,
   subscribeToTable,
   resetLocalData: () => localStore.reset(),
