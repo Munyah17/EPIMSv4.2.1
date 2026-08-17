@@ -26,6 +26,7 @@ export default function AgricultureAssessmentModal({ claimId, claimNumber, claim
   const [photos, setPhotos] = useState<Record<string, AssessmentPhoto | undefined>>({})
   const [extraPhotoLabels, setExtraPhotoLabels] = useState<string[]>([])
   const [assessorComments, setAssessorComments] = useState('')
+  const [farmerStatement, setFarmerStatement] = useState('')
   const [gpsLat, setGpsLat] = useState<number | undefined>(undefined)
   const [gpsLng, setGpsLng] = useState<number | undefined>(undefined)
   const [gpsBusy, setGpsBusy] = useState(false)
@@ -75,7 +76,7 @@ export default function AgricultureAssessmentModal({ claimId, claimNumber, claim
         label, base64: await fileToBase64(file), mediaType: file.type, fileName: file.name, capturedAt: new Date().toISOString(),
       })))
       queueAssessment('claim', claimId, {
-        assessorId: user.id, descriptionOfLoss, assessorComments,
+        assessorId: user.id, descriptionOfLoss, assessorComments, farmerStatement,
         gpsLat, gpsLng, cropPopulation, cropStage, barnCapacity,
         farmerSignature, assessorSignature, farmerSelfie: farmerSelfie?.path,
         _alreadyUploadedPhotos: uploadedPhotos,
@@ -92,6 +93,7 @@ export default function AgricultureAssessmentModal({ claimId, claimNumber, claim
       descriptionOfLoss,
       photos: uploadedPhotos,
       assessorComments,
+      farmerStatement,
       gpsLat, gpsLng, cropPopulation, cropStage, barnCapacity,
       farmerSignature, assessorSignature, farmerSelfie: farmerSelfie?.path,
       submittedAt: new Date().toISOString(),
@@ -123,6 +125,11 @@ export default function AgricultureAssessmentModal({ claimId, claimNumber, claim
           <div className="form-group">
             <label>Description of Loss (if no other proof) *</label>
             <textarea className="form-control" rows={3} value={descriptionOfLoss} onChange={e => setDescriptionOfLoss(e.target.value)} placeholder="Describe what happened and what you observed on site…" />
+          </div>
+
+          <div className="form-group">
+            <label>Farmer's Statement</label>
+            <textarea className="form-control" rows={3} value={farmerStatement} onChange={e => setFarmerStatement(e.target.value)} placeholder="Summarize, in your own words, what the farmer told you on site — kept separate from your own remarks below." />
           </div>
 
           <label style={{ display: 'block', margin: '1rem 0 6px', fontSize: 13, fontWeight: 600 }}>Photos</label>

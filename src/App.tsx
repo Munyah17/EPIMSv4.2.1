@@ -41,6 +41,7 @@ const MassMessaging = lazy(() => import('./pages/MassMessaging'))
 const BillingReminders = lazy(() => import('./pages/BillingReminders'))
 const PreLossAssessments = lazy(() => import('./pages/PreLossAssessments'))
 const InsurerManagement = lazy(() => import('./pages/InsurerManagement'))
+const AgricultureInsurance = lazy(() => import('./pages/AgricultureInsurance'))
 const MyPolicies = lazy(() => import('./pages/policyholder/MyPolicies'))
 const MyClaims = lazy(() => import('./pages/policyholder/MyClaims'))
 const MyPayments = lazy(() => import('./pages/policyholder/MyPayments'))
@@ -50,7 +51,7 @@ export type ActivePanel =
   | 'dashboard' | 'policies' | 'claims' | 'payments' | 'products'
   | 'clients' | 'staff' | 'system_access_roles' | 'reminders' | 'reports' | 'leads'
   | 'email' | 'tickets' | 'fraud' | 'profile' | 'mno_integration'
-  | 'system_health' | 'settings' | 'developer_api' | 'mass_messaging' | 'billing_reminders' | 'pre_loss_assessments' | 'insurer_management'
+  | 'system_health' | 'settings' | 'developer_api' | 'mass_messaging' | 'billing_reminders' | 'pre_loss_assessments' | 'insurer_management' | 'agriculture_insurance'
   | 'my_policies' | 'my_claims' | 'my_payments' | 'live_chat'
 
 function AppInner() {
@@ -133,6 +134,7 @@ function AppInner() {
       case 'billing_reminders': return <BillingReminders {...panelProps} />
       case 'pre_loss_assessments': return <PreLossAssessments {...panelProps} />
       case 'insurer_management': return <InsurerManagement {...panelProps} />
+      case 'agriculture_insurance': return <AgricultureInsurance {...panelProps} />
       case 'profile': return <Profile {...panelProps} />
       case 'my_policies': return <MyPolicies {...panelProps} />
       case 'my_claims': return <MyClaims {...panelProps} />

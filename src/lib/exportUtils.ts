@@ -322,7 +322,13 @@ export async function exportClaimAssessmentReport(
   doc.text(desc, 14, y)
   y += desc.length * 4.5 + 6
 
-  sectionHeading(3, 'SITE DETAILS')
+  sectionHeading(3, "FARMER'S STATEMENT")
+  doc.setFontSize(9)
+  const statement = doc.splitTextToSize(assessment.farmerStatement || '—', pageWidth - 28)
+  doc.text(statement, 14, y)
+  y += statement.length * 4.5 + 6
+
+  sectionHeading(4, 'SITE DETAILS')
   kvRows([
     ['Crop Population', assessment.cropPopulation || '—'],
     ['Crop Stage', assessment.cropStage || '—'],
@@ -330,7 +336,7 @@ export async function exportClaimAssessmentReport(
     ['GPS Coordinates', assessment.gpsLat !== undefined ? `${assessment.gpsLat.toFixed(6)}, ${assessment.gpsLng?.toFixed(6)}` : '—'],
   ])
 
-  sectionHeading(4, "ASSESSOR'S COMMENTS")
+  sectionHeading(5, "ASSESSOR'S COMMENTS")
   doc.setFontSize(9)
   const comments = doc.splitTextToSize(assessment.assessorComments || '—', pageWidth - 28)
   doc.text(comments, 14, y)
@@ -338,7 +344,7 @@ export async function exportClaimAssessmentReport(
 
   if (assessment.photos.length > 0) {
     if (y > 230) { doc.addPage(); y = 20 }
-    sectionHeading(5, 'PHOTOGRAPHIC EVIDENCE')
+    sectionHeading(6, 'PHOTOGRAPHIC EVIDENCE')
     for (const photo of assessment.photos) {
       if (y > 220) { doc.addPage(); y = 20 }
       doc.setFontSize(9)
@@ -366,7 +372,7 @@ export async function exportClaimAssessmentReport(
 
   if (assessment.farmerSignature || assessment.assessorSignature) {
     if (y > 220) { doc.addPage(); y = 20 }
-    sectionHeading(6, 'SIGN-OFF')
+    sectionHeading(7, 'SIGN-OFF')
     if (assessment.farmerSignature) {
       doc.setFontSize(8.5)
       doc.setTextColor(...MUTED)

@@ -840,6 +840,7 @@ CREATE TABLE IF NOT EXISTS public.claim_assessments (
   description_of_loss TEXT,
   photos              JSONB NOT NULL DEFAULT '[]',
   assessor_comments   TEXT,
+  farmer_statement    TEXT,
   gps_lat             NUMERIC(9,6),
   gps_lng             NUMERIC(9,6),
   crop_population     TEXT,
@@ -892,6 +893,7 @@ ALTER TABLE public.insurers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.insurers FORCE ROW LEVEL SECURITY;
 CREATE POLICY "insurers_select_staff" ON public.insurers FOR SELECT TO authenticated USING (is_staff());
 CREATE POLICY "insurers_write_admin" ON public.insurers FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
+ALTER TABLE public.insurers ADD COLUMN IF NOT EXISTS cover_types TEXT[] NOT NULL DEFAULT '{}';
 
 -- Perceptual-hash index for duplicate/reused photo detection — see database/add_photo_hashes.sql
 CREATE TABLE IF NOT EXISTS public.photo_hashes (
@@ -910,3 +912,15 @@ ALTER TABLE public.photo_hashes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.photo_hashes FORCE ROW LEVEL SECURITY;
 CREATE POLICY "photo_hashes_select_staff" ON public.photo_hashes FOR SELECT TO authenticated USING (is_staff());
 CREATE POLICY "photo_hashes_insert_staff" ON public.photo_hashes FOR INSERT TO authenticated WITH CHECK (is_staff());
+
+-- Managed crop-type list — see database/add_crop_types.sql
+CREATE TABLE IF NOT EXISTS public.crop_types (
+  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name        TEXT NOT NULL UNIQUE,
+  status      TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','inactive')),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE public.crop_types ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.crop_types FORCE ROW LEVEL SECURITY;
+CREATE POLICY "crop_types_select_staff" ON public.crop_types FOR SELECT TO authenticated USING (is_staff());
+CREATE POLICY "crop_types_write_admin" ON public.crop_types FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());

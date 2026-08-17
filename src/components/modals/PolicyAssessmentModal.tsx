@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import type { AssessmentPhoto } from '../../types'
+import { useState, useEffect } from 'react'
+import type { AssessmentPhoto, CropType } from '../../types'
 import { useAuth } from '../../contexts/AuthContext'
 import { db } from '../../lib/db'
 import { getCurrentCoordinates } from '../../lib/geolocation'
@@ -7,6 +7,8 @@ import { queueAssessment } from '../../lib/offlineQueue'
 import { fileToBase64 } from '../../lib/photoAnalysis'
 import { checkAndRecordPhotoDuplicates } from '../../lib/duplicatePhotoCheck'
 import PhotoCaptureField from '../ui/PhotoCaptureField'
+
+const OTHER = '__other__'
 
 interface Props {
   policyId: string
@@ -21,7 +23,10 @@ interface Props {
  *  checked against a real record instead of taken purely on faith. */
 export default function PolicyAssessmentModal({ policyId, policyNumber, onClose, onSubmitted, showToast }: Props) {
   const { user } = useAuth()
-  const [cropType, setCropType] = useState('')
+  const [cropTypeOptions, setCropTypeOptions] = useState<CropType[]>([])
+  const [cropTypeChoice, setCropTypeChoice] = useState('')
+  const [customCropType, setCustomCropType] = useState('')
+  const cropType = cropTypeChoice === OTHER ? customCropType : cropTypeChoice
   const [cropPopulation, setCropPopulation] = useState('')
   const [plantDate, setPlantDate] = useState('')
   const [notes, setNotes] = useState('')
@@ -33,6 +38,10 @@ export default function PolicyAssessmentModal({ policyId, policyNumber, onClose,
   const [submitting, setSubmitting] = useState(false)
 
   const canSubmit = cropType.trim().length > 0 && !submitting
+
+  useEffect(() => {
+    db.cropTypes.list().then(({ data }) => setCropTypeOptions(data.filter(c => c.status === 'active')))
+  }, [])
 
   const captureGps = async () => {
     setGpsBusy(true)
@@ -99,7 +108,14 @@ export default function PolicyAssessmentModal({ policyId, policyNumber, onClose,
           <div className="form-row">
             <div className="form-group">
               <label>Crop Type *</label>
-              <input className="form-control" value={cropType} onChange={e => setCropType(e.target.value)} placeholder="e.g. Tobacco" />
+              <select className="form-control" value={cropTypeChoice} onChange={e => setCropTypeChoice(e.target.value)}>
+                <option value="">Select crop…</option>
+                {cropTypeOptions.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                <option value={OTHER}>Other…</option>
+              </select>
+              {cropTypeChoice === OTHER && (
+                <input className="form-control" style={{ marginTop: 6 }} value={customCropType} onChange={e => setCustomCropType(e.target.value)} placeholder="Enter crop type" autoFocus />
+              )}
             </div>
             <div className="form-group">
               <label>Crop Population <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(e.g. 15,000 plants/ha)</span></label>

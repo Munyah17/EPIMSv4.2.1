@@ -44,6 +44,17 @@ export interface InsurerRecord {
   commissionPercent?: number
   status: 'active' | 'inactive'
   notes?: string
+  /** Product categories this insurer actually underwrites — same set as
+   *  Product['category']. Free-standing strings (not FK'd to products)
+   *  since an insurer can offer a category before any product exists. */
+  coverTypes: string[]
+  createdAt: string
+}
+
+export interface CropType {
+  id: string
+  name: string
+  status: 'active' | 'inactive'
   createdAt: string
 }
 
@@ -448,6 +459,9 @@ export interface ClaimAssessment {
   descriptionOfLoss: string
   photos: AssessmentPhoto[]
   assessorComments: string
+  /** A summary, in the assessor's own words, of what the farmer said
+   *  verbally on site — kept distinct from the assessor's own remarks. */
+  farmerStatement?: string
   gpsLat?: number
   gpsLng?: number
   cropPopulation?: string

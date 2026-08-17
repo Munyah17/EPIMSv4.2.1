@@ -68,6 +68,7 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
   const [photos, setPhotos] = useState<Record<string, AssessmentPhoto | undefined>>({})
   const [extraPhotoLabels, setExtraPhotoLabels] = useState<string[]>([])
   const [assessorComments, setAssessorComments] = useState('')
+  const [farmerStatement, setFarmerStatement] = useState('')
   const [gpsLat, setGpsLat] = useState<number | undefined>(undefined)
   const [gpsLng, setGpsLng] = useState<number | undefined>(undefined)
   const [gpsBusy, setGpsBusy] = useState(false)
@@ -224,6 +225,7 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
         descriptionOfLoss,
         photos: uploadedPhotos,
         assessorComments,
+        farmerStatement,
         gpsLat, gpsLng, cropPopulation, cropStage, barnCapacity,
         farmerSignature, assessorSignature, farmerSelfie: farmerSelfie?.path,
         submittedAt: new Date().toISOString(),
@@ -329,6 +331,11 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
           <div className="form-group">
             <label>Description of Loss *</label>
             <textarea className="form-control" rows={3} value={descriptionOfLoss} onChange={e => setDescriptionOfLoss(e.target.value)} placeholder="What the assessor observed on site…" />
+          </div>
+
+          <div className="form-group">
+            <label>Farmer's Statement</label>
+            <textarea className="form-control" rows={3} value={farmerStatement} onChange={e => setFarmerStatement(e.target.value)} placeholder="Summarize, in your own words, what the farmer told you on site — kept separate from your own remarks below." />
           </div>
 
           <label style={{ display: 'block', margin: '1rem 0 6px', fontSize: 13, fontWeight: 600 }}>

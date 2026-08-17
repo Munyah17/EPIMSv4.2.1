@@ -80,6 +80,7 @@ async function flushOne(item: QueuedAssessment): Promise<boolean> {
       descriptionOfLoss: (item.formData.descriptionOfLoss as string) ?? '',
       photos: uploaded,
       assessorComments: (item.formData.assessorComments as string) ?? '',
+      farmerStatement: item.formData.farmerStatement as string | undefined,
       gpsLat: item.formData.gpsLat as number | undefined,
       gpsLng: item.formData.gpsLng as number | undefined,
       cropPopulation: item.formData.cropPopulation as string | undefined,

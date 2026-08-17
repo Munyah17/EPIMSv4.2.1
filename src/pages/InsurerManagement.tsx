@@ -10,6 +10,17 @@ interface Props {
   setActivePanel: (panel: ActivePanel) => void
 }
 
+const CATEGORY_LABELS: Record<string, string> = {
+  life: 'Life',
+  funeral: 'Funeral',
+  health: 'Health',
+  accident: 'Personal Accident',
+  motor: 'Motor',
+  property: 'Property',
+  agriculture: 'Agriculture',
+}
+const ALL_CATEGORIES = Object.keys(CATEGORY_LABELS)
+
 export default function InsurerManagement({ showToast }: Props) {
   const { user } = useAuth()
   const canEdit = user?.role === 'super_admin' || user?.role === 'admin'
@@ -76,6 +87,7 @@ export default function InsurerManagement({ showToast }: Props) {
               <tr>
                 <th>Name</th>
                 <th>Contact</th>
+                <th>Cover Types</th>
                 <th>Reg. Number</th>
                 <th>Commission Override</th>
                 <th>Status</th>
@@ -90,6 +102,9 @@ export default function InsurerManagement({ showToast }: Props) {
                   <td>
                     {i.contactEmail || '—'}
                     {i.contactPhone ? ` · ${i.contactPhone}` : ''}
+                  </td>
+                  <td style={{ fontSize: 11 }}>
+                    {i.coverTypes.length > 0 ? i.coverTypes.map(c => CATEGORY_LABELS[c] ?? c).join(', ') : '—'}
                   </td>
                   <td>{i.regNumber || '—'}</td>
                   <td>{i.commissionPercent !== undefined ? `${i.commissionPercent}%` : 'default'}</td>
@@ -127,7 +142,7 @@ export default function InsurerManagement({ showToast }: Props) {
 
 function InsurerModal({ onClose, onSave, title, initial }: {
   onClose: () => void
-  onSave: (input: { name: string; contactEmail?: string; contactPhone?: string; address?: string; regNumber?: string; commissionPercent?: number; notes?: string }) => Promise<void>
+  onSave: (input: { name: string; contactEmail?: string; contactPhone?: string; address?: string; regNumber?: string; commissionPercent?: number; notes?: string; coverTypes: string[] }) => Promise<void>
   title: string
   initial?: InsurerRecord
 }) {
@@ -138,9 +153,14 @@ function InsurerModal({ onClose, onSave, title, initial }: {
   const [regNumber, setRegNumber] = useState(initial?.regNumber ?? '')
   const [commissionPercent, setCommissionPercent] = useState(initial?.commissionPercent?.toString() ?? '')
   const [notes, setNotes] = useState(initial?.notes ?? '')
+  const [coverTypes, setCoverTypes] = useState<string[]>(initial?.coverTypes ?? [])
   const [saving, setSaving] = useState(false)
 
   const canSave = name.trim().length > 0 && !saving
+
+  const toggleCoverType = (cat: string) => {
+    setCoverTypes(prev => prev.includes(cat) ? prev.filter(c => c !== cat) : [...prev, cat])
+  }
 
   const handleSave = async () => {
     if (!canSave) return
@@ -154,6 +174,7 @@ function InsurerModal({ onClose, onSave, title, initial }: {
         regNumber: regNumber.trim() || undefined,
         commissionPercent: commissionPercent.trim() === '' ? undefined : Number(commissionPercent),
         notes: notes.trim() || undefined,
+        coverTypes,
       })
     } finally {
       setSaving(false)
@@ -185,6 +206,17 @@ function InsurerModal({ onClose, onSave, title, initial }: {
           <div className="form-group">
             <label>Address</label>
             <input className="form-control" value={address} onChange={e => setAddress(e.target.value)} placeholder="Street address, city" />
+          </div>
+          <div className="form-group">
+            <label>Types of Cover Offered</label>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
+              {ALL_CATEGORIES.map(cat => (
+                <label key={cat} style={{ display: 'flex', alignItems: 'center', gap: 6, textTransform: 'none', fontSize: 13, fontWeight: 400 }}>
+                  <input type="checkbox" checked={coverTypes.includes(cat)} onChange={() => toggleCoverType(cat)} />
+                  {CATEGORY_LABELS[cat]}
+                </label>
+              ))}
+            </div>
           </div>
           <div className="form-row">
             <div className="form-group">

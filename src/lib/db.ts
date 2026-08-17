@@ -7,7 +7,7 @@ import type {
   Ticket, EmailMessage, Lead, FraudCase, Reminder, CautionFlag,
   PolicyStatus, ClaimStatus, PaymentStatus, PaymentMethod,
   TicketStatus, TicketPriority, LeadStatus, FraudCaseStatus, CustomRole,
-  ClaimAssessment, PolicyAssessment, AssessmentPhoto, InsurerRecord,
+  ClaimAssessment, PolicyAssessment, AssessmentPhoto, InsurerRecord, CropType,
 } from '../types'
 
 // ── helpers ───────────────────────────────────────────────────────
@@ -567,7 +567,7 @@ function toInsurer(r: any): InsurerRecord {
     contactEmail: r.contact_email ?? undefined, contactPhone: r.contact_phone ?? undefined,
     address: r.address ?? undefined, regNumber: r.reg_number ?? undefined,
     commissionPercent: r.commission_percent ?? undefined,
-    status: r.status, notes: r.notes ?? undefined, createdAt: r.created_at,
+    status: r.status, notes: r.notes ?? undefined, coverTypes: r.cover_types ?? [], createdAt: r.created_at,
   }
 }
 
@@ -581,11 +581,12 @@ export const insurers = {
     return { data: [] as InsurerRecord[], error: null }
   },
 
-  async create(input: { name: string; contactEmail?: string; contactPhone?: string; address?: string; regNumber?: string; commissionPercent?: number; notes?: string }) {
+  async create(input: { name: string; contactEmail?: string; contactPhone?: string; address?: string; regNumber?: string; commissionPercent?: number; notes?: string; coverTypes?: string[] }) {
     const row = {
       name: input.name, contact_email: input.contactEmail || null, contact_phone: input.contactPhone || null,
       address: input.address || null, reg_number: input.regNumber || null,
       commission_percent: input.commissionPercent ?? null, notes: input.notes || null,
+      cover_types: input.coverTypes ?? [],
     }
     const { data, error } = await supabase.from('insurers').insert(row).select().single()
     if (error) return { data: null, error: error.code === '23505' ? 'An insurer with that name already exists.' : error.message }
@@ -602,9 +603,33 @@ export const insurers = {
     if (updates.commissionPercent !== undefined) row.commission_percent = updates.commissionPercent ?? null
     if (updates.status            !== undefined) row.status = updates.status
     if (updates.notes             !== undefined) row.notes = updates.notes || null
+    if (updates.coverTypes        !== undefined) row.cover_types = updates.coverTypes
     const { data, error } = await supabase.from('insurers').update(row).eq('id', id).select().single()
     if (error) return { data: null, error: error.code === '23505' ? 'An insurer with that name already exists.' : error.message }
     return { data: toInsurer(data), error: null }
+  },
+}
+
+// ── CROP TYPES ────────────────────────────────────────────────────
+export const cropTypes = {
+  async list() {
+    const { ok, data } = await sb('crop_types', 'read',
+      () => supabase.from('crop_types').select('*').order('name'),
+      d => Array.isArray(d),
+    )
+    if (ok && data) return { data: (data as Record<string, unknown>[]).map(r => ({ id: r.id as string, name: r.name as string, status: r.status as 'active' | 'inactive', createdAt: r.created_at as string })), error: null }
+    return { data: [] as CropType[], error: null }
+  },
+
+  async create(name: string) {
+    const { data, error } = await supabase.from('crop_types').insert({ name }).select().single()
+    if (error) return { data: null, error: error.code === '23505' ? 'That crop type already exists.' : error.message }
+    return { data: { id: data.id, name: data.name, status: data.status, createdAt: data.created_at } as CropType, error: null }
+  },
+
+  async setStatus(id: string, status: 'active' | 'inactive') {
+    const { error } = await supabase.from('crop_types').update({ status }).eq('id', id)
+    return { error: error?.message ?? null }
   },
 }
 
@@ -797,6 +822,7 @@ function toClaimAssessment(r: any): ClaimAssessment {
     descriptionOfLoss:  r.description_of_loss ?? '',
     photos:             (r.photos as AssessmentPhoto[]) ?? [],
     assessorComments:   r.assessor_comments ?? '',
+    farmerStatement:    r.farmer_statement ?? undefined,
     gpsLat:             r.gps_lat ?? undefined,
     gpsLng:             r.gps_lng ?? undefined,
     cropPopulation:     r.crop_population ?? undefined,
@@ -833,7 +859,7 @@ function toPolicyAssessment(r: any): PolicyAssessment {
 }
 
 const CLAIM_ASSESSMENT_SELECT = `
-  id, claim_id, assessor_id, description_of_loss, photos, assessor_comments,
+  id, claim_id, assessor_id, description_of_loss, photos, assessor_comments, farmer_statement,
   gps_lat, gps_lng, crop_population, crop_stage, barn_capacity,
   farmer_signature, assessor_signature, farmer_selfie, submitted_at, sync_status, created_at,
   claims!claim_id(claim_number),
@@ -860,7 +886,8 @@ export const claimAssessments = {
     const row = {
       claim_id: a.claimId, assessor_id: a.assessorId || null,
       description_of_loss: a.descriptionOfLoss, photos: a.photos,
-      assessor_comments: a.assessorComments, gps_lat: a.gpsLat ?? null, gps_lng: a.gpsLng ?? null,
+      assessor_comments: a.assessorComments, farmer_statement: a.farmerStatement ?? null,
+      gps_lat: a.gpsLat ?? null, gps_lng: a.gpsLng ?? null,
       crop_population: a.cropPopulation ?? null, crop_stage: a.cropStage ?? null, barn_capacity: a.barnCapacity ?? null,
       farmer_signature: a.farmerSignature ?? null, assessor_signature: a.assessorSignature ?? null,
       farmer_selfie: a.farmerSelfie ?? null, submitted_at: a.submittedAt ?? null, sync_status: a.syncStatus,
@@ -1797,7 +1824,7 @@ export function subscribeToTable(table: string, callback: () => void) {
 export const db = {
   policies, clients, products, claims, payments,
   tickets, emails, leads, staff, fraudCases, reminders, cautionFlags, settings, loginAttempts, developerApi,
-  customRoles, claimAssessments, policyAssessments, insurers, photoHashes,
+  customRoles, claimAssessments, policyAssessments, insurers, photoHashes, cropTypes,
   dashboardStats, sidebarCounts,
   subscribeToTable,
   resetLocalData: () => localStore.reset(),

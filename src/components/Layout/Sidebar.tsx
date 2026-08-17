@@ -49,6 +49,7 @@ const STAFF_SECTIONS: NavSection[] = [
       { id: 'dashboard', label: 'Dashboard', icon: '⊞' },
       { id: 'claims', label: 'Claims', icon: '📋' },
       { id: 'payments', label: 'Payments', icon: '💳' },
+      { id: 'agriculture_insurance', label: 'Agriculture Insurance', icon: '🌾', roles: ['super_admin', 'admin', 'policy_admin', 'claims_officer'] },
       {
         groupId: 'policies_products',
         label: 'Policies & Products',
