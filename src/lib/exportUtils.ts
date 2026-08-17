@@ -76,7 +76,9 @@ const TABLE_HEAD: [number, number, number] = [191, 200, 232]
  *  policies use a different document elsewhere in the flow. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function buildPolicyReportDoc(policy: Policy, client: Client, category: string): Promise<any> {
-  const [{ jsPDF }, { default: autoTable }] = await Promise.all([import('jspdf'), import('jspdf-autotable')])
+  const [{ jsPDF }, { default: autoTable }, { MOTIONS_LOGO_PNG_BASE64 }] = await Promise.all([
+    import('jspdf'), import('jspdf-autotable'), import('../assets/motionsLogo'),
+  ])
   const doc = new jsPDF()
   const insurerName = policy.insurer ?? 'the insurer'
   const pageWidth = doc.internal.pageSize.getWidth()
@@ -87,20 +89,9 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
     if (y + need > pageHeight - 16) { doc.addPage(); y = 20 }
   }
 
-  // Logo mark — a simple two-tone chevron standing in for the real Motions
-  // logo until an actual image asset is supplied (doc.addImage would swap
-  // straight in). Wordmark sits beside it, not inside a colour band, to
-  // match the plain white header on the reference document.
-  doc.setFillColor(...BRAND_RED)
-  doc.triangle(14, 20, 14, 10, 20, 15, 'F')
-  doc.setFillColor(...NAVY)
-  doc.triangle(18, 20, 18, 10, 24, 15, 'F')
-  doc.setFontSize(15)
-  doc.setTextColor(...NAVY)
-  doc.text('MOTIONS', 28, 15)
-  doc.setFontSize(6.5)
-  doc.setTextColor(...MUTED)
-  doc.text('M I C R O I N S U R A N C E', 28, 19.5)
+  // Real Motions Microinsurance logo (square source image), sized to sit
+  // level with the address block on the right.
+  doc.addImage(MOTIONS_LOGO_PNG_BASE64, 'PNG', 14, 8, 20, 20)
 
   // Company contact details, right-aligned — only from what's actually
   // configured (Settings -> Notifications -> Company Details). A wrong
