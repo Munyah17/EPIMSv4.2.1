@@ -415,7 +415,7 @@ export async function exportPolicyAssessmentReport(
   doc.setFontSize(15)
   doc.text('MOTIONS', 14, 12)
   doc.setFontSize(9)
-  doc.text('AGRICULTURE PRE-LOSS ASSESSMENT REPORT', 14, 19)
+  doc.text(assessment.subjectType === 'vehicle' ? 'VEHICLE PRE-LOSS ASSESSMENT REPORT' : 'AGRICULTURE PRE-LOSS ASSESSMENT REPORT', 14, 19)
   doc.text(policyNumber, pageWidth - 14, 15, { align: 'right' })
   doc.setTextColor(...TEXT)
 
@@ -457,13 +457,24 @@ export async function exportPolicyAssessmentReport(
     ['Assessor', assessment.assessorName], ['Recorded', formatDate(assessment.createdAt)],
   ])
 
-  sectionHeading(2, 'FARM / CROP DETAILS')
-  kvRows([
-    ['Crop Type', assessment.cropType || '—'],
-    ['Crop Population', assessment.cropPopulation || '—'],
-    ['Plant Date', assessment.plantDate ? formatDate(assessment.plantDate) : '—'],
-    ['GPS Coordinates', assessment.gpsLat !== undefined ? `${assessment.gpsLat.toFixed(6)}, ${assessment.gpsLng?.toFixed(6)}` : '—'],
-  ])
+  if (assessment.subjectType === 'vehicle') {
+    sectionHeading(2, 'VEHICLE DETAILS')
+    kvRows([
+      ['Registration Number', assessment.registrationNumber || '—'],
+      ['Make / Model', [assessment.vehicleMake, assessment.vehicleModel].filter(Boolean).join(' ') || '—'],
+      ['Odometer Reading', assessment.odometerReading || '—'],
+      ['Existing Damage', assessment.existingDamage || '—'],
+      ['GPS Coordinates', assessment.gpsLat !== undefined ? `${assessment.gpsLat.toFixed(6)}, ${assessment.gpsLng?.toFixed(6)}` : '—'],
+    ])
+  } else {
+    sectionHeading(2, 'FARM / CROP DETAILS')
+    kvRows([
+      ['Crop Type', assessment.cropType || '—'],
+      ['Crop Population', assessment.cropPopulation || '—'],
+      ['Plant Date', assessment.plantDate ? formatDate(assessment.plantDate) : '—'],
+      ['GPS Coordinates', assessment.gpsLat !== undefined ? `${assessment.gpsLat.toFixed(6)}, ${assessment.gpsLng?.toFixed(6)}` : '—'],
+    ])
+  }
 
   sectionHeading(3, 'NOTES')
   doc.setFontSize(9)

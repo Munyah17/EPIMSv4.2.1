@@ -846,9 +846,15 @@ function toPolicyAssessment(r: any): PolicyAssessment {
     clientName:       r.policies?.clients?.name ?? undefined,
     assessorId:       r.assessor_id ?? '',
     assessorName:     r.profiles?.name ?? '',
-    cropType:         r.crop_type ?? '',
+    subjectType:      r.subject_type ?? 'agriculture',
+    cropType:         r.crop_type ?? undefined,
     cropPopulation:   r.crop_population ?? undefined,
     plantDate:        r.plant_date ?? undefined,
+    registrationNumber: r.registration_number ?? undefined,
+    vehicleMake:      r.vehicle_make ?? undefined,
+    vehicleModel:     r.vehicle_model ?? undefined,
+    odometerReading:  r.odometer_reading ?? undefined,
+    existingDamage:   r.existing_damage ?? undefined,
     photos:           (r.photos as AssessmentPhoto[]) ?? [],
     notes:            r.notes ?? '',
     gpsLat:           r.gps_lat ?? undefined,
@@ -866,8 +872,9 @@ const CLAIM_ASSESSMENT_SELECT = `
   profiles!assessor_id(name)
 `
 const POLICY_ASSESSMENT_SELECT = `
-  id, policy_id, assessor_id, crop_type, crop_population, plant_date, photos, notes,
-  gps_lat, gps_lng, sync_status, created_at,
+  id, policy_id, assessor_id, subject_type, crop_type, crop_population, plant_date,
+  registration_number, vehicle_make, vehicle_model, odometer_reading, existing_damage,
+  photos, notes, gps_lat, gps_lng, sync_status, created_at,
   policies!policy_id(policy_number, clients!client_id(name)),
   profiles!assessor_id(name)
 `
@@ -923,8 +930,11 @@ export const policyAssessments = {
 
   async create(a: Omit<PolicyAssessment, 'id' | 'policyNumber' | 'assessorName' | 'createdAt'>) {
     const row = {
-      policy_id: a.policyId, assessor_id: a.assessorId || null,
-      crop_type: a.cropType, crop_population: a.cropPopulation ?? null, plant_date: a.plantDate || null,
+      policy_id: a.policyId, assessor_id: a.assessorId || null, subject_type: a.subjectType,
+      crop_type: a.cropType ?? null, crop_population: a.cropPopulation ?? null, plant_date: a.plantDate || null,
+      registration_number: a.registrationNumber ?? null, vehicle_make: a.vehicleMake ?? null,
+      vehicle_model: a.vehicleModel ?? null, odometer_reading: a.odometerReading ?? null,
+      existing_damage: a.existingDamage ?? null,
       photos: a.photos, notes: a.notes, gps_lat: a.gpsLat ?? null, gps_lng: a.gpsLng ?? null, sync_status: a.syncStatus,
     }
     const { data, error } = await supabase.from('policy_assessments').insert(row).select(POLICY_ASSESSMENT_SELECT).single()

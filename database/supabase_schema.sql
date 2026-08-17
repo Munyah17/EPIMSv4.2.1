@@ -855,18 +855,26 @@ CREATE TABLE IF NOT EXISTS public.claim_assessments (
 );
 
 CREATE TABLE IF NOT EXISTS public.policy_assessments (
-  id                UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  policy_id         UUID NOT NULL REFERENCES public.policies(id) ON DELETE CASCADE,
-  assessor_id       UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
-  crop_type         TEXT,
-  crop_population   TEXT,
-  plant_date        DATE,
-  photos            JSONB NOT NULL DEFAULT '[]',
-  notes             TEXT,
-  gps_lat           NUMERIC(9,6),
-  gps_lng           NUMERIC(9,6),
-  sync_status       TEXT NOT NULL DEFAULT 'synced' CHECK (sync_status IN ('synced','pending_sync')),
-  created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  policy_id             UUID NOT NULL REFERENCES public.policies(id) ON DELETE CASCADE,
+  assessor_id           UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  -- 'agriculture' (crop_*) or 'vehicle' (registration_number/vehicle_*/
+  -- odometer_reading/existing_damage) — see database/add_vehicle_preloss_assessment.sql
+  subject_type          TEXT NOT NULL DEFAULT 'agriculture' CHECK (subject_type IN ('agriculture','vehicle')),
+  crop_type             TEXT,
+  crop_population       TEXT,
+  plant_date            DATE,
+  registration_number   TEXT,
+  vehicle_make          TEXT,
+  vehicle_model         TEXT,
+  odometer_reading      TEXT,
+  existing_damage       TEXT,
+  photos                JSONB NOT NULL DEFAULT '[]',
+  notes                 TEXT,
+  gps_lat               NUMERIC(9,6),
+  gps_lng               NUMERIC(9,6),
+  sync_status           TEXT NOT NULL DEFAULT 'synced' CHECK (sync_status IN ('synced','pending_sync')),
+  created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 ALTER TABLE public.claim_assessments ENABLE ROW LEVEL SECURITY;

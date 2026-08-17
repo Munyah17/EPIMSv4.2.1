@@ -80,10 +80,16 @@ export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint, show
             </div>
           )}
 
-          {category === 'agriculture' && hasPermission('claims.physical_assessment') && (
+          {(category === 'agriculture' || category === 'motor') && hasPermission('claims.physical_assessment') && (
             <div style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid var(--border)' }}>
-              <button type="button" className="btn btn-outline btn-sm" onClick={() => setShowAssessment(true)}>🌾 Record Pre-Loss Assessment</button>
-              <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>Establishes the crop/farm baseline for later fraud checks against any claim.</p>
+              <button type="button" className="btn btn-outline btn-sm" onClick={() => setShowAssessment(true)}>
+                {category === 'motor' ? '🚗 Record Pre-Loss Assessment' : '🌾 Record Pre-Loss Assessment'}
+              </button>
+              <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
+                {category === 'motor'
+                  ? "Establishes the vehicle's condition baseline for later fraud checks against any claim."
+                  : 'Establishes the crop/farm baseline for later fraud checks against any claim.'}
+              </p>
             </div>
           )}
         </div>
@@ -97,6 +103,7 @@ export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint, show
         <PolicyAssessmentModal
           policyId={policy.id}
           policyNumber={policy.policyNumber}
+          subjectType={category === 'motor' ? 'vehicle' : 'agriculture'}
           onClose={() => setShowAssessment(false)}
           onSubmitted={() => setShowAssessment(false)}
           showToast={showToast}

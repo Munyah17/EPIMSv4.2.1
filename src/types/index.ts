@@ -475,10 +475,15 @@ export interface ClaimAssessment {
   createdAt: string
 }
 
-/** Pre-loss baseline captured when an agriculture policy is registered —
- *  establishes what's actually on the farm before any claim exists, so a
- *  later claim can be checked against it (a claim for a crop that was
- *  never recorded as planted is an obvious red flag). */
+export type PolicyAssessmentSubject = 'agriculture' | 'vehicle'
+
+/** Pre-loss baseline captured before a policy's cover really matters yet —
+ *  establishes what's actually there (a crop on a farm, a vehicle's
+ *  existing condition) before any claim exists, so a later claim can be
+ *  checked against it (a claim for a crop never recorded as planted, or
+ *  damage that was already there before cover started, is an obvious red
+ *  flag). Originally agriculture-only; subjectType picks which field group
+ *  applies. */
 export interface PolicyAssessment {
   id: string
   policyId: string
@@ -488,9 +493,17 @@ export interface PolicyAssessment {
   clientName?: string
   assessorId: string
   assessorName: string
-  cropType: string
+  subjectType: PolicyAssessmentSubject
+  // Agriculture fields
+  cropType?: string
   cropPopulation?: string
   plantDate?: string
+  // Vehicle fields
+  registrationNumber?: string
+  vehicleMake?: string
+  vehicleModel?: string
+  odometerReading?: string
+  existingDamage?: string
   photos: AssessmentPhoto[]
   notes: string
   gpsLat?: number

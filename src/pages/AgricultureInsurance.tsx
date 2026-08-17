@@ -39,6 +39,7 @@ export default function AgricultureInsurance({ showToast, setActivePanel }: Prop
   const agriculturePolicies = policies.filter(p => agricultureProductIds.has(p.productId))
   const activeAgPolicies = agriculturePolicies.filter(p => p.status === 'active')
   const sumInsured = agriculturePolicies.reduce((s, p) => s + p.coverAmount, 0)
+  const agricultureAssessments = assessments.filter(a => a.subjectType === 'agriculture')
   const agricultureClaims = claims.filter(c => c.category === 'agriculture')
   const openAgClaims = agricultureClaims.filter(c => c.stage !== 'closed')
   const totalPaidOut = agricultureClaims.filter(c => c.status === 'paid').reduce((s, c) => s + c.amount, 0)
@@ -103,7 +104,7 @@ export default function AgricultureInsurance({ showToast, setActivePanel }: Prop
         <div className="stat-card">
           <div className="stat-icon" style={{ background: 'rgba(139,92,246,0.15)', color: 'var(--purple)' }}>📷</div>
           <div className="stat-body">
-            <div className="stat-value">{assessments.length}</div>
+            <div className="stat-value">{agricultureAssessments.length}</div>
             <div className="stat-label">Pre-Loss Assessments</div>
           </div>
         </div>

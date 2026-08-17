@@ -35,15 +35,22 @@ export default function PreLossAssessments({ showToast }: Props) {
 
   useEffect(load, [])
 
-  const agriculturePolicies = policies.filter(p => products.find(pr => pr.id === p.productId)?.category === 'agriculture')
+  const policySubjectType = (p: Policy): 'agriculture' | 'vehicle' | null => {
+    const category = products.find(pr => pr.id === p.productId)?.category
+    if (category === 'agriculture') return 'agriculture'
+    if (category === 'motor') return 'vehicle'
+    return null
+  }
+  const eligiblePolicies = policies.filter(p => policySubjectType(p) !== null)
 
   const filtered = assessments.filter(a =>
     a.policyNumber.toLowerCase().includes(search.toLowerCase()) ||
     (a.clientName ?? '').toLowerCase().includes(search.toLowerCase()) ||
-    a.cropType.toLowerCase().includes(search.toLowerCase())
+    (a.cropType ?? '').toLowerCase().includes(search.toLowerCase()) ||
+    (a.registrationNumber ?? '').toLowerCase().includes(search.toLowerCase())
   )
 
-  const policyResults = policySearch.trim().length < 2 ? [] : agriculturePolicies.filter(p =>
+  const policyResults = policySearch.trim().length < 2 ? [] : eligiblePolicies.filter(p =>
     p.policyNumber.toLowerCase().includes(policySearch.toLowerCase()) ||
     p.clientName.toLowerCase().includes(policySearch.toLowerCase())
   ).slice(0, 8)
@@ -59,7 +66,7 @@ export default function PreLossAssessments({ showToast }: Props) {
       <div className="panel-toolbar">
         <input
           className="search-input"
-          placeholder="Search policy number, client, crop…"
+          placeholder="Search policy number, client, crop, registration…"
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
@@ -69,7 +76,7 @@ export default function PreLossAssessments({ showToast }: Props) {
       </div>
 
       <div className="info-banner info-banner-info" style={{ marginBottom: '1rem' }}>
-        🌾 Establishes what's actually planted on a farm before any claim exists — a claim for a crop never recorded here is an obvious red flag. Every record here is available to compare against later claims.
+        📷 Establishes what's actually there before any claim exists — crop planted on a farm, or a vehicle's existing condition — so a later claim can be checked against a real record. Every record here is available to compare against later claims.
       </div>
 
       <div className="card">
@@ -83,9 +90,8 @@ export default function PreLossAssessments({ showToast }: Props) {
               <tr>
                 <th>Policy</th>
                 <th>Client</th>
-                <th>Crop Type</th>
-                <th>Population</th>
-                <th>Plant Date</th>
+                <th>Type</th>
+                <th>Crop / Vehicle</th>
                 <th>GPS</th>
                 <th>Photos</th>
                 <th>Assessor</th>
@@ -98,9 +104,8 @@ export default function PreLossAssessments({ showToast }: Props) {
                 <tr key={a.id}>
                   <td><span className="mono">{a.policyNumber}</span></td>
                   <td>{a.clientName ?? '—'}</td>
-                  <td>{a.cropType || '—'}</td>
-                  <td>{a.cropPopulation || '—'}</td>
-                  <td>{a.plantDate ? formatDate(a.plantDate) : '—'}</td>
+                  <td>{a.subjectType === 'vehicle' ? '🚗 Vehicle' : '🌾 Agriculture'}</td>
+                  <td>{a.subjectType === 'vehicle' ? (a.registrationNumber || '—') : (a.cropType || '—')}</td>
                   <td>{a.gpsLat !== undefined ? <span className="pill pill-active">✓ Captured</span> : <span className="pill pill-lapsed">Missing</span>}</td>
                   <td>{a.photos.length}</td>
                   <td>{a.assessorName || '—'}</td>
@@ -122,7 +127,7 @@ export default function PreLossAssessments({ showToast }: Props) {
         <div className="modal-overlay">
           <div className="modal" style={{ maxWidth: 480 }}>
             <div className="modal-header">
-              <h3>Select Agriculture Policy</h3>
+              <h3>Select Policy</h3>
               <button className="modal-close" onClick={() => { setPickingPolicy(false); setPolicySearch('') }}>✕</button>
             </div>
             <div className="modal-body">
@@ -132,7 +137,7 @@ export default function PreLossAssessments({ showToast }: Props) {
               </div>
               {policySearch.trim().length >= 2 && (
                 policyResults.length === 0 ? (
-                  <div className="empty-state" style={{ padding: '12px 0' }}>No matching agriculture policy found.</div>
+                  <div className="empty-state" style={{ padding: '12px 0' }}>No matching agriculture or vehicle policy found.</div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                     {policyResults.map(p => (
@@ -143,7 +148,7 @@ export default function PreLossAssessments({ showToast }: Props) {
                         style={{ justifyContent: 'flex-start', textAlign: 'left' }}
                         onClick={() => { setPickingPolicy(false); setPolicySearch(''); setRecordFor(p) }}
                       >
-                        <strong>{p.policyNumber}</strong>&nbsp;· {p.clientName}
+                        {policySubjectType(p) === 'vehicle' ? '🚗' : '🌾'} <strong style={{ marginLeft: 4 }}>{p.policyNumber}</strong>&nbsp;· {p.clientName}
                       </button>
                     ))}
                   </div>
@@ -161,6 +166,7 @@ export default function PreLossAssessments({ showToast }: Props) {
         <PolicyAssessmentModal
           policyId={recordFor.id}
           policyNumber={recordFor.policyNumber}
+          subjectType={policySubjectType(recordFor) ?? 'agriculture'}
           onClose={() => setRecordFor(null)}
           onSubmitted={() => { setRecordFor(null); load(); showToast('success', 'Pre-loss assessment recorded.') }}
           showToast={showToast}
@@ -185,26 +191,57 @@ export default function PreLossAssessments({ showToast }: Props) {
                   <input className="form-control" value={detail.assessorName || '—'} disabled style={{ opacity: 0.6 }} />
                 </div>
               </div>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Crop Type</label>
-                  <input className="form-control" value={detail.cropType || '—'} disabled style={{ opacity: 0.6 }} />
-                </div>
-                <div className="form-group">
-                  <label>Crop Population</label>
-                  <input className="form-control" value={detail.cropPopulation || '—'} disabled style={{ opacity: 0.6 }} />
-                </div>
-              </div>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Plant Date</label>
-                  <input className="form-control" value={detail.plantDate ? formatDate(detail.plantDate) : '—'} disabled style={{ opacity: 0.6 }} />
-                </div>
-                <div className="form-group">
-                  <label>GPS Coordinates</label>
-                  <input className="form-control" value={detail.gpsLat !== undefined ? `${detail.gpsLat.toFixed(6)}, ${detail.gpsLng?.toFixed(6)}` : 'Not captured'} disabled style={{ opacity: 0.6 }} />
-                </div>
-              </div>
+              {detail.subjectType === 'vehicle' ? (
+                <>
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label>Registration Number</label>
+                      <input className="form-control" value={detail.registrationNumber || '—'} disabled style={{ opacity: 0.6 }} />
+                    </div>
+                    <div className="form-group">
+                      <label>Odometer Reading</label>
+                      <input className="form-control" value={detail.odometerReading || '—'} disabled style={{ opacity: 0.6 }} />
+                    </div>
+                  </div>
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label>Make / Model</label>
+                      <input className="form-control" value={[detail.vehicleMake, detail.vehicleModel].filter(Boolean).join(' ') || '—'} disabled style={{ opacity: 0.6 }} />
+                    </div>
+                    <div className="form-group">
+                      <label>GPS Coordinates</label>
+                      <input className="form-control" value={detail.gpsLat !== undefined ? `${detail.gpsLat.toFixed(6)}, ${detail.gpsLng?.toFixed(6)}` : 'Not captured'} disabled style={{ opacity: 0.6 }} />
+                    </div>
+                  </div>
+                  <div className="form-group">
+                    <label>Existing Damage</label>
+                    <textarea className="form-control" rows={2} value={detail.existingDamage || '—'} disabled style={{ opacity: 0.6 }} />
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label>Crop Type</label>
+                      <input className="form-control" value={detail.cropType || '—'} disabled style={{ opacity: 0.6 }} />
+                    </div>
+                    <div className="form-group">
+                      <label>Crop Population</label>
+                      <input className="form-control" value={detail.cropPopulation || '—'} disabled style={{ opacity: 0.6 }} />
+                    </div>
+                  </div>
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label>Plant Date</label>
+                      <input className="form-control" value={detail.plantDate ? formatDate(detail.plantDate) : '—'} disabled style={{ opacity: 0.6 }} />
+                    </div>
+                    <div className="form-group">
+                      <label>GPS Coordinates</label>
+                      <input className="form-control" value={detail.gpsLat !== undefined ? `${detail.gpsLat.toFixed(6)}, ${detail.gpsLng?.toFixed(6)}` : 'Not captured'} disabled style={{ opacity: 0.6 }} />
+                    </div>
+                  </div>
+                </>
+              )}
               <div className="form-group">
                 <label>Notes</label>
                 <textarea className="form-control" rows={3} value={detail.notes || '—'} disabled style={{ opacity: 0.6 }} />

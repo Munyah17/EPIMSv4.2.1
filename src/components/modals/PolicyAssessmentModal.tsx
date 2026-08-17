@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import type { AssessmentPhoto, CropType } from '../../types'
+import type { AssessmentPhoto, CropType, PolicyAssessmentSubject } from '../../types'
 import { useAuth } from '../../contexts/AuthContext'
 import { db } from '../../lib/db'
 import { getCurrentCoordinates } from '../../lib/geolocation'
@@ -10,38 +10,55 @@ import PhotoCaptureField from '../ui/PhotoCaptureField'
 
 const OTHER = '__other__'
 
+const AGRICULTURE_PHOTO_SLOTS = ['Farm / Field Photo']
+const VEHICLE_PHOTO_SLOTS = ['Front', 'Rear', 'Left Side', 'Right Side', 'Odometer', 'Interior']
+
 interface Props {
   policyId: string
   policyNumber: string
+  /** Defaults to 'agriculture' for backward compatibility with existing
+   *  callers; ViewPolicyModal passes 'vehicle' for motor policies. */
+  subjectType?: PolicyAssessmentSubject
   onClose: () => void
   onSubmitted: () => void
   showToast: (type: 'success' | 'error' | 'warning' | 'info', message: string) => void
 }
 
-/** Pre-loss baseline for an agriculture policy — establishes what's
- *  actually planted before any claim exists, so a later claim can be
- *  checked against a real record instead of taken purely on faith. */
-export default function PolicyAssessmentModal({ policyId, policyNumber, onClose, onSubmitted, showToast }: Props) {
+/** Pre-loss baseline — establishes what's actually there (a crop on a farm,
+ *  a vehicle's existing condition) before any claim exists, so a later
+ *  claim can be checked against a real record instead of taken purely on
+ *  faith. */
+export default function PolicyAssessmentModal({ policyId, policyNumber, subjectType = 'agriculture', onClose, onSubmitted, showToast }: Props) {
   const { user } = useAuth()
+  const isVehicle = subjectType === 'vehicle'
   const [cropTypeOptions, setCropTypeOptions] = useState<CropType[]>([])
   const [cropTypeChoice, setCropTypeChoice] = useState('')
   const [customCropType, setCustomCropType] = useState('')
   const cropType = cropTypeChoice === OTHER ? customCropType : cropTypeChoice
   const [cropPopulation, setCropPopulation] = useState('')
   const [plantDate, setPlantDate] = useState('')
+  const [registrationNumber, setRegistrationNumber] = useState('')
+  const [vehicleMake, setVehicleMake] = useState('')
+  const [vehicleModel, setVehicleModel] = useState('')
+  const [odometerReading, setOdometerReading] = useState('')
+  const [existingDamage, setExistingDamage] = useState('')
   const [notes, setNotes] = useState('')
   const [gpsLat, setGpsLat] = useState<number | undefined>(undefined)
   const [gpsLng, setGpsLng] = useState<number | undefined>(undefined)
   const [gpsBusy, setGpsBusy] = useState(false)
-  const [photo, setPhoto] = useState<AssessmentPhoto | undefined>()
+  const [photos, setPhotos] = useState<Record<string, AssessmentPhoto | undefined>>({})
   const [offlinePending, setOfflinePending] = useState<{ label: string; file: File }[]>([])
   const [submitting, setSubmitting] = useState(false)
 
-  const canSubmit = cropType.trim().length > 0 && !submitting
+  const slots = isVehicle ? VEHICLE_PHOTO_SLOTS : AGRICULTURE_PHOTO_SLOTS
+  const photoCount = Object.values(photos).filter(Boolean).length + offlinePending.length
+  const canSubmit = isVehicle
+    ? registrationNumber.trim().length > 0 && photoCount > 0 && !submitting
+    : cropType.trim().length > 0 && !submitting
 
   useEffect(() => {
-    db.cropTypes.list().then(({ data }) => setCropTypeOptions(data.filter(c => c.status === 'active')))
-  }, [])
+    if (!isVehicle) db.cropTypes.list().then(({ data }) => setCropTypeOptions(data.filter(c => c.status === 'active')))
+  }, [isVehicle])
 
   const captureGps = async () => {
     setGpsBusy(true)
@@ -50,8 +67,8 @@ export default function PolicyAssessmentModal({ policyId, policyNumber, onClose,
     if (!coords) { showToast('warning', 'Could not get GPS coordinates — enter them manually if needed.'); return }
     setGpsLat(coords.lat)
     setGpsLng(coords.lng)
-    // Also saves onto the policy itself, so the farm location is on record
-    // even outside the assessment.
+    // Also saves onto the policy itself, so the location is on record even
+    // outside the assessment.
     void db.policies.update(policyId, { gpsLat: coords.lat, gpsLng: coords.lng })
   }
 
@@ -63,16 +80,22 @@ export default function PolicyAssessmentModal({ policyId, policyNumber, onClose,
   const handleSubmit = async () => {
     if (!canSubmit || !user) return
     setSubmitting(true)
-    const photos = photo ? [photo] : []
+    const uploadedPhotos = Object.values(photos).filter((p): p is AssessmentPhoto => !!p)
+
+    const formData = {
+      assessorId: user.id, subjectType,
+      cropType: isVehicle ? undefined : cropType, cropPopulation: isVehicle ? undefined : cropPopulation, plantDate: isVehicle ? undefined : plantDate,
+      registrationNumber: isVehicle ? registrationNumber : undefined, vehicleMake: isVehicle ? vehicleMake : undefined,
+      vehicleModel: isVehicle ? vehicleModel : undefined, odometerReading: isVehicle ? odometerReading : undefined,
+      existingDamage: isVehicle ? existingDamage : undefined,
+      notes, gpsLat, gpsLng,
+    }
 
     if (!navigator.onLine || offlinePending.length > 0) {
       const pendingPhotos = await Promise.all(offlinePending.map(async ({ label, file }) => ({
         label, base64: await fileToBase64(file), mediaType: file.type, fileName: file.name, capturedAt: new Date().toISOString(),
       })))
-      queueAssessment('policy', policyId, {
-        assessorId: user.id, cropType, cropPopulation, plantDate, notes, gpsLat, gpsLng,
-        _alreadyUploadedPhotos: photos,
-      }, pendingPhotos)
+      queueAssessment('policy', policyId, { ...formData, _alreadyUploadedPhotos: uploadedPhotos }, pendingPhotos)
       showToast('success', 'Pre-loss assessment saved on this device — it will sync automatically once you\'re back online.')
       setSubmitting(false)
       onSubmitted()
@@ -80,14 +103,13 @@ export default function PolicyAssessmentModal({ policyId, policyNumber, onClose,
     }
 
     const { error } = await db.policyAssessments.create({
-      policyId, assessorId: user.id, cropType, cropPopulation, plantDate: plantDate || undefined,
-      photos, notes, gpsLat, gpsLng, syncStatus: 'synced',
+      policyId, ...formData, photos: uploadedPhotos, notes, syncStatus: 'synced',
     })
     setSubmitting(false)
     if (error) { showToast('error', error); return }
-    const dupes = await checkAndRecordPhotoDuplicates(photos, 'policy', policyId, policyNumber)
+    const dupes = await checkAndRecordPhotoDuplicates(uploadedPhotos, 'policy', policyId, policyNumber)
     if (dupes.length > 0) {
-      showToast('warning', `⚠ This photo appears to match one already used on another claim/policy — worth a second look.`)
+      showToast('warning', `⚠ ${dupes.length > 1 ? 'Some photos' : 'A photo'} in this assessment appear to match one already used elsewhere — worth a second look.`)
     } else {
       showToast('success', 'Pre-loss assessment recorded.')
     }
@@ -96,36 +118,72 @@ export default function PolicyAssessmentModal({ policyId, policyNumber, onClose,
 
   return (
     <div className="modal-overlay">
-      <div className="modal" style={{ maxWidth: 560 }}>
+      <div className="modal" style={{ maxWidth: isVehicle ? 640 : 560 }}>
         <div className="modal-header">
           <h3>Pre-Loss Assessment — {policyNumber}</h3>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
           <div className="info-banner info-banner-info" style={{ marginBottom: '1rem' }}>
-            Establishes what's actually planted on this farm before any claim exists — a claim for a crop never recorded here is an obvious red flag.
+            {isVehicle
+              ? "Establishes the vehicle's condition before any claim exists — damage that was already there before cover started is an obvious red flag on a later claim."
+              : "Establishes what's actually planted on this farm before any claim exists — a claim for a crop never recorded here is an obvious red flag."}
           </div>
-          <div className="form-row">
-            <div className="form-group">
-              <label>Crop Type *</label>
-              <select className="form-control" value={cropTypeChoice} onChange={e => setCropTypeChoice(e.target.value)}>
-                <option value="">Select crop…</option>
-                {cropTypeOptions.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
-                <option value={OTHER}>Other…</option>
-              </select>
-              {cropTypeChoice === OTHER && (
-                <input className="form-control" style={{ marginTop: 6 }} value={customCropType} onChange={e => setCustomCropType(e.target.value)} placeholder="Enter crop type" autoFocus />
-              )}
+
+          {isVehicle ? (
+            <>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Registration Number *</label>
+                  <input className="form-control" value={registrationNumber} onChange={e => setRegistrationNumber(e.target.value)} placeholder="e.g. ABC 1234" />
+                </div>
+                <div className="form-group">
+                  <label>Odometer Reading</label>
+                  <input className="form-control" value={odometerReading} onChange={e => setOdometerReading(e.target.value)} placeholder="e.g. 84,200 km" />
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Make</label>
+                  <input className="form-control" value={vehicleMake} onChange={e => setVehicleMake(e.target.value)} placeholder="e.g. Toyota" />
+                </div>
+                <div className="form-group">
+                  <label>Model</label>
+                  <input className="form-control" value={vehicleModel} onChange={e => setVehicleModel(e.target.value)} placeholder="e.g. Hilux" />
+                </div>
+              </div>
+              <div className="form-group">
+                <label>Existing Damage</label>
+                <textarea className="form-control" rows={2} value={existingDamage} onChange={e => setExistingDamage(e.target.value)} placeholder="Any scratches, dents, or damage already present before cover starts…" />
+              </div>
+            </>
+          ) : (
+            <div className="form-row">
+              <div className="form-group">
+                <label>Crop Type *</label>
+                <select className="form-control" value={cropTypeChoice} onChange={e => setCropTypeChoice(e.target.value)}>
+                  <option value="">Select crop…</option>
+                  {cropTypeOptions.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                  <option value={OTHER}>Other…</option>
+                </select>
+                {cropTypeChoice === OTHER && (
+                  <input className="form-control" style={{ marginTop: 6 }} value={customCropType} onChange={e => setCustomCropType(e.target.value)} placeholder="Enter crop type" autoFocus />
+                )}
+              </div>
+              <div className="form-group">
+                <label>Crop Population <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(e.g. 15,000 plants/ha)</span></label>
+                <input className="form-control" value={cropPopulation} onChange={e => setCropPopulation(e.target.value)} placeholder="e.g. 15000 plants/ha" />
+              </div>
             </div>
+          )}
+
+          {!isVehicle && (
             <div className="form-group">
-              <label>Crop Population <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(e.g. 15,000 plants/ha)</span></label>
-              <input className="form-control" value={cropPopulation} onChange={e => setCropPopulation(e.target.value)} placeholder="e.g. 15000 plants/ha" />
+              <label>Plant Date</label>
+              <input type="date" className="form-control" value={plantDate} onChange={e => setPlantDate(e.target.value)} />
             </div>
-          </div>
-          <div className="form-group">
-            <label>Plant Date</label>
-            <input type="date" className="form-control" value={plantDate} onChange={e => setPlantDate(e.target.value)} />
-          </div>
+          )}
+
           <div className="form-group">
             <label>GPS Coordinates</label>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -135,13 +193,25 @@ export default function PolicyAssessmentModal({ policyId, policyNumber, onClose,
               )}
             </div>
           </div>
-          <div className="form-group">
-            <label>Farm / Field Photo</label>
-            <PhotoCaptureField label="Farm Establishment" folder="policies" recordId={policyId} value={photo} onChange={setPhoto} onOfflineCapture={handleOfflineCapture} />
-          </div>
-          <div className="form-group">
+
+          <label style={{ display: 'block', margin: '1rem 0 6px', fontSize: 13, fontWeight: 600 }}>
+            {isVehicle ? `Photos (${Object.values(photos).filter(Boolean).length}/${slots.length})` : 'Photo'}
+          </label>
+          {slots.map(slot => (
+            <PhotoCaptureField
+              key={slot}
+              label={slot}
+              folder="policies"
+              recordId={policyId}
+              value={photos[slot]}
+              onChange={p => setPhotos(prev => ({ ...prev, [slot]: p }))}
+              onOfflineCapture={handleOfflineCapture}
+            />
+          ))}
+
+          <div className="form-group" style={{ marginTop: '1rem' }}>
             <label>Notes</label>
-            <textarea className="form-control" rows={3} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Anything else worth recording about the farm's condition…" />
+            <textarea className="form-control" rows={3} value={notes} onChange={e => setNotes(e.target.value)} placeholder={`Anything else worth recording about the ${isVehicle ? "vehicle's" : "farm's"} condition…`} />
           </div>
         </div>
         <div className="modal-footer">
