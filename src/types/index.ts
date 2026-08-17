@@ -58,6 +58,19 @@ export interface CropType {
   createdAt: string
 }
 
+/** A slide in the public marketing site's home page hero carousel,
+ *  managed from Settings -> Website Content instead of hardcoded in the
+ *  motions-website repo. See motions-website/api/hero-slides.ts and
+ *  motions-website/src/pages/Home.tsx. */
+export interface HeroSlide {
+  id: string
+  icon: string
+  headline?: string
+  sortOrder: number
+  status: 'active' | 'inactive'
+  createdAt: string
+}
+
 /** An organisation-defined fraud pattern (e.g. "photos reused across
  *  multiple farmers in the same ward") captured by Super Admin/Admin from
  *  real cases they've seen. Active rules are folded into the AI fraud-

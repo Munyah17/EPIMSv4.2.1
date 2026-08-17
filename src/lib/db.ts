@@ -7,7 +7,7 @@ import type {
   Ticket, EmailMessage, Lead, FraudCase, Reminder, CautionFlag,
   PolicyStatus, ClaimStatus, PaymentStatus, PaymentMethod,
   TicketStatus, TicketPriority, LeadStatus, FraudCaseStatus, CustomRole,
-  ClaimAssessment, PolicyAssessment, AssessmentPhoto, InsurerRecord, CropType, FraudSignalRule,
+  ClaimAssessment, PolicyAssessment, AssessmentPhoto, InsurerRecord, CropType, FraudSignalRule, HeroSlide,
 } from '../types'
 
 // ── helpers ───────────────────────────────────────────────────────
@@ -666,6 +666,49 @@ export const fraudSignalRules = {
 
   async remove(id: string) {
     const { error } = await supabase.from('fraud_signal_rules').delete().eq('id', id)
+    return { error: error?.message ?? null }
+  },
+}
+
+// ── HERO SLIDES (public site hero carousel content) ──────────────────
+function toHeroSlide(r: Record<string, unknown>): HeroSlide {
+  return {
+    id: r.id as string, icon: r.icon as string, headline: (r.headline as string) ?? undefined,
+    sortOrder: r.sort_order as number, status: r.status as 'active' | 'inactive', createdAt: r.created_at as string,
+  }
+}
+
+export const heroSlides = {
+  async list() {
+    const { ok, data } = await sb('hero_slides', 'read',
+      () => supabase.from('hero_slides').select('*').order('sort_order'),
+      d => Array.isArray(d),
+    )
+    if (ok && data) return { data: (data as Record<string, unknown>[]).map(toHeroSlide), error: null }
+    return { data: [] as HeroSlide[], error: null }
+  },
+
+  async create(input: { icon: string; headline?: string; sortOrder: number }) {
+    const { data, error } = await supabase.from('hero_slides')
+      .insert({ icon: input.icon, headline: input.headline || null, sort_order: input.sortOrder })
+      .select().single()
+    if (error) return { data: null, error: error.message }
+    return { data: toHeroSlide(data), error: null }
+  },
+
+  async update(id: string, patch: Partial<{ icon: string; headline: string | null; sortOrder: number; status: 'active' | 'inactive' }>) {
+    const row: Record<string, unknown> = {}
+    if (patch.icon !== undefined) row.icon = patch.icon
+    if (patch.headline !== undefined) row.headline = patch.headline || null
+    if (patch.sortOrder !== undefined) row.sort_order = patch.sortOrder
+    if (patch.status !== undefined) row.status = patch.status
+    const { data, error } = await supabase.from('hero_slides').update(row).eq('id', id).select().single()
+    if (error) return { data: null, error: error.message }
+    return { data: toHeroSlide(data), error: null }
+  },
+
+  async remove(id: string) {
+    const { error } = await supabase.from('hero_slides').delete().eq('id', id)
     return { error: error?.message ?? null }
   },
 }
@@ -1877,7 +1920,7 @@ export function subscribeToTable(table: string, callback: () => void) {
 export const db = {
   policies, clients, products, claims, payments,
   tickets, emails, leads, staff, fraudCases, reminders, cautionFlags, settings, loginAttempts, developerApi,
-  customRoles, claimAssessments, policyAssessments, insurers, photoHashes, cropTypes, fraudSignalRules,
+  customRoles, claimAssessments, policyAssessments, insurers, photoHashes, cropTypes, fraudSignalRules, heroSlides,
   dashboardStats, sidebarCounts,
   subscribeToTable,
   resetLocalData: () => localStore.reset(),

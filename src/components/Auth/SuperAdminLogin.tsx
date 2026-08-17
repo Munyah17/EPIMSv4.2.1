@@ -95,8 +95,6 @@ export default function SuperAdminLogin() {
         </form>
 
         <div className="login-footer">
-          <span>Secured by Supabase ·</span>
-          <span> IPEC Reg. No. IPEC/IB/2020/001</span>
           <Copyright />
         </div>
       </div>
