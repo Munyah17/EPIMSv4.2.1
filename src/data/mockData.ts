@@ -315,7 +315,7 @@ export const CLAIMS: Claim[] = [
     dateOfEvent: '2026-05-01', dateSubmitted: '2026-05-03',
     description: 'Client involved in road traffic accident on Harare-Bulawayo highway.',
     fraudScore: 78, assignedTo: undefined, documents: ['police_report.pdf'],
-    notes: 'High fraud score flagged. Policy lapsed — claim validity under review.',
+    notes: 'High fraud score flagged. Policy lapsed; claim validity under review.',
   },
   {
     id: 'cl4', claimNumber: 'CLM2026004', policyId: 'pol7', policyNumber: 'EMA2024007',

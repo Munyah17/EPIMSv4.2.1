@@ -21,7 +21,7 @@ export default function ChangePasswordModal({ staffName, onClose, onSave }: Prop
     <div className="modal-overlay">
       <div className="modal" style={{ maxWidth: 420 }}>
         <div className="modal-header">
-          <h3>Change Password — {staffName}</h3>
+          <h3>Change Password: {staffName}</h3>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">

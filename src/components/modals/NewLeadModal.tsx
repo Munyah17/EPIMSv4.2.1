@@ -70,7 +70,7 @@ export default function NewLeadModal({ onClose, onSave }: Props) {
           </div>
           <div className="form-group">
             <label>Notes</label>
-            <textarea className="form-control" rows={3} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Anything relevant — helps the AI score this lead more accurately." />
+            <textarea className="form-control" rows={3} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Anything relevant, helps the AI score this lead more accurately." />
           </div>
         </div>
         <div className="modal-footer">

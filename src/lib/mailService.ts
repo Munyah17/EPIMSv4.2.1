@@ -136,7 +136,7 @@ export async function sendEmail(opts: SendEmailOptions): Promise<SendEmailResult
     }
     const result = await res.json().catch(() => ({}))
     if (result?.simulated) {
-      return { email, delivered: false, error: 'Email sending is not configured yet — message recorded but not actually sent.' }
+      return { email, delivered: false, error: 'Email sending is not configured yet; message recorded but not actually sent.' }
     }
     return { email, delivered: true }
   } catch (e) {

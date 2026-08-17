@@ -223,7 +223,7 @@ export default function SystemHealthPage({ showToast }: Props) {
             <div className="sh-info-row">
               <span>Fallback mode</span>
               <span style={{ color: stats.localMode ? '#D97706' : '#6B7E99', fontWeight: 600 }}>
-                {stats.localMode ? 'Active — using localStorage' : 'Inactive'}
+                {stats.localMode ? 'Active (using localStorage)' : 'Inactive'}
               </span>
             </div>
           </div>
@@ -247,7 +247,7 @@ export default function SystemHealthPage({ showToast }: Props) {
 
           <div className="sh-log-table" ref={logRef}>
             {stats.recent.length === 0 ? (
-              <div className="empty-state" style={{ padding: '32px 0' }}>No operations recorded yet — interact with the app to generate data.</div>
+              <div className="empty-state" style={{ padding: '32px 0' }}>No operations recorded yet; interact with the app to generate data.</div>
             ) : (
               <>
                 <div className="sh-log-header">

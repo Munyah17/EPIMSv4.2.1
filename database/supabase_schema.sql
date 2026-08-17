@@ -873,6 +873,8 @@ CREATE TABLE IF NOT EXISTS public.policy_assessments (
   notes                 TEXT,
   gps_lat               NUMERIC(9,6),
   gps_lng               NUMERIC(9,6),
+  farmer_signature      TEXT,
+  assessor_signature    TEXT,
   sync_status           TEXT NOT NULL DEFAULT 'synced' CHECK (sync_status IN ('synced','pending_sync')),
   created_at            TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -932,3 +934,16 @@ ALTER TABLE public.crop_types ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.crop_types FORCE ROW LEVEL SECURITY;
 CREATE POLICY "crop_types_select_staff" ON public.crop_types FOR SELECT TO authenticated USING (is_staff());
 CREATE POLICY "crop_types_write_admin" ON public.crop_types FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
+
+-- Org-defined fraud red flags, fed into AI scoring — see database/add_fraud_signal_rules.sql
+CREATE TABLE IF NOT EXISTS public.fraud_signal_rules (
+  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  description TEXT NOT NULL,
+  status      TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','inactive')),
+  created_by  UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+ALTER TABLE public.fraud_signal_rules ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.fraud_signal_rules FORCE ROW LEVEL SECURITY;
+CREATE POLICY "fraud_signal_rules_select_staff" ON public.fraud_signal_rules FOR SELECT TO authenticated USING (is_staff());
+CREATE POLICY "fraud_signal_rules_write_admin" ON public.fraud_signal_rules FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());

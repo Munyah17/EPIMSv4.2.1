@@ -7,11 +7,14 @@ import { queueAssessment } from '../../lib/offlineQueue'
 import { fileToBase64 } from '../../lib/photoAnalysis'
 import { checkAndRecordPhotoDuplicates } from '../../lib/duplicatePhotoCheck'
 import PhotoCaptureField from '../ui/PhotoCaptureField'
+import SignaturePad from '../ui/SignaturePad'
 
 const OTHER = '__other__'
 
 const AGRICULTURE_PHOTO_SLOTS = ['Farm / Field Photo']
 const VEHICLE_PHOTO_SLOTS = ['Front', 'Rear', 'Left Side', 'Right Side', 'Odometer', 'Interior']
+const MIN_PHOTOS = 6
+const MAX_PHOTOS = 20
 
 interface Props {
   policyId: string
@@ -47,14 +50,26 @@ export default function PolicyAssessmentModal({ policyId, policyNumber, subjectT
   const [gpsLng, setGpsLng] = useState<number | undefined>(undefined)
   const [gpsBusy, setGpsBusy] = useState(false)
   const [photos, setPhotos] = useState<Record<string, AssessmentPhoto | undefined>>({})
+  const [extraPhotoLabels, setExtraPhotoLabels] = useState<string[]>([])
   const [offlinePending, setOfflinePending] = useState<{ label: string; file: File }[]>([])
+  const [farmerSignature, setFarmerSignature] = useState<string | undefined>()
+  const [assessorSignature, setAssessorSignature] = useState<string | undefined>()
   const [submitting, setSubmitting] = useState(false)
 
-  const slots = isVehicle ? VEHICLE_PHOTO_SLOTS : AGRICULTURE_PHOTO_SLOTS
+  const baseSlots = isVehicle ? VEHICLE_PHOTO_SLOTS : AGRICULTURE_PHOTO_SLOTS
+  const slots = [...baseSlots, ...extraPhotoLabels]
   const photoCount = Object.values(photos).filter(Boolean).length + offlinePending.length
-  const canSubmit = isVehicle
-    ? registrationNumber.trim().length > 0 && photoCount > 0 && !submitting
-    : cropType.trim().length > 0 && !submitting
+  const canSubmit = (isVehicle ? registrationNumber.trim().length > 0 : cropType.trim().length > 0)
+    && photoCount >= MIN_PHOTOS && !!farmerSignature && !!assessorSignature && !submitting
+
+  const addExtraSlot = () => {
+    setExtraPhotoLabels(prev => (baseSlots.length + prev.length >= MAX_PHOTOS ? prev : [...prev, `Additional Photo ${prev.length + 1}`]))
+  }
+
+  const removeExtraSlot = (label: string) => {
+    setExtraPhotoLabels(prev => prev.filter(l => l !== label))
+    setPhotos(prev => { const next = { ...prev }; delete next[label]; return next })
+  }
 
   useEffect(() => {
     if (!isVehicle) db.cropTypes.list().then(({ data }) => setCropTypeOptions(data.filter(c => c.status === 'active')))
@@ -64,7 +79,7 @@ export default function PolicyAssessmentModal({ policyId, policyNumber, subjectT
     setGpsBusy(true)
     const coords = await getCurrentCoordinates()
     setGpsBusy(false)
-    if (!coords) { showToast('warning', 'Could not get GPS coordinates — enter them manually if needed.'); return }
+    if (!coords) { showToast('warning', 'Could not get GPS coordinates; enter them manually if needed.'); return }
     setGpsLat(coords.lat)
     setGpsLng(coords.lng)
     // Also saves onto the policy itself, so the location is on record even
@@ -74,7 +89,7 @@ export default function PolicyAssessmentModal({ policyId, policyNumber, subjectT
 
   const handleOfflineCapture = (file: File, label: string) => {
     setOfflinePending(prev => [...prev, { label, file }])
-    showToast('warning', 'No connection — photo saved on this device and will upload once you\'re back online.')
+    showToast('warning', 'No connection: photo saved on this device and will upload once you\'re back online.')
   }
 
   const handleSubmit = async () => {
@@ -88,7 +103,7 @@ export default function PolicyAssessmentModal({ policyId, policyNumber, subjectT
       registrationNumber: isVehicle ? registrationNumber : undefined, vehicleMake: isVehicle ? vehicleMake : undefined,
       vehicleModel: isVehicle ? vehicleModel : undefined, odometerReading: isVehicle ? odometerReading : undefined,
       existingDamage: isVehicle ? existingDamage : undefined,
-      notes, gpsLat, gpsLng,
+      notes, gpsLat, gpsLng, farmerSignature, assessorSignature,
     }
 
     if (!navigator.onLine || offlinePending.length > 0) {
@@ -96,7 +111,7 @@ export default function PolicyAssessmentModal({ policyId, policyNumber, subjectT
         label, base64: await fileToBase64(file), mediaType: file.type, fileName: file.name, capturedAt: new Date().toISOString(),
       })))
       queueAssessment('policy', policyId, { ...formData, _alreadyUploadedPhotos: uploadedPhotos }, pendingPhotos)
-      showToast('success', 'Pre-loss assessment saved on this device — it will sync automatically once you\'re back online.')
+      showToast('success', 'Pre-loss assessment saved on this device; it will sync automatically once you\'re back online.')
       setSubmitting(false)
       onSubmitted()
       return
@@ -109,7 +124,7 @@ export default function PolicyAssessmentModal({ policyId, policyNumber, subjectT
     if (error) { showToast('error', error); return }
     const dupes = await checkAndRecordPhotoDuplicates(uploadedPhotos, 'policy', policyId, policyNumber)
     if (dupes.length > 0) {
-      showToast('warning', `⚠ ${dupes.length > 1 ? 'Some photos' : 'A photo'} in this assessment appear to match one already used elsewhere — worth a second look.`)
+      showToast('warning', `⚠ ${dupes.length > 1 ? 'Some photos' : 'A photo'} in this assessment appear to match one already used elsewhere; worth a second look.`)
     } else {
       showToast('success', 'Pre-loss assessment recorded.')
     }
@@ -120,14 +135,14 @@ export default function PolicyAssessmentModal({ policyId, policyNumber, subjectT
     <div className="modal-overlay">
       <div className="modal" style={{ maxWidth: isVehicle ? 640 : 560 }}>
         <div className="modal-header">
-          <h3>Pre-Loss Assessment — {policyNumber}</h3>
+          <h3>Pre-Loss Assessment: {policyNumber}</h3>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
           <div className="info-banner info-banner-info" style={{ marginBottom: '1rem' }}>
             {isVehicle
-              ? "Establishes the vehicle's condition before any claim exists — damage that was already there before cover started is an obvious red flag on a later claim."
-              : "Establishes what's actually planted on this farm before any claim exists — a claim for a crop never recorded here is an obvious red flag."}
+              ? "Establishes the vehicle's condition before any claim exists; damage that was already there before cover started is an obvious red flag on a later claim."
+              : "Establishes what's actually planted on this farm before any claim exists; a claim for a crop never recorded here is an obvious red flag."}
           </div>
 
           {isVehicle ? (
@@ -195,23 +210,42 @@ export default function PolicyAssessmentModal({ policyId, policyNumber, subjectT
           </div>
 
           <label style={{ display: 'block', margin: '1rem 0 6px', fontSize: 13, fontWeight: 600 }}>
-            {isVehicle ? `Photos (${Object.values(photos).filter(Boolean).length}/${slots.length})` : 'Photo'}
+            Photos ({photoCount}/{MIN_PHOTOS} minimum, up to {MAX_PHOTOS})
           </label>
           {slots.map(slot => (
-            <PhotoCaptureField
-              key={slot}
-              label={slot}
-              folder="policies"
-              recordId={policyId}
-              value={photos[slot]}
-              onChange={p => setPhotos(prev => ({ ...prev, [slot]: p }))}
-              onOfflineCapture={handleOfflineCapture}
-            />
+            <div key={slot} style={{ position: 'relative' }}>
+              <PhotoCaptureField
+                label={slot}
+                folder="policies"
+                recordId={policyId}
+                value={photos[slot]}
+                onChange={p => setPhotos(prev => ({ ...prev, [slot]: p }))}
+                onOfflineCapture={handleOfflineCapture}
+              />
+              {extraPhotoLabels.includes(slot) && (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  style={{ position: 'absolute', top: 0, right: 0, color: 'var(--danger)' }}
+                  onClick={() => removeExtraSlot(slot)}
+                >
+                  Remove
+                </button>
+              )}
+            </div>
           ))}
+          <button type="button" className="btn btn-ghost btn-sm" disabled={slots.length >= MAX_PHOTOS} onClick={addExtraSlot}>
+            + Add More Images
+          </button>
 
           <div className="form-group" style={{ marginTop: '1rem' }}>
             <label>Notes</label>
             <textarea className="form-control" rows={3} value={notes} onChange={e => setNotes(e.target.value)} placeholder={`Anything else worth recording about the ${isVehicle ? "vehicle's" : "farm's"} condition…`} />
+          </div>
+
+          <div className="form-row" style={{ marginTop: '1rem' }}>
+            <SignaturePad label={`${isVehicle ? 'Policyholder' : 'Farmer'} Signature *`} onChange={setFarmerSignature} />
+            <SignaturePad label="Assessor Signature *" onChange={setAssessorSignature} />
           </div>
         </div>
         <div className="modal-footer">

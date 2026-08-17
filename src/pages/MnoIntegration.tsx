@@ -117,7 +117,7 @@ export default function MnoIntegration({ showToast }: Props) {
               <span style={{ background: '#FEE2E2', color: '#991B1B', fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 10, letterSpacing: '0.05em' }}>⏸ SUSPENDED</span>
             </div>
             <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--muted)' }}>
-              This partnership is suspended for now — no claim/billing notifications are sent to NetOne while suspended. Everything below is kept for reference and reactivation.
+              This partnership is suspended for now; no claim/billing notifications are sent to NetOne while suspended. Everything below is kept for reference and reactivation.
             </p>
           </div>
         </div>
@@ -336,7 +336,7 @@ function PartnersTab({ partners, reload, showToast }: { partners: MnoPartner[]; 
 
       {selected && (
         <div className="card" style={{ marginTop: 20, padding: 20 }}>
-          <h3 style={{ marginBottom: 12, fontSize: 14, fontWeight: 600 }}>{selected.name} — API Configuration</h3>
+          <h3 style={{ marginBottom: 12, fontSize: 14, fontWeight: 600 }}>{selected.name}: API Configuration</h3>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
             <div>
               <label className="form-label">API Base URL</label>
@@ -384,7 +384,7 @@ function ApiKeysTab({ apiKeys, partners, reload, showToast }: {
       requestCount: 0, rateLimit: newKey.rateLimit,
     })
     reload()
-    showToast('success', `API key "${newKey.label}" created — prefix: ${prefix}`)
+    showToast('success', `API key "${newKey.label}" created, prefix: ${prefix}`)
     setCreating(false)
     setNewKey({ partnerId: '', label: '', environment: 'sandbox', rateLimit: 100, permissions: [] })
   }

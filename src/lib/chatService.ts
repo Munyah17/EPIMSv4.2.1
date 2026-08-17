@@ -63,7 +63,7 @@ export async function startChatSession(input: {
 
   await supabase.from('chat_messages').insert({
     session_id: data.id, sender_type: 'system', sender_name: 'System',
-    body: `Chat started — topic: ${input.topic}`,
+    body: `Chat started: topic ${input.topic}`,
   })
 
   return { session: toSession(data), error: null }

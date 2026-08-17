@@ -57,7 +57,7 @@ export default function Claims({ showToast }: Props) {
     const FRAUD_REVIEW_THRESHOLD = 55
     if (data.fraudScore >= FRAUD_REVIEW_THRESHOLD) {
       await db.fraudCases.create(data.id, data.fraudScore, fraudSignals ?? [])
-      showToast('warning', `Claim ${data.claimNumber} submitted — flagged for fraud review (score ${data.fraudScore}).`)
+      showToast('warning', `Claim ${data.claimNumber} submitted, flagged for fraud review (score ${data.fraudScore}).`)
     } else {
       showToast('success', `Claim ${data.claimNumber} submitted successfully.`)
     }
@@ -96,12 +96,12 @@ export default function Claims({ showToast }: Props) {
 
     if (!navigator.onLine || offlinePhotos.length > 0) {
       queueFallback()
-      showToast('warning', `Claim ${data.claimNumber} submitted — the assessment is saved on this device and will sync once you're back online.`)
+      showToast('warning', `Claim ${data.claimNumber} submitted; the assessment is saved on this device and will sync once you're back online.`)
     } else {
       const { error: assessError } = await db.claimAssessments.create({ ...assessment, claimId: data.id })
       if (assessError) {
         queueFallback()
-        showToast('warning', `Claim ${data.claimNumber} submitted — the assessment couldn't attach (${assessError}), so it's queued to retry automatically.`)
+        showToast('warning', `Claim ${data.claimNumber} submitted; the assessment couldn't attach (${assessError}), so it's queued to retry automatically.`)
       } else {
         // Index this claim's photos for future duplicate-detection lookups
         // — best-effort, never blocks the claim that's already been created.

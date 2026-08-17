@@ -41,3 +41,4 @@ deno.lock
 
 # Local Vercel project link
 .vercel
+.env*

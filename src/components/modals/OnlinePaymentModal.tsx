@@ -151,7 +151,7 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
     <div className="modal-overlay">
       <div className="modal" style={{ maxWidth: 500 }}>
         <div className="modal-header">
-          <h3>Pay Online — {policy.policyNumber}</h3>
+          <h3>Pay Online: {policy.policyNumber}</h3>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
 
@@ -171,7 +171,7 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
                 <label>Number of {isAgriculture ? 'Years' : 'Months'} to Pay</label>
                 <select className="form-control" value={periods} onChange={e => setPeriods(Number(e.target.value))}>
                   {Array.from({ length: 12 }, (_, i) => i + 1).map(n => (
-                    <option key={n} value={n}>{n} {isAgriculture ? (n === 1 ? 'year' : 'years') : (n === 1 ? 'month' : 'months')} — ${(policy.premium * n).toFixed(2)}</option>
+                    <option key={n} value={n}>{n} {isAgriculture ? (n === 1 ? 'year' : 'years') : (n === 1 ? 'month' : 'months')} (${(policy.premium * n).toFixed(2)})</option>
                   ))}
                 </select>
               </div>

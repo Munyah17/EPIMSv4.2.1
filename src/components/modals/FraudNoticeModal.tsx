@@ -20,7 +20,7 @@ export default function FraudNoticeModal({ onConfirm, onCancel, confirming }: Pr
             ℹ A quick reminder before this claim goes in.
           </div>
           <p style={{ fontSize: 13, lineHeight: 1.6, marginBottom: 10 }}>
-            Please make sure everything in this claim — the description, amounts, dates, and any photos or documents attached — accurately reflects what actually happened. Claims are reviewed carefully, and photos are automatically checked for their capture date and authenticity.
+            Please make sure everything in this claim (the description, amounts, dates, and any photos or documents attached) accurately reflects what actually happened. Claims are reviewed carefully, and photos are automatically checked for their capture date and authenticity.
           </p>
           <p style={{ fontSize: 13, lineHeight: 1.6, marginBottom: 10 }}>
             Submitting a claim that's exaggerated, staged, or based on false information is insurance fraud. Under Zimbabwean law this can mean the claim being rejected, the policy being cancelled, and in serious cases, criminal prosecution under the Insurance Act and the Criminal Law (Codification and Reform) Act.
@@ -32,7 +32,7 @@ export default function FraudNoticeModal({ onConfirm, onCancel, confirming }: Pr
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onCancel} disabled={confirming}>Let Me Review Again</button>
           <button className="btn btn-primary" onClick={onConfirm} disabled={confirming}>
-            {confirming ? 'Submitting…' : 'I Confirm — Submit Claim'}
+            {confirming ? 'Submitting…' : 'I Confirm: Submit Claim'}
           </button>
         </div>
       </div>

@@ -17,7 +17,7 @@ const ENDPOINTS: { method: string; path: string; scope: string; desc: string }[]
   { method: 'POST', path: '/api/v1/policies', scope: 'policies:write', desc: 'Create a policy for a client. Attributed to the developer as agent.' },
   { method: 'GET', path: '/api/v1/policies/:policyNumber', scope: 'policies:read', desc: 'Look up a policy the developer created.' },
   { method: 'POST', path: '/api/v1/payments', scope: 'payments:write', desc: 'Record a premium payment against a policy.' },
-  { method: 'POST', path: '/api/v1/tickets', scope: 'support:write (always granted)', desc: "File a support ticket for one of your clients — the only way to request a correction. There is no update/delete endpoint for clients or policies." },
+  { method: 'POST', path: '/api/v1/tickets', scope: 'support:write (always granted)', desc: "File a support ticket for one of your clients, the only way to request a correction. There is no update/delete endpoint for clients or policies." },
 ]
 
 interface Props {
@@ -79,7 +79,7 @@ export default function DeveloperApi({ showToast }: Props) {
     if (error) { showToast('error', error); return }
     const { data: keys } = await db.developerApi.listKeys(developerId)
     setKeysByDeveloper(prev => ({ ...prev, [developerId]: keys }))
-    showToast('info', 'Key paused — it can be resumed at any time.')
+    showToast('info', 'Key paused; it can be resumed at any time.')
   }
 
   const handleResumeKey = async (keyId: string, developerId: string) => {
@@ -105,9 +105,9 @@ export default function DeveloperApi({ showToast }: Props) {
     try {
       const { delivered, error } = await sendSystemEmail({
         from: MAILBOXES.admin,
-        fromName: 'Tariqify IMS — Developer API',
+        fromName: 'Tariqify IMS: Developer API',
         to: newKey.developer.contactEmail,
-        subject: `Your API Credentials — ${newKey.environment === 'live' ? 'Live' : 'Sandbox'} Key`,
+        subject: `Your API Credentials: ${newKey.environment === 'live' ? 'Live' : 'Sandbox'} Key`,
         body: `Hello,
 
 Here are your API credentials for ${newKey.developer.companyName}'s integration (${newKey.environment} environment):
@@ -115,7 +115,7 @@ Here are your API credentials for ${newKey.developer.companyName}'s integration 
 Publishable Key: ${newKey.publishableKey}
 Secret Key: ${newKey.rawKey}
 
-The secret key authorizes real requests and must be kept server-side only — never expose it in a browser, mobile app bundle, or public repository. Treat it exactly like a password. If it's ever compromised, contact us immediately to have it revoked and reissued.
+The secret key authorizes real requests and must be kept server-side only; never expose it in a browser, mobile app bundle, or public repository. Treat it exactly like a password. If it's ever compromised, contact us immediately to have it revoked and reissued.
 
 Full API documentation is available on request.
 
@@ -123,7 +123,7 @@ Regards,
 Tariqify IMS`,
       })
       if (delivered) showToast('success', `Credentials sent to ${newKey.developer.contactEmail}.`)
-      else showToast('warning', error ?? 'Could not deliver the email — copy the keys manually instead.')
+      else showToast('warning', error ?? 'Could not deliver the email; copy the keys manually instead.')
     } finally {
       setSendingToPartner(false)
     }
@@ -148,7 +148,7 @@ Tariqify IMS`,
 
   const handleTerminate = async (dev: ApiDeveloper) => {
     const reason = window.prompt(
-      `Permanently terminate ${dev.companyName}? This revokes all their active keys immediately and cannot be undone — they would need to be re-registered from scratch.\n\nEnter a reason for the record:`,
+      `Permanently terminate ${dev.companyName}? This revokes all their active keys immediately and cannot be undone; they would need to be re-registered from scratch.\n\nEnter a reason for the record:`,
     )
     if (reason === null) return
     if (!reason.trim()) { showToast('warning', 'A termination reason is required.'); return }
@@ -170,7 +170,7 @@ Tariqify IMS`,
     <div className="panel">
       {!canEdit && (
         <div className="info-banner info-banner-warning" style={{ marginBottom: 16 }}>
-          🔒 Read-only — only Super Admin or Admin accounts can register developers or issue keys.
+          🔒 Read-only: only Super Admin or Admin accounts can register developers or issue keys.
         </div>
       )}
 
@@ -190,7 +190,7 @@ Tariqify IMS`,
             <div style={{ fontSize: 40, marginBottom: 10 }}>🔌</div>
             <h3 style={{ marginBottom: 6 }}>No API developers yet</h3>
             <p style={{ color: 'var(--muted)', fontSize: 13, maxWidth: 420, margin: '0 auto 18px' }}>
-              To issue an API key, first register the partner as a developer — a key is always tied to one. Register them below, then use <strong>Manage → Issue New Key</strong> on their row to generate credentials.
+              To issue an API key, first register the partner as a developer; a key is always tied to one. Register them below, then use <strong>Manage → Issue New Key</strong> on their row to generate credentials.
             </p>
             <button className="btn btn-primary" onClick={() => setShowNew(true)} disabled={!canEdit}>+ Register First Developer</button>
           </div>
@@ -230,7 +230,7 @@ Tariqify IMS`,
                         <div style={{ padding: '10px 0' }}>
                           {dev.status === 'terminated' && dev.terminationReason && (
                             <div className="info-banner info-banner-danger" style={{ marginBottom: 10 }}>
-                              Terminated{dev.terminatedAt ? ` on ${new Date(dev.terminatedAt).toLocaleDateString('en-GB')}` : ''} — {dev.terminationReason}
+                              Terminated{dev.terminatedAt ? ` on ${new Date(dev.terminatedAt).toLocaleDateString('en-GB')}` : ''}: {dev.terminationReason}
                             </div>
                           )}
                           <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
@@ -358,7 +358,7 @@ Tariqify IMS`,
               <div className="form-group">
                 <label style={{ textTransform: 'none', fontSize: 13, fontWeight: 600 }}>A partner's key isn't working</label>
                 <p style={{ fontSize: 12, color: 'var(--muted)' }}>
-                  Open their row and check the key's status — <strong>Paused</strong> or <strong>Revoked</strong> keys are rejected by the API. Resume a paused key, or issue a new one if it was revoked. Also check the Developer's own status hasn't been suspended or terminated.
+                  Open their row and check the key's status; <strong>Paused</strong> or <strong>Revoked</strong> keys are rejected by the API. Resume a paused key, or issue a new one if it was revoked. Also check the Developer's own status hasn't been suspended or terminated.
                 </p>
               </div>
               <div className="form-group">
@@ -370,13 +370,13 @@ Tariqify IMS`,
               <div className="form-group">
                 <label style={{ textTransform: 'none', fontSize: 13, fontWeight: 600 }}>They're getting HTTP 403</label>
                 <p style={{ fontSize: 12, color: 'var(--muted)' }}>
-                  Their key is missing the scope for that endpoint, or they're trying to touch a client/policy that belongs to a different developer — see the Isolation note in the API Documentation.
+                  Their key is missing the scope for that endpoint, or they're trying to touch a client/policy that belongs to a different developer; see the Isolation note in the API Documentation.
                 </p>
               </div>
               <div className="form-group">
                 <label style={{ textTransform: 'none', fontSize: 13, fontWeight: 600 }}>Something else</label>
                 <p style={{ fontSize: 12, color: 'var(--muted)' }}>
-                  The Audit Log on each developer's row shows every request they've made with its status code — start there. For anything unresolved, reach the partner via their contact email on file and loop in a Super Admin.
+                  The Audit Log on each developer's row shows every request they've made with its status code; start there. For anything unresolved, reach the partner via their contact email on file and loop in a Super Admin.
                 </p>
               </div>
             </div>
@@ -452,7 +452,7 @@ Tariqify IMS`,
         <div className="modal-overlay">
           <div className="modal" style={{ maxWidth: 560 }}>
             <div className="modal-header">
-              <h3>API Key Issued — <span style={{ textTransform: 'capitalize' }}>{newKey.environment}</span></h3>
+              <h3>API Key Issued: <span style={{ textTransform: 'capitalize' }}>{newKey.environment}</span></h3>
               <button className="modal-close" onClick={() => setNewKey(null)}>✕</button>
             </div>
             <div className="modal-body">
@@ -464,7 +464,7 @@ Tariqify IMS`,
                 </div>
               </div>
               <div className="info-banner info-banner-warning" style={{ margin: '14px 0' }}>
-                ⚠ The secret key below is shown only once. Copy it now and hand it to the developer securely — it cannot be retrieved again.
+                ⚠ The secret key below is shown only once. Copy it now and hand it to the developer securely; it cannot be retrieved again.
               </div>
               <div className="form-group">
                 <label>Secret Key</label>
@@ -583,7 +583,7 @@ function IssueKeyModal({ developer, onClose, onIssue }: {
     <div className="modal-overlay">
       <div className="modal" style={{ maxWidth: 480 }}>
         <div className="modal-header">
-          <h3>Issue Key — {developer.companyName}</h3>
+          <h3>Issue Key: {developer.companyName}</h3>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">

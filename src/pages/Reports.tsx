@@ -3,6 +3,7 @@ import type { ToastMessage } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { exportToCsv, exportToExcel, exportToPdf } from '../lib/exportUtils'
+import { formatPremium } from '../lib/productUtils'
 import type { Policy, Claim, Payment, Client } from '../types'
 
 interface Props {
@@ -168,10 +169,10 @@ export default function Reports({ showToast }: Props) {
         ['Total Clients', clients.length],
       ]
     } else {
-      title = 'Policy Report — Overview'
+      title = 'Policy Report: Overview'
       baseName = 'policies-report'
       headers = ['Policy No.', 'Client', 'Product', 'Premium', 'Status', 'Start Date']
-      rows = policies.map(p => [p.policyNumber, p.clientName, p.productName, `$${p.premium.toFixed(2)}/mo`, p.status, p.startDate])
+      rows = policies.map(p => [p.policyNumber, p.clientName, p.productName, formatPremium(p.premium, p.productCategory ?? ''), p.status, p.startDate])
     }
 
     if (format === 'CSV') exportToCsv(`${baseName}-${dateStamp}.csv`, headers, rows)
@@ -501,9 +502,9 @@ export default function Reports({ showToast }: Props) {
       {activeTab === 'ipec' && (
         <div className="card" style={{ maxWidth: 700 }}>
           <div className="info-banner info-banner-info" style={{ marginBottom: '1.5rem' }}>
-            ℹ IPEC Quarterly Return — Submit before the 15th of the month following quarter end.
+            ℹ IPEC Quarterly Return: Submit before the 15th of the month following quarter end.
           </div>
-          <h3 style={{ marginBottom: '1.5rem' }}>IPEC Quarterly Return — Q2 2026</h3>
+          <h3 style={{ marginBottom: '1.5rem' }}>IPEC Quarterly Return: Q2 2026</h3>
           <table className="table">
             <tbody>
               <tr><td><strong>Intermediary Name</strong></td><td>Enpassent Multiple Agents (Pvt) Ltd</td></tr>

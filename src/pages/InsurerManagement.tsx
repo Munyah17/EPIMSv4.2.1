@@ -63,7 +63,7 @@ export default function InsurerManagement({ showToast }: Props) {
     <div className="panel">
       {!canEdit && (
         <div className="info-banner info-banner-warning" style={{ marginBottom: 16 }}>
-          🔒 Read-only — only Super Admin or Admin accounts can add or edit insurer partners.
+          🔒 Read-only: only Super Admin or Admin accounts can add or edit insurer partners.
         </div>
       )}
       <div className="panel-toolbar">

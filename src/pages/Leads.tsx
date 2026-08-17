@@ -69,7 +69,7 @@ export default function Leads({ showToast }: Props) {
     if (error || !data) { showToast('error', error ?? 'Failed to add lead.'); return }
     setLeads(prev => [data, ...prev])
     setShowAdd(false)
-    showToast('success', `Lead "${data.name}" added — AI intent score: ${data.intentScore}.`)
+    showToast('success', `Lead "${data.name}" added, AI intent score: ${data.intentScore}.`)
   }
 
   const handleImportSearched = async (found: Omit<Lead, 'id'>[]) => {

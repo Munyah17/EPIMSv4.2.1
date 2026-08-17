@@ -298,7 +298,7 @@ export async function handleUssdAction(
           productName: pol.productName,
           claimType: sctx.claimType ?? 'General', amount: 0, status: 'pending', stage: 'intake',
           dateOfEvent: shortDate(), dateSubmitted: shortDate(),
-          description: `${sctx.claimType} claim — submitted via USSD`,
+          description: `${sctx.claimType} claim, submitted via USSD`,
           fraudScore: Math.floor(Math.random() * 25),
           documents: [],
           notes: `Submitted via MNO USSD (${ctx.apiKey.partnerName})`,

@@ -95,11 +95,11 @@ function AppInner() {
       if (type === 'read') {
         if (now - lastReadWarningAt < 8000) return
         lastReadWarningAt = now
-        showToast('warning', 'Could not reach the server — showing locally cached data. Some records may be out of date.')
+        showToast('warning', 'Could not reach the server, showing locally cached data. Some records may be out of date.')
       } else {
         if (now - lastWriteWarningAt < 8000) return
         lastWriteWarningAt = now
-        showToast('warning', 'Could not reach the server — your change was saved locally only and has NOT synced yet.')
+        showToast('warning', 'Could not reach the server; your change was saved locally only and has NOT synced yet.')
       }
     }
     window.addEventListener(DB_FALLBACK_EVENT, onFallback)

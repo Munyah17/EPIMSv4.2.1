@@ -58,6 +58,19 @@ export interface CropType {
   createdAt: string
 }
 
+/** An organisation-defined fraud pattern (e.g. "photos reused across
+ *  multiple farmers in the same ward") captured by Super Admin/Admin from
+ *  real cases they've seen. Active rules are folded into the AI fraud-
+ *  scoring prompt (api/score-claim-fraud.ts) as extra named red flags to
+ *  check every claim against, on top of the built-in ones. */
+export interface FraudSignalRule {
+  id: string
+  description: string
+  status: 'active' | 'inactive'
+  createdByName?: string
+  createdAt: string
+}
+
 export interface AppUser {
   id: string
   name: string
@@ -137,6 +150,10 @@ export interface Policy {
   clientName: string
   productId: string
   productName: string
+  /** Denormalized from the linked product, for category-aware display
+   *  (e.g. agriculture premiums are annual, everything else is monthly)
+   *  without an extra fetch. */
+  productCategory?: string
   premium: number
   coverAmount: number
   startDate: string
@@ -508,6 +525,8 @@ export interface PolicyAssessment {
   notes: string
   gpsLat?: number
   gpsLng?: number
+  farmerSignature?: string
+  assessorSignature?: string
   syncStatus: AssessmentSyncStatus
   createdAt: string
 }

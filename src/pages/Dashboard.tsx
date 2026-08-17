@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import type { ActivePanel } from '../App'
 import type { ToastMessage, Policy } from '../types'
 import { db, type DashboardStats } from '../lib/db'
+import { formatPremium } from '../lib/productUtils'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -60,9 +61,9 @@ export default function Dashboard({ setActivePanel }: Props) {
     stats.latestClient && { icon: '👤', text: `New client registered: ${stats.latestClient.name}`, at: stats.latestClient.at, cls: 'activity-icon-purple' },
     recentPolicies[0] && { icon: '🛡', text: `New policy issued to ${recentPolicies[0].clientName}`, at: recentPolicies[0].createdAt, cls: 'activity-icon-blue' },
     stats.latestClaim && { icon: '📋', text: `Claim ${stats.latestClaim.claimNumber} submitted by ${stats.latestClaim.clientName}`, at: stats.latestClaim.at, cls: 'activity-icon-gold' },
-    stats.latestPayment && { icon: '💳', text: `Payment received from ${stats.latestPayment.clientName} — $${stats.latestPayment.amount}`, at: stats.latestPayment.at, cls: 'activity-icon-teal' },
+    stats.latestPayment && { icon: '💳', text: `Payment received from ${stats.latestPayment.clientName}: $${stats.latestPayment.amount}`, at: stats.latestPayment.at, cls: 'activity-icon-teal' },
     stats.latestLead && { icon: '🎯', text: `New lead: ${stats.latestLead.name} via ${stats.latestLead.source}`, at: stats.latestLead.at, cls: 'activity-icon-purple' },
-    stats.latestFraud && { icon: '⚠', text: `Fraud alert on claim ${stats.latestFraud.claimNumber} — Score ${stats.latestFraud.fraudScore}%`, at: stats.latestFraud.at, cls: 'activity-icon-danger' },
+    stats.latestFraud && { icon: '⚠', text: `Fraud alert on claim ${stats.latestFraud.claimNumber}: Score ${stats.latestFraud.fraudScore}%`, at: stats.latestFraud.at, cls: 'activity-icon-danger' },
   ].filter(Boolean).map(a => ({ ...(a as { icon: string; text: string; at: string; cls: string }), time: timeAgo((a as { at: string }).at) }))
     .sort((a, b) => new Date(b.at || 0).getTime() - new Date(a.at || 0).getTime())
 
@@ -151,7 +152,7 @@ export default function Dashboard({ setActivePanel }: Props) {
                   <td><span className="mono">{p.policyNumber}</span></td>
                   <td>{p.clientName}</td>
                   <td>{p.productName}</td>
-                  <td>${p.premium.toFixed(2)}/mo</td>
+                  <td>{formatPremium(p.premium, p.productCategory ?? '')}</td>
                   <td><span className={`pill pill-${p.status}`}>{p.status}</span></td>
                 </tr>
               ))}

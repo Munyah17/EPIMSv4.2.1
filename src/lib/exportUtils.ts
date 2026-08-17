@@ -62,102 +62,123 @@ const BRAND_BLUE: [number, number, number] = [65, 105, 225]
 const BRAND_RED: [number, number, number] = [200, 30, 40]
 const MUTED: [number, number, number] = [107, 126, 153]
 const TEXT: [number, number, number] = [15, 28, 46]
+const NAVY: [number, number, number] = [33, 46, 108]
+const TABLE_HEAD: [number, number, number] = [191, 200, 232]
 
-/** Builds the policy report/certificate PDF (overview, policyholder
- *  detail, dependants, key terms, and — agriculture only — the defined
- *  perils covered) and returns the jsPDF doc, so callers can either save
- *  it to disk or pull it out as a base64 attachment for email. Not offered
- *  for funeral packages — funeral policies use a different document
- *  elsewhere in the flow. */
+/** Builds the policy report/certificate PDF, laid out to match the Motions
+ *  Microinsurance policy document template: a plain (non-banded) header
+ *  with the logo on the left and company contact details on the right,
+ *  a payment summary strip, then banded POLICY INFORMATION / PERSONAL
+ *  INFORMATION / DEPENDANTS sections — each dependant gets its own boxed
+ *  sub-table since they can each carry their own plan. Returns the jsPDF
+ *  doc so callers can either save it to disk or pull it out as a base64
+ *  attachment for email. Not offered for funeral packages — funeral
+ *  policies use a different document elsewhere in the flow. */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function buildPolicyReportDoc(policy: Policy, client: Client, category: string): Promise<any> {
   const [{ jsPDF }, { default: autoTable }] = await Promise.all([import('jspdf'), import('jspdf-autotable')])
   const doc = new jsPDF()
   const insurerName = policy.insurer ?? 'the insurer'
   const pageWidth = doc.internal.pageSize.getWidth()
+  const pageHeight = doc.internal.pageSize.getHeight()
   const cfg = getNotifSettings()
 
-  // Header band — blue with a thin red accent underline (Motions brand
-  // colours), plus company contact details if configured (Settings ->
-  // Notifications -> Company Details) rather than a guessed address/phone.
-  doc.setFillColor(...BRAND_BLUE)
-  doc.rect(0, 0, pageWidth, 24, 'F')
+  const ensureRoom = (need: number) => {
+    if (y + need > pageHeight - 16) { doc.addPage(); y = 20 }
+  }
+
+  // Logo mark — a simple two-tone chevron standing in for the real Motions
+  // logo until an actual image asset is supplied (doc.addImage would swap
+  // straight in). Wordmark sits beside it, not inside a colour band, to
+  // match the plain white header on the reference document.
   doc.setFillColor(...BRAND_RED)
-  doc.rect(0, 24, pageWidth, 1.5, 'F')
-  doc.setTextColor(255, 255, 255)
+  doc.triangle(14, 20, 14, 10, 20, 15, 'F')
+  doc.setFillColor(...NAVY)
+  doc.triangle(18, 20, 18, 10, 24, 15, 'F')
   doc.setFontSize(15)
-  doc.text('MOTIONS', 14, 12)
-  doc.setFontSize(9)
-  doc.text('POLICY REPORT', 14, 19)
-  doc.setFontSize(9)
-  doc.text(policy.policyNumber, pageWidth - 14, 15, { align: 'right' })
+  doc.setTextColor(...NAVY)
+  doc.text('MOTIONS', 28, 15)
+  doc.setFontSize(6.5)
+  doc.setTextColor(...MUTED)
+  doc.text('M I C R O I N S U R A N C E', 28, 19.5)
+
+  // Company contact details, right-aligned — only from what's actually
+  // configured (Settings -> Notifications -> Company Details). A wrong
+  // address/phone on an official document is worse than an empty one, so
+  // nothing here is guessed or hardcoded.
+  doc.setFontSize(8)
   doc.setTextColor(...TEXT)
-
-  let y = 31
-  const contactLine = [cfg.companyAddress, cfg.companyPhone, cfg.companyEmail].filter(Boolean).join('  ·  ')
-  if (contactLine) {
-    doc.setFontSize(7.5)
-    doc.setTextColor(...MUTED)
-    doc.text(contactLine, 14, y)
-    doc.setTextColor(...TEXT)
-    y += 6
+  let ry = 11
+  if (cfg.companyAddress) {
+    const addrLines = doc.splitTextToSize(cfg.companyAddress, 70)
+    addrLines.forEach((line: string) => { doc.text(line, pageWidth - 14, ry, { align: 'right' }); ry += 4 })
   }
-  y += 3
+  if (cfg.companyPhone) { doc.text(`Phone: ${cfg.companyPhone}`, pageWidth - 14, ry + 3, { align: 'right' }); ry += 4 }
+  if (cfg.companyEmail) { doc.text(`Email: ${cfg.companyEmail}`, pageWidth - 14, ry + 3, { align: 'right' }); ry += 4 }
 
-  const sectionHeading = (n: number, title: string) => {
-    doc.setFontSize(12)
-    doc.setTextColor(...BRAND_BLUE)
-    doc.text(`${n}.  ${title}`, 14, y)
-    doc.setDrawColor(220, 226, 240)
-    doc.line(14, y + 2, pageWidth - 14, y + 2)
-    doc.setTextColor(...TEXT)
-    y += 9
-  }
+  let y = 28
+  doc.setFontSize(9.5)
+  doc.setTextColor(...TEXT)
+  doc.text(client.name, 14, y)
+  y += 5
+  doc.setFontSize(8)
+  doc.setTextColor(...MUTED)
+  doc.text(`Generated ${formatDate(new Date())}`, 14, y)
+  y += 4.5
+  doc.text(`Commencement Date: ${formatDate(policy.startDate)}`, 14, y)
+  doc.setTextColor(...TEXT)
+  y += 8
 
-  sectionHeading(1, 'OVERVIEW')
   autoTable(doc, {
     startY: y,
-    head: [['Policy No.', 'Client', 'Product', 'Premium', 'Status', 'Start Date']],
-    body: [[
-      policy.policyNumber, policy.clientName, policy.productName,
-      `$${policy.premium.toFixed(2)}`, policy.status.toUpperCase(), formatDate(policy.startDate),
-    ]],
-    styles: { fontSize: 9 },
-    headStyles: { fillColor: BRAND_BLUE },
+    head: [['Amount Paid', 'Payment Date', 'Expiration Date']],
+    body: [[`$${policy.premium.toFixed(2)}`, formatDate(policy.lastPaymentDate), formatDate(policy.nextPaymentDate)]],
+    styles: { fontSize: 9, lineColor: [220, 226, 240], lineWidth: 0.2 },
+    headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold' },
+    theme: 'grid',
     margin: { left: 14, right: 14 },
   })
-  y = (doc as any).lastAutoTable.finalY + 10
+  y = (doc as any).lastAutoTable.finalY + 8
 
-  sectionHeading(2, 'POLICY DETAILS')
-  doc.setFontSize(10)
-  const leftRows: [string, string][] = [
-    ['Date of Birth', formatDate(client.dob)],
-    ['ID Number', client.nationalId],
-    ['Phone Number', client.phone],
-    ['Address', client.address || '—'],
-  ]
-  const rightRows: [string, string][] = [
-    ['Package', policy.productName],
-    ['Premium', `$${policy.premium.toFixed(2)}`],
-    ['Renewal Date', formatDate(policy.endDate)],
-    ['Sum Insured', `$${policy.coverAmount.toLocaleString()}`],
-  ]
-  const rowY = y
-  leftRows.forEach(([label, value], i) => {
-    doc.setTextColor(...MUTED)
-    doc.text(`${label}:`, 14, rowY + i * 6.5)
+  const sectionBand = (title: string) => {
+    ensureRoom(14)
+    doc.setFillColor(...NAVY)
+    doc.rect(14, y, pageWidth - 28, 8, 'F')
+    doc.setFontSize(10)
+    doc.setTextColor(255, 255, 255)
+    doc.text(title, 14 + (pageWidth - 28) / 2, y + 5.5, { align: 'center' })
     doc.setTextColor(...TEXT)
-    doc.text(value, 50, rowY + i * 6.5)
-  })
-  rightRows.forEach(([label, value], i) => {
-    doc.setTextColor(...MUTED)
-    doc.text(`${label}:`, 115, rowY + i * 6.5)
-    doc.setTextColor(...TEXT)
-    doc.text(value, 150, rowY + i * 6.5)
-  })
-  y = rowY + leftRows.length * 6.5 + 8
+    y += 12
+  }
 
-  sectionHeading(3, 'POLICY DEPENDANTS')
+  sectionBand('POLICY INFORMATION')
+  autoTable(doc, {
+    startY: y,
+    head: [['Policy Number', 'Policy Package', 'Monthly Premium', 'Cover', 'Currency', 'Status']],
+    body: [[
+      policy.policyNumber, policy.productName, `$${policy.premium.toFixed(2)}`,
+      `$${policy.coverAmount.toLocaleString()}`, 'USD', policy.status.toUpperCase(),
+    ]],
+    styles: { fontSize: 8.5, lineColor: [220, 226, 240], lineWidth: 0.2 },
+    headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold' },
+    theme: 'grid',
+    margin: { left: 14, right: 14 },
+  })
+  y = (doc as any).lastAutoTable.finalY + 8
+
+  sectionBand('PERSONAL INFORMATION')
+  autoTable(doc, {
+    startY: y,
+    head: [['Full Name', 'National ID', 'Mobile Number', 'Date of Birth', 'Registration Date']],
+    body: [[client.name, client.nationalId, client.phone, formatDate(client.dob), formatDate(client.createdAt)]],
+    styles: { fontSize: 8.5, lineColor: [220, 226, 240], lineWidth: 0.2 },
+    headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold' },
+    theme: 'grid',
+    margin: { left: 14, right: 14 },
+  })
+  y = (doc as any).lastAutoTable.finalY + 8
+
+  sectionBand('DEPENDANTS')
   if (policy.dependants.length === 0) {
     doc.setFontSize(9)
     doc.setTextColor(...MUTED)
@@ -165,36 +186,36 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
     doc.setTextColor(...TEXT)
     y += 8
   } else {
-    autoTable(doc, {
-      startY: y,
-      head: [['Name', 'Relationship', 'Date of Birth', 'ID / Birth Record No.']],
-      body: policy.dependants.map(d => [d.name, d.relationship, formatDate(d.dob), d.nationalId]),
-      styles: { fontSize: 9 },
-      headStyles: { fillColor: BRAND_BLUE },
-      margin: { left: 14, right: 14 },
-      foot: [['A dependant\'s plan can never exceed the policyholder\'s own premium or cover amount.']],
-      footStyles: { fillColor: [255, 255, 255], textColor: MUTED, fontSize: 7, fontStyle: 'italic' },
+    policy.dependants.forEach(d => {
+      ensureRoom(22)
+      doc.setFontSize(8)
+      doc.setTextColor(...NAVY)
+      const header = doc.splitTextToSize(
+        `FULL NAME: ${d.name}  |  NATIONAL ID: ${d.nationalId || '—'}  |  RELATIONSHIP: ${d.relationship}  |  DATE OF BIRTH: ${formatDate(d.dob)}`,
+        pageWidth - 32,
+      )
+      doc.text(header, 18, y)
+      doc.setTextColor(...TEXT)
+      y += header.length * 4 + 2
+      autoTable(doc, {
+        startY: y,
+        head: [['Policy Package', 'Monthly Premium', 'Cover', 'Currency', 'Status']],
+        body: [[
+          d.productName ?? policy.productName,
+          `$${(d.premium ?? policy.premium).toFixed(2)}`,
+          `$${policy.coverAmount.toLocaleString()}`, 'USD', policy.status.toUpperCase(),
+        ]],
+        styles: { fontSize: 8.5, lineColor: [220, 226, 240], lineWidth: 0.2 },
+        headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold' },
+        theme: 'grid',
+        margin: { left: 14, right: 14 },
+      })
+      y = (doc as any).lastAutoTable.finalY + 6
     })
-    y = (doc as any).lastAutoTable.finalY + 8
   }
 
-  const keyTermsSection = () => {
-    sectionHeading(category === 'agriculture' ? 5 : 4, 'KEY TERMS AND CONDITIONS')
-    doc.setFontSize(8.5)
-    doc.setTextColor(...MUTED)
-    const terms = doc.splitTextToSize(
-      `This policy is subject to the full Policy Terms and Conditions of ${insurerName}, available at any ${insurerName} office nationwide or on request. Cover incepts on the start date above, subject to any applicable waiting period. Claims must be reported as soon as reasonably possible and are subject to verification. Premiums must be kept up to date for cover to remain in force — a lapsed policy may require reinstatement. This document is a summary and does not itself constitute the full policy contract.`,
-      pageWidth - 28,
-    )
-    doc.text(terms, 14, y)
-    doc.setTextColor(...TEXT)
-    y += terms.length * 4 + 8
-  }
-
-  // Agriculture-specific numbering: Section 4 is Cover Provided, Section 5
-  // is Key Terms and Conditions — swapped from the generic order so the
-  // perils covered are front and centre for this policy type.
   if (category === 'agriculture') {
+    ensureRoom(20 + AGRICULTURE_COVER.length * 5.5)
     if (policy.growerNumber) {
       doc.setFontSize(9.5)
       doc.setTextColor(...MUTED)
@@ -203,7 +224,7 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
       doc.text(policy.growerNumber, 50, y)
       y += 8
     }
-    sectionHeading(4, 'COVER PROVIDED')
+    sectionBand('COVER PROVIDED')
     doc.setFillColor(...BRAND_RED)
     doc.setFontSize(9.5)
     AGRICULTURE_COVER.forEach((peril, i) => {
@@ -211,15 +232,23 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
       doc.text(peril, 19, y + i * 5.5)
     })
     y += AGRICULTURE_COVER.length * 5.5 + 4
-    keyTermsSection()
-  } else {
-    keyTermsSection()
   }
 
-  const pageHeight = doc.internal.pageSize.getHeight()
+  ensureRoom(24)
+  doc.setDrawColor(220, 226, 240)
+  doc.line(14, y, pageWidth - 14, y)
+  y += 6
   doc.setFontSize(7.5)
   doc.setTextColor(...MUTED)
-  doc.text(`Generated ${formatDate(new Date())} · Tariqify IMS`, 14, pageHeight - 10)
+  doc.text('Disclaimer:', 14, y)
+  y += 4
+  const terms = doc.splitTextToSize(
+    `Terms and Conditions apply, and are subject to the full Policy Terms and Conditions of ${insurerName}. Terms and Conditions can be found at www.motions.co.zw. Cover incepts on the start date above, subject to any applicable waiting period. Claims must be reported as soon as reasonably possible and are subject to verification. Premiums must be kept up to date for cover to remain in force; a lapsed policy may require reinstatement. This document is a summary and does not itself constitute the full policy contract.`,
+    pageWidth - 28,
+  )
+  doc.text(terms, 14, y)
+  y += terms.length * 4 + 4
+  doc.text('Copyright © Motions Microinsurance. All rights reserved.', 14, y)
 
   return doc
 }

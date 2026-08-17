@@ -198,11 +198,10 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
       coverAmount: product!.coverAmount,
       startDate,
       endDate: endDate.toISOString().split('T')[0],
-      // Every new policy starts in a waiting period — lifted to active
-      // after 90 days (or instantly on first payment for agriculture); see
-      // src/lib/reminderEngine.ts and src/lib/db.ts's
-      // applyCompletedPaymentToPolicy.
-      status: 'waiting_period',
+      // Every new policy starts in a waiting period, lifted to active after
+      // 90 days — except agriculture, which has NO waiting period at all
+      // and activates instantly on creation. See src/lib/reminderEngine.ts.
+      status: product!.category === 'agriculture' ? 'active' : 'waiting_period',
       dependants,
       paymentMethod,
       insurer: insurer || undefined,
@@ -261,14 +260,14 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                 </div>
               )}
               {existingClientId && (
-                <p style={{ fontSize: 12, color: 'var(--success)', marginTop: 4 }}>✓ Customer selected — details autofilled below.</p>
+                <p style={{ fontSize: 12, color: 'var(--success)', marginTop: 4 }}>✓ Customer selected, details autofilled below.</p>
               )}
             </div>
           )}
 
           <div className="new-policy-cols">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-              <h4 style={{ margin: 0 }}>Customer Information{existingClientId && <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--muted)' }}> (on file — read only)</span>}</h4>
+              <h4 style={{ margin: 0 }}>Customer Information{existingClientId && <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--muted)' }}> (on file, read only)</span>}</h4>
               <div className="form-group">
                 <label>Full Name *</label>
                 <input className="form-control" placeholder="Enter full name" value={clientName} onChange={e => setClientName(e.target.value)} disabled={!!existingClientId} style={existingClientId ? { opacity: 0.6 } : undefined} />

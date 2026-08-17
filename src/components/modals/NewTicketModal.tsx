@@ -66,7 +66,7 @@ export default function NewTicketModal({ onClose, onSave }: Props) {
               <select className="form-control" value={clientId} onChange={e => setClientId(e.target.value)}>
                 <option value="">Select client…</option>
                 {clients.map(c => (
-                  <option key={c.id} value={c.id}>{c.name} — {c.phone}</option>
+                  <option key={c.id} value={c.id}>{c.name} ({c.phone})</option>
                 ))}
               </select>
             )}

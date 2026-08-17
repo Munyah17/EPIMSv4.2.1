@@ -29,7 +29,7 @@ export default function NotificationSettings({ showToast }: Props) {
     setSaving(false)
     if (error) { showToast('error', `Failed to save: ${error}`); return }
     saveNotifSettings(settings)
-    showToast('success', 'Notification settings saved — now shared with every staff member.')
+    showToast('success', 'Notification settings saved, now shared with every staff member.')
   }
 
   const handleReset = async () => {
@@ -47,7 +47,7 @@ export default function NotificationSettings({ showToast }: Props) {
     <div>
       {!canEdit && (
         <div className="info-banner info-banner-warning" style={{ marginBottom: 14 }}>
-          🔒 Read-only — only Super Admin or Admin accounts can change notification settings.
+          🔒 Read-only: only Super Admin or Admin accounts can change notification settings.
         </div>
       )}
       <div className="panel-toolbar">
@@ -64,7 +64,7 @@ export default function NotificationSettings({ showToast }: Props) {
         {/* Insurer */}
         <div className="card">
           <div className="card-header">
-            <span className="card-title">🏢 Insurer — Motions Microinsurance</span>
+            <span className="card-title">🏢 Insurer: Motions Microinsurance</span>
           </div>
           <p className="notif-settings-desc">
             Receives all claim notifications. This is the primary underwriter for all policies.
@@ -101,14 +101,14 @@ export default function NotificationSettings({ showToast }: Props) {
           </div>
         </div>
 
-        {/* NetOne Insurance — suspended */}
+        {/* NetOne Insurance (suspended) */}
         <div className="card" style={{ opacity: 0.6 }}>
           <div className="card-header">
             <span className="card-title">📡 NetOne Insurance</span>
             <span className="pill pill-lapsed">Suspended</span>
           </div>
           <p className="notif-settings-desc">
-            The NetOne distribution partnership is suspended for now — these details are kept but no claim notifications are sent here while suspended.
+            The NetOne distribution partnership is suspended for now; these details are kept but no claim notifications are sent here while suspended.
           </p>
           <div className="form-row">
             <div className="form-group">
@@ -165,7 +165,7 @@ export default function NotificationSettings({ showToast }: Props) {
             <span className="card-title">🔔 Claims Escalation</span>
           </div>
           <p className="notif-settings-desc">
-            Receives an SMS at every stage of the claims pipeline (intake, assessment, final decision) — in addition to the client and whichever staff member is picking the claim up next.
+            Receives an SMS at every stage of the claims pipeline (intake, assessment, final decision), in addition to the client and whichever staff member is picking the claim up next.
           </p>
           <div className="form-group">
             <label>Super Admin Phone (SMS)</label>
@@ -217,7 +217,7 @@ export default function NotificationSettings({ showToast }: Props) {
               placeholder="admin@motions.co.zw"
             />
             <p className="notif-settings-desc" style={{ marginTop: 4 }}>
-              The From address above is noreply — replies to any outgoing notification land here instead.
+              The From address above is noreply; replies to any outgoing notification land here instead.
             </p>
           </div>
         </div>

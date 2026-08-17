@@ -42,7 +42,7 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
     <div className="modal-overlay">
       <div className="modal" style={{ maxWidth: 500 }}>
         <div className="modal-header">
-          <h3>Edit Policy — {policy.policyNumber}</h3>
+          <h3>Edit Policy: {policy.policyNumber}</h3>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
@@ -96,7 +96,7 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
             <label>Agent</label>
             <select className="form-control" value={agentId} onChange={e => setAgentId(e.target.value)}>
               <option value="">Unassigned</option>
-              {staff.map(s => <option key={s.id} value={s.id}>{s.name} — {s.role.replace(/_/g, ' ')}</option>)}
+              {staff.map(s => <option key={s.id} value={s.id}>{s.name} ({s.role.replace(/_/g, ' ')})</option>)}
             </select>
           </div>
         </div>

@@ -93,7 +93,7 @@ export default function SystemAccessRoles({ showToast }: Props) {
   return (
     <div className="panel">
       <div className="info-banner info-banner-info" style={{ marginBottom: '1rem' }}>
-        Super Admin, Admin, and Tech Support accounts — platform-wide system access. Work-role staff (Claims, Policy, Finance, Client Relations) are managed under <strong>Staff Management</strong>.
+        Super Admin, Admin, and Tech Support accounts: platform-wide system access. Work-role staff (Claims, Policy, Finance, Client Relations) are managed under <strong>Staff Management</strong>.
       </div>
       <div className="panel-toolbar">
         <div />

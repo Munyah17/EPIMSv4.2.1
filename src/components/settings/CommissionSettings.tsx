@@ -54,7 +54,7 @@ export default function CommissionSettings({ showToast }: Props) {
     const { error } = await db.settings.set('commission_rates', rates)
     setSaving(false)
     if (error) { showToast('error', `Failed to save: ${error}`); return }
-    showToast('success', 'Commission rates saved — applies to all agents and API developer partners.')
+    showToast('success', 'Commission rates saved, applies to all agents and API developer partners.')
   }
 
   if (loading) return <div className="empty-state">Loading commission rates…</div>
@@ -63,13 +63,13 @@ export default function CommissionSettings({ showToast }: Props) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
       {!canEdit && (
         <div className="info-banner info-banner-warning" style={{ borderRadius: 8, padding: '10px 13px', fontSize: 12 }}>
-          🔒 Read-only — only Super Admin or Admin accounts can change commission rates.
+          🔒 Read-only: only Super Admin or Admin accounts can change commission rates.
         </div>
       )}
       <div className="card">
         <div className="card-header"><span className="card-title">Default Agent Commission Rate</span></div>
         <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 14 }}>
-          Applied to every policy's premium for the staff member or API developer partner recorded as its agent, unless a product-specific rate below overrides it. Directors set this rate — it's the same figure used for commission owed to external developers selling your products through the API.
+          Applied to every policy's premium for the staff member or API developer partner recorded as its agent, unless a product-specific rate below overrides it. Directors set this rate; it's the same figure used for commission owed to external developers selling your products through the API.
         </p>
         <div className="form-group" style={{ maxWidth: 220 }}>
           <label>Default Rate (%)</label>
@@ -92,7 +92,7 @@ export default function CommissionSettings({ showToast }: Props) {
           Leave blank to use the default rate above.
         </p>
         {products.length === 0 ? (
-          <div className="empty-state">No products yet — add products first to set per-product rates.</div>
+          <div className="empty-state">No products yet; add products first to set per-product rates.</div>
         ) : (
           <table className="table">
             <thead><tr><th>Product</th><th>Category</th><th style={{ width: 140 }}>Rate (%)</th></tr></thead>

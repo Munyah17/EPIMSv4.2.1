@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS public.products (
   id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name                TEXT NOT NULL,
   code                TEXT NOT NULL UNIQUE,
-  category            TEXT NOT NULL CHECK (category IN ('life','funeral','health','accident','motor','property')),
+  category            TEXT NOT NULL CHECK (category IN ('life','funeral','health','accident','motor','property','agriculture')),
   premium             NUMERIC(10,2) NOT NULL,
   cover_amount        NUMERIC(14,2) NOT NULL,
   waiting_period_days INT NOT NULL DEFAULT 30,

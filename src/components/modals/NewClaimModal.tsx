@@ -281,7 +281,7 @@ export default function NewClaimModal({ onClose, onSave, showToast, claimKind, o
               </div>
             ))}
             <button type="button" className="btn btn-ghost btn-sm" onClick={addDocSlot} style={{ marginTop: 4 }}>+ Upload More</button>
-            <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>PDF, Word, CSV, Excel, RTF, PNG, JPEG, JPG, or WEBP — up to 10MB each.</p>
+            <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>PDF, Word, CSV, Excel, RTF, PNG, JPEG, JPG, or WEBP (up to 10MB each).</p>
           </div>
         </div>
         <div className="modal-footer">

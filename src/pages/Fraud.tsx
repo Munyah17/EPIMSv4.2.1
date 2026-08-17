@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
-import type { ToastMessage, FraudCase, FraudCaseStatus, AppUser } from '../types'
+import type { ToastMessage, FraudCase, FraudCaseStatus, AppUser, FraudSignalRule } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
+import { useAuth } from '../contexts/AuthContext'
 import FraudGauge from '../components/ui/FraudGauge'
 
 interface Props {
@@ -11,19 +12,51 @@ interface Props {
 }
 
 export default function Fraud({ showToast }: Props) {
+  const { user } = useAuth()
+  const canEditRules = user?.role === 'super_admin' || user?.role === 'admin'
   const [cases, setCases] = useState<FraudCase[]>([])
   const [staff, setStaff] = useState<AppUser[]>([])
+  const [rules, setRules] = useState<FraudSignalRule[]>([])
+  const [newRule, setNewRule] = useState('')
+  const [addingRule, setAddingRule] = useState(false)
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<FraudCaseStatus | 'all'>('all')
 
   useEffect(() => {
-    Promise.all([db.fraudCases.list(), db.staff.list()]).then(([casesRes, staffRes]) => {
+    Promise.all([db.fraudCases.list(), db.staff.list(), db.fraudSignalRules.list()]).then(([casesRes, staffRes, rulesRes]) => {
       if (casesRes.error) showToast('error', 'Failed to load fraud cases.')
       else if (casesRes.data) setCases(casesRes.data)
       if (staffRes.data) setStaff(staffRes.data.filter(s => ['claims_officer', 'admin', 'super_admin'].includes(s.role)))
+      if (rulesRes.data) setRules(rulesRes.data)
       setLoading(false)
     })
   }, [showToast])
+
+  const addRule = async () => {
+    if (!newRule.trim() || !user) return
+    setAddingRule(true)
+    const { data, error } = await db.fraudSignalRules.create(newRule.trim(), user.id)
+    setAddingRule(false)
+    if (error || !data) { showToast('error', error ?? 'Failed to add fraud signal.'); return }
+    setRules(prev => [data, ...prev])
+    setNewRule('')
+    showToast('success', 'Fraud signal added — the AI will start checking new claims against it.')
+  }
+
+  const toggleRule = async (rule: FraudSignalRule) => {
+    const status = rule.status === 'active' ? 'inactive' : 'active'
+    const { error } = await db.fraudSignalRules.setStatus(rule.id, status)
+    if (error) { showToast('error', error); return }
+    setRules(prev => prev.map(r => r.id === rule.id ? { ...r, status } : r))
+  }
+
+  const deleteRule = async (rule: FraudSignalRule) => {
+    if (!window.confirm(`Remove this fraud signal? "${rule.description}"`)) return
+    const { error } = await db.fraudSignalRules.remove(rule.id)
+    if (error) { showToast('error', error); return }
+    setRules(prev => prev.filter(r => r.id !== rule.id))
+    showToast('info', 'Fraud signal removed.')
+  }
 
   const filtered = cases.filter(c => filter === 'all' || c.status === filter)
 
@@ -132,6 +165,60 @@ export default function Fraud({ showToast }: Props) {
               </table>
             </div>
           )}
+
+          <div className="card" style={{ marginBottom: 18 }}>
+            <div className="card-header">
+              <h3 className="card-title">Custom Fraud Signals</h3>
+            </div>
+            <div style={{ padding: '0 1rem 1rem' }}>
+              <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>
+                Patterns your team has actually seen in real cases, described in plain language. Every active signal below is sent to the AI as an extra check on top of its built-in fraud checks, for every claim scored from now on.
+              </p>
+              {!canEditRules && (
+                <div className="info-banner info-banner-warning" style={{ marginBottom: 12 }}>
+                  🔒 Read-only: only Super Admin or Admin accounts can add or change fraud signals.
+                </div>
+              )}
+              {canEditRules && (
+                <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+                  <input
+                    className="form-control"
+                    value={newRule}
+                    onChange={e => setNewRule(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') addRule() }}
+                    placeholder="e.g. Barn photos taken from an angle that hides the roof, common in staged fire claims"
+                  />
+                  <button type="button" className="btn btn-primary btn-sm" disabled={addingRule || !newRule.trim()} onClick={addRule}>
+                    {addingRule ? 'Adding…' : '+ Add Signal'}
+                  </button>
+                </div>
+              )}
+              {rules.length === 0 ? (
+                <div className="empty-state" style={{ padding: '12px 0' }}>No custom fraud signals defined yet.</div>
+              ) : (
+                <ul className="fraud-signals-list">
+                  {rules.map(rule => (
+                    <li key={rule.id} className="fraud-signal-item" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                      <span>
+                        <span className="fraud-signal-arrow">▶</span> {rule.description}
+                        <span className={`pill ${rule.status === 'active' ? 'pill-active' : 'pill-cancelled'}`} style={{ marginLeft: 8, fontSize: 10 }}>{rule.status}</span>
+                      </span>
+                      {canEditRules && (
+                        <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
+                          <button type="button" className="btn btn-ghost btn-sm" onClick={() => toggleRule(rule)}>
+                            {rule.status === 'active' ? 'Deactivate' : 'Activate'}
+                          </button>
+                          <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => deleteRule(rule)}>
+                            Delete
+                          </button>
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
         </>
       )}
 

@@ -67,7 +67,7 @@ export default function RoleManagerModal({ onClose, showToast }: Props) {
         </div>
         <div className="modal-body">
           <p style={{ color: 'var(--muted)', fontSize: '0.85rem', marginBottom: '1rem' }}>
-            Define named, reusable permission bundles you can assign to staff — separate from their base account role.
+            Define named, reusable permission bundles you can assign to staff, separate from their base account role.
             Staff and client deletion are never included here; those stay Super Admin-only regardless of role.
           </p>
           <div className="role-manager-layout">

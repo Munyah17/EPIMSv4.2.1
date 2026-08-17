@@ -37,7 +37,7 @@ export async function notifyClaimCreated(claim: Claim): Promise<void> {
   const allEmails = [cfg.insurerEmail, NETONE_SUSPENDED ? '' : cfg.netoneEmail, client.email].filter(Boolean)
   const cc = allEmails.join(', ')
 
-  const subject = `[New Claim] ${claim.claimNumber} — ${claim.clientName}`
+  const subject = `[New Claim] ${claim.claimNumber}: ${claim.clientName}`
   const staffBody = `A new insurance claim has been submitted and requires review.
 ${claimSummaryBlock(claim)}
 
@@ -73,7 +73,7 @@ export async function notifyClaimStatusChanged(claim: Claim, previousStatus: Cla
   const cc = allEmails.join(', ')
 
   const statusLabel = claim.status.replace('_', ' ')
-  const subject = `[Claim Update] ${claim.claimNumber} — Status changed to ${statusLabel}`
+  const subject = `[Claim Update] ${claim.claimNumber}: Status changed to ${statusLabel}`
 
   const staffBody = `Claim ${claim.claimNumber} status has changed from "${previousStatus.replace('_', ' ')}" to "${statusLabel}".
 ${claimSummaryBlock(claim)}
@@ -112,14 +112,14 @@ const CLAIMS_ESCALATION_CC_EMAIL = 'info@motions.co.zw'
 function notifySuperAdmin(claim: Claim, stageMessage: string) {
   const cfg = getNotifSettings()
   if (cfg.superAdminPhone) {
-    void sendSms(cfg.superAdminPhone, `Tariqify: Claim ${claim.claimNumber} — ${stageMessage}`).catch(() => { /**/ })
+    void sendSms(cfg.superAdminPhone, `Tariqify: Claim ${claim.claimNumber}: ${stageMessage}`).catch(() => { /**/ })
   }
 }
 
 export async function notifyClaimIntakeAccepted(claim: Claim, processor: StaffContact): Promise<void> {
   const cfg = getNotifSettings()
   const client = await getClientContact(claim)
-  const subject = `[Claim Received] ${claim.claimNumber} — Now with Claims Processing`
+  const subject = `[Claim Received] ${claim.claimNumber}: Now with Claims Processing`
   notifySuperAdmin(claim, `accepted at intake, assigned to ${processor.name} for assessment.`)
 
   if (client.email) {
@@ -201,7 +201,7 @@ async function notifyClaimResolved(claim: Claim): Promise<void> {
   const allEmails = [cfg.insurerEmail, NETONE_SUSPENDED ? '' : cfg.netoneEmail, client.email].filter(Boolean)
   const cc = allEmails.join(', ')
 
-  const subject = `[Claim Closed] ${claim.claimNumber} — Payment Processed`
+  const subject = `[Claim Closed] ${claim.claimNumber}: Payment Processed`
 
   const staffBody = `Claim ${claim.claimNumber} has been resolved and payment processed.
 ${claimSummaryBlock(claim)}

@@ -396,7 +396,7 @@ export default function Email({ showToast }: Props) {
                 ) : (
                   <input type="file" accept={ACCEPTED_DOCUMENT_TYPES} onChange={e => setAttachment(e.target.files?.[0] ?? null)} style={{ fontSize: 12 }} />
                 )}
-                <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>PDF, Word, Excel, CSV, JPG, PNG, or WEBP — keep it under ~4MB for reliable delivery (it travels as base64 through the email function).</p>
+                <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>PDF, Word, Excel, CSV, JPG, PNG, or WEBP (keep it under ~4MB for reliable delivery (it travels as base64 through the email function).</p>
               </div>
             </div>
             <div className="modal-footer">

@@ -111,10 +111,10 @@ export default function BillingReminders({ showToast }: Props) {
               <div className="card-header"><span className="card-title">Reminder Schedule</span></div>
               <div className="billing-schedule">
                 {[
-                  { label: 'R1 — Pre-due email', desc: '5 days before end of month', icon: '📧', days: lastDay.getDate() - 5 },
-                  { label: 'R2 — Urgent email', desc: '1 day before due date', icon: '📧', days: lastDay.getDate() - 1 },
-                  { label: 'R3 — Due day email + SMS', desc: 'On the last day of month', icon: '📱', days: lastDay.getDate() },
-                  { label: 'R4 — Overdue + Caution flag', desc: '5 days after due date', icon: '⚠', days: 5 },
+                  { label: 'R1: Pre-due email', desc: '5 days before end of month', icon: '📧', days: lastDay.getDate() - 5 },
+                  { label: 'R2: Urgent email', desc: '1 day before due date', icon: '📧', days: lastDay.getDate() - 1 },
+                  { label: 'R3: Due day email + SMS', desc: 'On the last day of month', icon: '📱', days: lastDay.getDate() },
+                  { label: 'R4: Overdue + Caution flag', desc: '5 days after due date', icon: '⚠', days: 5 },
                 ].map((item, i) => {
                   const isActive = i === 0 ? daysLeft === 5 : i === 1 ? daysLeft === 1 : i === 2 ? daysLeft === 0 : daysLeft < 0
                   return (

@@ -46,7 +46,7 @@ export default function AddSystemUserModal({ user, onClose, onSave, onResetPassw
         </div>
         <div className="modal-body">
           <div className="info-banner info-banner-warning" style={{ marginBottom: '1rem' }}>
-            System access roles (Super Admin, Admin, Tech Support) control platform-wide administrative access — separate from work roles managed under Staff Management.
+            System access roles (Super Admin, Admin, Tech Support) control platform-wide administrative access, separate from work roles managed under Staff Management.
           </div>
           <div className="form-row">
             <div className="form-group">

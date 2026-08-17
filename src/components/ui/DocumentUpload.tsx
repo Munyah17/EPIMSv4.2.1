@@ -52,7 +52,7 @@ export default function DocumentUpload({ folder, recordId, paths, onChange, show
           style={{ display: 'none' }}
         />
       </label>
-      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '4px 0 0' }}>PDF, CSV, Excel, Word, RTF, or image — up to 10MB each.</p>
+      <p style={{ fontSize: 11, color: 'var(--muted)', margin: '4px 0 0' }}>PDF, CSV, Excel, Word, RTF, or image (up to 10MB each).</p>
       {paths.length > 0 && (
         <ul style={{ listStyle: 'none', marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
           {paths.map(path => (

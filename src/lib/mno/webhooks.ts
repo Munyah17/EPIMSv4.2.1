@@ -42,7 +42,7 @@ export async function dispatchWebhook(
   return {
     delivered: simulatedOk,
     statusCode,
-    error: simulatedOk ? undefined : `HTTP ${statusCode} — delivery failed`,
+    error: simulatedOk ? undefined : `HTTP ${statusCode}: delivery failed`,
   }
 }
 

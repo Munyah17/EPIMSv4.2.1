@@ -110,6 +110,8 @@ async function flushOne(item: QueuedAssessment): Promise<boolean> {
       notes: (item.formData.notes as string) ?? '',
       gpsLat: item.formData.gpsLat as number | undefined,
       gpsLng: item.formData.gpsLng as number | undefined,
+      farmerSignature: item.formData.farmerSignature as string | undefined,
+      assessorSignature: item.formData.assessorSignature as string | undefined,
       syncStatus: 'synced',
     })
     if (error) return false

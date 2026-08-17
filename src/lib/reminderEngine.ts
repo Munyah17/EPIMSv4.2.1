@@ -64,7 +64,7 @@ const STAGE_LABEL: Record<ReminderType, string> = {
   r1_pre5: '5-Day Pre-Due Reminder',
   r2_pre1: '1-Day Pre-Due Reminder',
   r3_due: 'Due Date Reminder',
-  r4_post5: 'OVERDUE — Caution Flag Applied',
+  r4_post5: 'OVERDUE: Caution Flag Applied',
 }
 
 // ── Email templates ────────────────────────────────────────────────
@@ -97,7 +97,7 @@ Payment methods: EcoCash | Paynow | Zipit | Cash at office
 ${sig}`
     case 'r4_post5': return `Dear ${policy.clientName},
 
-NOTICE OF OVERDUE PREMIUM — CAUTION FLAG APPLIED
+NOTICE OF OVERDUE PREMIUM: CAUTION FLAG APPLIED
 
 Your insurance premium for policy ${policy.policyNumber} (${policy.productName}) was due on ${due} and remains unpaid as of today (5 days overdue).
 
@@ -146,8 +146,8 @@ async function dispatchReminder(policy: Policy, client: Client | undefined, type
       to: clientEmail,
       cc: allCc,
       subject: type === 'r4_post5'
-        ? `⚠ Overdue Notice — ${policy.policyNumber} Caution Flag Applied`
-        : `Premium Reminder — ${policy.policyNumber} due ${dueDate.toLocaleDateString('en-GB')}`,
+        ? `⚠ Overdue Notice: ${policy.policyNumber} Caution Flag Applied`
+        : `Premium Reminder: ${policy.policyNumber} due ${dueDate.toLocaleDateString('en-GB')}`,
       body: buildReminderEmail(policy, type, dueDate, sig),
       folder: 'inbox',
       linkedTo: policy.id,
@@ -156,7 +156,7 @@ async function dispatchReminder(policy: Policy, client: Client | undefined, type
   }
 
   const staffBody = buildStaffEmail(policy, type, dueDate, sig)
-  const staffSubject = `[Billing Alert] ${policy.policyNumber} — ${policy.clientName}`
+  const staffSubject = `[Billing Alert] ${policy.policyNumber}: ${policy.clientName}`
   if (cfg.insurerEmail) void sendEmail({ to: cfg.insurerEmail, cc: NETONE_SUSPENDED ? undefined : cfg.netoneEmail, subject: staffSubject, body: staffBody, folder: 'inbox', from: MAILBOXES.noreply })
   if (!NETONE_SUSPENDED && cfg.netoneEmail) void sendEmail({ to: cfg.netoneEmail, subject: staffSubject, body: staffBody, folder: 'inbox', from: MAILBOXES.noreply })
 
@@ -192,7 +192,7 @@ async function dispatchReminder(policy: Policy, client: Client | undefined, type
     clientId: policy.clientId,
     policyId: policy.id,
     dueDate: dueISO,
-    message: `${tag} ${STAGE_LABEL[type]} — ${policy.policyNumber}`,
+    message: `${tag} ${STAGE_LABEL[type]}: ${policy.policyNumber}`,
     sent: true,
     channel: 'email',
   } as Omit<Reminder, 'id'>)

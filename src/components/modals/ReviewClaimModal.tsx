@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import type { Claim, AppUser, ClaimAssessment } from '../../types'
+import type { Claim, AppUser, ClaimAssessment, PolicyAssessment } from '../../types'
 import { db } from '../../lib/db'
 import { formatDate } from '../../lib/dateUtils'
 import { getDocumentUrl, documentDisplayName } from '../../lib/storage'
@@ -10,6 +10,7 @@ import {
 } from '../../lib/claimNotifications'
 import AgricultureAssessmentModal from './AgricultureAssessmentModal'
 import { exportClaimAssessmentReport } from '../../lib/exportUtils'
+import { scoreClaimFraud } from '../../lib/aiService'
 
 interface Props {
   claim: Claim
@@ -21,9 +22,9 @@ interface Props {
 }
 
 const STAGE_LABEL: Record<Claim['stage'], string> = {
-  intake: 'Intake — Claims Receiver',
-  assessment: 'Assessment — Claims Processor',
-  final_review: 'Final Review — MD/COO',
+  intake: 'Intake: Claims Receiver',
+  assessment: 'Assessment: Claims Processor',
+  final_review: 'Final Review: MD/COO',
   closed: 'Closed',
 }
 
@@ -38,15 +39,49 @@ export default function ReviewClaimModal({ claim, onClose, onSave, showToast }: 
   const [busy, setBusy] = useState(false)
   const [physicalAssessments, setPhysicalAssessments] = useState<ClaimAssessment[]>([])
   const [showAssessmentModal, setShowAssessmentModal] = useState(false)
+  const [preLossAssessments, setPreLossAssessments] = useState<PolicyAssessment[]>([])
+  const [aiInsights, setAiInsights] = useState<{ insights: string[]; reasoning: string; score: number } | null>(null)
+  const [aiLoading, setAiLoading] = useState(false)
 
   useEffect(() => {
     db.staff.list().then(({ data }) => { if (data) setStaff(data.filter(u => u.active)) })
     if (isAgriculture(claim)) {
       db.claimAssessments.listForClaim(claim.id).then(({ data }) => setPhysicalAssessments(data))
     }
+    db.policyAssessments.listForPolicy(claim.policyId).then(({ data }) => setPreLossAssessments(data))
   }, [claim])
 
   const hasCompletedAssessment = physicalAssessments.some(a => !!a.submittedAt)
+  const preLoss = preLossAssessments[0]
+  const postLoss = physicalAssessments.find(a => !!a.submittedAt)
+
+  const getAiInsights = async () => {
+    setAiLoading(true)
+    setAiInsights(null)
+    try {
+      const [{ data: policy }, { data: allClaims }] = await Promise.all([db.policies.get(claim.policyId), db.claims.list()])
+      const priorClaimsOnPolicy = (allClaims ?? []).filter(c => c.policyId === claim.policyId && c.id !== claim.id).length
+      const result = await scoreClaimFraud({
+        claimType: claim.claimType, amount: claim.amount, coverAmount: policy?.coverAmount ?? claim.amount,
+        dateOfEvent: claim.dateOfEvent, policyStartDate: policy?.startDate ?? claim.dateSubmitted, dateSubmitted: claim.dateSubmitted,
+        description: claim.description, priorClaimsOnPolicy,
+        preLossAssessment: preLoss ? {
+          subjectType: preLoss.subjectType,
+          cropType: preLoss.cropType, cropPopulation: preLoss.cropPopulation,
+          registrationNumber: preLoss.registrationNumber,
+          vehicleMakeModel: [preLoss.vehicleMake, preLoss.vehicleModel].filter(Boolean).join(' ') || undefined,
+          existingDamage: preLoss.existingDamage, recordedAt: formatDate(preLoss.createdAt),
+        } : undefined,
+        postLossAssessment: postLoss ? {
+          descriptionOfLoss: postLoss.descriptionOfLoss, farmerStatement: postLoss.farmerStatement,
+          assessorComments: postLoss.assessorComments, cropStage: postLoss.cropStage,
+        } : undefined,
+      })
+      setAiInsights({ insights: result.insights, reasoning: result.reasoning, score: result.score })
+    } finally {
+      setAiLoading(false)
+    }
+  }
 
   const printAssessment = () => {
     const completed = physicalAssessments.find(a => !!a.submittedAt)
@@ -102,18 +137,18 @@ export default function ReviewClaimModal({ claim, onClose, onSave, showToast }: 
     <div className="modal-overlay">
       <div className="modal">
         <div className="modal-header">
-          <h3>Review Claim — {claim.claimNumber}</h3>
+          <h3>Review Claim: {claim.claimNumber}</h3>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
           {claim.fraudScore >= 40 && (
             <div className={`info-banner info-banner-${claim.fraudScore >= 70 ? 'danger' : 'warning'}`} style={{ marginBottom: '1rem' }}>
-              ⚠ Fraud score: <strong>{claim.fraudScore}%</strong> — {claim.fraudScore >= 70 ? 'HIGH RISK — Investigate before processing.' : 'Moderate risk — Verify documents carefully.'}
+              ⚠ Fraud score: <strong>{claim.fraudScore}%</strong>: {claim.fraudScore >= 70 ? 'HIGH RISK: Investigate before processing.' : 'Moderate risk: Verify documents carefully.'}
             </div>
           )}
           <div className="info-banner info-banner-info" style={{ marginBottom: '1rem' }}>
             Stage: <strong>{STAGE_LABEL[claim.stage]}</strong>
-            {claim.assignedName && claim.stage !== 'closed' && <> — assigned to <strong>{claim.assignedName}</strong></>}
+            {claim.assignedName && claim.stage !== 'closed' && <> · assigned to <strong>{claim.assignedName}</strong></>}
           </div>
           <div className="detail-grid">
             <div className="detail-item"><span className="detail-label">Client</span><span>{claim.clientName}</span></div>
@@ -146,6 +181,56 @@ export default function ReviewClaimModal({ claim, onClose, onSave, showToast }: 
               </ul>
             </div>
           )}
+
+          {preLoss && (
+            <div className="form-group">
+              <label>📷 Pre-Loss Assessment on File, recorded {formatDate(preLoss.createdAt)} by {preLoss.assessorName || 'an assessor'}</label>
+              <div className="detail-grid" style={{ marginTop: 4 }}>
+                {preLoss.subjectType === 'vehicle' ? (
+                  <>
+                    <div className="detail-item"><span className="detail-label">Registration</span><span>{preLoss.registrationNumber || '—'}</span></div>
+                    <div className="detail-item"><span className="detail-label">Vehicle</span><span>{[preLoss.vehicleMake, preLoss.vehicleModel].filter(Boolean).join(' ') || '—'}</span></div>
+                    <div className="detail-item"><span className="detail-label">Existing Damage Noted</span><span>{preLoss.existingDamage || 'None noted'}</span></div>
+                  </>
+                ) : (
+                  <>
+                    <div className="detail-item"><span className="detail-label">Crop Recorded</span><span>{preLoss.cropType || '—'}</span></div>
+                    <div className="detail-item"><span className="detail-label">Crop Population</span><span>{preLoss.cropPopulation || '—'}</span></div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+          {!preLoss && (claim.category === 'agriculture' || claim.category === 'motor') && (
+            <div className="info-banner info-banner-warning" style={{ marginBottom: '1rem' }}>
+              ⚠ No pre-loss assessment is on file for this policy; the condition before this claim was never independently recorded.
+            </div>
+          )}
+
+          <div className="form-group">
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <label style={{ margin: 0 }}>🤖 AI Insights &amp; Fraud Analysis</label>
+              <button type="button" className="btn btn-outline btn-sm" disabled={aiLoading} onClick={getAiInsights}>
+                {aiLoading ? 'Analyzing…' : aiInsights ? 'Re-run Analysis' : 'Get AI Insights'}
+              </button>
+            </div>
+            {aiInsights && (
+              <div className="info-banner info-banner-info" style={{ marginTop: 8 }}>
+                <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                  AI Fraud Score: <span style={{ color: aiInsights.score >= 70 ? 'var(--danger)' : aiInsights.score >= 40 ? 'var(--gold)' : 'var(--teal)' }}>{aiInsights.score}%</span>
+                </div>
+                {aiInsights.insights.length > 0 ? (
+                  <ul style={{ margin: '4px 0 0 18px', padding: 0, fontSize: 12 }}>
+                    {aiInsights.insights.map((ins, i) => <li key={i}>{ins}</li>)}
+                  </ul>
+                ) : (
+                  <p style={{ fontSize: 12, margin: '4px 0 0' }}>No specific concerns identified.</p>
+                )}
+                <p style={{ fontSize: 11, color: 'var(--muted)', margin: '6px 0 0' }}>{aiInsights.reasoning}</p>
+                <p style={{ fontSize: 11, color: 'var(--muted)', margin: '4px 0 0', fontStyle: 'italic' }}>This is decision support only; the final call always rests with the reviewer.</p>
+              </div>
+            )}
+          </div>
 
           {claim.assessmentNotes && claim.stage !== 'assessment' && (
             <div className="form-group">

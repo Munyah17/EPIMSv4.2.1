@@ -344,7 +344,7 @@ async function recordPayment(admin: SupabaseClient, body: Json, agentId: string)
   const { data: product } = await admin.from('products').select('category').eq('id', policy.product_id).maybeSingle()
   const category = product?.category ?? ''
   let nextStatus = policy.status
-  if (policy.status === 'lapsed') nextStatus = 'waiting_period'
+  if (policy.status === 'lapsed') nextStatus = category === 'agriculture' ? 'active' : 'waiting_period'
   else if (category === 'agriculture' && policy.status === 'waiting_period') nextStatus = 'active'
 
   const today = new Date()

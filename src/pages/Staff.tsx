@@ -95,7 +95,7 @@ export default function Staff({ showToast }: Props) {
   }
 
   const handleDelete = async (member: AppUser) => {
-    if (!window.confirm(`Permanently delete ${member.name}? This removes their account entirely — they will no longer be able to sign in. This cannot be undone.`)) return
+    if (!window.confirm(`Permanently delete ${member.name}? This removes their account entirely; they will no longer be able to sign in. This cannot be undone.`)) return
     const { error } = await db.staff.remove(member.id)
     if (error) { showToast('error', error); return }
     setStaff(prev => prev.filter(s => s.id !== member.id))

@@ -110,7 +110,7 @@ export default function AddStaffModal({ staff, onClose, onSave, onResetPassword 
           <div className="form-group">
             <label>Custom Role (optional)</label>
             <select className="form-control" value={customRoleId} onChange={e => setCustomRoleId(e.target.value)}>
-              <option value="">— None (default permissions for this role) —</option>
+              <option value="">None (default permissions for this role)</option>
               {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
             </select>
           </div>

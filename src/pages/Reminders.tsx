@@ -92,7 +92,7 @@ export default function Reminders({ showToast }: Props) {
                 <div key={r.id} className="reminder-card">
                   <div className="reminder-icon">{TYPE_ICON[r.type]}</div>
                   <div className="reminder-body">
-                    <div className="reminder-title">{r.clientName} — {r.type.replace(/_/g, ' ')}</div>
+                    <div className="reminder-title">{r.clientName} ({r.type.replace(/_/g, ' ')})</div>
                     <div className="reminder-msg">{r.message}</div>
                     <div className="reminder-meta">
                       Due: {formatDate(r.dueDate)} · {channelPill(r.channel)}

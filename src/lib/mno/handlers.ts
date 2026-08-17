@@ -175,7 +175,7 @@ export async function handleClaimInitiation(
     description: payload.description,
     fraudScore: Math.floor(Math.random() * 30),
     documents: [],
-    notes: `Initiated via MNO USSD — ${ctx.apiKey.partnerName}`,
+    notes: `Initiated via MNO USSD: ${ctx.apiKey.partnerName}`,
   })
 
   await emitEvent('claim.initiated', ctx.partnerId, { claimNumber, policyNumber: payload.policyNumber, msisdn: payload.msisdn })

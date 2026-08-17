@@ -28,7 +28,7 @@ export function validateSignature(
   timestamp: number,
 ): { valid: boolean; reason?: string } {
   const ageMs = Date.now() - timestamp
-  if (ageMs > 5 * 60_000) return { valid: false, reason: 'Request expired — replay attack prevention' }
+  if (ageMs > 5 * 60_000) return { valid: false, reason: 'Request expired (replay attack prevention)' }
   if (ageMs < -30_000)    return { valid: false, reason: 'Timestamp too far in the future' }
   const expected = signPayload(payload, secret, timestamp)
   if (signature !== expected) return { valid: false, reason: 'Invalid HMAC signature' }

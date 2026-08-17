@@ -144,7 +144,7 @@ export async function initiateEcoCash(req: PaymentRequest): Promise<PaymentRespo
     amount: req.amount.toFixed(2),
     clientReference: ref,
     transactionOperationType: 'billpayment',
-    transactionInfo: `Insurance Premium — ${req.policyNumber}`,
+    transactionInfo: `Insurance Premium: ${req.policyNumber}`,
   }
 
   try {
@@ -175,7 +175,7 @@ export async function pollEcoCash(pollUrl: string): Promise<{ status: 'pending' 
       : 'pending'
     return { status, message: data.status ?? 'Unknown' }
   } catch {
-    return { status: 'pending', message: 'Polling error — retrying…' }
+    return { status: 'pending', message: 'Polling error, retrying…' }
   }
 }
 
@@ -205,7 +205,7 @@ export async function initiatePaynow(req: PaymentRequest, method: 'ecocash' | 'o
     id: cfg.paynowIntegrationId,
     reference: ref,
     amount: req.amount.toFixed(2),
-    additionalinfo: `Insurance Premium — ${req.policyNumber}`,
+    additionalinfo: `Insurance Premium: ${req.policyNumber}`,
     returnurl: cfg.paynowReturnUrl,
     resulturl: cfg.paynowResultUrl,
     status: 'Message',

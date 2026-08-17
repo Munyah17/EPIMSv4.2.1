@@ -68,7 +68,7 @@ export default function LeadsSearchModal({ onClose, onImport }: Props) {
         </div>
         <div className="modal-body">
           <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>
-            Searches Google for plausible prospects matching what you describe, then uses AI to pull out specific leads worth following up. Run it whenever you want a fresh batch — there's no automatic schedule.
+            Searches Google for plausible prospects matching what you describe, then uses AI to pull out specific leads worth following up. Run it whenever you want a fresh batch; there's no automatic schedule.
           </p>
           <div className="form-row">
             <div className="form-group" style={{ flex: 1 }}>
@@ -98,7 +98,7 @@ export default function LeadsSearchModal({ onClose, onImport }: Props) {
           {results && (
             <div style={{ marginTop: 16 }}>
               {results.length === 0 ? (
-                <p style={{ fontSize: 12, color: 'var(--muted)' }}>No plausible leads found for that search — try a different phrasing.</p>
+                <p style={{ fontSize: 12, color: 'var(--muted)' }}>No plausible leads found for that search; try a different phrasing.</p>
               ) : (
                 <>
                   <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>

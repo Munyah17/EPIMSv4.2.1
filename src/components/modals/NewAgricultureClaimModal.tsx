@@ -43,10 +43,11 @@ function isPhotoStale(p: AssessmentPhoto): boolean {
 // At least 6 clearly-labeled damage photos, matching what a real assessment
 // needs to hold up — "+ Add Another" appends more beyond these.
 const REQUIRED_PHOTO_SLOTS = [
-  'Damage — Wide Shot 1', 'Damage — Wide Shot 2',
-  'Damage — Close-up 1', 'Damage — Close-up 2',
+  'Damage (Wide Shot 1)', 'Damage (Wide Shot 2)',
+  'Damage (Close-up 1)', 'Damage (Close-up 2)',
   'Field/Barn Overview', 'Additional Evidence',
 ]
+const MAX_PHOTOS = 20
 
 export default function NewAgricultureClaimModal({ onClose, onSave, showToast, claimKind, onSwitchKind }: Props) {
   const { user } = useAuth()
@@ -118,18 +119,23 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
     setGpsBusy(true)
     const coords = await getCurrentCoordinates()
     setGpsBusy(false)
-    if (!coords) { showToast?.('warning', 'Could not get GPS coordinates — enter them manually if needed.'); return }
+    if (!coords) { showToast?.('warning', 'Could not get GPS coordinates; enter them manually if needed.'); return }
     setGpsLat(coords.lat)
     setGpsLng(coords.lng)
   }
 
   const addExtraSlot = () => {
-    setExtraPhotoLabels(prev => [...prev, `Additional Photo ${prev.length + 1}`])
+    setExtraPhotoLabels(prev => (REQUIRED_PHOTO_SLOTS.length + prev.length >= MAX_PHOTOS ? prev : [...prev, `Additional Photo ${prev.length + 1}`]))
+  }
+
+  const removeExtraSlot = (label: string) => {
+    setExtraPhotoLabels(prev => prev.filter(l => l !== label))
+    setPhotos(prev => { const next = { ...prev }; delete next[label]; return next })
   }
 
   const handleOfflineCapture = (file: File, label: string) => {
     setOfflinePending(prev => [...prev, { label, file }])
-    showToast?.('warning', `No connection — "${label}" saved on this device and will upload automatically once you're back online.`)
+    showToast?.('warning', `No connection: "${label}" saved on this device and will upload automatically once you're back online.`)
   }
 
   const canSave = !!policyId && !!amount && !!dateOfEvent && !!description.trim()
@@ -169,7 +175,7 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
       const { data: priorAssessments } = await db.policyAssessments.listForPolicy(policyId)
       if (priorAssessments.length === 0) {
         fraudScore = Math.min(100, fraudScore + 10)
-        signals.push('No pre-loss assessment on record for this policy — crop/farm baseline unverified.')
+        signals.push('No pre-loss assessment on record for this policy; crop/farm baseline unverified.')
       }
 
       // Duplicate/reused photo check — draftId can't match anything real yet
@@ -186,7 +192,7 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
       if (duplicateMatches.length > 0) {
         fraudScore = Math.min(100, fraudScore + duplicateMatches.length * 20)
         const examples = duplicateMatches.slice(0, 3).map(m => `"${m.photoLabel}" matches a photo on ${m.sourceType} ${m.reference}`).join('; ')
-        signals.push(`${duplicateMatches.length} submitted photo${duplicateMatches.length !== 1 ? 's appear' : ' appears'} to be reused from elsewhere — ${examples}.`)
+        signals.push(`${duplicateMatches.length} submitted photo${duplicateMatches.length !== 1 ? 's appear' : ' appears'} to be reused from elsewhere: ${examples}.`)
       }
     } finally {
       const claimNumber = `CLM${new Date().getFullYear()}${String(Date.now()).slice(-3)}`
@@ -253,7 +259,7 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
           )}
 
           <div className="info-banner info-banner-warning" style={{ marginBottom: '1rem' }}>
-            Agriculture claims capture the full physical assessment now — at least 6 damage photos, GPS, and both signatures are required before this can be submitted. Photos must be no more than 3 days old, checked automatically from each photo's date metadata.
+            Agriculture claims capture the full physical assessment now: at least 6 damage photos, GPS, and both signatures are required before this can be submitted. Photos must be no more than 3 days old, checked automatically from each photo's date metadata.
           </div>
 
           <div className="form-group">
@@ -335,14 +341,14 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
 
           <div className="form-group">
             <label>Farmer's Statement</label>
-            <textarea className="form-control" rows={3} value={farmerStatement} onChange={e => setFarmerStatement(e.target.value)} placeholder="Summarize, in your own words, what the farmer told you on site — kept separate from your own remarks below." />
+            <textarea className="form-control" rows={3} value={farmerStatement} onChange={e => setFarmerStatement(e.target.value)} placeholder="Summarize, in your own words, what the farmer told you on site, kept separate from your own remarks below." />
           </div>
 
           <label style={{ display: 'block', margin: '1rem 0 6px', fontSize: 13, fontWeight: 600 }}>
             Damage / Loss Photos ({requiredPhotoCount}/{REQUIRED_PHOTO_SLOTS.length} required)
           </label>
           {allSlots.map(slot => (
-            <div key={slot}>
+            <div key={slot} style={{ position: 'relative' }}>
               <PhotoCaptureField
                 label={slot}
                 folder="claims"
@@ -353,11 +359,23 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
                 onOfflineCapture={handleOfflineCapture}
               />
               {offlinePending.some(p => p.label === slot) && (
-                <div style={{ fontSize: 11, color: 'var(--gold)', margin: '-8px 0 8px' }}>📴 Saved offline — will upload once you're back online.</div>
+                <div style={{ fontSize: 11, color: 'var(--gold)', margin: '-8px 0 8px' }}>📴 Saved offline, will upload once you're back online.</div>
+              )}
+              {extraPhotoLabels.includes(slot) && (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  style={{ position: 'absolute', top: 0, right: 0, color: 'var(--danger)' }}
+                  onClick={() => removeExtraSlot(slot)}
+                >
+                  Remove
+                </button>
               )}
             </div>
           ))}
-          <button type="button" className="btn btn-ghost btn-sm" onClick={addExtraSlot}>+ Add Another Photo</button>
+          <button type="button" className="btn btn-ghost btn-sm" disabled={allSlots.length >= MAX_PHOTOS} onClick={addExtraSlot}>
+            + Add More Images (up to {MAX_PHOTOS})
+          </button>
 
           <div className="form-group" style={{ marginTop: '1rem' }}>
             <label>Assessor's Report / Comments</label>
@@ -393,7 +411,7 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
             <label>Farmer Photo *</label>
             <PhotoCaptureField label="Farmer Photo" folder="claims" recordId={draftId} value={farmerSelfie} onChange={setFarmerSelfie} onOfflineCapture={handleOfflineCapture} />
             {offlinePending.some(p => p.label === 'Farmer Photo') && (
-              <div style={{ fontSize: 11, color: 'var(--gold)', marginTop: 4 }}>📴 Saved offline — will upload once you're back online.</div>
+              <div style={{ fontSize: 11, color: 'var(--gold)', marginTop: 4 }}>📴 Saved offline, will upload once you're back online.</div>
             )}
           </div>
 

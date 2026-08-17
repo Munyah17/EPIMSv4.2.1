@@ -32,7 +32,7 @@ export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint, show
     <div className="modal-overlay">
       <div className="modal">
         <div className="modal-header">
-          <h3>Policy — {policy.policyNumber}</h3>
+          <h3>Policy: {policy.policyNumber}</h3>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">

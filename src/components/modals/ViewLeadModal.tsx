@@ -27,7 +27,7 @@ export default function ViewLeadModal({ lead, onClose, onSave }: Props) {
     <div className="modal-overlay">
       <div className="modal" style={{ maxWidth: 500 }}>
         <div className="modal-header">
-          <h3>Lead — {lead.name}</h3>
+          <h3>Lead: {lead.name}</h3>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">

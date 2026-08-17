@@ -85,7 +85,7 @@ export default function RecordPaymentModal({ policyId: initialPolicyId, payment:
     <div className="modal-overlay">
       <div className="modal" style={{ maxWidth: 500 }}>
         <div className="modal-header">
-          <h3>{editing ? `Edit Payment — ${editing.reference}` : 'Record Payment'}</h3>
+          <h3>{editing ? `Edit Payment: ${editing.reference}` : 'Record Payment'}</h3>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
@@ -95,14 +95,14 @@ export default function RecordPaymentModal({ policyId: initialPolicyId, payment:
               <select className="form-control" value={policyId} onChange={e => setPolicyId(e.target.value)} disabled={!allPolicies}>
                 <option value="">{allPolicies ? 'Select policy…' : 'Loading policies…'}</option>
                 {allPolicies?.map(p => (
-                  <option key={p.id} value={p.id}>{p.policyNumber} — {p.clientName}</option>
+                  <option key={p.id} value={p.id}>{p.policyNumber} ({p.clientName})</option>
                 ))}
               </select>
             </div>
           )}
           {policy && (
             <div className="info-banner info-banner-info" style={{ marginBottom: '1rem' }}>
-              Policy: {policy.policyNumber} — {policy.clientName}<br />
+              Policy: {policy.policyNumber} ({policy.clientName})<br />
               Expected premium: ${policy.premium.toFixed(2)}{premiumPeriodLabel(policyCategory)}
             </div>
           )}
@@ -156,7 +156,7 @@ export default function RecordPaymentModal({ policyId: initialPolicyId, payment:
               ))}
               <button type="button" className="btn btn-ghost btn-sm" onClick={addSplit}>+ Add Method</button>
               <p style={{ fontSize: 12, marginTop: 6, color: splitMismatch ? 'var(--danger)' : 'var(--muted)' }}>
-                Split total: ${splitTotal.toFixed(2)} {splitMismatch && `— must equal the amount ($${Number(amount || 0).toFixed(2)})`}
+                Split total: ${splitTotal.toFixed(2)} {splitMismatch && `(must equal the amount $${Number(amount || 0).toFixed(2)})`}
               </p>
             </div>
           )}

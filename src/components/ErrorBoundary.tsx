@@ -33,7 +33,7 @@ export default class ErrorBoundary extends Component<Props, State> {
         }}>
           <h1 style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>Something went wrong</h1>
           <p style={{ color: '#666', marginBottom: '1.5rem', maxWidth: 480 }}>
-            An unexpected error occurred and this page couldn't continue. Your data has not been lost —
+            An unexpected error occurred and this page couldn't continue. Your data has not been lost;
             reloading the app should fix this.
           </p>
           <button

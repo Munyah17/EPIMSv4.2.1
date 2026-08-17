@@ -18,7 +18,9 @@ interface Props {
   showToast: (type: 'success' | 'error' | 'warning' | 'info', message: string) => void
 }
 
-const PHOTO_SLOTS = ['Barn (exterior)', 'Barn (interior)', 'Crop damage — wide shot', 'Crop damage — close-up']
+const PHOTO_SLOTS = ['Barn (exterior)', 'Barn (interior)', 'Crop damage (wide shot)', 'Crop damage (close-up)']
+const MIN_PHOTOS = 6
+const MAX_PHOTOS = 20
 
 export default function AgricultureAssessmentModal({ claimId, claimNumber, claimDescription, onClose, onSubmitted, showToast }: Props) {
   const { user } = useAuth()
@@ -41,24 +43,29 @@ export default function AgricultureAssessmentModal({ claimId, claimNumber, claim
 
   const allSlots = [...PHOTO_SLOTS, ...extraPhotoLabels]
   const photoCount = Object.values(photos).filter(Boolean).length + offlinePending.length
-  const canSubmit = descriptionOfLoss.trim().length > 0 && photoCount > 0 && farmerSignature && assessorSignature && !submitting
+  const canSubmit = descriptionOfLoss.trim().length > 0 && photoCount >= MIN_PHOTOS && farmerSignature && assessorSignature && !submitting
 
   const captureGps = async () => {
     setGpsBusy(true)
     const coords = await getCurrentCoordinates()
     setGpsBusy(false)
-    if (!coords) { showToast('warning', 'Could not get GPS coordinates — enter them manually if needed.'); return }
+    if (!coords) { showToast('warning', 'Could not get GPS coordinates; enter them manually if needed.'); return }
     setGpsLat(coords.lat)
     setGpsLng(coords.lng)
   }
 
   const addExtraSlot = () => {
-    setExtraPhotoLabels(prev => [...prev, `Additional Photo ${prev.length + 1}`])
+    setExtraPhotoLabels(prev => (PHOTO_SLOTS.length + prev.length >= MAX_PHOTOS ? prev : [...prev, `Additional Photo ${prev.length + 1}`]))
+  }
+
+  const removeExtraSlot = (label: string) => {
+    setExtraPhotoLabels(prev => prev.filter(l => l !== label))
+    setPhotos(prev => { const next = { ...prev }; delete next[label]; return next })
   }
 
   const handleOfflineCapture = (file: File, label: string) => {
     setOfflinePending(prev => [...prev, { label, file }])
-    showToast('warning', `No connection — "${label}" saved on this device and will upload automatically once you're back online.`)
+    showToast('warning', `No connection: "${label}" saved on this device and will upload automatically once you're back online.`)
   }
 
   const handleSubmit = async () => {
@@ -81,7 +88,7 @@ export default function AgricultureAssessmentModal({ claimId, claimNumber, claim
         farmerSignature, assessorSignature, farmerSelfie: farmerSelfie?.path,
         _alreadyUploadedPhotos: uploadedPhotos,
       }, pendingPhotos)
-      showToast('success', 'Assessment saved on this device — it will sync automatically once you\'re back online.')
+      showToast('success', 'Assessment saved on this device; it will sync automatically once you\'re back online.')
       setSubmitting(false)
       onSubmitted()
       return
@@ -103,7 +110,7 @@ export default function AgricultureAssessmentModal({ claimId, claimNumber, claim
     if (error) { showToast('error', error); return }
     const dupes = await checkAndRecordPhotoDuplicates(uploadedPhotos, 'claim', claimId, claimNumber)
     if (dupes.length > 0) {
-      showToast('warning', `⚠ ${dupes.length} photo${dupes.length !== 1 ? 's' : ''} in this assessment appear to match photos already used on another claim/policy — worth a second look.`)
+      showToast('warning', `⚠ ${dupes.length} photo${dupes.length !== 1 ? 's' : ''} in this assessment appear to match photos already used on another claim/policy; worth a second look.`)
     } else {
       showToast('success', 'Physical assessment submitted.')
     }
@@ -114,12 +121,12 @@ export default function AgricultureAssessmentModal({ claimId, claimNumber, claim
     <div className="modal-overlay">
       <div className="modal" style={{ maxWidth: 720 }}>
         <div className="modal-header">
-          <h3>Physical Assessment — {claimNumber}</h3>
+          <h3>Physical Assessment: {claimNumber}</h3>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
           <div className="info-banner info-banner-warning" style={{ marginBottom: '1rem' }}>
-            Agriculture claims require a physical site visit before they can go to final review. Photos must be no more than 3 days old — this is checked automatically from each photo's date metadata and, where available, a visible on-image date stamp.
+            Agriculture claims require a physical site visit before they can go to final review. Photos must be no more than 3 days old; this is checked automatically from each photo's date metadata and, where available, a visible on-image date stamp.
           </div>
 
           <div className="form-group">
@@ -129,23 +136,38 @@ export default function AgricultureAssessmentModal({ claimId, claimNumber, claim
 
           <div className="form-group">
             <label>Farmer's Statement</label>
-            <textarea className="form-control" rows={3} value={farmerStatement} onChange={e => setFarmerStatement(e.target.value)} placeholder="Summarize, in your own words, what the farmer told you on site — kept separate from your own remarks below." />
+            <textarea className="form-control" rows={3} value={farmerStatement} onChange={e => setFarmerStatement(e.target.value)} placeholder="Summarize, in your own words, what the farmer told you on site, kept separate from your own remarks below." />
           </div>
 
-          <label style={{ display: 'block', margin: '1rem 0 6px', fontSize: 13, fontWeight: 600 }}>Photos</label>
+          <label style={{ display: 'block', margin: '1rem 0 6px', fontSize: 13, fontWeight: 600 }}>
+            Photos ({photoCount}/{MIN_PHOTOS} minimum, up to {MAX_PHOTOS})
+          </label>
           {allSlots.map(slot => (
-            <PhotoCaptureField
-              key={slot}
-              label={slot}
-              folder="claims"
-              recordId={claimId}
-              claimDescription={claimDescription}
-              value={photos[slot]}
-              onChange={p => setPhotos(prev => ({ ...prev, [slot]: p }))}
-              onOfflineCapture={handleOfflineCapture}
-            />
+            <div key={slot} style={{ position: 'relative' }}>
+              <PhotoCaptureField
+                label={slot}
+                folder="claims"
+                recordId={claimId}
+                claimDescription={claimDescription}
+                value={photos[slot]}
+                onChange={p => setPhotos(prev => ({ ...prev, [slot]: p }))}
+                onOfflineCapture={handleOfflineCapture}
+              />
+              {extraPhotoLabels.includes(slot) && (
+                <button
+                  type="button"
+                  className="btn btn-ghost btn-sm"
+                  style={{ position: 'absolute', top: 0, right: 0, color: 'var(--danger)' }}
+                  onClick={() => removeExtraSlot(slot)}
+                >
+                  Remove
+                </button>
+              )}
+            </div>
           ))}
-          <button type="button" className="btn btn-ghost btn-sm" onClick={addExtraSlot}>+ Add Another Photo</button>
+          <button type="button" className="btn btn-ghost btn-sm" disabled={allSlots.length >= MAX_PHOTOS} onClick={addExtraSlot}>
+            + Add More Images
+          </button>
 
           <div className="form-group" style={{ marginTop: '1rem' }}>
             <label>Assessor's Comments (after reviewing the photos)</label>
@@ -158,7 +180,7 @@ export default function AgricultureAssessmentModal({ claimId, claimNumber, claim
               <input className="form-control" value={cropPopulation} onChange={e => setCropPopulation(e.target.value)} placeholder="e.g. 15000 plants/ha" />
             </div>
             <div className="form-group">
-              <label>Crop Stage <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(e.g. tobacco — leaf stage)</span></label>
+              <label>Crop Stage <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(e.g. tobacco, leaf stage)</span></label>
               <input className="form-control" value={cropStage} onChange={e => setCropStage(e.target.value)} placeholder="e.g. Tobacco, leaf stage" />
             </div>
           </div>

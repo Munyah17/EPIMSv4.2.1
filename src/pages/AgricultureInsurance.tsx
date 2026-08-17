@@ -67,7 +67,7 @@ export default function AgricultureInsurance({ showToast, setActivePanel }: Prop
   return (
     <div className="panel">
       <div className="info-banner info-banner-info" style={{ marginBottom: '1.5rem' }}>
-        🌾 Agriculture Insurance — a dedicated view across policies, claims, pre-loss assessments, and crop types. Currently covering tobacco and cotton growers, with room to add more crop types as the book expands.
+        🌾 Agriculture Insurance: a dedicated view across policies, claims, pre-loss assessments, and crop types. Currently covering tobacco and cotton growers, with room to add more crop types as the book expands.
       </div>
 
       <div className="stats-grid" style={{ marginBottom: '1.5rem' }}>

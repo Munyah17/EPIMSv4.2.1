@@ -7,7 +7,7 @@ import type {
   Ticket, EmailMessage, Lead, FraudCase, Reminder, CautionFlag,
   PolicyStatus, ClaimStatus, PaymentStatus, PaymentMethod,
   TicketStatus, TicketPriority, LeadStatus, FraudCaseStatus, CustomRole,
-  ClaimAssessment, PolicyAssessment, AssessmentPhoto, InsurerRecord, CropType,
+  ClaimAssessment, PolicyAssessment, AssessmentPhoto, InsurerRecord, CropType, FraudSignalRule,
 } from '../types'
 
 // ── helpers ───────────────────────────────────────────────────────
@@ -122,6 +122,7 @@ function toPolicy(r: any): Policy {
     clientName:      r.clients?.name ?? '',
     productId:       r.products?.id ?? r.product_id ?? '',
     productName:     r.products?.name ?? '',
+    productCategory: r.products?.category ?? undefined,
     premium:         r.premium,
     coverAmount:     r.cover_amount,
     startDate:       date(r.start_date),
@@ -304,7 +305,7 @@ const POLICY_SELECT = `
   start_date, end_date, status, dependants, payment_method, insurer,
   grower_number, gps_lat, gps_lng, agent_id, next_payment_date, last_payment_date, created_at,
   clients!client_id(id, name),
-  products!product_id(id, name),
+  products!product_id(id, name, category),
   profiles!agent_id(id, name)
 `
 const CLAIM_SELECT = `
@@ -533,7 +534,7 @@ export const products = {
     const { data, error } = await supabase.from('products').insert(row).select().single()
     health.record({ ts: Date.now(), type: 'write', table: 'products', success: !error, duration: Date.now() - start, source: 'supabase', detail: error ? String(error.message) : undefined })
     if (error) {
-      return { data: null, error: error.code === '23505' ? 'That product code is already in use — please choose a different one.' : error.message }
+      return { data: null, error: error.code === '23505' ? 'That product code is already in use; please choose a different one.' : error.message }
     }
     return { data: toProduct({ ...(data as Record<string,unknown>), policies_count: 0 }), error: null }
   },
@@ -553,7 +554,7 @@ export const products = {
     const { data, error } = await supabase.from('products').update(row).eq('id', id).select().single()
     health.record({ ts: Date.now(), type: 'write', table: 'products', success: !error, duration: Date.now() - start, source: 'supabase', detail: error ? String(error.message) : undefined })
     if (error) {
-      return { data: null, error: error.code === '23505' ? 'That product code is already in use — please choose a different one.' : error.message }
+      return { data: null, error: error.code === '23505' ? 'That product code is already in use; please choose a different one.' : error.message }
     }
     return { data: toProduct(data as Record<string,unknown>), error: null }
   },
@@ -629,6 +630,42 @@ export const cropTypes = {
 
   async setStatus(id: string, status: 'active' | 'inactive') {
     const { error } = await supabase.from('crop_types').update({ status }).eq('id', id)
+    return { error: error?.message ?? null }
+  },
+}
+
+// ── FRAUD SIGNAL RULES (org-defined red flags fed into AI scoring) ──
+export const fraudSignalRules = {
+  async list() {
+    const { ok, data } = await sb('fraud_signal_rules', 'read',
+      () => supabase.from('fraud_signal_rules').select('id, description, status, created_at, profiles!created_by(name)').order('created_at', { ascending: false }),
+      d => Array.isArray(d),
+    )
+    if (ok && data) {
+      return {
+        data: (data as Record<string, unknown>[]).map(r => ({
+          id: r.id as string, description: r.description as string, status: r.status as 'active' | 'inactive',
+          createdByName: (r.profiles as { name?: string } | null)?.name, createdAt: r.created_at as string,
+        })) as FraudSignalRule[],
+        error: null,
+      }
+    }
+    return { data: [] as FraudSignalRule[], error: null }
+  },
+
+  async create(description: string, createdBy: string) {
+    const { data, error } = await supabase.from('fraud_signal_rules').insert({ description, created_by: createdBy || null }).select().single()
+    if (error) return { data: null, error: error.message }
+    return { data: { id: data.id, description: data.description, status: data.status, createdAt: data.created_at } as FraudSignalRule, error: null }
+  },
+
+  async setStatus(id: string, status: 'active' | 'inactive') {
+    const { error } = await supabase.from('fraud_signal_rules').update({ status }).eq('id', id)
+    return { error: error?.message ?? null }
+  },
+
+  async remove(id: string) {
+    const { error } = await supabase.from('fraud_signal_rules').delete().eq('id', id)
     return { error: error?.message ?? null }
   },
 }
@@ -729,8 +766,10 @@ export const claims = {
  * than being reimplemented per call site. Agriculture goes straight to
  * 'active' on its first payment (no waiting period); a lapsed policy that
  * gets caught up is reinstated to 'waiting_period', not straight to
- * 'active', per the 2026-08 access review. Fire-and-forget — a failure here
- * shouldn't roll back an already-recorded payment.
+ * 'active' — except agriculture, which has no waiting period at all and
+ * reinstates straight to 'active', per the 2026-08 access review.
+ * Fire-and-forget — a failure here shouldn't roll back an already-recorded
+ * payment.
  */
 async function applyCompletedPaymentToPolicy(policyId: string, amountPaid: number): Promise<void> {
   const [{ data: policy }, { data: prods }] = await Promise.all([policies.get(policyId), products.list()])
@@ -746,7 +785,7 @@ async function applyCompletedPaymentToPolicy(policyId: string, amountPaid: numbe
   next.setMonth(next.getMonth() + monthsToAdvance)
 
   let status = policy.status
-  if (policy.status === 'lapsed') status = 'waiting_period'
+  if (policy.status === 'lapsed') status = category === 'agriculture' ? 'active' : 'waiting_period'
   else if (category === 'agriculture' && policy.status === 'waiting_period') status = 'active'
 
   await policies.update(policyId, {
@@ -859,6 +898,8 @@ function toPolicyAssessment(r: any): PolicyAssessment {
     notes:            r.notes ?? '',
     gpsLat:           r.gps_lat ?? undefined,
     gpsLng:           r.gps_lng ?? undefined,
+    farmerSignature:  r.farmer_signature ?? undefined,
+    assessorSignature: r.assessor_signature ?? undefined,
     syncStatus:       r.sync_status ?? 'synced',
     createdAt:        r.created_at,
   }
@@ -874,7 +915,7 @@ const CLAIM_ASSESSMENT_SELECT = `
 const POLICY_ASSESSMENT_SELECT = `
   id, policy_id, assessor_id, subject_type, crop_type, crop_population, plant_date,
   registration_number, vehicle_make, vehicle_model, odometer_reading, existing_damage,
-  photos, notes, gps_lat, gps_lng, sync_status, created_at,
+  photos, notes, gps_lat, gps_lng, farmer_signature, assessor_signature, sync_status, created_at,
   policies!policy_id(policy_number, clients!client_id(name)),
   profiles!assessor_id(name)
 `
@@ -935,7 +976,9 @@ export const policyAssessments = {
       registration_number: a.registrationNumber ?? null, vehicle_make: a.vehicleMake ?? null,
       vehicle_model: a.vehicleModel ?? null, odometer_reading: a.odometerReading ?? null,
       existing_damage: a.existingDamage ?? null,
-      photos: a.photos, notes: a.notes, gps_lat: a.gpsLat ?? null, gps_lng: a.gpsLng ?? null, sync_status: a.syncStatus,
+      photos: a.photos, notes: a.notes, gps_lat: a.gpsLat ?? null, gps_lng: a.gpsLng ?? null,
+      farmer_signature: a.farmerSignature ?? null, assessor_signature: a.assessorSignature ?? null,
+      sync_status: a.syncStatus,
     }
     const { data, error } = await supabase.from('policy_assessments').insert(row).select(POLICY_ASSESSMENT_SELECT).single()
     if (error) return { data: null, error: error.message }
@@ -1834,7 +1877,7 @@ export function subscribeToTable(table: string, callback: () => void) {
 export const db = {
   policies, clients, products, claims, payments,
   tickets, emails, leads, staff, fraudCases, reminders, cautionFlags, settings, loginAttempts, developerApi,
-  customRoles, claimAssessments, policyAssessments, insurers, photoHashes, cropTypes,
+  customRoles, claimAssessments, policyAssessments, insurers, photoHashes, cropTypes, fraudSignalRules,
   dashboardStats, sidebarCounts,
   subscribeToTable,
   resetLocalData: () => localStore.reset(),

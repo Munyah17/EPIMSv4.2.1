@@ -48,7 +48,7 @@ export default function PermissionsModal({ staff, onClose, onSave }: Props) {
     <div className="modal-overlay">
       <div className="modal" style={{ maxWidth: 560 }}>
         <div className="modal-header">
-          <h3>Permissions — {staff.name}</h3>
+          <h3>Permissions: {staff.name}</h3>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
@@ -58,13 +58,13 @@ export default function PermissionsModal({ staff, onClose, onSave }: Props) {
           <div className="form-group" style={{ marginBottom: '1rem' }}>
             <label>Apply Custom Role</label>
             <select className="form-control" value={customRoleId} onChange={e => applyRole(e.target.value)}>
-              <option value="">— None (manual permissions) —</option>
+              <option value="">None (manual permissions)</option>
               {roles.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
             </select>
           </div>
           {isBlanket && (
             <div className="info-banner info-banner-info" style={{ marginBottom: '1rem' }}>
-              This account currently has blanket access from its base role — every right below is already granted. Applying a custom role or unticking rights here will scope it down.
+              This account currently has blanket access from its base role; every right below is already granted. Applying a custom role or unticking rights here will scope it down.
             </div>
           )}
           <div className="permissions-groups">

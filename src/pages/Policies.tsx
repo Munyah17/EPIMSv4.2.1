@@ -88,13 +88,13 @@ export default function Policies({ showToast }: Props) {
         const result = await sendSystemEmail({
           from: MAILBOXES.noreply,
           to: client.email,
-          subject: `Your Policy ${data.policyNumber} — Documents Enclosed`,
+          subject: `Your Policy ${data.policyNumber}: Documents Enclosed`,
           body: `Dear ${client.name},\n\nThank you for choosing us. Your policy ${data.policyNumber} (${data.productName}) is now active. Your policy report is attached for your records.\n\nRegards,\nTariqify IMS`,
           linkedTo: data.id,
           attachmentBase64,
           attachmentFilename: `${data.policyNumber}-Policy-Report.pdf`,
         })
-        if (!result.delivered) showToast('warning', 'Policy created, but the document email could not be sent — check Settings → Notifications.')
+        if (!result.delivered) showToast('warning', 'Policy created, but the document email could not be sent; check Settings → Notifications.')
       } catch {
         showToast('warning', 'Policy created, but the document email could not be sent.')
       }
@@ -113,7 +113,11 @@ export default function Policies({ showToast }: Props) {
   }
 
   const handleApprove = async (policy: Policy) => {
-    const { data, error } = await db.policies.update(policy.id, { status: 'waiting_period' })
+    // Agriculture has no waiting period at all — approval activates it
+    // instantly, same as a staff-created agriculture policy.
+    const { category } = await getReportContext(policy)
+    const nextStatus = category === 'agriculture' ? 'active' : 'waiting_period'
+    const { data, error } = await db.policies.update(policy.id, { status: nextStatus })
     if (error || !data) { showToast('error', 'Failed to approve policy.'); return }
     setPolicies(prev => prev.map(p => p.id === data.id ? data : p))
     showToast('success', `Policy ${data.policyNumber} approved.`)
@@ -203,7 +207,7 @@ export default function Policies({ showToast }: Props) {
                     <span className={`pill pill-${p.status}`}>{p.status.replace('_', ' ')}</span>
                     <span className={`pill pill-inline ${PAYMENT_CURRENCY_CLASS[paymentCurrencyStatus(p)]}`}>{PAYMENT_CURRENCY_LABEL[paymentCurrencyStatus(p)]}</span>
                     {cautionFlags.some(f => f.policyId === p.id) && (
-                      <span className="pill pill-caution" title="Payment overdue — caution flag active">⚠ OVERDUE</span>
+                      <span className="pill pill-caution" title="Payment overdue, caution flag active">⚠ OVERDUE</span>
                     )}
                   </td>
                   <td>

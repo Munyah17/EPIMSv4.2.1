@@ -76,7 +76,7 @@ export default function ChatWidget({ prefill }: Props) {
   const startChat = async () => {
     setFormError('')
     if (topics.length === 0) {
-      setFormError('Still loading — please try again in a moment.')
+      setFormError('Still loading, please try again in a moment.')
       return
     }
     if (!name.trim() || !phone.trim() || !email.trim() || !topic) {
@@ -126,7 +126,7 @@ export default function ChatWidget({ prefill }: Props) {
           <div className="chat-panel-header">
             <div>
               <div className="chat-panel-title">Tariqify Support</div>
-              {session && <div className="chat-panel-sub">{session.status === 'queued' ? 'Waiting for an agent…' : session.status === 'active' ? `Connected${session.assignedName ? ` — ${session.assignedName}` : ''}` : 'Chat ended'}</div>}
+              {session && <div className="chat-panel-sub">{session.status === 'queued' ? 'Waiting for an agent…' : session.status === 'active' ? `Connected${session.assignedName ? `: ${session.assignedName}` : ''}` : 'Chat ended'}</div>}
             </div>
             <button className="modal-close" onClick={() => setOpen(false)}>✕</button>
           </div>
