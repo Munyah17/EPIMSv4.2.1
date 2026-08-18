@@ -57,6 +57,9 @@ Please retain this email for your records. All parties will be copied on further
   if (client.email) {
     void sendEmail({ to: client.email, cc, subject, body: clientBody, linkedTo: claim.id, folder: 'claims', from: MAILBOXES.claims })
   }
+  if (client.phone) {
+    void sendSms(client.phone, `Tariqify: Your claim ${claim.claimNumber} has been submitted. You'll be notified as it progresses.`).catch(() => { /**/ })
+  }
 }
 
 export async function notifyClaimStatusChanged(claim: Claim, previousStatus: ClaimStatus): Promise<void> {

@@ -58,6 +58,8 @@ export async function exportToPdf(filename: string, title: string, headers: stri
 }
 
 const AGRICULTURE_COVER = ['Barn Fire', 'Hail Storm', 'Wind Storm']
+/** Standard excess applied unless a product has its own excess configured. */
+const DEFAULT_POLICY_EXCESS = '15% of loss'
 const BRAND_BLUE: [number, number, number] = [65, 105, 225]
 const BRAND_RED: [number, number, number] = [200, 30, 40]
 const MUTED: [number, number, number] = [107, 126, 153]
@@ -239,8 +241,8 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
     y += AGRICULTURE_COVER.length * 5.5 + 4
   }
 
-  if (policy.excess) {
-    const excessLines = doc.splitTextToSize(policy.excess, pageWidth - 32)
+  {
+    const excessLines = doc.splitTextToSize(policy.excess || DEFAULT_POLICY_EXCESS, pageWidth - 32)
     ensureRoom(14 + excessLines.length * 4.5)
     sectionBand('POLICY EXCESS')
     doc.setFontSize(9)
