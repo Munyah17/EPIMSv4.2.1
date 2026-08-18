@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
 /**
- * Runs an assessment photo through Claude's vision to help catch staged or
+ * Runs an assessment photo through Groq's vision model to help catch staged or
  * reused images — reads any visible burned-in date stamp, checks whether
  * the photo actually shows what it's labeled as (e.g. barn fire damage,
  * hail-damaged crop), and flags anything inconsistent. This is a second
@@ -9,7 +9,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
  * done client-side — a photo can lack EXIF (screenshots, forwarded images)
  * or have a visible on-image stamp EXIF won't show, so both are used.
  *
- * Requires ANTHROPIC_API_KEY (server-side only). Without it, returns
+ * Requires GROQ_API_KEY (server-side only). Without it, returns
  * { simulated: true } so the assessment flow can still be used — an AI
  * opinion is a fraud-detection aid, not a hard gate on submitting.
  */
@@ -26,9 +26,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY
+  const apiKey = process.env.GROQ_API_KEY
   if (!apiKey) {
-    return res.status(200).json({ simulated: true, reason: 'ANTHROPIC_API_KEY not configured' })
+    return res.status(200).json({ simulated: true, reason: 'GROQ_API_KEY not configured' })
   }
 
   const body: Body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body ?? {})
@@ -48,20 +48,20 @@ Look at the image and answer, as strict JSON only (no markdown fences, no other 
 }`
 
   try {
-    const apiRes = await fetch('https://api.anthropic.com/v1/messages', {
+    const apiRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-sonnet-5',
+        // Vision-capable Groq model: this endpoint has to actually look at
+        // the photo, not just reason about its filename.
+        model: 'meta-llama/llama-4-scout-17b-16e-instruct',
         max_tokens: 400,
+        temperature: 0.2,
+        response_format: { type: 'json_object' },
         messages: [{
           role: 'user',
           content: [
-            { type: 'image', source: { type: 'base64', media_type: body.mediaType, data: body.imageBase64 } },
+            { type: 'image_url', image_url: { url: `data:${body.mediaType};base64,${body.imageBase64}` } },
             { type: 'text', text: prompt },
           ],
         }],
@@ -72,7 +72,7 @@ Look at the image and answer, as strict JSON only (no markdown fences, no other 
       return res.status(502).json({ error: `AI service error (HTTP ${apiRes.status}): ${text}` })
     }
     const data = await apiRes.json()
-    const text = data?.content?.[0]?.text ?? '{}'
+    const text = data?.choices?.[0]?.message?.content ?? '{}'
     let parsed: { visibleDateStamp?: string | null; contentMatchesLabel?: boolean; flagged?: boolean; note?: string }
     try {
       parsed = JSON.parse(text)

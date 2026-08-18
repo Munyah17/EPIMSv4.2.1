@@ -2,12 +2,11 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 
 /**
- * Real AI fraud scoring via Claude (claude-sonnet-5) — replaces the
+ * Real AI fraud scoring via Groq (llama-3.3-70b-versatile) — replaces the
  * hardcoded `Math.floor(Math.random() * 30)` that used to ship with every
- * submitted claim regardless of its actual content. Was previously on Groq;
- * moved to Anthropic per the 2026-08 access review so claim fraud scoring
- * and assessment photo analysis (analyze-assessment-photo.ts) share one
- * provider and key.
+ * submitted claim regardless of its actual content. Groq is the single AI
+ * provider across the system, so lead scoring, claim fraud scoring and
+ * assessment photo analysis all share one key.
  */
 
 interface PreLossContext {
@@ -49,9 +48,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(405).json({ error: 'Method not allowed' })
   }
 
-  const apiKey = process.env.ANTHROPIC_API_KEY
+  const apiKey = process.env.GROQ_API_KEY
   if (!apiKey) {
-    return res.status(200).json({ score: 20, signals: [] as string[], insights: [] as string[], reasoning: 'AI fraud scoring not configured (ANTHROPIC_API_KEY missing) — default low score.' })
+    return res.status(200).json({ score: 20, signals: [] as string[], insights: [] as string[], reasoning: 'AI fraud scoring not configured (GROQ_API_KEY missing) — default low score.' })
   }
 
   const body: ScoreClaimBody = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body ?? {})
@@ -118,13 +117,15 @@ Description provided by claimant: "${body.description}"${preLossBlock}${postLoss
 Respond with ONLY a JSON object, no markdown fences, no explanation outside the JSON: {"score": <integer 0-100>, "signals": [<0-4 short strings naming specific red flags actually present, empty array if none>], "insights": [<0-4 short, specific observations a human reviewer should weigh — e.g. a pre-loss mismatch, a farmer/assessor inconsistency, or "no concerns found" if genuinely clean; empty array only if no context was given to analyze>], "reasoning": "<one sentence, under 25 words>"}`
 
   try {
-    const apiRes = await fetch('https://api.anthropic.com/v1/messages', {
+    const apiRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
-      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-sonnet-5',
-        max_tokens: 400,
+        model: 'llama-3.3-70b-versatile',
         messages: [{ role: 'user', content: prompt }],
+        temperature: 0.2,
+        max_tokens: 500,
+        response_format: { type: 'json_object' },
       }),
     })
     if (!apiRes.ok) {
@@ -132,7 +133,7 @@ Respond with ONLY a JSON object, no markdown fences, no explanation outside the 
       return res.status(502).json({ error: `AI service error (${apiRes.status}): ${text}` })
     }
     const data = await apiRes.json()
-    const content = data?.content?.[0]?.text
+    const content = data?.choices?.[0]?.message?.content
     if (!content) return res.status(502).json({ error: 'AI service returned no content.' })
 
     const parsed = JSON.parse(content)

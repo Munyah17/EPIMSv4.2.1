@@ -8,9 +8,9 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
  *
  * Two credentials, both server-side only:
  *   GOOGLE_SEARCH_API_KEY / GOOGLE_SEARCH_ENGINE_ID — Google Custom Search
- *     JSON API, does the actual finding (Claude has no built-in web/social
+ *     JSON API, does the actual finding (the model has no built-in web/social
  *     search — it can only reason over what's handed to it).
- *   ANTHROPIC_API_KEY — already configured; turns raw search results into
+ *   GROQ_API_KEY — already configured; turns raw search results into
  *     structured, scored candidate leads.
  *
  * Without the Google credentials, returns { simulated: true } so the UI
@@ -58,14 +58,19 @@ From these results, extract any plausible SPECIFIC leads — individuals or smal
 
 Respond with ONLY a JSON array, no markdown fences, no explanation, one entry per plausible lead (empty array if none found): [{"name": string, "phone": string or null (only if visible in the snippet, never invented), "source": string (the site/platform this came from, e.g. "Facebook", "Google"), "productInterest": string, "intentScore": integer 0-100, "notes": string (why this looks like a lead, one sentence)}]`
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
-    headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-    body: JSON.stringify({ model: 'claude-sonnet-5', max_tokens: 1500, messages: [{ role: 'user', content: prompt }] }),
+    headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'llama-3.3-70b-versatile',
+      max_tokens: 1500,
+      temperature: 0.3,
+      messages: [{ role: 'user', content: prompt }],
+    }),
   })
   if (!res.ok) throw new Error(`AI extraction error (${res.status}): ${await res.text()}`)
   const data = await res.json()
-  const text = data?.content?.[0]?.text ?? '[]'
+  const text = data?.choices?.[0]?.message?.content ?? '[]'
   try {
     const parsed = JSON.parse(text)
     return Array.isArray(parsed) ? parsed : []
@@ -99,12 +104,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ leads: [], searched: fullQuery })
     }
 
-    const anthropicKey = process.env.ANTHROPIC_API_KEY
-    if (!anthropicKey) {
+    const groqKey = process.env.GROQ_API_KEY
+    if (!groqKey) {
       return res.status(200).json({ leads: [], rawResults: results, searched: fullQuery, aiUnavailable: true })
     }
 
-    const leads = await extractLeadsWithAI(anthropicKey, results, fullQuery)
+    const leads = await extractLeadsWithAI(groqKey, results, fullQuery)
     return res.status(200).json({ leads, searched: fullQuery })
   } catch (e) {
     return res.status(502).json({ error: `Lead search failed: ${e}` })

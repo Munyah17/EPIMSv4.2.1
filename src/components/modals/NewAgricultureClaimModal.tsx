@@ -9,6 +9,11 @@ import DateInput from '../ui/DateInput'
 import PhotoCaptureField from '../ui/PhotoCaptureField'
 import SignaturePad from '../ui/SignaturePad'
 import FraudNoticeModal from './FraudNoticeModal'
+import {
+  LEAVES_PER_HECTARE, PLANTS_PER_HECTARE, LEAVES_PER_PLANT,
+  expectedLeavesForHectares, leavesInBarn, assessLoss, calculateClaim,
+  formatPercent, formatMoney,
+} from '../../lib/agricultureClaim'
 
 export interface PendingOfflinePhoto {
   label: string
@@ -79,6 +84,14 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
   const [gpsBusy, setGpsBusy] = useState(false)
   const [cropPopulation, setCropPopulation] = useState('')
   const [baselineCropPopulation, setBaselineCropPopulation] = useState<string | undefined>()
+  // Loss assessment inputs. Which of these apply depends on the peril:
+  // field counts for hail/windstorm, barn counts for a barn fire.
+  const [hectares, setHectares] = useState('')
+  const [damagedLeaves, setDamagedLeaves] = useState('')
+  const [totalLeavesAtTopping, setTotalLeavesAtTopping] = useState('')
+  const [barnStrings, setBarnStrings] = useState('')
+  const [leavesPerString, setLeavesPerString] = useState('')
+  const [leavesLost, setLeavesLost] = useState('')
   const [cropStage, setCropStage] = useState('')
   const [barnCapacity, setBarnCapacity] = useState('')
   const [farmerSignature, setFarmerSignature] = useState<string | undefined>()
