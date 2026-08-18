@@ -4,6 +4,8 @@ import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
 import { exportPolicyAssessmentReport } from '../lib/exportUtils'
+import { getDocumentUrl } from '../lib/storage'
+import { reverseGeocode } from '../lib/geocode'
 import { useAuth } from '../contexts/AuthContext'
 import PolicyAssessmentModal from '../components/modals/PolicyAssessmentModal'
 
@@ -25,6 +27,9 @@ export default function PreLossAssessments({ showToast }: Props) {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [detail, setDetail] = useState<PolicyAssessment | null>(null)
+  const [photoUrls, setPhotoUrls] = useState<Record<string, string>>({})
+  const [photoUrlsLoading, setPhotoUrlsLoading] = useState(false)
+  const [placeLabel, setPlaceLabel] = useState<string | null>(null)
   const [pickingPolicy, setPickingPolicy] = useState(false)
   const [policySearch, setPolicySearch] = useState('')
   const [recordFor, setRecordFor] = useState<Policy | null>(null)
@@ -40,6 +45,28 @@ export default function PreLossAssessments({ showToast }: Props) {
   }
 
   useEffect(load, [])
+
+  useEffect(() => {
+    if (!detail || detail.photos.length === 0) { setPhotoUrls({}); return }
+    let cancelled = false
+    setPhotoUrlsLoading(true)
+    Promise.all(detail.photos.map(async p => [p.path, await getDocumentUrl(p.path)] as const)).then(pairs => {
+      if (cancelled) return
+      const urls: Record<string, string> = {}
+      pairs.forEach(([path, url]) => { if (url) urls[path] = url })
+      setPhotoUrls(urls)
+      setPhotoUrlsLoading(false)
+    })
+    return () => { cancelled = true }
+  }, [detail])
+
+  useEffect(() => {
+    if (!detail || detail.gpsLat === undefined || detail.gpsLng === undefined) { setPlaceLabel(null); return }
+    let cancelled = false
+    setPlaceLabel(null)
+    reverseGeocode(detail.gpsLat, detail.gpsLng).then(label => { if (!cancelled) setPlaceLabel(label) })
+    return () => { cancelled = true }
+  }, [detail])
 
   const clientById = new Map(clients.map(c => [c.id, c]))
 
@@ -85,6 +112,12 @@ export default function PreLossAssessments({ showToast }: Props) {
   }
 
   const canRecord = hasPermission('claims.physical_assessment')
+
+  const gpsValue = (a: PolicyAssessment) => {
+    if (a.gpsLat === undefined || a.gpsLng === undefined) return 'Not captured'
+    const coords = `${a.gpsLat.toFixed(6)}, ${a.gpsLng.toFixed(6)}`
+    return placeLabel ? `${coords} (${placeLabel})` : coords
+  }
 
   return (
     <div className="panel">
@@ -239,7 +272,7 @@ export default function PreLossAssessments({ showToast }: Props) {
                     </div>
                     <div className="form-group">
                       <label>GPS Coordinates</label>
-                      <input className="form-control" value={detail.gpsLat !== undefined ? `${detail.gpsLat.toFixed(6)}, ${detail.gpsLng?.toFixed(6)}` : 'Not captured'} disabled style={{ opacity: 0.6 }} />
+                      <input className="form-control" value={gpsValue(detail)} disabled style={{ opacity: 0.6 }} />
                     </div>
                   </div>
                   <div className="form-group">
@@ -266,7 +299,7 @@ export default function PreLossAssessments({ showToast }: Props) {
                     </div>
                     <div className="form-group">
                       <label>GPS Coordinates</label>
-                      <input className="form-control" value={detail.gpsLat !== undefined ? `${detail.gpsLat.toFixed(6)}, ${detail.gpsLng?.toFixed(6)}` : 'Not captured'} disabled style={{ opacity: 0.6 }} />
+                      <input className="form-control" value={gpsValue(detail)} disabled style={{ opacity: 0.6 }} />
                     </div>
                   </div>
                 </>
@@ -277,10 +310,32 @@ export default function PreLossAssessments({ showToast }: Props) {
               </div>
               {detail.photos.length > 0 && (
                 <div className="form-group">
-                  <label>Photos</label>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  <label>Photos ({detail.photos.length}){photoUrlsLoading ? ' · loading…' : ''}</label>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
                     {detail.photos.map((p, i) => (
-                      <div key={i} style={{ fontSize: 11, color: 'var(--muted)' }}>{p.label}{p.exifDate ? ` · ${new Date(p.exifDate).toLocaleDateString()}` : ''}</div>
+                      <a
+                        key={i}
+                        href={photoUrls[p.path] ?? undefined}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ width: 120, textDecoration: 'none', color: 'inherit', pointerEvents: photoUrls[p.path] ? 'auto' : 'none' }}
+                        title="Open full size"
+                      >
+                        {photoUrls[p.path] ? (
+                          <img
+                            src={photoUrls[p.path]}
+                            alt={p.label}
+                            style={{ width: 120, height: 90, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)', display: 'block' }}
+                          />
+                        ) : (
+                          <div style={{ width: 120, height: 90, borderRadius: 6, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: 'var(--muted)' }}>
+                            {photoUrlsLoading ? 'Loading…' : 'Unavailable'}
+                          </div>
+                        )}
+                        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>
+                          {p.label}{p.exifDate ? ` · ${new Date(p.exifDate).toLocaleDateString()}` : ''}
+                        </div>
+                      </a>
                     ))}
                   </div>
                 </div>

@@ -6,6 +6,7 @@ import type { Policy, Client, ClaimAssessment, PolicyAssessment } from '../types
 import { formatDate } from './dateUtils'
 import { getNotifSettings } from './mailService'
 import { getDocumentUrl } from './storage'
+import { reverseGeocode } from './geocode'
 
 function triggerDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
@@ -391,6 +392,11 @@ export async function exportClaimAssessmentReport(
   if (assessment.photos.length > 0) {
     if (y > 230) { doc.addPage(); y = 20 }
     sectionHeading(6, 'PHOTOGRAPHIC EVIDENCE')
+    doc.setFontSize(7.5)
+    doc.setTextColor(...BRAND_RED)
+    doc.text('Print in colour for accurate assessment of photo evidence.', 14, y)
+    doc.setTextColor(...TEXT)
+    y += 7
     for (const photo of assessment.photos) {
       if (y > 220) { doc.addPage(); y = 20 }
       doc.setFontSize(9)
@@ -497,11 +503,20 @@ export async function exportPolicyAssessmentReport(
     y += rows.length * 6.5 + 8
   }
 
+  const gpsLabel = assessment.gpsLat !== undefined && assessment.gpsLng !== undefined
+    ? (() => {
+        const coords = `${assessment.gpsLat.toFixed(6)}, ${assessment.gpsLng.toFixed(6)}`
+        return reverseGeocode(assessment.gpsLat, assessment.gpsLng).then(place => place ? `${coords} (${place})` : coords)
+      })()
+    : Promise.resolve('—')
+
   sectionHeading(1, 'POLICY OVERVIEW')
   kvRows([
     ['Policy Number', policyNumber], ['Client', clientName],
     ['Assessor', assessment.assessorName], ['Recorded', formatDate(assessment.createdAt)],
   ])
+
+  const resolvedGps = await gpsLabel
 
   if (assessment.subjectType === 'vehicle') {
     sectionHeading(2, 'VEHICLE DETAILS')
@@ -510,7 +525,7 @@ export async function exportPolicyAssessmentReport(
       ['Make / Model', [assessment.vehicleMake, assessment.vehicleModel].filter(Boolean).join(' ') || '—'],
       ['Odometer Reading', assessment.odometerReading || '—'],
       ['Existing Damage', assessment.existingDamage || '—'],
-      ['GPS Coordinates', assessment.gpsLat !== undefined ? `${assessment.gpsLat.toFixed(6)}, ${assessment.gpsLng?.toFixed(6)}` : '—'],
+      ['GPS Coordinates', resolvedGps],
     ])
   } else {
     sectionHeading(2, 'FARM / CROP DETAILS')
@@ -518,7 +533,7 @@ export async function exportPolicyAssessmentReport(
       ['Crop Type', assessment.cropType || '—'],
       ['Crop Population', assessment.cropPopulation || '—'],
       ['Plant Date', assessment.plantDate ? formatDate(assessment.plantDate) : '—'],
-      ['GPS Coordinates', assessment.gpsLat !== undefined ? `${assessment.gpsLat.toFixed(6)}, ${assessment.gpsLng?.toFixed(6)}` : '—'],
+      ['GPS Coordinates', resolvedGps],
     ])
   }
 
@@ -531,6 +546,11 @@ export async function exportPolicyAssessmentReport(
   if (assessment.photos.length > 0) {
     if (y > 230) { doc.addPage(); y = 20 }
     sectionHeading(4, 'PHOTOGRAPHIC EVIDENCE')
+    doc.setFontSize(7.5)
+    doc.setTextColor(...BRAND_RED)
+    doc.text('Print in colour for accurate assessment of photo evidence.', 14, y)
+    doc.setTextColor(...TEXT)
+    y += 7
     for (const photo of assessment.photos) {
       if (y > 220) { doc.addPage(); y = 20 }
       doc.setFontSize(9)
@@ -550,6 +570,24 @@ export async function exportPolicyAssessmentReport(
       doc.setTextColor(...TEXT)
       y += 58
     }
+  }
+
+  if (assessment.farmerSignature || assessment.assessorSignature) {
+    if (y > 220) { doc.addPage(); y = 20 }
+    sectionHeading(5, 'SIGN-OFF')
+    if (assessment.farmerSignature) {
+      doc.setFontSize(8.5)
+      doc.setTextColor(...MUTED)
+      doc.text(assessment.subjectType === 'vehicle' ? 'Client Signature' : 'Farmer Signature', 14, y)
+      try { doc.addImage(assessment.farmerSignature, 'PNG', 14, y + 2, 60, 20) } catch { /**/ }
+    }
+    if (assessment.assessorSignature) {
+      doc.setFontSize(8.5)
+      doc.setTextColor(...MUTED)
+      doc.text('Assessor Signature', 110, y)
+      try { doc.addImage(assessment.assessorSignature, 'PNG', 110, y + 2, 60, 20) } catch { /**/ }
+    }
+    y += 26
   }
 
   const pageHeight = doc.internal.pageSize.getHeight()

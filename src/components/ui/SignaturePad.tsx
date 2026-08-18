@@ -45,7 +45,15 @@ export default function SignaturePad({ label, onChange }: Props) {
   }
 
   const start = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    e.preventDefault()
     drawing.current = true
+    // Without capturing the pointer, a fast mouse stroke that briefly exits
+    // the canvas bounds (very easy with quick cursive movement, especially
+    // near the edges) stops receiving move events and fires pointerleave,
+    // cutting the line short -- the signature comes out broken and needs
+    // several attempts to get right. Touch doesn't show this because touch
+    // input is implicitly captured by the browser already; mouse isn't.
+    canvasRef.current!.setPointerCapture(e.pointerId)
     const ctx = canvasRef.current!.getContext('2d')!
     const { x, y } = getPoint(e)
     ctx.beginPath()
@@ -61,9 +69,10 @@ export default function SignaturePad({ label, onChange }: Props) {
     setHasSignature(true)
   }
 
-  const end = () => {
+  const end = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!drawing.current) return
     drawing.current = false
+    try { canvasRef.current?.releasePointerCapture(e.pointerId) } catch { /**/ }
     onChange(canvasRef.current!.toDataURL('image/png'))
   }
 
@@ -87,7 +96,7 @@ export default function SignaturePad({ label, onChange }: Props) {
         onPointerDown={start}
         onPointerMove={move}
         onPointerUp={end}
-        onPointerLeave={end}
+        onPointerCancel={end}
       />
       <div className="signature-pad-actions">
         {hasSignature ? <span className="signature-pad-status">✓ Signed</span> : <span className="signature-pad-status muted">Sign above</span>}
