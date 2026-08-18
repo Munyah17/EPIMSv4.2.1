@@ -77,6 +77,7 @@ CREATE TABLE IF NOT EXISTS public.products (
   active              BOOLEAN NOT NULL DEFAULT TRUE,
   features            TEXT[] NOT NULL DEFAULT '{}',
   description         TEXT,
+  excess              TEXT,
   created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

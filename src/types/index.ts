@@ -167,6 +167,8 @@ export interface Policy {
    *  (e.g. agriculture premiums are annual, everything else is monthly)
    *  without an extra fetch. */
   productCategory?: string
+  /** Denormalized from the linked product — the policy excess/deductible, free text (e.g. "10% of claim, min $50"). */
+  excess?: string
   premium: number
   coverAmount: number
   startDate: string
@@ -203,6 +205,8 @@ export interface Product {
   features: string[]
   description: string
   policiesCount: number
+  /** Policy excess/deductible, free text (e.g. "10% of claim, min $50"). Blank if not applicable. */
+  excess?: string
 }
 
 export type ClaimStatus = 'pending' | 'under_review' | 'approved' | 'rejected' | 'paid'

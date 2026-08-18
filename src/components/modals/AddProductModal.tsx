@@ -17,6 +17,7 @@ export default function AddProductModal({ product, onClose, onSave }: Props) {
   const [minAge, setMinAge] = useState(String(product?.minAge ?? 18))
   const [maxAge, setMaxAge] = useState(String(product?.maxAge ?? 70))
   const [commissionPct, setCommissionPct] = useState(String(product?.commissionPct ?? 15))
+  const [excess, setExcess] = useState(product?.excess ?? '')
   const [description, setDescription] = useState(product?.description ?? '')
   const [featuresText, setFeaturesText] = useState(product?.features.join('\n') ?? '')
 
@@ -34,6 +35,7 @@ export default function AddProductModal({ product, onClose, onSave }: Props) {
       active: product?.active ?? true,
       features: featuresText.split('\n').map(f => f.trim()).filter(Boolean),
       description,
+      excess: excess.trim() || undefined,
       policiesCount: product?.policiesCount ?? 0,
     }
     onSave(p)
@@ -98,6 +100,10 @@ export default function AddProductModal({ product, onClose, onSave }: Props) {
               <label>Commission (%)</label>
               <input type="number" className="form-control" value={commissionPct} onChange={e => setCommissionPct(e.target.value)} />
             </div>
+          </div>
+          <div className="form-group">
+            <label>Policy Excess (optional)</label>
+            <input className="form-control" value={excess} onChange={e => setExcess(e.target.value)} placeholder="e.g. 10% of claim amount, minimum $50" />
           </div>
           <div className="form-group">
             <label>Description</label>

@@ -239,6 +239,16 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
     y += AGRICULTURE_COVER.length * 5.5 + 4
   }
 
+  if (policy.excess) {
+    const excessLines = doc.splitTextToSize(policy.excess, pageWidth - 32)
+    ensureRoom(14 + excessLines.length * 4.5)
+    sectionBand('POLICY EXCESS')
+    doc.setFontSize(9)
+    doc.setTextColor(...TEXT)
+    doc.text(excessLines, 14, y)
+    y += excessLines.length * 4.5 + 4
+  }
+
   ensureRoom(24)
   doc.setDrawColor(220, 226, 240)
   doc.line(14, y, pageWidth - 14, y)

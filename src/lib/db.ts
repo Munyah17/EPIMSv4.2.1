@@ -110,6 +110,7 @@ function toProduct(r: Record<string, unknown>): Product {
     features:          (r.features as string[]) ?? [],
     description:       (r.description as string) ?? '',
     policiesCount:     (r.policies_count as number) ?? 0,
+    excess:            (r.excess as string) ?? undefined,
   }
 }
 
@@ -123,6 +124,7 @@ function toPolicy(r: any): Policy {
     productId:       r.products?.id ?? r.product_id ?? '',
     productName:     r.products?.name ?? '',
     productCategory: r.products?.category ?? undefined,
+    excess:          r.products?.excess ?? undefined,
     premium:         r.premium,
     coverAmount:     r.cover_amount,
     startDate:       date(r.start_date),
@@ -305,7 +307,7 @@ const POLICY_SELECT = `
   start_date, end_date, status, dependants, payment_method, insurer,
   grower_number, gps_lat, gps_lng, agent_id, next_payment_date, last_payment_date, created_at,
   clients!client_id(id, name),
-  products!product_id(id, name, category),
+  products!product_id(id, name, category, excess),
   profiles!agent_id(id, name)
 `
 const CLAIM_SELECT = `
@@ -529,6 +531,7 @@ export const products = {
       waiting_period_days: product.waitingPeriodDays, min_age: product.minAge,
       max_age: product.maxAge, commission_pct: product.commissionPct,
       active: product.active, features: product.features, description: product.description,
+      excess: product.excess || null,
     }
     const start = Date.now()
     const { data, error } = await supabase.from('products').insert(row).select().single()
@@ -550,6 +553,7 @@ export const products = {
     if (updates.features          !== undefined) row.features            = updates.features
     if (updates.description       !== undefined) row.description         = updates.description
     if (updates.waitingPeriodDays !== undefined) row.waiting_period_days = updates.waitingPeriodDays
+    if (updates.excess            !== undefined) row.excess              = updates.excess || null
     const start = Date.now()
     const { data, error } = await supabase.from('products').update(row).eq('id', id).select().single()
     health.record({ ts: Date.now(), type: 'write', table: 'products', success: !error, duration: Date.now() - start, source: 'supabase', detail: error ? String(error.message) : undefined })
