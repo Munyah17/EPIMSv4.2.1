@@ -541,11 +541,19 @@ export async function exportPolicyAssessmentReport(
     ])
   } else {
     sectionHeading(2, 'FARM / CROP DETAILS')
+    const barnCapacity = [
+      assessment.barnHooks && `${assessment.barnHooks} hooks`,
+      assessment.barnTiers && `${assessment.barnTiers} tiers`,
+      assessment.barnBays && `${assessment.barnBays} bays`,
+    ].filter(Boolean).join(', ')
     kvRows([
       ['Crop Type', assessment.cropType || '—'],
       ['Crop Population', assessment.cropPopulation || '—'],
       ['Plant Date', assessment.plantDate ? formatDate(assessment.plantDate) : '—'],
       ['GPS Coordinates', resolvedGps],
+      ['Barn Capacity', barnCapacity || '—'],
+      ['Barn Ownership', assessment.barnOwnership || '—'],
+      ['Barn Usage', assessment.barnUsage || '—'],
     ])
   }
 

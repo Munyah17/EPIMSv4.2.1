@@ -566,6 +566,13 @@ export interface PolicyAssessment {
   notes: string
   gpsLat?: number
   gpsLng?: number
+  // Barn baseline — declared up front so a barn-fire claim is measured
+  // against a record made before the loss, not after it.
+  barnHooks?: number
+  barnTiers?: number
+  barnBays?: number
+  barnOwnership?: string
+  barnUsage?: string
   farmerSignature?: string
   assessorSignature?: string
   syncStatus: AssessmentSyncStatus

@@ -12,7 +12,9 @@ import SignaturePad from '../ui/SignaturePad'
 
 const OTHER = '__other__'
 
-const AGRICULTURE_PHOTO_SLOTS = ['Farm / Field Photo']
+// The barn is what a barn-fire claim is assessed against, so its condition
+// and capacity are recorded from both outside and inside before any loss.
+const AGRICULTURE_PHOTO_SLOTS = ['Farm / Field Photo', 'Barn (exterior)', 'Barn (interior)']
 const VEHICLE_PHOTO_SLOTS = ['Front', 'Rear', 'Left Side', 'Right Side', 'Odometer', 'Interior']
 const MIN_PHOTOS = 6
 const MAX_PHOTOS = 20
@@ -47,6 +49,13 @@ export default function PolicyAssessmentModal({ policyId, policyNumber, subjectT
   const [odometerReading, setOdometerReading] = useState('')
   const [existingDamage, setExistingDamage] = useState('')
   const [notes, setNotes] = useState('')
+  // Barn capacity, recorded before any fire so a later claim is measured
+  // against a declared baseline rather than a figure produced after the loss.
+  const [barnHooks, setBarnHooks] = useState('')
+  const [barnTiers, setBarnTiers] = useState('')
+  const [barnBays, setBarnBays] = useState('')
+  const [barnOwnership, setBarnOwnership] = useState('')
+  const [barnUsage, setBarnUsage] = useState('')
   const [gpsLat, setGpsLat] = useState<number | undefined>(undefined)
   const [gpsLng, setGpsLng] = useState<number | undefined>(undefined)
   const [gpsBusy, setGpsBusy] = useState(false)
@@ -114,6 +123,11 @@ export default function PolicyAssessmentModal({ policyId, policyNumber, subjectT
       vehicleModel: isVehicle ? vehicleModel : undefined, odometerReading: isVehicle ? odometerReading : undefined,
       existingDamage: isVehicle ? existingDamage : undefined,
       notes, gpsLat, gpsLng, farmerSignature, assessorSignature,
+      barnHooks: isVehicle ? undefined : Number(barnHooks) || undefined,
+      barnTiers: isVehicle ? undefined : Number(barnTiers) || undefined,
+      barnBays: isVehicle ? undefined : Number(barnBays) || undefined,
+      barnOwnership: isVehicle ? undefined : barnOwnership || undefined,
+      barnUsage: isVehicle ? undefined : barnUsage || undefined,
     }
 
     if (!navigator.onLine || offlinePending.length > 0) {
@@ -207,6 +221,51 @@ export default function PolicyAssessmentModal({ policyId, policyNumber, subjectT
               <label>Plant Date</label>
               <input type="date" className="form-control" value={plantDate} onChange={e => setPlantDate(e.target.value)} />
             </div>
+          )}
+
+          {!isVehicle && (
+            <>
+              <h4 style={{ margin: '1.25rem 0 4px' }}>Barn</h4>
+              <p style={{ fontSize: 11, color: 'var(--muted)', margin: '0 0 10px' }}>
+                Capacity and ownership are declared now, before any loss, so a barn-fire claim is
+                measured against a record made in advance. Leave blank if this policy has no barn.
+              </p>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Number of Hooks</label>
+                  <input type="number" className="form-control" min={0} value={barnHooks} onChange={e => setBarnHooks(e.target.value)} placeholder="e.g. 240" />
+                </div>
+                <div className="form-group">
+                  <label>Number of Tiers</label>
+                  <input type="number" className="form-control" min={0} value={barnTiers} onChange={e => setBarnTiers(e.target.value)} placeholder="e.g. 4" />
+                </div>
+                <div className="form-group">
+                  <label>Number of Bays</label>
+                  <input type="number" className="form-control" min={0} value={barnBays} onChange={e => setBarnBays(e.target.value)} placeholder="e.g. 3" />
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Barn Ownership</label>
+                  <select className="form-control" value={barnOwnership} onChange={e => setBarnOwnership(e.target.value)}>
+                    <option value="">Select…</option>
+                    <option value="Owned by farmer">Owned by farmer</option>
+                    <option value="Rented">Rented</option>
+                    <option value="Shared">Shared with other growers</option>
+                    <option value="Borrowed">Borrowed</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label>Barn Usage</label>
+                  <select className="form-control" value={barnUsage} onChange={e => setBarnUsage(e.target.value)}>
+                    <option value="">Select…</option>
+                    <option value="This grower only">This grower's crop only</option>
+                    <option value="Shared with other growers">Shared with other growers</option>
+                    <option value="Also stores other goods">Also stores other goods</option>
+                  </select>
+                </div>
+              </div>
+            </>
           )}
 
           <div className="form-group">

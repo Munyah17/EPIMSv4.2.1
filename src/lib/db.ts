@@ -994,6 +994,11 @@ function toPolicyAssessment(r: any): PolicyAssessment {
     notes:            r.notes ?? '',
     gpsLat:           r.gps_lat ?? undefined,
     gpsLng:           r.gps_lng ?? undefined,
+    barnHooks:        r.barn_hooks ?? undefined,
+    barnTiers:        r.barn_tiers ?? undefined,
+    barnBays:         r.barn_bays ?? undefined,
+    barnOwnership:    r.barn_ownership ?? undefined,
+    barnUsage:        r.barn_usage ?? undefined,
     farmerSignature:  r.farmer_signature ?? undefined,
     assessorSignature: r.assessor_signature ?? undefined,
     syncStatus:       r.sync_status ?? 'synced',
@@ -1014,6 +1019,7 @@ const POLICY_ASSESSMENT_SELECT = `
   id, policy_id, assessor_id, subject_type, crop_type, crop_population, plant_date,
   registration_number, vehicle_make, vehicle_model, odometer_reading, existing_damage,
   photos, notes, gps_lat, gps_lng, farmer_signature, assessor_signature, sync_status, created_at,
+  barn_hooks, barn_tiers, barn_bays, barn_ownership, barn_usage,
   policies!policy_id(policy_number, clients!client_id(name)),
   profiles!assessor_id(name)
 `
@@ -1081,6 +1087,8 @@ export const policyAssessments = {
       vehicle_model: a.vehicleModel ?? null, odometer_reading: a.odometerReading ?? null,
       existing_damage: a.existingDamage ?? null,
       photos: a.photos, notes: a.notes, gps_lat: a.gpsLat ?? null, gps_lng: a.gpsLng ?? null,
+      barn_hooks: a.barnHooks ?? null, barn_tiers: a.barnTiers ?? null, barn_bays: a.barnBays ?? null,
+      barn_ownership: a.barnOwnership ?? null, barn_usage: a.barnUsage ?? null,
       farmer_signature: a.farmerSignature ?? null, assessor_signature: a.assessorSignature ?? null,
       sync_status: a.syncStatus,
     }

@@ -219,6 +219,22 @@ export default function ReviewClaimModal({ claim, onClose, onSave, showToast }: 
                   <>
                     <div className="detail-item"><span className="detail-label">Crop Recorded</span><span>{preLoss.cropType || '—'}</span></div>
                     <div className="detail-item"><span className="detail-label">Crop Population</span><span>{preLoss.cropPopulation || '—'}</span></div>
+                    {(preLoss.barnHooks || preLoss.barnTiers || preLoss.barnBays) && (
+                      <div className="detail-item">
+                        <span className="detail-label">Barn Capacity Declared</span>
+                        <span>
+                          {[preLoss.barnHooks && `${preLoss.barnHooks} hooks`,
+                            preLoss.barnTiers && `${preLoss.barnTiers} tiers`,
+                            preLoss.barnBays && `${preLoss.barnBays} bays`].filter(Boolean).join(' · ')}
+                        </span>
+                      </div>
+                    )}
+                    {(preLoss.barnOwnership || preLoss.barnUsage) && (
+                      <div className="detail-item">
+                        <span className="detail-label">Barn Declared As</span>
+                        <span>{[preLoss.barnOwnership, preLoss.barnUsage].filter(Boolean).join(' · ')}</span>
+                      </div>
+                    )}
                   </>
                 )}
               </div>
