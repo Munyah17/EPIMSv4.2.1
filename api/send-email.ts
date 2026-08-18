@@ -68,8 +68,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({ simulated: true, reason: 'SMTP_HOST/SMTP_PASSWORD not configured' })
   }
 
-  const fromAddress = body.from || process.env.SMTP_FALLBACK_FROM || `noreply@${host.replace(/^mail\./, '')}`
+  // Microsoft 365 (and most hosted providers) refuse to send as any address
+  // other than the mailbox that authenticated, so when a fixed account is
+  // configured it always owns the From header. The role mailbox the app
+  // asked for becomes Reply-To instead, which keeps replies routed sensibly
+  // without forging the sender.
+  const authenticatedFrom = process.env.SMTP_DEFAULT_USER
+  const requestedFrom = body.from || process.env.SMTP_FALLBACK_FROM || `noreply@${host.replace(/^mail\./, '')}`
+  const fromAddress = authenticatedFrom || requestedFrom
   const fromHeader = body.fromName ? `${body.fromName} <${fromAddress}>` : fromAddress
+  const replyTo = body.replyTo
+    || (authenticatedFrom && requestedFrom !== authenticatedFrom ? requestedFrom : undefined)
 
   try {
     const transporter = getTransporter()
@@ -84,7 +93,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ...(process.env.SMTP_DEFAULT_USER ? {} : { auth: { user: fromAddress, pass: password } }),
       to: body.to,
       cc: body.cc,
-      replyTo: body.replyTo,
+      replyTo,
       subject: body.subject,
       text: body.text,
       attachments: body.attachmentBase64 && body.attachmentFilename ? [{
