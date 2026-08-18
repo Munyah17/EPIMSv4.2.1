@@ -13,7 +13,10 @@ interface Props {
   claimDescription?: string
   value: AssessmentPhoto | undefined
   onChange: (photo: AssessmentPhoto | undefined) => void
-  onOfflineCapture?: (file: File, label: string) => void
+  /** exifDate/exifHasData/exifSoftware/exifCamera are already read before
+   *  the offline branch below — passed through so a photo captured offline
+   *  doesn't lose its real capture-time EXIF evidence once it syncs. */
+  onOfflineCapture?: (file: File, label: string, exif?: { exifDate?: string; exifHasData: boolean; exifSoftware?: string; exifCamera?: string }) => void
 }
 
 export default function PhotoCaptureField({ label, folder, recordId, claimDescription, value, onChange, onOfflineCapture }: Props) {
@@ -29,10 +32,12 @@ export default function PhotoCaptureField({ label, folder, recordId, claimDescri
 
     const exif = await readExifSignals(file)
 
+    const exifPayload = { exifDate: exif.dateTaken ?? undefined, exifHasData: exif.hasExif, exifSoftware: exif.software ?? undefined, exifCamera: [exif.make, exif.model].filter(Boolean).join(' ') || undefined }
+
     if (!navigator.onLine) {
       // No connection right now — hand the raw file to the offline queue
       // instead of losing it; a background sync uploads it later.
-      onOfflineCapture?.(file, label)
+      onOfflineCapture?.(file, label, exifPayload)
       setBusy(false)
       return
     }
@@ -41,7 +46,7 @@ export default function PhotoCaptureField({ label, folder, recordId, claimDescri
     if (error || !data) {
       // Upload failed (likely a flaky connection mid-upload) — fall back to
       // the offline queue rather than surfacing a dead end.
-      onOfflineCapture?.(file, label)
+      onOfflineCapture?.(file, label, exifPayload)
       setBusy(false)
       return
     }

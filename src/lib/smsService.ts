@@ -60,6 +60,17 @@ function normalizeMsisdn(raw: string): string {
   return digits
 }
 
+/**
+ * Afrosoft echoes numbers back in its own format -- it accepts
+ * "263780086176" and reports it as "+263780086176". Comparing the sent and
+ * returned strings directly marks genuinely delivered messages as failed,
+ * so both sides are reduced to the last 9 digits (the subscriber number,
+ * which is stable across +263 / 263 / 0 prefixes) before matching.
+ */
+function msisdnKey(raw: string): string {
+  return raw.replace(/\D/g, '').slice(-9)
+}
+
 interface AfrosoftResponse {
   status?: { 'error-code'?: string; 'error-status'?: string; 'error-description'?: string }
   'sms-response-details'?: Array<{
@@ -127,32 +138,35 @@ export async function sendBulkSms(numbers: string[], message: string): Promise<B
 
   const result = await callAfrosoft(numbers, message, cfg)
   if (!result.ok) {
-    numbers.forEach(n => logSmsLocally(n, message, 'failed'))
+    numbers.forEach(n => logSmsLocally(n, message, 'failed', result.error))
     return { sent: 0, failed: numbers.length, results: numbers.map(phone => ({ phone, result: { success: false, error: result.error } })) }
   }
 
   const errorCode = result.data.status?.['error-code']
   const detail = result.data['sms-response-details']?.[0]
-  const sentIds = new Map((detail?.['sent-sms-details'] ?? []).map(s => [s['mobile-no'], s['message-id']]))
+  const sentIds = new Map((detail?.['sent-sms-details'] ?? []).map(s => [msisdnKey(s['mobile-no'] ?? ''), s['message-id']]))
   const failedReasons = new Map(
-    (detail?.['failed-sms-details'] ?? []).flatMap(f => f.reasons ?? []).map(r => [r['mobile-no'], r['failed-reason']]),
+    (detail?.['failed-sms-details'] ?? []).flatMap(f => f.reasons ?? []).map(r => [msisdnKey(r['mobile-no'] ?? ''), r['failed-reason']]),
   )
 
   if (errorCode !== '000' && sentIds.size === 0) {
     const reason = result.data.status?.['error-description'] || `Afrosoft error ${errorCode ?? 'unknown'}`
-    numbers.forEach(n => logSmsLocally(n, message, 'failed'))
+    numbers.forEach(n => logSmsLocally(n, message, 'failed', reason))
     return { sent: 0, failed: numbers.length, results: numbers.map(phone => ({ phone, result: { success: false, error: reason } })) }
   }
 
   const results = numbers.map(phone => {
-    const norm = normalizeMsisdn(phone)
-    const success = sentIds.has(norm)
-    logSmsLocally(phone, message, success ? 'sent' : 'failed')
+    const key = msisdnKey(phone)
+    const success = sentIds.has(key)
+    const error = success
+      ? undefined
+      : failedReasons.get(key)
+        ?? result.data.status?.['error-description']
+        ?? 'Afrosoft accepted the request but did not confirm this number as sent.'
+    logSmsLocally(phone, message, success ? 'sent' : 'failed', error)
     return {
       phone,
-      result: success
-        ? { success: true, messageId: sentIds.get(norm) }
-        : { success: false, error: failedReasons.get(norm) ?? 'Not confirmed sent by Afrosoft' },
+      result: success ? { success: true, messageId: sentIds.get(key) } : { success: false, error },
     }
   })
 
@@ -172,13 +186,16 @@ export interface SmsLogEntry {
   to: string
   message: string
   status: 'sent' | 'failed' | 'simulated'
+  /** Why it failed, straight from the gateway where it said so — a log
+   *  that only says "failed" gives nobody anything to act on. */
+  error?: string
   ts: string
 }
 
-function logSmsLocally(to: string, message: string, status: SmsLogEntry['status']) {
+function logSmsLocally(to: string, message: string, status: SmsLogEntry['status'], error?: string) {
   try {
     const log: SmsLogEntry[] = JSON.parse(localStorage.getItem(LOG_KEY) ?? '[]')
-    log.unshift({ id: `sms_${Date.now()}`, to, message, status, ts: new Date().toISOString() })
+    log.unshift({ id: `sms_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, to, message, status, error, ts: new Date().toISOString() })
     localStorage.setItem(LOG_KEY, JSON.stringify(log.slice(0, 200)))
   } catch { /**/ }
 }

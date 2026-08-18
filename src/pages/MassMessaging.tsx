@@ -240,14 +240,17 @@ export default function MassMessaging({ showToast }: Props) {
             <div className="empty-state">No SMS records yet.</div>
           ) : (
             <table className="table">
-              <thead><tr><th>Time</th><th>To</th><th>Message</th><th>Status</th></tr></thead>
+              <thead><tr><th>Time</th><th>To</th><th>Message</th><th>Status</th><th>Reason</th></tr></thead>
               <tbody>
                 {log.map(entry => (
                   <tr key={entry.id}>
                     <td className="mono" style={{ whiteSpace: 'nowrap' }}>{new Date(entry.ts).toLocaleString('en-GB')}</td>
                     <td>{entry.to}</td>
-                    <td style={{ maxWidth: 300 }}><span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>{entry.message}</span></td>
+                    <td style={{ maxWidth: 260 }}><span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>{entry.message}</span></td>
                     <td><span className={`pill pill-${entry.status === 'sent' ? 'active' : entry.status === 'failed' ? 'lapsed' : 'pending'}`}>{entry.status}</span></td>
+                    <td style={{ maxWidth: 280, fontSize: 12, color: entry.error ? 'var(--danger)' : 'var(--muted)' }}>
+                      {entry.error ?? (entry.status === 'sent' ? 'Delivered to gateway' : '—')}
+                    </td>
                   </tr>
                 ))}
               </tbody>

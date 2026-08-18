@@ -1,6 +1,7 @@
 import { supabase } from './supabase'
 import { health } from './health'
 import { localStore } from './localStore'
+import { cacheGet, cacheSet } from './offlineCache'
 import { hammingDistance, DUPLICATE_THRESHOLD } from './photoHash'
 import type {
   AppUser, Client, Product, Policy, Claim, Payment,
@@ -354,14 +355,25 @@ const REMINDER_SELECT = `
 
 // ── POLICIES ──────────────────────────────────────────────────────
 export const policies = {
+  // Falls back to a real read-through cache (offlineCache.ts), not
+  // localStore's demo-seeded mock data — an assessor offline on a farm
+  // visit must see their real assigned policies (or a clear "no cached
+  // data yet" empty state), never a fake policy that looks real enough to
+  // record a genuine site visit against.
   async list() {
     const { ok, data } = await sb('policies', 'read',
       () => supabase.from('policies').select(POLICY_SELECT).order('created_at', { ascending: false }),
       d => Array.isArray(d),
     )
-    if (ok && data) return { data: (data as unknown[]).map(toPolicy), error: null }
+    if (ok && data) {
+      const mapped = (data as unknown[]).map(toPolicy)
+      cacheSet('policies', mapped)
+      return { data: mapped, error: null }
+    }
+    const cached = cacheGet<Policy>('policies')
+    if (cached) return { data: cached.data, error: null }
     local('policies', 'read')
-    return { data: localStore.policies.list(), error: null }
+    return { data: [], error: 'Could not load policies — connect to the internet at least once to cache them for offline use.' }
   },
 
   async get(id: string) {
@@ -427,19 +439,26 @@ export const policies = {
 
 // ── CLIENTS ───────────────────────────────────────────────────────
 export const clients = {
+  // See policies.list() above — falls back to a real cache, not
+  // localStore's demo-seeded mock data, so offline lookups (e.g. matching
+  // a farm visit to the right grower by phone/ID) never surface a fake
+  // client record.
   async list() {
     const { ok, data } = await sb('clients', 'read',
       () => supabase.from('clients').select('*, policies(count)').order('created_at', { ascending: false }),
       d => Array.isArray(d),
     )
-    if (ok && data) return {
-      data: (data as Record<string, unknown>[]).map(r =>
+    if (ok && data) {
+      const mapped = (data as Record<string, unknown>[]).map(r =>
         toClient({ ...r, policy_count: (r.policies as {count:number}[])?.[0]?.count ?? 0 })
-      ),
-      error: null,
+      )
+      cacheSet('clients', mapped)
+      return { data: mapped, error: null }
     }
+    const cached = cacheGet<Client>('clients')
+    if (cached) return { data: cached.data, error: null }
     local('clients', 'read')
-    return { data: localStore.clients.list(), error: null }
+    return { data: [], error: 'Could not load clients — connect to the internet at least once to cache them for offline use.' }
   },
 
   async get(id: string) {
@@ -506,14 +525,24 @@ export const clients = {
 
 // ── PRODUCTS ──────────────────────────────────────────────────────
 export const products = {
+  // See policies.list() above — falls back to a real cache, not
+  // localStore's demo-seeded mock data, so an offline category lookup
+  // (e.g. deciding whether a policy is agriculture or vehicle) never uses
+  // fake product data.
   async list() {
     const { ok, data } = await sb('products', 'read',
       () => supabase.from('products').select('*').order('name'),
       d => Array.isArray(d),
     )
-    if (ok && data) return { data: (data as Record<string,unknown>[]).map(toProduct), error: null }
+    if (ok && data) {
+      const mapped = (data as Record<string,unknown>[]).map(toProduct)
+      cacheSet('products', mapped)
+      return { data: mapped, error: null }
+    }
+    const cached = cacheGet<Product>('products')
+    if (cached) return { data: cached.data, error: null }
     local('products', 'read')
-    return { data: localStore.products.list(), error: null }
+    return { data: [], error: 'Could not load products — connect to the internet at least once to cache them for offline use.' }
   },
 
   /**

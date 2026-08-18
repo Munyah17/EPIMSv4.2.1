@@ -15,6 +15,7 @@ export interface PendingOfflinePhoto {
   base64: string
   mediaType: string
   fileName: string
+  exifDate?: string
   capturedAt: string
 }
 
@@ -82,7 +83,7 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
   const [farmerSignature, setFarmerSignature] = useState<string | undefined>()
   const [assessorSignature, setAssessorSignature] = useState<string | undefined>()
   const [farmerSelfie, setFarmerSelfie] = useState<AssessmentPhoto | undefined>()
-  const [offlinePending, setOfflinePending] = useState<{ label: string; file: File }[]>([])
+  const [offlinePending, setOfflinePending] = useState<{ label: string; file: File; exifDate?: string }[]>([])
   const [showFraudNotice, setShowFraudNotice] = useState(false)
 
   // Stable draft id so uploaded photos land in one folder before the claim's
@@ -122,7 +123,7 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
     setGpsBusy(true)
     const coords = await getCurrentCoordinates()
     setGpsBusy(false)
-    if (!coords) { showToast?.('warning', 'Could not get GPS coordinates; enter them manually if needed.'); return }
+    if (!coords) { showToast?.('warning', 'Could not get a GPS fix — check location permission and try again (this can take longer with a weak signal).'); return }
     setGpsLat(coords.lat)
     setGpsLng(coords.lng)
   }
@@ -136,8 +137,8 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
     setPhotos(prev => { const next = { ...prev }; delete next[label]; return next })
   }
 
-  const handleOfflineCapture = (file: File, label: string) => {
-    setOfflinePending(prev => [...prev, { label, file }])
+  const handleOfflineCapture = (file: File, label: string, exif?: { exifDate?: string }) => {
+    setOfflinePending(prev => [...prev, { label, file, exifDate: exif?.exifDate }])
     showToast?.('warning', `No connection: "${label}" saved on this device and will upload automatically once you're back online.`)
   }
 
@@ -225,8 +226,8 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
       const uploadedPhotos = Object.values(photos).filter((p): p is AssessmentPhoto => !!p)
       if (farmerSelfie) uploadedPhotos.push(farmerSelfie)
 
-      const offlinePhotos: PendingOfflinePhoto[] = await Promise.all(offlinePending.map(async ({ label, file }) => ({
-        label, base64: await fileToBase64(file), mediaType: file.type, fileName: file.name, capturedAt: new Date().toISOString(),
+      const offlinePhotos: PendingOfflinePhoto[] = await Promise.all(offlinePending.map(async ({ label, file, exifDate }) => ({
+        label, base64: await fileToBase64(file), mediaType: file.type, fileName: file.name, exifDate, capturedAt: new Date().toISOString(),
       })))
 
       await onSave(claim, {

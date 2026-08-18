@@ -52,7 +52,7 @@ export default function PolicyAssessmentModal({ policyId, policyNumber, subjectT
   const [gpsBusy, setGpsBusy] = useState(false)
   const [photos, setPhotos] = useState<Record<string, AssessmentPhoto | undefined>>({})
   const [extraPhotoLabels, setExtraPhotoLabels] = useState<string[]>([])
-  const [offlinePending, setOfflinePending] = useState<{ label: string; file: File }[]>([])
+  const [offlinePending, setOfflinePending] = useState<{ label: string; file: File; exifDate?: string }[]>([])
   const [farmerSignature, setFarmerSignature] = useState<string | undefined>()
   const [assessorSignature, setAssessorSignature] = useState<string | undefined>()
   const [submitting, setSubmitting] = useState(false)
@@ -89,7 +89,7 @@ export default function PolicyAssessmentModal({ policyId, policyNumber, subjectT
     setGpsBusy(true)
     const coords = await getCurrentCoordinates()
     setGpsBusy(false)
-    if (!coords) { showToast('warning', 'Could not get GPS coordinates; enter them manually if needed.'); return }
+    if (!coords) { showToast('warning', 'Could not get a GPS fix — check location permission and try again (this can take longer with a weak signal).'); return }
     setGpsLat(coords.lat)
     setGpsLng(coords.lng)
     // Also saves onto the policy itself, so the location is on record even
@@ -97,8 +97,8 @@ export default function PolicyAssessmentModal({ policyId, policyNumber, subjectT
     void db.policies.update(policyId, { gpsLat: coords.lat, gpsLng: coords.lng })
   }
 
-  const handleOfflineCapture = (file: File, label: string) => {
-    setOfflinePending(prev => [...prev, { label, file }])
+  const handleOfflineCapture = (file: File, label: string, exif?: { exifDate?: string }) => {
+    setOfflinePending(prev => [...prev, { label, file, exifDate: exif?.exifDate }])
     showToast('warning', 'No connection: photo saved on this device and will upload once you\'re back online.')
   }
 
@@ -117,8 +117,8 @@ export default function PolicyAssessmentModal({ policyId, policyNumber, subjectT
     }
 
     if (!navigator.onLine || offlinePending.length > 0) {
-      const pendingPhotos = await Promise.all(offlinePending.map(async ({ label, file }) => ({
-        label, base64: await fileToBase64(file), mediaType: file.type, fileName: file.name, capturedAt: new Date().toISOString(),
+      const pendingPhotos = await Promise.all(offlinePending.map(async ({ label, file, exifDate }) => ({
+        label, base64: await fileToBase64(file), mediaType: file.type, fileName: file.name, exifDate, capturedAt: new Date().toISOString(),
       })))
       queueAssessment('policy', policyId, { ...formData, _alreadyUploadedPhotos: uploadedPhotos }, pendingPhotos)
       showToast('success', 'Pre-loss assessment saved on this device; it will sync automatically once you\'re back online.')

@@ -12,6 +12,9 @@
  */
 import { db } from './db'
 import { uploadDocument } from './storage'
+import { analyzePhotoForFraud } from './photoAnalysis'
+import { computePerceptualHash } from './photoHash'
+import { checkAndRecordPhotoDuplicates } from './duplicatePhotoCheck'
 import type { AssessmentPhoto } from '../types'
 
 const QUEUE_KEY = 'tqfy_offline_assessment_queue'
@@ -70,11 +73,33 @@ async function flushOne(item: QueuedAssessment): Promise<boolean> {
     const folder = item.kind === 'claim' ? 'claims' : 'policies'
     const { data, error } = await uploadDocument(folder, item.recordId, file)
     if (error || !data) return false // still offline or upload failed — try again next sync pass
-    uploaded.push({ path: data.path, label: p.label, exifDate: p.exifDate, capturedAt: p.capturedAt })
+
+    // Mirror what PhotoCaptureField does for an online capture — an
+    // offline-captured photo must get the same AI fraud check and
+    // duplicate-photo hash once it finally has connectivity to run them,
+    // not silently skip fraud coverage forever just because it was taken
+    // somewhere with poor signal.
+    let visibleDateStamp: string | undefined
+    let aiNote: string | undefined
+    let aiFlagged = false
+    try {
+      const result = await analyzePhotoForFraud(p.base64, p.mediaType, p.label)
+      if (!result.simulated) {
+        visibleDateStamp = result.visibleDateStamp ?? undefined
+        aiNote = result.note
+        aiFlagged = !!result.flagged
+      }
+    } catch { /* AI check is best-effort — never block sync on it */ }
+    const phash = await computePerceptualHash(file)
+
+    uploaded.push({
+      path: data.path, label: p.label, exifDate: p.exifDate, capturedAt: p.capturedAt,
+      visibleDateStamp, aiNote, aiFlagged, phash: phash ?? undefined,
+    })
   }
 
   if (item.kind === 'claim') {
-    const { error } = await db.claimAssessments.create({
+    const { data, error } = await db.claimAssessments.create({
       claimId: item.recordId,
       assessorId: (item.formData.assessorId as string) ?? '',
       descriptionOfLoss: (item.formData.descriptionOfLoss as string) ?? '',
@@ -92,9 +117,13 @@ async function flushOne(item: QueuedAssessment): Promise<boolean> {
       submittedAt: new Date().toISOString(),
       syncStatus: 'synced',
     })
-    if (error) return false
+    if (error || !data) return false
+    // Same duplicate/reused-photo check the online submit path runs
+    // immediately — an offline-captured photo must still get indexed and
+    // checked against everything else once it finally uploads.
+    void checkAndRecordPhotoDuplicates(uploaded, 'claim', item.recordId, data.claimNumber || item.recordId)
   } else {
-    const { error } = await db.policyAssessments.create({
+    const { data, error } = await db.policyAssessments.create({
       policyId: item.recordId,
       assessorId: (item.formData.assessorId as string) ?? '',
       subjectType: (item.formData.subjectType as 'agriculture' | 'vehicle') ?? 'agriculture',
@@ -114,7 +143,8 @@ async function flushOne(item: QueuedAssessment): Promise<boolean> {
       assessorSignature: item.formData.assessorSignature as string | undefined,
       syncStatus: 'synced',
     })
-    if (error) return false
+    if (error || !data) return false
+    void checkAndRecordPhotoDuplicates(uploaded, 'policy', item.recordId, data.policyNumber || item.recordId)
   }
   return true
 }

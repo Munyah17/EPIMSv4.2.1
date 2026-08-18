@@ -39,7 +39,7 @@ export default function AgricultureAssessmentModal({ claimId, claimNumber, claim
   const [assessorSignature, setAssessorSignature] = useState<string | undefined>()
   const [farmerSelfie, setFarmerSelfie] = useState<AssessmentPhoto | undefined>()
   const [submitting, setSubmitting] = useState(false)
-  const [offlinePending, setOfflinePending] = useState<{ label: string; file: File }[]>([])
+  const [offlinePending, setOfflinePending] = useState<{ label: string; file: File; exifDate?: string }[]>([])
 
   const allSlots = [...PHOTO_SLOTS, ...extraPhotoLabels]
   const photoCount = Object.values(photos).filter(Boolean).length + offlinePending.length
@@ -49,7 +49,7 @@ export default function AgricultureAssessmentModal({ claimId, claimNumber, claim
     setGpsBusy(true)
     const coords = await getCurrentCoordinates()
     setGpsBusy(false)
-    if (!coords) { showToast('warning', 'Could not get GPS coordinates; enter them manually if needed.'); return }
+    if (!coords) { showToast('warning', 'Could not get a GPS fix — check location permission and try again (this can take longer with a weak signal).'); return }
     setGpsLat(coords.lat)
     setGpsLng(coords.lng)
   }
@@ -63,8 +63,8 @@ export default function AgricultureAssessmentModal({ claimId, claimNumber, claim
     setPhotos(prev => { const next = { ...prev }; delete next[label]; return next })
   }
 
-  const handleOfflineCapture = (file: File, label: string) => {
-    setOfflinePending(prev => [...prev, { label, file }])
+  const handleOfflineCapture = (file: File, label: string, exif?: { exifDate?: string }) => {
+    setOfflinePending(prev => [...prev, { label, file, exifDate: exif?.exifDate }])
     showToast('warning', `No connection: "${label}" saved on this device and will upload automatically once you're back online.`)
   }
 
@@ -79,8 +79,8 @@ export default function AgricultureAssessmentModal({ claimId, claimNumber, claim
       // Whole assessment goes into the offline queue together — some
       // photos may already be uploaded (online ones), the rest travel as
       // raw files and get uploaded when the queue flushes.
-      const pendingPhotos = await Promise.all(offlinePending.map(async ({ label, file }) => ({
-        label, base64: await fileToBase64(file), mediaType: file.type, fileName: file.name, capturedAt: new Date().toISOString(),
+      const pendingPhotos = await Promise.all(offlinePending.map(async ({ label, file, exifDate }) => ({
+        label, base64: await fileToBase64(file), mediaType: file.type, fileName: file.name, exifDate, capturedAt: new Date().toISOString(),
       })))
       queueAssessment('claim', claimId, {
         assessorId: user.id, descriptionOfLoss, assessorComments, farmerStatement,
