@@ -4,6 +4,7 @@ import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
 import { exportPolicyReport, getPolicyReportPdfBase64 } from '../lib/exportUtils'
+import { notifyPolicyRegistered } from '../lib/signupNotifications'
 import { sendSystemEmail } from '../lib/mailService'
 import { MAILBOXES } from '../lib/mailboxes'
 import { useAuth } from '../contexts/AuthContext'
@@ -113,6 +114,10 @@ export default function Policies({ showToast, initialCategory }: Props) {
     // Best-effort — a failed report email shouldn't block policy creation
     // (already succeeded above), just show a heads-up if it doesn't go out.
     const { client, category } = await getReportContext(data)
+
+    // Tell the new client they're covered, and the office that a policy
+    // landed. Never awaited: the policy already exists either way.
+    if (client) void notifyPolicyRegistered(data, client)
     if (category !== 'funeral' && client?.email) {
       try {
         const attachmentBase64 = await getPolicyReportPdfBase64(data, client, category)
