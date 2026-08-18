@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS public.checkout_sessions (
   amount              NUMERIC(10,2) NOT NULL,
   product_id          UUID NOT NULL REFERENCES public.products(id),
   client_name         TEXT NOT NULL,
-  client_email        TEXT,
+  client_email        TEXT NOT NULL,
   client_phone        TEXT NOT NULL,
   client_national_id  TEXT NOT NULL,
   client_dob          DATE,

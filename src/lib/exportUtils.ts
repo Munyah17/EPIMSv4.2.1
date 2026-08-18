@@ -97,15 +97,29 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   // configured (Settings -> Notifications -> Company Details). A wrong
   // address/phone on an official document is worse than an empty one, so
   // nothing here is guessed or hardcoded.
-  doc.setFontSize(8)
-  doc.setTextColor(...TEXT)
   let ry = 11
+  if (cfg.companyAddress || cfg.companyPhone || cfg.companyEmail) {
+    doc.setFontSize(8)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(...TEXT)
+    doc.text('Head Office:', pageWidth - 14, ry, { align: 'right' })
+    doc.setFont('helvetica', 'normal')
+    ry += 4
+  }
   if (cfg.companyAddress) {
     const addrLines = doc.splitTextToSize(cfg.companyAddress, 70)
     addrLines.forEach((line: string) => { doc.text(line, pageWidth - 14, ry, { align: 'right' }); ry += 4 })
   }
-  if (cfg.companyPhone) { doc.text(`Phone: ${cfg.companyPhone}`, pageWidth - 14, ry + 3, { align: 'right' }); ry += 4 }
-  if (cfg.companyEmail) { doc.text(`Email: ${cfg.companyEmail}`, pageWidth - 14, ry + 3, { align: 'right' }); ry += 4 }
+  if (cfg.companyPhone) {
+    // One number per line rather than width-wrapping the joined string --
+    // a wrap can land mid-number ("+263 780 / 086 175"), which looks
+    // broken on an official document.
+    cfg.companyPhone.split('/').map(p => p.trim()).filter(Boolean).forEach((number, i) => {
+      doc.text(i === 0 ? `Phone: ${number}` : number, pageWidth - 14, ry, { align: 'right' })
+      ry += 4
+    })
+  }
+  if (cfg.companyEmail) { doc.text(`Email: ${cfg.companyEmail}`, pageWidth - 14, ry, { align: 'right' }); ry += 4 }
 
   let y = 28
   doc.setFontSize(9.5)

@@ -19,9 +19,9 @@ export interface NotifSettings {
    *  assessment, final decision) — set once by Super Admin, on top of the
    *  client and whichever staff member is picking the claim up next. */
   superAdminPhone: string
-  /** Shown in the Policy Report/Certificate PDF header — left blank rather
-   *  than guessed, since a wrong address/phone on an official document is
-   *  worse than an empty one. */
+  /** Shown in the Policy Report/Certificate PDF header (Head Office block)
+   *  — confirmed real values, editable from Settings -> Notifications if
+   *  the office ever moves. */
   companyAddress: string
   companyPhone: string
   companyEmail: string
@@ -43,8 +43,8 @@ export const DEFAULT_NOTIF_SETTINGS: NotifSettings = {
   smsEnabled: false,
   signature: 'Regards,\nMotions Microinsurance\nwww.motions.co.zw',
   superAdminPhone: '',
-  companyAddress: '',
-  companyPhone: '',
+  companyAddress: '24 Midlothian Avenue, Eastlea, Harare, Zimbabwe',
+  companyPhone: '+263 780 086 175 / +263 780 086 176 / +263 780 086 178',
   companyEmail: 'info@motions.co.zw',
 }
 
