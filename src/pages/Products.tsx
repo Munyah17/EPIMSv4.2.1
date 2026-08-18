@@ -66,13 +66,13 @@ export default function Products({ showToast }: Props) {
       ) : (
         <div className="products-grid">
           {products.map(p => (
-            <div key={p.id} className={`product-card${!p.active ? ' inactive' : ''}`}>
+            <div key={p.id} className={`product-card ${p.active ? 'active' : 'inactive'}`}>
               <div className={`product-card-header product-card-header-${p.category}`}>
                 <div>
                   <div className="product-name">{p.name}</div>
                   <div className="product-code">{p.code}</div>
                 </div>
-                <span className={`pill ${p.active ? 'pill-active' : 'pill-cancelled'}`}>{p.active ? 'Active' : 'Inactive'}</span>
+                <span className={`pill ${p.active ? 'pill-product-active' : 'pill-product-inactive'}`}>{p.active ? 'Active' : 'Inactive'}</span>
               </div>
               <div className="product-stats">
                 <div className="product-stat">
@@ -101,7 +101,14 @@ export default function Products({ showToast }: Props) {
               {hasPermission('products.edit') && (
                 <div className="product-actions">
                   <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setEditProduct(p); setShowAdd(true) }}>Edit</button>
-                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => toggleActive(p.id)}>
+                  {/* The button is coloured by what it does, not by the
+                      product's current state: deactivating is the
+                      destructive action, activating is the safe one. */}
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${p.active ? 'btn-danger' : 'btn-primary'}`}
+                    onClick={() => toggleActive(p.id)}
+                  >
                     {p.active ? 'Deactivate' : 'Activate'}
                   </button>
                 </div>

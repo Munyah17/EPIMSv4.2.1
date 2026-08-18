@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import type { ToastMessage, Policy, PolicyStatus, CautionFlag } from '../types'
+import type { ToastMessage, Policy, PolicyStatus, CautionFlag, Client } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
@@ -30,6 +30,8 @@ export default function Policies({ showToast }: Props) {
   const [editPolicy, setEditPolicy] = useState<Policy | null>(null)
   const [payPolicy, setPayPolicy] = useState<Policy | null>(null)
   const [cautionFlags, setCautionFlags] = useState<CautionFlag[]>([])
+  const [clients, setClients] = useState<Client[]>([])
+  const [suggestOpen, setSuggestOpen] = useState(false)
 
   useEffect(() => {
     db.policies.list().then(({ data, error }) => {
@@ -38,17 +40,41 @@ export default function Policies({ showToast }: Props) {
       setLoading(false)
     })
     db.cautionFlags.listActive().then(({ data }) => setCautionFlags(data))
+    db.clients.list().then(({ data }) => { if (data) setClients(data) })
   }, [showToast])
 
   const products = [...new Set(policies.map(p => p.productName))]
+  const clientById = new Map(clients.map(c => [c.id, c]))
+
+  // Search matches policy number, client name, grower number, insurer,
+  // product name, and the client's phone/national ID — grower number is
+  // ranked first since it's the field agriculture staff look up by most.
+  const q = search.trim().toLowerCase()
+  const matchScore = (p: Policy): number => {
+    if (!q) return 0
+    const client = clientById.get(p.clientId)
+    const grower = (p.growerNumber ?? '').toLowerCase()
+    if (grower.startsWith(q)) return 0
+    if (grower.includes(q)) return 1
+    const fields = [p.policyNumber, p.clientName, p.insurer, p.productName, client?.phone, client?.nationalId]
+      .filter(Boolean).map(v => String(v).toLowerCase())
+    if (fields.some(f => f.startsWith(q))) return 2
+    if (fields.some(f => f.includes(q))) return 3
+    return -1
+  }
 
   const filtered = policies.filter(p => {
-    const matchSearch = p.policyNumber.toLowerCase().includes(search.toLowerCase()) ||
-      p.clientName.toLowerCase().includes(search.toLowerCase())
+    const matchSearch = matchScore(p) >= 0
     const matchStatus = statusFilter === 'all' || p.status === statusFilter
     const matchProduct = productFilter === 'all' || p.productName === productFilter
     return matchSearch && matchStatus && matchProduct
   })
+
+  const suggestions = q.length < 2 ? [] : [...policies]
+    .map(p => ({ p, score: matchScore(p) }))
+    .filter(r => r.score >= 0)
+    .sort((a, b) => a.score - b.score)
+    .slice(0, 6)
 
   const statusCounts = {
     all: policies.length,
@@ -148,12 +174,35 @@ export default function Policies({ showToast }: Props) {
     <div className="panel">
       <div className="panel-toolbar">
         <div className="filter-row">
-          <input
-            className="search-input"
-            placeholder="Search policy number or client…"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
+          <div style={{ position: 'relative', flex: 1, minWidth: 220 }}>
+            <input
+              className="search-input"
+              placeholder="Search policy no., client, phone, ID, grower no., insurer, product…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              onFocus={() => setSuggestOpen(true)}
+              onBlur={() => setTimeout(() => setSuggestOpen(false), 150)}
+              style={{ width: '100%' }}
+            />
+            {suggestOpen && suggestions.length > 0 && (
+              <div className="phone-input-dropdown" style={{ position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, width: 'auto', maxWidth: 'none', zIndex: 20 }}>
+                {suggestions.map(({ p }) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    className="phone-input-option"
+                    style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', width: '100%', textAlign: 'left' }}
+                    onMouseDown={() => { setViewPolicy(p); setSuggestOpen(false) }}
+                  >
+                    <span><strong className="mono">{p.policyNumber}</strong>&nbsp;· {p.clientName}</span>
+                    <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+                      {p.growerNumber ? `Grower No. ${p.growerNumber} · ` : ''}{p.productName} · {p.status.replace('_', ' ')}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <select className="filter-select" value={statusFilter} onChange={e => setStatusFilter(e.target.value as PolicyStatus | 'all')}>
             <option value="all">All Status ({statusCounts.all})</option>
             <option value="active">Active ({statusCounts.active})</option>
