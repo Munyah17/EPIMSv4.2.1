@@ -1,8 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
+import { callGroq, extractJson } from './_lib/groq.js'
 
 /**
- * Real AI fraud scoring via Groq (llama-3.3-70b-versatile) — replaces the
+ * Real AI fraud scoring via Groq — replaces the
  * hardcoded `Math.floor(Math.random() * 30)` that used to ship with every
  * submitted claim regardless of its actual content. Groq is the single AI
  * provider across the system, so lead scoring, claim fraud scoring and
@@ -117,26 +118,12 @@ Description provided by claimant: "${body.description}"${preLossBlock}${postLoss
 Respond with ONLY a JSON object, no markdown fences, no explanation outside the JSON: {"score": <integer 0-100>, "signals": [<0-4 short strings naming specific red flags actually present, empty array if none>], "insights": [<0-4 short, specific observations a human reviewer should weigh — e.g. a pre-loss mismatch, a farmer/assessor inconsistency, or "no concerns found" if genuinely clean; empty array only if no context was given to analyze>], "reasoning": "<one sentence, under 25 words>"}`
 
   try {
-    const apiRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.2,
-        max_tokens: 500,
-        response_format: { type: 'json_object' },
-      }),
-    })
-    if (!apiRes.ok) {
-      const text = await apiRes.text().catch(() => '')
-      return res.status(502).json({ error: `AI service error (${apiRes.status}): ${text}` })
+    const result = await callGroq(apiKey, [{ role: 'user', content: prompt }], { maxTokens: 600 })
+    if (!result.ok) {
+      return res.status(502).json({ error: `AI service error (${result.status}): ${result.error}` })
     }
-    const data = await apiRes.json()
-    const content = data?.choices?.[0]?.message?.content
-    if (!content) return res.status(502).json({ error: 'AI service returned no content.' })
-
-    const parsed = JSON.parse(content)
+    const parsed = extractJson<{ score?: unknown; signals?: unknown; insights?: unknown; reasoning?: unknown }>(result.content)
+    if (!parsed) return res.status(502).json({ error: 'AI service returned no usable result.' })
     const score = Math.max(0, Math.min(100, Math.round(Number(parsed.score) || 0)))
     const signals = Array.isArray(parsed.signals) ? parsed.signals.map(String).slice(0, 4) : []
     const insights = Array.isArray(parsed.insights) ? parsed.insights.map(String).slice(0, 4) : []

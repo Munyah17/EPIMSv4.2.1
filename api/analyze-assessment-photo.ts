@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { GROQ_VISION_MODEL, extractJson } from './_lib/groq.js'
 
 /**
  * Runs an assessment photo through Groq's vision model to help catch staged or
@@ -52,12 +53,11 @@ Look at the image and answer, as strict JSON only (no markdown fences, no other 
       method: 'POST',
       headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        // Vision-capable Groq model: this endpoint has to actually look at
-        // the photo, not just reason about its filename.
-        model: 'meta-llama/llama-4-scout-17b-16e-instruct',
-        max_tokens: 400,
+        // Vision-capable: this endpoint has to actually look at the photo,
+        // not just reason about its label.
+        model: GROQ_VISION_MODEL,
+        max_tokens: 900,
         temperature: 0.2,
-        response_format: { type: 'json_object' },
         messages: [{
           role: 'user',
           content: [
@@ -73,12 +73,10 @@ Look at the image and answer, as strict JSON only (no markdown fences, no other 
     }
     const data = await apiRes.json()
     const text = data?.choices?.[0]?.message?.content ?? '{}'
-    let parsed: { visibleDateStamp?: string | null; contentMatchesLabel?: boolean; flagged?: boolean; note?: string }
-    try {
-      parsed = JSON.parse(text)
-    } catch {
-      parsed = { flagged: false, note: 'Could not parse AI response.' }
-    }
+    const parsed = extractJson<{ visibleDateStamp?: string | null; contentMatchesLabel?: boolean; flagged?: boolean; note?: string }>(text)
+    // An unreadable answer must not block the assessment -- photo review is
+    // a second opinion alongside the EXIF checks, not a gate on submitting.
+    if (!parsed) return res.status(200).json({ simulated: true, reason: 'AI review returned no usable result.' })
     return res.status(200).json(parsed)
   } catch (e) {
     return res.status(502).json({ error: `Could not reach AI service: ${e}` })

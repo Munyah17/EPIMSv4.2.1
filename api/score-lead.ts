@@ -1,7 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { GROQ_TEXT_MODEL, extractJson } from './_lib/groq.js'
 
 /**
- * Real AI lead scoring via Groq (llama-3.3-70b-versatile). Replaces the
+ * Real AI lead scoring via Groq. Replaces the
  * hardcoded fake intentScore that used to ship with every "AI-discovered"
  * lead. Takes what a staff member actually knows about a lead and returns
  * a genuine 0-100 intent score plus one-line reasoning.
@@ -43,11 +44,10 @@ Respond with ONLY a JSON object, no markdown, no explanation outside the JSON: {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
+        model: GROQ_TEXT_MODEL,
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.3,
-        max_tokens: 120,
-        response_format: { type: 'json_object' },
+        max_tokens: 300,
       }),
     })
     if (!apiRes.ok) {
@@ -58,7 +58,8 @@ Respond with ONLY a JSON object, no markdown, no explanation outside the JSON: {
     const content = data?.choices?.[0]?.message?.content
     if (!content) return res.status(502).json({ error: 'Groq returned no content.' })
 
-    const parsed = JSON.parse(content)
+    const parsed = extractJson<{ score?: unknown; reasoning?: unknown }>(content)
+    if (!parsed) return res.status(502).json({ error: `Groq returned no usable result.` })
     const score = Math.max(0, Math.min(100, Math.round(Number(parsed.score) || 50)))
     return res.status(200).json({ score, reasoning: String(parsed.reasoning || '').slice(0, 200) })
   } catch (e) {

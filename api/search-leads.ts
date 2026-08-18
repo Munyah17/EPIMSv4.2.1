@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { GROQ_TEXT_MODEL, extractJson } from './_lib/groq.js'
 
 /**
  * AI-powered lead search — run on demand from Leads & Marketing (the "Run
@@ -62,7 +63,7 @@ Respond with ONLY a JSON array, no markdown fences, no explanation, one entry pe
     method: 'POST',
     headers: { 'Authorization': `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'llama-3.3-70b-versatile',
+      model: GROQ_TEXT_MODEL,
       max_tokens: 1500,
       temperature: 0.3,
       messages: [{ role: 'user', content: prompt }],
@@ -72,7 +73,7 @@ Respond with ONLY a JSON array, no markdown fences, no explanation, one entry pe
   const data = await res.json()
   const text = data?.choices?.[0]?.message?.content ?? '[]'
   try {
-    const parsed = JSON.parse(text)
+    const parsed = extractJson(text)
     return Array.isArray(parsed) ? parsed : []
   } catch {
     return []
