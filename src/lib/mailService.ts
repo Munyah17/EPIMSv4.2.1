@@ -44,7 +44,7 @@ export const DEFAULT_NOTIF_SETTINGS: NotifSettings = {
   signature: 'Regards,\nMotions Microinsurance\nwww.motions.co.zw',
   superAdminPhone: '',
   companyAddress: '24 Midlothian Avenue, Eastlea, Harare, Zimbabwe',
-  companyPhone: '+263 780 086 175 / +263 780 086 176 / +263 780 086 178',
+  companyPhone: '+263 780 086 175 / +263 780 086 176 / +263 780 086 177 / +263 780 086 178',
   companyEmail: 'info@motions.co.zw',
 }
 

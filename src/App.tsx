@@ -56,9 +56,17 @@ export type ActivePanel =
 
 function AppInner() {
   const { user, loading } = useAuth()
-  const [activePanel, setActivePanel] = useState<ActivePanel>(() =>
+  const [activePanel, setActivePanelRaw] = useState<ActivePanel>(() =>
     user?.role === 'policyholder' ? 'my_policies' : 'dashboard'
   )
+  // Lets a page hand the next one a starting filter, so "View Agriculture
+  // Policies" from the Agriculture view opens Policies already narrowed to
+  // agriculture instead of showing the whole book.
+  const [panelCategory, setPanelCategory] = useState<string | undefined>(undefined)
+  const setActivePanel = useCallback((panel: ActivePanel, category?: string) => {
+    setPanelCategory(category)
+    setActivePanelRaw(panel)
+  }, [])
 
   useEffect(() => {
     void initNotifSettings()
@@ -113,8 +121,8 @@ function AppInner() {
   const renderPanel = () => {
     switch (activePanel) {
       case 'dashboard': return <Dashboard {...panelProps} />
-      case 'policies': return <Policies {...panelProps} />
-      case 'claims': return <Claims {...panelProps} />
+      case 'policies': return <Policies {...panelProps} initialCategory={panelCategory} />
+      case 'claims': return <Claims {...panelProps} initialCategory={panelCategory} />
       case 'payments': return <Payments {...panelProps} />
       case 'products': return <Products {...panelProps} />
       case 'clients': return <Clients {...panelProps} />

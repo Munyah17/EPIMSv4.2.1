@@ -11,7 +11,15 @@
  * EcoCash/Paynow gateway calls in paymentGateways.ts.
  */
 
-const SETTINGS_KEY = 'tqfy_sms_settings'
+/**
+ * Version-suffixed on purpose. Settings saved under the unsuffixed key came
+ * from an earlier gateway and carried a sender ID Afrosoft does not
+ * recognise, which merged over these defaults and made every send fail with
+ * "sender-id is invalid". A new key retires that data instead of asking each
+ * user to clear their browser storage by hand.
+ */
+const SETTINGS_KEY = 'tqfy_sms_settings_afrosoft'
+const LEGACY_SETTINGS_KEY = 'tqfy_sms_settings'
 
 export interface SmsSettings {
   apiKey: string
@@ -29,8 +37,17 @@ const DEFAULTS: SmsSettings = {
 
 export function getSmsSettings(): SmsSettings {
   try {
+    localStorage.removeItem(LEGACY_SETTINGS_KEY)
     const raw = localStorage.getItem(SETTINGS_KEY)
-    if (raw) return { ...DEFAULTS, ...JSON.parse(raw) }
+    if (!raw) return { ...DEFAULTS }
+    const stored = JSON.parse(raw) as Partial<SmsSettings>
+    // Only ever take the three fields this gateway understands, so a stray
+    // key from an older shape can't reach the request.
+    return {
+      apiKey: stored.apiKey ?? DEFAULTS.apiKey,
+      domain: stored.domain ?? DEFAULTS.domain,
+      senderId: stored.senderId ?? DEFAULTS.senderId,
+    }
   } catch { /**/ }
   return { ...DEFAULTS }
 }
@@ -80,13 +97,26 @@ interface AfrosoftResponse {
   }>
 }
 
-async function callAfrosoft(numbers: string[], message: string, cfg: SmsSettings): Promise<{ ok: true; data: AfrosoftResponse } | { ok: false; error: string }> {
+/** True when Afrosoft's complaint is specifically about the sender ID. */
+function isSenderIdRejection(data: AfrosoftResponse): boolean {
+  const texts = [
+    data.status?.['error-description'] ?? '',
+    ...(data['sms-response-details']?.[0]?.['failed-sms-details'] ?? [])
+      .flatMap(f => f.reasons ?? []).map(r => r['failed-reason'] ?? ''),
+  ]
+  return texts.some(t => /sender[-\s]?id/i.test(t))
+}
+
+async function callAfrosoft(
+  numbers: string[], message: string, cfg: SmsSettings, senderIdOverride?: string,
+): Promise<{ ok: true; data: AfrosoftResponse } | { ok: false; error: string }> {
+  const senderId = senderIdOverride !== undefined ? senderIdOverride : cfg.senderId
   const mobiles = numbers.map(normalizeMsisdn).join(',')
   const params = new URLSearchParams({
     apikey: cfg.apiKey,
     mobiles,
     sms: message,
-    ...(cfg.senderId ? { senderid: cfg.senderId } : {}),
+    ...(senderId ? { senderid: senderId } : {}),
     ...(/[^\x00-\x7F]/.test(message) ? { unicode: 'yes' } : {}),
   })
   const url = `https://${cfg.domain}/client/api/sendmessage?${params.toString()}`
@@ -136,7 +166,18 @@ export async function sendBulkSms(numbers: string[], message: string): Promise<B
     }
   }
 
-  const result = await callAfrosoft(numbers, message, cfg)
+  let result = await callAfrosoft(numbers, message, cfg)
+
+  // A sender ID Afrosoft doesn't recognise must never be the reason a
+  // message fails to go out. If that's the complaint, drop it, clear it
+  // from the saved settings so it can't bite again, and resend using the
+  // account's own default sender ID.
+  if (result.ok && cfg.senderId && isSenderIdRejection(result.data)) {
+    console.warn(`[SMS] Afrosoft rejected sender ID "${cfg.senderId}"; clearing it and resending with the account default.`)
+    saveSmsSettings({ ...cfg, senderId: '' })
+    result = await callAfrosoft(numbers, message, cfg, '')
+  }
+
   if (!result.ok) {
     numbers.forEach(n => logSmsLocally(n, message, 'failed', result.error))
     return { sent: 0, failed: numbers.length, results: numbers.map(phone => ({ phone, result: { success: false, error: result.error } })) }

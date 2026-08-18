@@ -81,6 +81,36 @@ describe('smsService', () => {
     expect(getSmsLog()[0].error).toBe('Number is not reachable')
   })
 
+  /** An unrecognised sender ID must never stop a message going out: the
+   *  service drops it, forgets it, and resends on the account default. */
+  it('retries without the sender ID when Afrosoft rejects it, and forgets the bad value', async () => {
+    saveSmsSettings({ apiKey: 'k', domain: 'sms.vas.co.zw', senderId: 'TARIQIFY' })
+    const rejected = {
+      status: { 'error-code': '002', 'error-status': 'invalid', 'error-description': 'sender-id is invalid, Must be a valid [sender-id]' },
+      'sms-response-details': [{ 'success-count': '0', 'failed-sms-details': [], 'sent-sms-details': [] }],
+    }
+    const accepted = {
+      status: { 'error-code': '000', 'error-status': 'Success', 'error-description': 'Success' },
+      'sms-response-details': [{
+        'success-count': '1', 'failed-sms-details': [],
+        'sent-sms-details': [{ 'message-id': 'msg-9', 'mobile-no': '+263777274385' }],
+      }],
+    }
+    const reply = (body: unknown) => ({ ok: true, json: async () => ({ status: 200, ok: true, body: JSON.stringify(body) }) }) as Response
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(reply(rejected))
+      .mockResolvedValueOnce(reply(accepted))
+
+    const result = await sendSms('+263777274385', 'Hello')
+
+    expect(result.success).toBe(true)
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    // The retry must not carry the rejected sender ID...
+    expect(String(fetchMock.mock.calls[1]?.[1]?.body)).not.toContain('senderid')
+    // ...and it must not be left in settings to break the next send.
+    expect(getSmsSettings().senderId).toBe('')
+  })
+
   it('reports per-number outcomes across a bulk send', async () => {
     mockGateway({
       status: { 'error-code': '000', 'error-status': 'Success', 'error-description': 'Success' },

@@ -14,9 +14,12 @@ import { checkAndRecordPhotoDuplicates } from '../lib/duplicatePhotoCheck'
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
   setActivePanel: (panel: ActivePanel) => void
+  /** Claim category to narrow to on open, set when another page sends the
+   *  user here for a specific book (e.g. Agriculture Insurance). */
+  initialCategory?: string
 }
 
-export default function Claims({ showToast }: Props) {
+export default function Claims({ showToast, initialCategory }: Props) {
   const { hasPermission } = useAuth()
   const [claims, setClaims] = useState<Claim[]>([])
   const [loading, setLoading] = useState(true)
@@ -37,7 +40,8 @@ export default function Claims({ showToast }: Props) {
     const matchSearch = c.claimNumber.toLowerCase().includes(search.toLowerCase()) ||
       c.clientName.toLowerCase().includes(search.toLowerCase())
     const matchStatus = statusFilter === 'all' || c.status === statusFilter
-    return matchSearch && matchStatus
+    const matchCategory = !initialCategory || c.category === initialCategory
+    return matchSearch && matchStatus && matchCategory
   })
 
   const counts = {

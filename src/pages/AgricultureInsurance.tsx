@@ -6,7 +6,9 @@ import { useAuth } from '../contexts/AuthContext'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
-  setActivePanel: (panel: ActivePanel) => void
+  /** Accepts an optional product category so the destination page opens
+   *  already narrowed to the agriculture book. */
+  setActivePanel: (panel: ActivePanel, category?: string) => void
 }
 
 export default function AgricultureInsurance({ showToast, setActivePanel }: Props) {
@@ -114,8 +116,8 @@ export default function AgricultureInsurance({ showToast, setActivePanel }: Prop
         <div className="card">
           <div className="card-header"><span className="card-title">Quick Links</span></div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <button type="button" className="btn btn-outline" onClick={() => setActivePanel('policies')}>🛡 View Agriculture Policies</button>
-            <button type="button" className="btn btn-outline" onClick={() => setActivePanel('claims')}>📋 View Agriculture Claims</button>
+            <button type="button" className="btn btn-outline" onClick={() => setActivePanel('policies', 'agriculture')}>🛡 View Agriculture Policies</button>
+            <button type="button" className="btn btn-outline" onClick={() => setActivePanel('claims', 'agriculture')}>📋 View Agriculture Claims</button>
             <button type="button" className="btn btn-outline" onClick={() => setActivePanel('pre_loss_assessments')}>📷 View Pre-Loss Assessments</button>
           </div>
         </div>

@@ -16,15 +16,19 @@ import OnlinePaymentModal from '../components/modals/OnlinePaymentModal'
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
   setActivePanel: (panel: ActivePanel) => void
+  /** Product category to narrow to on open, set when another page sends the
+   *  user here for a specific book (e.g. Agriculture Insurance). */
+  initialCategory?: string
 }
 
-export default function Policies({ showToast }: Props) {
+export default function Policies({ showToast, initialCategory }: Props) {
   const { hasPermission } = useAuth()
   const [policies, setPolicies] = useState<Policy[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<PolicyStatus | 'all'>('all')
   const [productFilter, setProductFilter] = useState('all')
+  const categoryFilter = initialCategory
   const [showNew, setShowNew] = useState(false)
   const [viewPolicy, setViewPolicy] = useState<Policy | null>(null)
   const [editPolicy, setEditPolicy] = useState<Policy | null>(null)
@@ -67,7 +71,8 @@ export default function Policies({ showToast }: Props) {
     const matchSearch = matchScore(p) >= 0
     const matchStatus = statusFilter === 'all' || p.status === statusFilter
     const matchProduct = productFilter === 'all' || p.productName === productFilter
-    return matchSearch && matchStatus && matchProduct
+    const matchCategory = !categoryFilter || p.productCategory === categoryFilter
+    return matchSearch && matchStatus && matchProduct && matchCategory
   })
 
   const suggestions = q.length < 2 ? [] : [...policies]
