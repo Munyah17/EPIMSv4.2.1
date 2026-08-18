@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
+import { useState, useEffect, useCallback, Suspense } from 'react'
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { startReminderEngine } from './lib/reminderEngine'
 import { initNotifSettings } from './lib/mailService'
 import { startOfflineSync } from './lib/offlineQueue'
 import { DB_FALLBACK_EVENT } from './lib/db'
+import { lazyWithRecovery } from './lib/lazyWithRecovery'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import LoginScreen from './components/Auth/LoginScreen'
 import SuperAdminLogin from './components/Auth/SuperAdminLogin'
@@ -18,34 +19,34 @@ import type { ToastMessage } from './types'
 // Route-split: each page becomes its own chunk, fetched on first visit
 // (and cached by the browser/CDN after) instead of all ~20 pages riding
 // in one bundle every user downloads just to see the login screen.
-const Dashboard = lazy(() => import('./pages/Dashboard'))
-const Policies = lazy(() => import('./pages/Policies'))
-const Claims = lazy(() => import('./pages/Claims'))
-const Payments = lazy(() => import('./pages/Payments'))
-const Products = lazy(() => import('./pages/Products'))
-const Clients = lazy(() => import('./pages/Clients'))
-const Staff = lazy(() => import('./pages/Staff'))
-const SystemAccessRoles = lazy(() => import('./pages/SystemAccessRoles'))
-const Reminders = lazy(() => import('./pages/Reminders'))
-const Reports = lazy(() => import('./pages/Reports'))
-const Leads = lazy(() => import('./pages/Leads'))
-const Email = lazy(() => import('./pages/Email'))
-const Tickets = lazy(() => import('./pages/Tickets'))
-const Fraud = lazy(() => import('./pages/Fraud'))
-const Profile = lazy(() => import('./pages/Profile'))
-const MnoIntegration = lazy(() => import('./pages/MnoIntegration'))
-const SystemHealthPage = lazy(() => import('./pages/SystemHealthPage'))
-const Settings = lazy(() => import('./pages/Settings'))
-const DeveloperApi = lazy(() => import('./pages/DeveloperApi'))
-const MassMessaging = lazy(() => import('./pages/MassMessaging'))
-const BillingReminders = lazy(() => import('./pages/BillingReminders'))
-const PreLossAssessments = lazy(() => import('./pages/PreLossAssessments'))
-const InsurerManagement = lazy(() => import('./pages/InsurerManagement'))
-const AgricultureInsurance = lazy(() => import('./pages/AgricultureInsurance'))
-const MyPolicies = lazy(() => import('./pages/policyholder/MyPolicies'))
-const MyClaims = lazy(() => import('./pages/policyholder/MyClaims'))
-const MyPayments = lazy(() => import('./pages/policyholder/MyPayments'))
-const LiveChat = lazy(() => import('./pages/LiveChat'))
+const Dashboard = lazyWithRecovery('Dashboard', () => import('./pages/Dashboard'))
+const Policies = lazyWithRecovery('Policies', () => import('./pages/Policies'))
+const Claims = lazyWithRecovery('Claims', () => import('./pages/Claims'))
+const Payments = lazyWithRecovery('Payments', () => import('./pages/Payments'))
+const Products = lazyWithRecovery('Products', () => import('./pages/Products'))
+const Clients = lazyWithRecovery('Clients', () => import('./pages/Clients'))
+const Staff = lazyWithRecovery('Staff', () => import('./pages/Staff'))
+const SystemAccessRoles = lazyWithRecovery('SystemAccessRoles', () => import('./pages/SystemAccessRoles'))
+const Reminders = lazyWithRecovery('Reminders', () => import('./pages/Reminders'))
+const Reports = lazyWithRecovery('Reports', () => import('./pages/Reports'))
+const Leads = lazyWithRecovery('Leads', () => import('./pages/Leads'))
+const Email = lazyWithRecovery('Email', () => import('./pages/Email'))
+const Tickets = lazyWithRecovery('Tickets', () => import('./pages/Tickets'))
+const Fraud = lazyWithRecovery('Fraud', () => import('./pages/Fraud'))
+const Profile = lazyWithRecovery('Profile', () => import('./pages/Profile'))
+const MnoIntegration = lazyWithRecovery('MnoIntegration', () => import('./pages/MnoIntegration'))
+const SystemHealthPage = lazyWithRecovery('SystemHealthPage', () => import('./pages/SystemHealthPage'))
+const Settings = lazyWithRecovery('Settings', () => import('./pages/Settings'))
+const DeveloperApi = lazyWithRecovery('DeveloperApi', () => import('./pages/DeveloperApi'))
+const MassMessaging = lazyWithRecovery('MassMessaging', () => import('./pages/MassMessaging'))
+const BillingReminders = lazyWithRecovery('BillingReminders', () => import('./pages/BillingReminders'))
+const PreLossAssessments = lazyWithRecovery('PreLossAssessments', () => import('./pages/PreLossAssessments'))
+const InsurerManagement = lazyWithRecovery('InsurerManagement', () => import('./pages/InsurerManagement'))
+const AgricultureInsurance = lazyWithRecovery('AgricultureInsurance', () => import('./pages/AgricultureInsurance'))
+const MyPolicies = lazyWithRecovery('MyPolicies', () => import('./pages/policyholder/MyPolicies'))
+const MyClaims = lazyWithRecovery('MyClaims', () => import('./pages/policyholder/MyClaims'))
+const MyPayments = lazyWithRecovery('MyPayments', () => import('./pages/policyholder/MyPayments'))
+const LiveChat = lazyWithRecovery('LiveChat', () => import('./pages/LiveChat'))
 
 export type ActivePanel =
   | 'dashboard' | 'policies' | 'claims' | 'payments' | 'products'

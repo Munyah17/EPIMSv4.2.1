@@ -116,11 +116,17 @@ export default function Claims({ showToast, initialCategory }: Props) {
   }
 
   const handleUpdate = async (updated: Claim, notify: () => Promise<void>) => {
-    const { data, error } = await db.claims.update(updated.id, updated)
+    const { data, error, pendingSync } = await db.claims.update(updated.id, updated)
     if (error || !data) { showToast('error', 'Failed to update claim.'); return }
     setClaims(prev => prev.map(c => c.id === data.id ? data : c))
-    showToast('success', `Claim ${data.claimNumber} updated.`)
     setReviewClaim(null)
+    if (pendingSync) {
+      // The change is only on this device, so nobody else can see it and
+      // no notification should go out as though the claim had moved.
+      showToast('warning', `Claim ${data.claimNumber} was saved on this device but has not reached the server. It will sync when the connection recovers; check with an administrator if this keeps happening.`)
+      return
+    }
+    showToast('success', `Claim ${data.claimNumber} updated.`)
     try { await notify() } catch { /**/ }
   }
 

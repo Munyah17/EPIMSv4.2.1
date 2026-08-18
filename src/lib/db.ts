@@ -838,9 +838,13 @@ export const claims = {
     const { ok, data } = await sb('claims', 'write',
       () => supabase.from('claims').update(row).eq('id', id).select(CLAIM_SELECT).single(),
     )
-    if (ok && data) return { data: toClaim(data), error: null }
+    if (ok && data) return { data: toClaim(data), error: null, pendingSync: false }
+    // Saved on this device only. Reported back rather than swallowed, so the
+    // caller can say so instead of claiming the change reached the server --
+    // announcing "updated" next to "has NOT synced" tells the user nothing
+    // they can act on.
     local('claims', 'write')
-    return { data: localStore.claims.update(id, updates), error: null }
+    return { data: localStore.claims.update(id, updates), error: null, pendingSync: true }
   },
 }
 
