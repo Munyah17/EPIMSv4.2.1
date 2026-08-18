@@ -1,29 +1,30 @@
 /**
- * SMS Service — Africa's Talking Gateway
+ * SMS Service — Afrosoft Aggregator V4 HTTP API
  *
- * Free sandbox: https://sandbox.africastalking.com
- * Production:   https://api.africastalking.com
+ * Real Afrosoft account credentials (per Afrosoft's HTTP API documentation
+ * on file). The {Domain} host is account-specific and is not published in
+ * Afrosoft's generic docs — it must be entered below once Afrosoft confirms
+ * it, same as the API key.
  *
- * To use:
- *  1. Sign up at https://africastalking.com (free)
- *  2. Create an app and get your API key
- *  3. Configure credentials in Billing & Reminders settings
+ * Calls are routed through /api/gateway-proxy (server-side) since Afrosoft's
+ * API rejects direct browser calls via CORS, same pattern used for the
+ * EcoCash/Paynow gateway calls in paymentGateways.ts.
  */
 
 const SETTINGS_KEY = 'tqfy_sms_settings'
 
 export interface SmsSettings {
   apiKey: string
-  username: string
+  /** Afrosoft account domain, e.g. "sms.afrosoft.co.zw" — provided by Afrosoft, not in their generic API docs. */
+  domain: string
+  /** Leave blank to use the default sender ID assigned to the Afrosoft account. */
   senderId: string
-  sandbox: boolean
 }
 
 const DEFAULTS: SmsSettings = {
-  apiKey: '',
-  username: 'sandbox',
-  senderId: 'TARIQIFY',
-  sandbox: true,
+  apiKey: '72bb6de19ecf8df8',
+  domain: '',
+  senderId: '',
 }
 
 export function getSmsSettings(): SmsSettings {
@@ -41,7 +42,6 @@ export function saveSmsSettings(s: SmsSettings) {
 export interface SmsResult {
   success: boolean
   messageId?: string
-  cost?: string
   error?: string
   simulated?: boolean
 }
@@ -52,73 +52,72 @@ export interface BulkSmsResult {
   results: Array<{ phone: string; result: SmsResult }>
 }
 
-/**
- * Send a single SMS via Africa's Talking.
- * Falls back to simulation (console log + local record) if not configured.
- */
-export async function sendSms(to: string, message: string): Promise<SmsResult> {
-  const cfg = getSmsSettings()
+/** Zimbabwe MSISDN normalization: strips formatting, converts local 0-prefix to 263 country code. */
+function normalizeMsisdn(raw: string): string {
+  let digits = raw.replace(/\D/g, '')
+  if (digits.startsWith('0')) digits = '263' + digits.slice(1)
+  else if (!digits.startsWith('263')) digits = '263' + digits
+  return digits
+}
 
-  if (!cfg.apiKey) {
-    // Simulation mode — record in console, no real SMS
-    console.info(`[SMS SIM] To: ${to} | ${message}`)
-    logSmsLocally(to, message, 'simulated')
-    return { success: true, simulated: true, messageId: `sim_${Date.now()}` }
-  }
+interface AfrosoftResponse {
+  status?: { 'error-code'?: string; 'error-status'?: string; 'error-description'?: string }
+  'sms-response-details'?: Array<{
+    'success-count'?: string
+    'sent-sms-details'?: Array<{ 'sms-client-id'?: string; 'message-id'?: string; 'mobile-no'?: string }>
+    'failed-sms-details'?: Array<{ count?: string; reasons?: Array<{ 'sms-client-id'?: string; 'mobile-no'?: string; 'failed-reason'?: string }> }>
+  }>
+}
 
-  const baseUrl = cfg.sandbox
-    ? 'https://api.sandbox.africastalking.com/version1/messaging'
-    : 'https://api.africastalking.com/version1/messaging'
-
+async function callAfrosoft(numbers: string[], message: string, cfg: SmsSettings): Promise<{ ok: true; data: AfrosoftResponse } | { ok: false; error: string }> {
+  const mobiles = numbers.map(normalizeMsisdn).join(',')
   const params = new URLSearchParams({
-    username: cfg.username,
-    to,
-    message,
-    ...(cfg.senderId ? { from: cfg.senderId } : {}),
+    apikey: cfg.apiKey,
+    mobiles,
+    sms: message,
+    ...(cfg.senderId ? { senderid: cfg.senderId } : {}),
+    ...(/[^\x00-\x7F]/.test(message) ? { unicode: 'yes' } : {}),
   })
+  const url = `https://${cfg.domain}/client/api/sendmessage?${params.toString()}`
 
   try {
-    const res = await fetch(baseUrl, {
+    const res = await fetch('/api/gateway-proxy', {
       method: 'POST',
-      headers: {
-        'apiKey': cfg.apiKey,
-        'Accept': 'application/json',
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: params.toString(),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, method: 'GET' }),
     })
-
     if (!res.ok) {
-      const text = await res.text()
-      logSmsLocally(to, message, 'failed')
-      return { success: false, error: `HTTP ${res.status}: ${text}` }
+      const err = await res.json().catch(() => ({}))
+      return { ok: false, error: (err as { error?: string })?.error ?? `Gateway proxy error (HTTP ${res.status})` }
     }
-
-    const data = await res.json()
-    const recipient = data?.SMSMessageData?.Recipients?.[0]
-    const success = recipient?.status === 'Success' || recipient?.statusCode === 101
-
-    logSmsLocally(to, message, success ? 'sent' : 'failed')
-    return {
-      success,
-      messageId: recipient?.messageId,
-      cost: recipient?.cost,
-      error: success ? undefined : recipient?.status,
-    }
+    const { status, ok, body } = await res.json() as { status: number; ok: boolean; body: string }
+    if (!ok) return { ok: false, error: `Afrosoft HTTP ${status}: ${body.slice(0, 200)}` }
+    const data = JSON.parse(body) as AfrosoftResponse
+    return { ok: true, data }
   } catch (e) {
-    logSmsLocally(to, message, 'failed')
-    return { success: false, error: String(e) }
+    return { ok: false, error: String(e) }
   }
 }
 
 /**
- * Send the same message to multiple recipients.
+ * Send a single SMS via Afrosoft.
+ * Falls back to simulation (console log + local record) if not configured.
+ */
+export async function sendSms(to: string, message: string): Promise<SmsResult> {
+  const bulk = await sendBulkSms([to], message)
+  return bulk.results[0]?.result ?? { success: false, error: 'Send failed' }
+}
+
+/**
+ * Send the same message to multiple recipients. Afrosoft accepts
+ * comma-separated numbers in a single call.
  */
 export async function sendBulkSms(numbers: string[], message: string): Promise<BulkSmsResult> {
   const cfg = getSmsSettings()
 
-  if (!cfg.apiKey) {
-    numbers.forEach(n => logSmsLocally(n, message, 'simulated'))
+  if (!cfg.apiKey || !cfg.domain) {
+    // Simulation mode — record in console, no real SMS
+    numbers.forEach(n => { console.info(`[SMS SIM] To: ${n} | ${message}`); logSmsLocally(n, message, 'simulated') })
     return {
       sent: numbers.length,
       failed: 0,
@@ -126,13 +125,41 @@ export async function sendBulkSms(numbers: string[], message: string): Promise<B
     }
   }
 
-  // Africa's Talking accepts comma-separated recipients in a single call
-  const to = numbers.join(',')
-  const singleResult = await sendSms(to, message)
+  const result = await callAfrosoft(numbers, message, cfg)
+  if (!result.ok) {
+    numbers.forEach(n => logSmsLocally(n, message, 'failed'))
+    return { sent: 0, failed: numbers.length, results: numbers.map(phone => ({ phone, result: { success: false, error: result.error } })) }
+  }
+
+  const errorCode = result.data.status?.['error-code']
+  const detail = result.data['sms-response-details']?.[0]
+  const sentIds = new Map((detail?.['sent-sms-details'] ?? []).map(s => [s['mobile-no'], s['message-id']]))
+  const failedReasons = new Map(
+    (detail?.['failed-sms-details'] ?? []).flatMap(f => f.reasons ?? []).map(r => [r['mobile-no'], r['failed-reason']]),
+  )
+
+  if (errorCode !== '000' && sentIds.size === 0) {
+    const reason = result.data.status?.['error-description'] || `Afrosoft error ${errorCode ?? 'unknown'}`
+    numbers.forEach(n => logSmsLocally(n, message, 'failed'))
+    return { sent: 0, failed: numbers.length, results: numbers.map(phone => ({ phone, result: { success: false, error: reason } })) }
+  }
+
+  const results = numbers.map(phone => {
+    const norm = normalizeMsisdn(phone)
+    const success = sentIds.has(norm)
+    logSmsLocally(phone, message, success ? 'sent' : 'failed')
+    return {
+      phone,
+      result: success
+        ? { success: true, messageId: sentIds.get(norm) }
+        : { success: false, error: failedReasons.get(norm) ?? 'Not confirmed sent by Afrosoft' },
+    }
+  })
+
   return {
-    sent: singleResult.success ? numbers.length : 0,
-    failed: singleResult.success ? 0 : numbers.length,
-    results: numbers.map(phone => ({ phone, result: singleResult })),
+    sent: results.filter(r => r.result.success).length,
+    failed: results.filter(r => !r.result.success).length,
+    results,
   }
 }
 

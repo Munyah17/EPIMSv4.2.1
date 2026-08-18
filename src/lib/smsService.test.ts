@@ -6,12 +6,11 @@ describe('smsService', () => {
     localStorage.clear()
   })
 
-  it('defaults to sandbox with no API key configured', () => {
-    expect(getSmsSettings().apiKey).toBe('')
-    expect(getSmsSettings().sandbox).toBe(true)
+  it('defaults to no account domain configured', () => {
+    expect(getSmsSettings().domain).toBe('')
   })
 
-  it('simulates sending when no API key is configured, and logs it as simulated', async () => {
+  it('simulates sending when no account domain is configured, and logs it as simulated', async () => {
     const result = await sendSms('+263770000000', 'Hello')
     expect(result.success).toBe(true)
     expect(result.simulated).toBe(true)

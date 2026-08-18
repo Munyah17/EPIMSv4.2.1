@@ -389,10 +389,6 @@ export interface GatewaySettings {
   zipitAccountName: string
   zipitAccountNumber: string
   zipitBranchCode: string
-  smsApiKey: string
-  smsUsername: string
-  smsSenderId: string
-  smsSandbox: boolean
   smtpHost: string
   smtpPort: number
   smtpUser: string

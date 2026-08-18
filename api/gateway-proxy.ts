@@ -1,16 +1,21 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 
 /**
- * Generic server-side relay for the EcoCash and Paynow payment APIs, both of
- * which reject direct browser calls via CORS. The client still holds and
- * sends merchant credentials (same trust model as today, just routed through
- * this same-origin function instead of a blocked cross-origin request).
+ * Generic server-side relay for the EcoCash, Paynow, and Afrosoft SMS APIs,
+ * all of which reject direct browser calls via CORS. The client still holds
+ * and sends merchant/API credentials (same trust model as today, just
+ * routed through this same-origin function instead of a blocked
+ * cross-origin request).
  *
  * Locked to an explicit host allowlist so this can't be abused as an open
- * proxy to arbitrary URLs (SSRF).
+ * proxy to arbitrary URLs (SSRF). The Afrosoft SMS domain is account-specific
+ * (not published in Afrosoft's API docs) so it's allowlisted via an env var
+ * once known, rather than hardcoded like the other two.
  */
 
-const ALLOWED_HOSTS = new Set(['api.ecocash.co.zw', 'www.paynow.co.zw'])
+const ALLOWED_HOSTS = new Set(
+  ['api.ecocash.co.zw', 'www.paynow.co.zw', process.env.AFROSOFT_SMS_DOMAIN].filter((h): h is string => !!h),
+)
 
 interface ProxyRequestBody {
   url: string

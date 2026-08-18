@@ -202,30 +202,26 @@ export default function MassMessaging({ showToast }: Props) {
       {tab === 'settings' && (
         <div style={{ maxWidth: 560 }}>
           <div className="card">
-            <div className="card-header"><span className="card-title">Africa's Talking SMS Gateway</span></div>
+            <div className="card-header"><span className="card-title">Afrosoft SMS Gateway</span></div>
             <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 16 }}>
-              Free account at <b>africastalking.com</b>. Use <code>sandbox</code> as username for testing.
+              The account domain below is specific to our Afrosoft account and isn't published in their API docs —
+              enter it exactly as given by Afrosoft. Note: it must also be allow-listed on the server
+              (<code>AFROSOFT_SMS_DOMAIN</code> env var) before live sending will work; until then, messages are simulated.
             </p>
             <div className="form-row" style={{ marginBottom: 12 }}>
               <div className="form-group">
-                <label>Username</label>
-                <input className="form-control" value={smsConfig.username} onChange={e => setSmsConfig(p => ({ ...p, username: e.target.value }))} placeholder="sandbox" />
+                <label>Account Domain</label>
+                <input className="form-control" value={smsConfig.domain} onChange={e => setSmsConfig(p => ({ ...p, domain: e.target.value }))} placeholder="e.g. sms.afrosoft.co.zw" />
               </div>
               <div className="form-group">
                 <label>API Key</label>
-                <input className="form-control" type="password" value={smsConfig.apiKey} onChange={e => setSmsConfig(p => ({ ...p, apiKey: e.target.value }))} placeholder="AT•••••" />
+                <input className="form-control" type="password" value={smsConfig.apiKey} onChange={e => setSmsConfig(p => ({ ...p, apiKey: e.target.value }))} placeholder="Afrosoft API key" />
               </div>
             </div>
             <div className="form-row" style={{ marginBottom: 12 }}>
               <div className="form-group">
                 <label>Sender ID (optional)</label>
-                <input className="form-control" value={smsConfig.senderId} onChange={e => setSmsConfig(p => ({ ...p, senderId: e.target.value }))} placeholder="TARIQIFY" />
-              </div>
-              <div className="form-group" style={{ justifyContent: 'flex-end' }}>
-                <label className="checkbox-label" style={{ marginTop: 22 }}>
-                  <input type="checkbox" checked={smsConfig.sandbox} onChange={e => setSmsConfig(p => ({ ...p, sandbox: e.target.checked }))} />
-                  Use sandbox (testing)
-                </label>
+                <input className="form-control" value={smsConfig.senderId} onChange={e => setSmsConfig(p => ({ ...p, senderId: e.target.value }))} placeholder="Leave blank to use your account's default" />
               </div>
             </div>
             <button className="btn btn-primary" onClick={saveSettings}>Save Gateway Settings</button>
