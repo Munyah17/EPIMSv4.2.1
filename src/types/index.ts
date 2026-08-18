@@ -506,6 +506,25 @@ export interface ClaimAssessment {
   cropPopulation?: string
   cropStage?: string
   barnCapacity?: string
+  // ── Tobacco loss assessment (see lib/agricultureClaim.ts) ─────────
+  /** Hectares under crop, used to derive the expected leaf count. */
+  hectares?: number
+  /** Leaves the grower should have had at topping. */
+  leavesExpected?: number
+  /** Hail / windstorm: leaves damaged in the field. */
+  damagedLeaves?: number
+  /** Barn fire: strings hung, and leaves on each. */
+  barnStrings?: number
+  leavesPerString?: number
+  /** Barn fire: leaves destroyed. */
+  leavesLost?: number
+  /** Derived, stored alongside their inputs so an old claim stays
+   *  reconcilable even if the standards or rates change later. */
+  percentageLoss?: number
+  grossLoss?: number
+  handlingExpenses?: number
+  excessAmount?: number
+  claimPayable?: number
   farmerSignature?: string
   assessorSignature?: string
   farmerSelfie?: string

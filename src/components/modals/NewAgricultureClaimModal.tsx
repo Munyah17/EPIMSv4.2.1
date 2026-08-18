@@ -144,6 +144,26 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
     return () => { cancelled = true }
   }, [policyId])
 
+  // ── Loss assessment, derived ────────────────────────────────────
+  // Barn fire counts leaf already in the barn; hail and windstorm count
+  // damage in the field. Both are measured against the whole expected crop.
+  const isBarnFire = claimType === 'Barn Fire'
+  const derivedExpected = expectedLeavesForHectares(Number(hectares))
+  const leavesExpected = Number(totalLeavesAtTopping) || derivedExpected
+  const barnLeafCount = leavesInBarn(Number(barnStrings), Number(leavesPerString))
+  const countedLoss = isBarnFire ? Number(leavesLost) : Number(damagedLeaves)
+  const lossAssessment = assessLoss(countedLoss, leavesExpected)
+  const claimCalc = calculateClaim(lossAssessment.percentageLoss, policy?.coverAmount ?? 0)
+
+  // The claim amount IS the payable figure, so it follows the assessment
+  // rather than defaulting to the full cover limit -- the old behaviour made
+  // every agriculture claim look like a total loss.
+  useEffect(() => {
+    if (lossAssessment.leavesLost > 0 && lossAssessment.leavesExpected > 0) {
+      setAmount(String(claimCalc.claimPayable))
+    }
+  }, [claimCalc.claimPayable, lossAssessment.leavesLost, lossAssessment.leavesExpected])
+
   const allSlots = [...REQUIRED_PHOTO_SLOTS, ...extraPhotoLabels]
   const isSlotCovered = (slot: string) => !!photos[slot] || offlinePending.some(p => p.label === slot)
   const requiredPhotoCount = REQUIRED_PHOTO_SLOTS.filter(isSlotCovered).length
@@ -268,6 +288,19 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
         assessorComments,
         farmerStatement,
         gpsLat, gpsLng, cropPopulation, cropStage, barnCapacity,
+        // Inputs and derived figures are stored together so a historical
+        // claim stays reconcilable even if the standards or rates change.
+        hectares: Number(hectares) || undefined,
+        leavesExpected: leavesExpected || undefined,
+        damagedLeaves: isBarnFire ? undefined : Number(damagedLeaves) || undefined,
+        barnStrings: isBarnFire ? Number(barnStrings) || undefined : undefined,
+        leavesPerString: isBarnFire ? Number(leavesPerString) || undefined : undefined,
+        leavesLost: isBarnFire ? Number(leavesLost) || undefined : undefined,
+        percentageLoss: claimCalc.percentageLoss,
+        grossLoss: claimCalc.grossLoss,
+        handlingExpenses: claimCalc.handlingExpenses,
+        excessAmount: claimCalc.excess,
+        claimPayable: claimCalc.claimPayable,
         farmerSignature, assessorSignature, farmerSelfie: farmerSelfie?.path,
         submittedAt: new Date().toISOString(),
         syncStatus: 'synced',
@@ -443,7 +476,107 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
             <input className="form-control" value={barnCapacity} onChange={e => setBarnCapacity(e.target.value)} placeholder="e.g. 12 tonnes" />
           </div>
 
-          <div className="form-group">
+          <hr style={{ margin: '1.25rem 0', border: 'none', borderTop: '1px solid var(--border)' }} />
+          <h4 style={{ marginBottom: 4 }}>Loss Assessment</h4>
+          <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 0, marginBottom: 12 }}>
+            Count the leaves; the percentage and the payable amount are worked out from them and cannot be typed in.
+            Standard crop is {PLANTS_PER_HECTARE.toLocaleString()} plants per hectare at {LEAVES_PER_PLANT} leaves,
+            so {LEAVES_PER_HECTARE.toLocaleString()} leaves are expected per hectare at topping.
+          </p>
+
+          <div className="form-row">
+            <div className="form-group">
+              <label>Hectares Under Crop</label>
+              <input type="number" className="form-control" min={0} step="0.01" value={hectares} onChange={e => setHectares(e.target.value)} placeholder="e.g. 1.5" />
+            </div>
+            <div className="form-group">
+              <label>Total Leaves Expected at Topping</label>
+              <input
+                className="form-control"
+                value={leavesExpected ? leavesExpected.toLocaleString() : ''}
+                onChange={e => setTotalLeavesAtTopping(e.target.value.replace(/\D/g, ''))}
+                placeholder="Derived from hectares, or enter a counted figure"
+              />
+              {derivedExpected > 0 && (
+                <span style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, display: 'block' }}>
+                  {hectares} ha x {LEAVES_PER_HECTARE.toLocaleString()} = {derivedExpected.toLocaleString()} leaves.
+                </span>
+              )}
+            </div>
+          </div>
+
+          {isBarnFire ? (
+            <>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Number of Strings in Barn</label>
+                  <input type="number" className="form-control" min={0} value={barnStrings} onChange={e => setBarnStrings(e.target.value)} placeholder="e.g. 600" />
+                </div>
+                <div className="form-group">
+                  <label>Leaves per String</label>
+                  <input type="number" className="form-control" min={0} value={leavesPerString} onChange={e => setLeavesPerString(e.target.value)} placeholder="e.g. 90" />
+                </div>
+              </div>
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Total Leaves in Barn</label>
+                  <input className="form-control" value={barnLeafCount ? barnLeafCount.toLocaleString() : '—'} disabled style={{ opacity: 0.6 }} />
+                </div>
+                <div className="form-group">
+                  <label>Leaves Lost in the Fire *</label>
+                  <input type="number" className="form-control" min={0} value={leavesLost} onChange={e => setLeavesLost(e.target.value)} placeholder="Defaults to the whole barn if total loss" />
+                  {barnLeafCount > 0 && (
+                    <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 4 }} onClick={() => setLeavesLost(String(barnLeafCount))}>
+                      Whole barn lost ({barnLeafCount.toLocaleString()})
+                    </button>
+                  )}
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="form-group">
+              <label>Number of Damaged Leaves *</label>
+              <input type="number" className="form-control" min={0} value={damagedLeaves} onChange={e => setDamagedLeaves(e.target.value)} placeholder="Leaves damaged in the field" />
+            </div>
+          )}
+
+          <div className="card" style={{ background: 'var(--surface2)', marginTop: 12 }}>
+            <div className="card-header"><span className="card-title">Claim Calculation</span></div>
+            {lossAssessment.leavesExpected === 0 || lossAssessment.leavesLost === 0 ? (
+              <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0 }}>
+                Enter the leaf counts above and the calculation will complete itself.
+              </p>
+            ) : (
+              <div className="detail-grid">
+                <div className="detail-item">
+                  <span className="detail-label">Damaged / Expected</span>
+                  <span>{lossAssessment.leavesLost.toLocaleString()} / {lossAssessment.leavesExpected.toLocaleString()} leaves</span>
+                </div>
+                <div className="detail-item">
+                  <span className="detail-label">Percentage Loss</span>
+                  <span style={{ fontWeight: 600 }}>{formatPercent(claimCalc.percentageLoss)}</span>
+                </div>
+                <div className="detail-item">
+                  <span className="detail-label">Monetary Value of Loss</span>
+                  <span>{formatMoney(claimCalc.grossLoss)} <span style={{ color: 'var(--muted)', fontSize: 11 }}>({formatPercent(claimCalc.percentageLoss)} of {formatMoney(policy?.coverAmount ?? 0)})</span></span>
+                </div>
+                <div className="detail-item">
+                  <span className="detail-label">Less Handling Expenses (10%)</span>
+                  <span style={{ color: 'var(--danger)' }}>-{formatMoney(claimCalc.handlingExpenses)}</span>
+                </div>
+                <div className="detail-item">
+                  <span className="detail-label">Less Excess (15%)</span>
+                  <span style={{ color: 'var(--danger)' }}>-{formatMoney(claimCalc.excess)}</span>
+                </div>
+                <div className="detail-item">
+                  <span className="detail-label">Claim Payable</span>
+                  <span style={{ fontWeight: 700, color: 'var(--teal)' }}>{formatMoney(claimCalc.claimPayable)}</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="form-group" style={{ marginTop: '1rem' }}>
             <label>GPS Coordinates *</label>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <button type="button" className="btn btn-outline btn-sm" disabled={gpsBusy} onClick={captureGps}>📍 {gpsBusy ? 'Getting location…' : 'Use Current Location'}</button>
