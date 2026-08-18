@@ -403,6 +403,7 @@ export default function ReviewClaimModal({ claim, onClose, onSave, showToast }: 
           claimId={claim.id}
           claimNumber={claim.claimNumber}
           claimDescription={claim.description}
+          baselineCropPopulation={preLoss?.cropPopulation?.trim() || undefined}
           onClose={() => setShowAssessmentModal(false)}
           onSubmitted={() => {
             setShowAssessmentModal(false)

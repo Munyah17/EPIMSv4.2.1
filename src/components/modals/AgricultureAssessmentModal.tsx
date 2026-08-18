@@ -13,6 +13,10 @@ interface Props {
   claimId: string
   claimNumber: string
   claimDescription: string
+  /** Crop population recorded at pre-loss for this policy, if there is one.
+   *  Prefilled here so the assessor works from the established baseline
+   *  rather than re-estimating it after the damage. */
+  baselineCropPopulation?: string
   onClose: () => void
   onSubmitted: () => void
   showToast: (type: 'success' | 'error' | 'warning' | 'info', message: string) => void
@@ -22,7 +26,7 @@ const PHOTO_SLOTS = ['Barn (exterior)', 'Barn (interior)', 'Crop damage (wide sh
 const MIN_PHOTOS = 6
 const MAX_PHOTOS = 20
 
-export default function AgricultureAssessmentModal({ claimId, claimNumber, claimDescription, onClose, onSubmitted, showToast }: Props) {
+export default function AgricultureAssessmentModal({ claimId, claimNumber, claimDescription, baselineCropPopulation, onClose, onSubmitted, showToast }: Props) {
   const { user } = useAuth()
   const [descriptionOfLoss, setDescriptionOfLoss] = useState('')
   const [photos, setPhotos] = useState<Record<string, AssessmentPhoto | undefined>>({})
@@ -32,7 +36,7 @@ export default function AgricultureAssessmentModal({ claimId, claimNumber, claim
   const [gpsLat, setGpsLat] = useState<number | undefined>(undefined)
   const [gpsLng, setGpsLng] = useState<number | undefined>(undefined)
   const [gpsBusy, setGpsBusy] = useState(false)
-  const [cropPopulation, setCropPopulation] = useState('')
+  const [cropPopulation, setCropPopulation] = useState(baselineCropPopulation ?? '')
   const [cropStage, setCropStage] = useState('')
   const [barnCapacity, setBarnCapacity] = useState('')
   const [farmerSignature, setFarmerSignature] = useState<string | undefined>()

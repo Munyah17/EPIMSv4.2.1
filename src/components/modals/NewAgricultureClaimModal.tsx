@@ -78,6 +78,7 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
   const [gpsLng, setGpsLng] = useState<number | undefined>(undefined)
   const [gpsBusy, setGpsBusy] = useState(false)
   const [cropPopulation, setCropPopulation] = useState('')
+  const [baselineCropPopulation, setBaselineCropPopulation] = useState<string | undefined>()
   const [cropStage, setCropStage] = useState('')
   const [barnCapacity, setBarnCapacity] = useState('')
   const [farmerSignature, setFarmerSignature] = useState<string | undefined>()
@@ -110,8 +111,25 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
     } else {
       setAmount('')
       setClient(null)
+      setBaselineCropPopulation(undefined)
     }
   }, [policy])
+
+  // Crop population is established at pre-loss and carried forward, so the
+  // assessor is comparing against the recorded baseline rather than
+  // re-estimating it from scratch at claim time. Still editable: if what's
+  // in the field genuinely differs, that difference is itself evidence.
+  useEffect(() => {
+    if (!policyId) return
+    let cancelled = false
+    db.policyAssessments.listForPolicy(policyId).then(({ data }) => {
+      if (cancelled) return
+      const baseline = data.find(a => (a.cropPopulation ?? '').trim())?.cropPopulation?.trim()
+      setBaselineCropPopulation(baseline || undefined)
+      if (baseline) setCropPopulation(prev => prev.trim() ? prev : baseline)
+    })
+    return () => { cancelled = true }
+  }, [policyId])
 
   const allSlots = [...REQUIRED_PHOTO_SLOTS, ...extraPhotoLabels]
   const isSlotCovered = (slot: string) => !!photos[slot] || offlinePending.some(p => p.label === slot)
@@ -390,6 +408,17 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
             <div className="form-group">
               <label>Crop Population</label>
               <input className="form-control" value={cropPopulation} onChange={e => setCropPopulation(e.target.value)} placeholder="e.g. 15000 plants/ha" />
+              {baselineCropPopulation ? (
+                <span style={{ fontSize: 11, color: cropPopulation.trim() === baselineCropPopulation ? 'var(--muted)' : 'var(--gold)', marginTop: 4, display: 'block' }}>
+                  {cropPopulation.trim() === baselineCropPopulation
+                    ? `Carried over from the pre-loss assessment (${baselineCropPopulation}).`
+                    : `Differs from the pre-loss baseline of ${baselineCropPopulation}; explain the change in your comments.`}
+                </span>
+              ) : policyId ? (
+                <span style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, display: 'block' }}>
+                  No crop population recorded at pre-loss for this policy.
+                </span>
+              ) : null}
             </div>
             <div className="form-group">
               <label>Crop Stage</label>
