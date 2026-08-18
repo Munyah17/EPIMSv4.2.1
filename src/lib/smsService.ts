@@ -149,11 +149,12 @@ export async function sendBulkSms(numbers: string[], message: string): Promise<B
     (detail?.['failed-sms-details'] ?? []).flatMap(f => f.reasons ?? []).map(r => [msisdnKey(r['mobile-no'] ?? ''), r['failed-reason']]),
   )
 
-  if (errorCode !== '000' && sentIds.size === 0) {
-    const reason = result.data.status?.['error-description'] || `Afrosoft error ${errorCode ?? 'unknown'}`
-    numbers.forEach(n => logSmsLocally(n, message, 'failed', reason))
-    return { sent: 0, failed: numbers.length, results: numbers.map(phone => ({ phone, result: { success: false, error: reason } })) }
-  }
+  // A per-number reason ("Blacklisted", "Number is not reachable") is what
+  // someone can actually act on, so it always wins over the request-level
+  // description, which only stands in when the gateway rejected the batch
+  // outright and named no individual number.
+  const batchReason = result.data.status?.['error-description']
+    || (errorCode && errorCode !== '000' ? `Afrosoft error ${errorCode}` : undefined)
 
   const results = numbers.map(phone => {
     const key = msisdnKey(phone)
@@ -161,7 +162,7 @@ export async function sendBulkSms(numbers: string[], message: string): Promise<B
     const error = success
       ? undefined
       : failedReasons.get(key)
-        ?? result.data.status?.['error-description']
+        ?? batchReason
         ?? 'Afrosoft accepted the request but did not confirm this number as sent.'
     logSmsLocally(phone, message, success ? 'sent' : 'failed', error)
     return {
