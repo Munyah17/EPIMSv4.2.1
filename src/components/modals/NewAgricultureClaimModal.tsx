@@ -30,7 +30,10 @@ interface Props {
   onSwitchKind?: (kind: 'ordinary' | 'agriculture') => void
 }
 
-const CLAIM_TYPES = ['Crop Damage', 'Drought', 'Flood', 'Hail', 'Wind Storm', 'Fire', 'Pest/Disease Outbreak', 'Other']
+// Restricted to the perils actually covered by agriculture policies (see
+// AGRICULTURE_COVER in exportUtils.ts) so a farmer can't file a claim
+// against a peril their cover doesn't include.
+const CLAIM_TYPES = ['Hail Storm', 'Barn Fire', 'Wind Storm', 'Other']
 
 const THREE_DAYS_MS = 3 * 24 * 3600 * 1000
 function isPhotoStale(p: AssessmentPhoto): boolean {

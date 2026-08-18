@@ -1,9 +1,10 @@
 import { useRef, useState } from 'react'
 import type { AssessmentPhoto } from '../../types'
 import { uploadDocument, getDocumentUrl } from '../../lib/storage'
-import { readExifDateTaken } from '../../lib/exifDate'
+import { readExifSignals } from '../../lib/exifDate'
 import { analyzePhotoForFraud, fileToBase64 } from '../../lib/photoAnalysis'
 import { computePerceptualHash } from '../../lib/photoHash'
+import { assessPhotoIntegrity } from '../../lib/photoIntegrity'
 
 interface Props {
   label: string
@@ -13,13 +14,6 @@ interface Props {
   value: AssessmentPhoto | undefined
   onChange: (photo: AssessmentPhoto | undefined) => void
   onOfflineCapture?: (file: File, label: string) => void
-}
-
-const THREE_DAYS_MS = 3 * 24 * 3600 * 1000
-
-function isStale(iso: string | undefined): boolean {
-  if (!iso) return false
-  return Date.now() - new Date(iso).getTime() > THREE_DAYS_MS
 }
 
 export default function PhotoCaptureField({ label, folder, recordId, claimDescription, value, onChange, onOfflineCapture }: Props) {
@@ -33,7 +27,7 @@ export default function PhotoCaptureField({ label, folder, recordId, claimDescri
     setBusy(true)
     const capturedAt = new Date().toISOString()
 
-    const exifDate = await readExifDateTaken(file)
+    const exif = await readExifSignals(file)
 
     if (!navigator.onLine) {
       // No connection right now — hand the raw file to the offline queue
@@ -70,11 +64,18 @@ export default function PhotoCaptureField({ label, folder, recordId, claimDescri
 
     const phash = await computePerceptualHash(file)
 
-    onChange({ path: data.path, label, exifDate: exifDate ?? undefined, visibleDateStamp, aiNote, aiFlagged, capturedAt, phash: phash ?? undefined })
+    onChange({
+      path: data.path, label,
+      exifDate: exif.dateTaken ?? undefined,
+      exifHasData: exif.hasExif,
+      exifSoftware: exif.software ?? undefined,
+      exifCamera: [exif.make, exif.model].filter(Boolean).join(' ') || undefined,
+      visibleDateStamp, aiNote, aiFlagged, capturedAt, phash: phash ?? undefined,
+    })
     setBusy(false)
   }
 
-  const staleWarning = isStale(value?.exifDate) || isStale(value?.visibleDateStamp)
+  const concerns = value ? assessPhotoIntegrity(value) : []
 
   return (
     <div className="photo-capture-field">
@@ -99,11 +100,12 @@ export default function PhotoCaptureField({ label, folder, recordId, claimDescri
           <div className="photo-capture-meta">
             {value.exifDate && <div>📅 EXIF: {new Date(value.exifDate).toLocaleString()}</div>}
             {value.visibleDateStamp && <div>🏷 Visible date stamp: {value.visibleDateStamp}</div>}
-            {!value.exifDate && !value.visibleDateStamp && <div className="muted">No date metadata found on this photo.</div>}
-            {value.aiNote && <div className="photo-capture-ai-note">🤖 {value.aiNote}</div>}
-            {(staleWarning || value.aiFlagged) && (
-              <div className="photo-capture-flag">⚠ {staleWarning ? 'This photo appears to be more than 3 days old.' : 'AI flagged this photo for review.'}</div>
-            )}
+            {value.exifCamera && <div>📷 {value.exifCamera}</div>}
+            {concerns.map((c, i) => (
+              <div key={i} className="photo-capture-flag" style={c.severity === 'advisory' ? { color: 'var(--gold)' } : undefined}>
+                {c.severity === 'blocking' ? '⛔' : '⚠'} {c.message}
+              </div>
+            ))}
           </div>
         </div>
       )}

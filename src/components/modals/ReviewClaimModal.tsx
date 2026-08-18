@@ -3,6 +3,7 @@ import type { Claim, AppUser, ClaimAssessment, PolicyAssessment } from '../../ty
 import { db } from '../../lib/db'
 import { formatDate } from '../../lib/dateUtils'
 import { getDocumentUrl, documentDisplayName } from '../../lib/storage'
+import { reverseGeocode } from '../../lib/geocode'
 import { useAuth } from '../../contexts/AuthContext'
 import {
   notifyClaimIntakeAccepted, notifyClaimIntakeRejected,
@@ -42,6 +43,8 @@ export default function ReviewClaimModal({ claim, onClose, onSave, showToast }: 
   const [preLossAssessments, setPreLossAssessments] = useState<PolicyAssessment[]>([])
   const [aiInsights, setAiInsights] = useState<{ insights: string[]; reasoning: string; score: number } | null>(null)
   const [aiLoading, setAiLoading] = useState(false)
+  const [postLossPhotoUrls, setPostLossPhotoUrls] = useState<Record<string, string>>({})
+  const [postLossPlaceLabel, setPostLossPlaceLabel] = useState<string | null>(null)
 
   useEffect(() => {
     db.staff.list().then(({ data }) => { if (data) setStaff(data.filter(u => u.active)) })
@@ -54,6 +57,26 @@ export default function ReviewClaimModal({ claim, onClose, onSave, showToast }: 
   const hasCompletedAssessment = physicalAssessments.some(a => !!a.submittedAt)
   const preLoss = preLossAssessments[0]
   const postLoss = physicalAssessments.find(a => !!a.submittedAt)
+
+  useEffect(() => {
+    if (!postLoss || postLoss.photos.length === 0) { setPostLossPhotoUrls({}); return }
+    let cancelled = false
+    Promise.all(postLoss.photos.map(async p => [p.path, await getDocumentUrl(p.path)] as const)).then(pairs => {
+      if (cancelled) return
+      const urls: Record<string, string> = {}
+      pairs.forEach(([path, url]) => { if (url) urls[path] = url })
+      setPostLossPhotoUrls(urls)
+    })
+    return () => { cancelled = true }
+  }, [postLoss])
+
+  useEffect(() => {
+    if (!postLoss || postLoss.gpsLat === undefined || postLoss.gpsLng === undefined) { setPostLossPlaceLabel(null); return }
+    let cancelled = false
+    setPostLossPlaceLabel(null)
+    reverseGeocode(postLoss.gpsLat, postLoss.gpsLng).then(label => { if (!cancelled) setPostLossPlaceLabel(label) })
+    return () => { cancelled = true }
+  }, [postLoss])
 
   const getAiInsights = async () => {
     setAiLoading(true)
@@ -204,6 +227,62 @@ export default function ReviewClaimModal({ claim, onClose, onSave, showToast }: 
           {!preLoss && (claim.category === 'agriculture' || claim.category === 'motor') && (
             <div className="info-banner info-banner-warning" style={{ marginBottom: '1rem' }}>
               ⚠ No pre-loss assessment is on file for this policy; the condition before this claim was never independently recorded.
+            </div>
+          )}
+
+          {/* Visible at every stage (not just while stage === 'assessment')
+             so the Final Reviewer / Super Admin can actually see the
+             evidence before deciding, not just a "Completed" label -- the
+             print-only PDF was the only way to see this before. */}
+          {postLoss && (
+            <div className="form-group">
+              <label>🔎 Physical Assessment Evidence, submitted {formatDate(postLoss.submittedAt)} by {postLoss.assessorName}</label>
+              <div className="detail-grid" style={{ marginTop: 4 }}>
+                <div className="detail-item"><span className="detail-label">Description of Loss</span><span>{postLoss.descriptionOfLoss || '—'}</span></div>
+                <div className="detail-item">
+                  <span className="detail-label">GPS Coordinates</span>
+                  <span>
+                    {postLoss.gpsLat !== undefined && postLoss.gpsLng !== undefined
+                      ? `${postLoss.gpsLat.toFixed(6)}, ${postLoss.gpsLng.toFixed(6)}${postLossPlaceLabel ? ` (${postLossPlaceLabel})` : ''}`
+                      : 'Not captured'}
+                  </span>
+                </div>
+              </div>
+              {postLoss.assessorComments && (
+                <p style={{ fontSize: '0.85rem', color: 'var(--text)', marginTop: 6 }}>{postLoss.assessorComments}</p>
+              )}
+              {postLoss.photos.length > 0 && (
+                <div style={{ marginTop: 8 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600 }}>Photos ({postLoss.photos.length})</span>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 6 }}>
+                    {postLoss.photos.map((p, i) => (
+                      <a key={i} href={postLossPhotoUrls[p.path]} target="_blank" rel="noopener noreferrer" style={{ pointerEvents: postLossPhotoUrls[p.path] ? 'auto' : 'none' }} title="Open full size">
+                        {postLossPhotoUrls[p.path] ? (
+                          <img src={postLossPhotoUrls[p.path]} alt={p.label} style={{ width: 90, height: 68, objectFit: 'cover', borderRadius: 6, border: '1px solid var(--border)', display: 'block' }} />
+                        ) : (
+                          <div style={{ width: 90, height: 68, borderRadius: 6, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: 'var(--muted)' }}>Loading…</div>
+                        )}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {(postLoss.farmerSignature || postLoss.assessorSignature) && (
+                <div style={{ display: 'flex', gap: 16, marginTop: 8 }}>
+                  {postLoss.farmerSignature && (
+                    <div>
+                      <span style={{ fontSize: 11, color: 'var(--muted)', display: 'block' }}>Farmer Signature</span>
+                      <img src={postLoss.farmerSignature} alt="Farmer signature" style={{ width: 120, height: 40, objectFit: 'contain', border: '1px solid var(--border)', borderRadius: 4, background: '#fff' }} />
+                    </div>
+                  )}
+                  {postLoss.assessorSignature && (
+                    <div>
+                      <span style={{ fontSize: 11, color: 'var(--muted)', display: 'block' }}>Assessor Signature</span>
+                      <img src={postLoss.assessorSignature} alt="Assessor signature" style={{ width: 120, height: 40, objectFit: 'contain', border: '1px solid var(--border)', borderRadius: 4, background: '#fff' }} />
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

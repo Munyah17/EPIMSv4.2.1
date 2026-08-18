@@ -8,13 +8,14 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
  * cross-origin request).
  *
  * Locked to an explicit host allowlist so this can't be abused as an open
- * proxy to arbitrary URLs (SSRF). The Afrosoft SMS domain is account-specific
- * (not published in Afrosoft's API docs) so it's allowlisted via an env var
- * once known, rather than hardcoded like the other two.
+ * proxy to arbitrary URLs (SSRF). AFROSOFT_SMS_DOMAIN stays overridable by
+ * env var in case Afrosoft moves us to a different host, but defaults to
+ * the one they assigned us so live SMS works without extra config.
  */
 
 const ALLOWED_HOSTS = new Set(
-  ['api.ecocash.co.zw', 'www.paynow.co.zw', process.env.AFROSOFT_SMS_DOMAIN].filter((h): h is string => !!h),
+  ['api.ecocash.co.zw', 'www.paynow.co.zw', process.env.AFROSOFT_SMS_DOMAIN || 'sms.vas.co.zw']
+    .filter((h): h is string => !!h),
 )
 
 interface ProxyRequestBody {

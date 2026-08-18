@@ -576,13 +576,22 @@ function toInsurer(r: any): InsurerRecord {
   }
 }
 
+/** We are the default underwriter, so we lead the list everywhere it's
+ *  shown (policy creation/update especially) rather than sitting wherever
+ *  the alphabet happens to put us. Everything else stays A-Z. */
+const HOUSE_INSURER = 'motions'
+function houseInsurerFirst(list: InsurerRecord[]): InsurerRecord[] {
+  const isHouse = (i: InsurerRecord) => i.name.toLowerCase().includes(HOUSE_INSURER)
+  return [...list.filter(isHouse), ...list.filter(i => !isHouse(i))]
+}
+
 export const insurers = {
   async list() {
     const { ok, data } = await sb('insurers', 'read',
       () => supabase.from('insurers').select('*').order('name'),
       d => Array.isArray(d),
     )
-    if (ok && data) return { data: (data as Record<string, unknown>[]).map(toInsurer), error: null }
+    if (ok && data) return { data: houseInsurerFirst((data as Record<string, unknown>[]).map(toInsurer)), error: null }
     return { data: [] as InsurerRecord[], error: null }
   },
 

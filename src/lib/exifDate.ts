@@ -10,6 +10,9 @@
 const TAG_DATE_TIME_ORIGINAL = 0x9003
 const TAG_DATE_TIME = 0x0132
 const TAG_EXIF_IFD_POINTER = 0x8769
+const TAG_MAKE = 0x010F
+const TAG_MODEL = 0x0110
+const TAG_SOFTWARE = 0x0131
 
 function readIfd(view: DataView, tiffStart: number, ifdOffset: number, little: boolean, wanted: number[]): Map<number, unknown> {
   const found = new Map<number, unknown>()
@@ -41,12 +44,30 @@ function parseExifDate(str: string): string | null {
   return `${y}-${mo}-${d}T${h}:${mi}:${s}`
 }
 
-export async function readExifDateTaken(file: File): Promise<string | null> {
-  if (!file.type.includes('jpeg') && !file.type.includes('jpg')) return null
+/** What the file's own metadata says about how it came to exist. Every
+ *  field is optional because stripped EXIF is itself the finding -- a
+ *  screenshot, a WhatsApp forward, or a download arrives with nothing. */
+export interface ExifSignals {
+  /** DateTimeOriginal, or the top-level DateTime tag as a fallback. */
+  dateTaken: string | null
+  /** Camera manufacturer/model. Absent on anything not straight off a camera. */
+  make: string | null
+  model: string | null
+  /** Editing software that last wrote the file, when it announces itself
+   *  (Photoshop, GIMP, Snapseed and most editors do). */
+  software: string | null
+  /** False when the file carried no readable EXIF block at all. */
+  hasExif: boolean
+}
+
+const NO_EXIF: ExifSignals = { dateTaken: null, make: null, model: null, software: null, hasExif: false }
+
+export async function readExifSignals(file: File): Promise<ExifSignals> {
+  if (!file.type.includes('jpeg') && !file.type.includes('jpg')) return { ...NO_EXIF }
   try {
     const buf = await file.slice(0, 128 * 1024).arrayBuffer()
     const view = new DataView(buf)
-    if (view.getUint16(0) !== 0xFFD8) return null // not a JPEG
+    if (view.getUint16(0) !== 0xFFD8) return { ...NO_EXIF } // not a JPEG
 
     let offset = 2
     while (offset < view.byteLength - 4) {
@@ -57,22 +78,38 @@ export async function readExifDateTaken(file: File): Promise<string | null> {
         const tiffStart = exifStart + 6
         const little = view.getUint16(tiffStart) === 0x4949
         const ifd0Offset = view.getUint32(tiffStart + 4, little)
-        const ifd0 = readIfd(view, tiffStart, ifd0Offset, little, [TAG_DATE_TIME, TAG_EXIF_IFD_POINTER])
+        const ifd0 = readIfd(view, tiffStart, ifd0Offset, little, [
+          TAG_DATE_TIME, TAG_EXIF_IFD_POINTER, TAG_MAKE, TAG_MODEL, TAG_SOFTWARE,
+        ])
 
+        const str = (tag: number) => {
+          const v = ifd0.get(tag)
+          return typeof v === 'string' && v.trim() ? v.trim() : null
+        }
+
+        let dateTaken: string | null = null
         const exifPointer = ifd0.get(TAG_EXIF_IFD_POINTER) as number | undefined
         if (exifPointer !== undefined) {
           const exifIfd = readIfd(view, tiffStart, exifPointer, little, [TAG_DATE_TIME_ORIGINAL])
           const original = exifIfd.get(TAG_DATE_TIME_ORIGINAL) as string | undefined
-          if (original) return parseExifDate(original)
+          if (original) dateTaken = parseExifDate(original)
         }
-        const fallback = ifd0.get(TAG_DATE_TIME) as string | undefined
-        return fallback ? parseExifDate(fallback) : null
+        if (!dateTaken) {
+          const fallback = ifd0.get(TAG_DATE_TIME) as string | undefined
+          dateTaken = fallback ? parseExifDate(fallback) : null
+        }
+
+        return { dateTaken, make: str(TAG_MAKE), model: str(TAG_MODEL), software: str(TAG_SOFTWARE), hasExif: true }
       }
       if ((marker & 0xFF00) !== 0xFF00) break
       offset += 2 + view.getUint16(offset + 2)
     }
-    return null
+    return { ...NO_EXIF }
   } catch {
-    return null
+    return { ...NO_EXIF }
   }
+}
+
+export async function readExifDateTaken(file: File): Promise<string | null> {
+  return (await readExifSignals(file)).dateTaken
 }

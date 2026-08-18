@@ -6,6 +6,7 @@ import { getCurrentCoordinates } from '../../lib/geolocation'
 import { queueAssessment } from '../../lib/offlineQueue'
 import { fileToBase64 } from '../../lib/photoAnalysis'
 import { checkAndRecordPhotoDuplicates } from '../../lib/duplicatePhotoCheck'
+import { blockedPhotos } from '../../lib/photoIntegrity'
 import PhotoCaptureField from '../ui/PhotoCaptureField'
 import SignaturePad from '../ui/SignaturePad'
 
@@ -59,8 +60,17 @@ export default function PolicyAssessmentModal({ policyId, policyNumber, subjectT
   const baseSlots = isVehicle ? VEHICLE_PHOTO_SLOTS : AGRICULTURE_PHOTO_SLOTS
   const slots = [...baseSlots, ...extraPhotoLabels]
   const photoCount = Object.values(photos).filter(Boolean).length + offlinePending.length
+  const capturedPhotos = Object.values(photos).filter((p): p is AssessmentPhoto => !!p)
+  // A photo that can't account for when or how it was made is not a
+  // baseline record -- this is the whole point of a pre-loss assessment,
+  // so it blocks rather than merely warns.
+  const rejected = blockedPhotos(capturedPhotos)
+  // GPS is what ties this record to a specific field, and is what a later
+  // claim gets checked against, so it's required rather than optional.
+  const hasGps = gpsLat !== undefined && gpsLng !== undefined
   const canSubmit = (isVehicle ? registrationNumber.trim().length > 0 : cropType.trim().length > 0)
-    && photoCount >= MIN_PHOTOS && !!farmerSignature && !!assessorSignature && !submitting
+    && photoCount >= MIN_PHOTOS && rejected.length === 0 && hasGps
+    && !!farmerSignature && !!assessorSignature && !submitting
 
   const addExtraSlot = () => {
     setExtraPhotoLabels(prev => (baseSlots.length + prev.length >= MAX_PHOTOS ? prev : [...prev, `Additional Photo ${prev.length + 1}`]))
@@ -200,11 +210,13 @@ export default function PolicyAssessmentModal({ policyId, policyNumber, subjectT
           )}
 
           <div className="form-group">
-            <label>GPS Coordinates</label>
+            <label>GPS Coordinates *</label>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <button type="button" className="btn btn-outline btn-sm" disabled={gpsBusy} onClick={captureGps}>📍 {gpsBusy ? 'Getting location…' : 'Use Current Location'}</button>
-              {gpsLat !== undefined && gpsLng !== undefined && (
-                <span style={{ fontSize: 12, color: 'var(--muted)' }}>{gpsLat.toFixed(6)}, {gpsLng.toFixed(6)}</span>
+              {hasGps ? (
+                <span style={{ fontSize: 12, color: 'var(--muted)' }}>{gpsLat!.toFixed(6)}, {gpsLng!.toFixed(6)}</span>
+              ) : (
+                <span style={{ fontSize: 12, color: 'var(--muted)' }}>Must be captured on site; coordinates can't be typed in.</span>
               )}
             </div>
           </div>
@@ -212,6 +224,20 @@ export default function PolicyAssessmentModal({ policyId, policyNumber, subjectT
           <label style={{ display: 'block', margin: '1rem 0 6px', fontSize: 13, fontWeight: 600 }}>
             Photos ({photoCount}/{MIN_PHOTOS} minimum, up to {MAX_PHOTOS})
           </label>
+          <p style={{ fontSize: 11, color: 'var(--muted)', margin: '0 0 8px' }}>
+            Shoot with the Camera button. Screenshots, downloads, forwarded images and anything re-saved
+            by an editor lose the metadata that proves when the photo was taken, and are rejected.
+          </p>
+          {rejected.length > 0 && (
+            <div className="info-banner info-banner-danger" style={{ marginBottom: 10 }}>
+              <strong>{rejected.length} photo{rejected.length !== 1 ? 's' : ''} cannot be accepted:</strong>
+              <ul style={{ margin: '4px 0 0 18px', padding: 0, fontSize: 12 }}>
+                {rejected.map(({ photo, concerns }) => (
+                  <li key={photo.label}>{photo.label}: {concerns.map(c => c.message).join(' ')}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           {slots.map(slot => (
             <div key={slot} style={{ position: 'relative' }}>
               <PhotoCaptureField

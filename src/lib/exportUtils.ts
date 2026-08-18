@@ -2,6 +2,7 @@
 // most visits to a page with export buttons never click one — dynamic
 // import() keeps them out of the page's own chunk entirely, fetched only
 // when a user actually exports something.
+import type { jsPDF } from 'jspdf'
 import type { Policy, Client, ClaimAssessment, PolicyAssessment } from '../types'
 import { formatDate } from './dateUtils'
 import { getNotifSettings } from './mailService'
@@ -61,6 +62,43 @@ export async function exportToPdf(filename: string, title: string, headers: stri
 const AGRICULTURE_COVER = ['Barn Fire', 'Hail Storm', 'Wind Storm']
 /** Standard excess applied unless a product has its own excess configured. */
 const DEFAULT_POLICY_EXCESS = '15% of loss'
+
+/** Money on a printed policy document always carries thousands separators
+ *  and exactly two decimals -- "$12,000.00", never "$12000". */
+function money(amount: number): string {
+  return `$${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+/** Shared masthead for official client-facing documents: real logo top-left,
+ *  Head Office contact block right-aligned. Only prints what's actually
+ *  configured (Settings -> Notifications -> Company Details); a wrong
+ *  address on an official document is worse than an absent one. */
+function drawLetterhead(doc: jsPDF, pageWidth: number, logo: string, cfg: ReturnType<typeof getNotifSettings>) {
+  doc.addImage(logo, 'PNG', 14, 8, 20, 20)
+  let ry = 11
+  if (cfg.companyAddress || cfg.companyPhone || cfg.companyEmail) {
+    doc.setFontSize(8)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(...TEXT)
+    doc.text('Head Office:', pageWidth - 14, ry, { align: 'right' })
+    doc.setFont('helvetica', 'normal')
+    ry += 4
+  }
+  if (cfg.companyAddress) {
+    const addrLines = doc.splitTextToSize(cfg.companyAddress, 70)
+    addrLines.forEach((line: string) => { doc.text(line, pageWidth - 14, ry, { align: 'right' }); ry += 4 })
+  }
+  if (cfg.companyPhone) {
+    // One number per line rather than width-wrapping the joined string --
+    // a wrap can land mid-number ("+263 780 / 086 175"), which looks
+    // broken on an official document.
+    cfg.companyPhone.split('/').map(p => p.trim()).filter(Boolean).forEach((number, i) => {
+      doc.text(i === 0 ? `Phone: ${number}` : number, pageWidth - 14, ry, { align: 'right' })
+      ry += 4
+    })
+  }
+  if (cfg.companyEmail) doc.text(`Email: ${cfg.companyEmail}`, pageWidth - 14, ry, { align: 'right' })
+}
 const BRAND_BLUE: [number, number, number] = [65, 105, 225]
 const BRAND_RED: [number, number, number] = [200, 30, 40]
 const MUTED: [number, number, number] = [107, 126, 153]
@@ -92,42 +130,22 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
     if (y + need > pageHeight - 16) { doc.addPage(); y = 20 }
   }
 
-  // Real Motions Microinsurance logo (square source image), sized to sit
-  // level with the address block on the right.
-  doc.addImage(MOTIONS_LOGO_PNG_BASE64, 'PNG', 14, 8, 20, 20)
-
-  // Company contact details, right-aligned — only from what's actually
-  // configured (Settings -> Notifications -> Company Details). A wrong
-  // address/phone on an official document is worse than an empty one, so
-  // nothing here is guessed or hardcoded.
-  let ry = 11
-  if (cfg.companyAddress || cfg.companyPhone || cfg.companyEmail) {
-    doc.setFontSize(8)
-    doc.setFont('helvetica', 'bold')
-    doc.setTextColor(...TEXT)
-    doc.text('Head Office:', pageWidth - 14, ry, { align: 'right' })
-    doc.setFont('helvetica', 'normal')
-    ry += 4
-  }
-  if (cfg.companyAddress) {
-    const addrLines = doc.splitTextToSize(cfg.companyAddress, 70)
-    addrLines.forEach((line: string) => { doc.text(line, pageWidth - 14, ry, { align: 'right' }); ry += 4 })
-  }
-  if (cfg.companyPhone) {
-    // One number per line rather than width-wrapping the joined string --
-    // a wrap can land mid-number ("+263 780 / 086 175"), which looks
-    // broken on an official document.
-    cfg.companyPhone.split('/').map(p => p.trim()).filter(Boolean).forEach((number, i) => {
-      doc.text(i === 0 ? `Phone: ${number}` : number, pageWidth - 14, ry, { align: 'right' })
-      ry += 4
-    })
-  }
-  if (cfg.companyEmail) { doc.text(`Email: ${cfg.companyEmail}`, pageWidth - 14, ry, { align: 'right' }); ry += 4 }
+  drawLetterhead(doc, pageWidth, MOTIONS_LOGO_PNG_BASE64, cfg)
 
   let y = 28
   doc.setFontSize(9.5)
   doc.setTextColor(...TEXT)
-  doc.text(client.name, 14, y)
+  // Agriculture policyholders are identified by name AND grower number
+  // together ("Harold Muwi - 2344566") -- it's their identity to the
+  // insurer, so it belongs beside the name, not in a section of its own.
+  // Agriculture is billed once a year (Stop Order), never monthly -- the
+  // whole reason it's handled separately from every other category.
+  const isAgriculture = category === 'agriculture'
+  const premiumHeading = isAgriculture ? 'Annual Premium' : 'Monthly Premium'
+  doc.text(
+    isAgriculture && policy.growerNumber ? `${client.name} - ${policy.growerNumber}` : client.name,
+    14, y,
+  )
   y += 5
   doc.setFontSize(8)
   doc.setTextColor(...MUTED)
@@ -140,7 +158,7 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   autoTable(doc, {
     startY: y,
     head: [['Amount Paid', 'Payment Date', 'Expiration Date']],
-    body: [[`$${policy.premium.toFixed(2)}`, formatDate(policy.lastPaymentDate), formatDate(policy.nextPaymentDate)]],
+    body: [[money(policy.premium), formatDate(policy.lastPaymentDate), formatDate(policy.nextPaymentDate)]],
     styles: { fontSize: 9, lineColor: [220, 226, 240], lineWidth: 0.2 },
     headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold' },
     theme: 'grid',
@@ -162,10 +180,10 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   sectionBand('POLICY INFORMATION')
   autoTable(doc, {
     startY: y,
-    head: [['Policy Number', 'Policy Package', 'Monthly Premium', 'Cover', 'Currency', 'Status']],
+    head: [['Policy Number', 'Policy Package', premiumHeading, 'Cover', 'Currency', 'Status']],
     body: [[
-      policy.policyNumber, policy.productName, `$${policy.premium.toFixed(2)}`,
-      `$${policy.coverAmount.toLocaleString()}`, 'USD', policy.status.toUpperCase(),
+      policy.policyNumber, policy.productName, money(policy.premium),
+      money(policy.coverAmount), 'USD', policy.status.toUpperCase(),
     ]],
     styles: { fontSize: 8.5, lineColor: [220, 226, 240], lineWidth: 0.2 },
     headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold' },
@@ -207,11 +225,11 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
       y += header.length * 4 + 2
       autoTable(doc, {
         startY: y,
-        head: [['Policy Package', 'Monthly Premium', 'Cover', 'Currency', 'Status']],
+        head: [['Policy Package', premiumHeading, 'Cover', 'Currency', 'Status']],
         body: [[
           d.productName ?? policy.productName,
-          `$${(d.premium ?? policy.premium).toFixed(2)}`,
-          `$${policy.coverAmount.toLocaleString()}`, 'USD', policy.status.toUpperCase(),
+          money(d.premium ?? policy.premium),
+          money(policy.coverAmount), 'USD', policy.status.toUpperCase(),
         ]],
         styles: { fontSize: 8.5, lineColor: [220, 226, 240], lineWidth: 0.2 },
         headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold' },
@@ -222,16 +240,8 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
     })
   }
 
-  if (category === 'agriculture') {
+  if (isAgriculture) {
     ensureRoom(20 + AGRICULTURE_COVER.length * 5.5)
-    if (policy.growerNumber) {
-      doc.setFontSize(9.5)
-      doc.setTextColor(...MUTED)
-      doc.text('Grower Number:', 14, y)
-      doc.setTextColor(...TEXT)
-      doc.text(policy.growerNumber, 50, y)
-      y += 8
-    }
     sectionBand('COVER PROVIDED')
     doc.setFillColor(...BRAND_RED)
     doc.setFontSize(9.5)
@@ -454,42 +464,44 @@ export async function exportClaimAssessmentReport(
 export async function exportPolicyAssessmentReport(
   assessment: PolicyAssessment, policyNumber: string, clientName: string,
 ) {
-  const { jsPDF } = await import('jspdf')
+  const [{ jsPDF }, { MOTIONS_LOGO_PNG_BASE64 }] = await Promise.all([
+    import('jspdf'), import('../assets/motionsLogo'),
+  ])
   const doc = new jsPDF()
   const pageWidth = doc.internal.pageSize.getWidth()
   const cfg = getNotifSettings()
 
-  doc.setFillColor(...BRAND_BLUE)
-  doc.rect(0, 0, pageWidth, 24, 'F')
-  doc.setFillColor(...BRAND_RED)
-  doc.rect(0, 24, pageWidth, 1.5, 'F')
-  doc.setTextColor(255, 255, 255)
-  doc.setFontSize(15)
-  doc.text('MOTIONS', 14, 12)
-  doc.setFontSize(9)
-  doc.text(assessment.subjectType === 'vehicle' ? 'VEHICLE PRE-LOSS ASSESSMENT REPORT' : 'AGRICULTURE PRE-LOSS ASSESSMENT REPORT', 14, 19)
-  doc.text(policyNumber, pageWidth - 14, 15, { align: 'right' })
+  drawLetterhead(doc, pageWidth, MOTIONS_LOGO_PNG_BASE64, cfg)
+
+  let y = 28
+  doc.setFontSize(9.5)
   doc.setTextColor(...TEXT)
+  doc.text(assessment.subjectType === 'vehicle' ? 'VEHICLE PRE-LOSS ASSESSMENT REPORT' : 'AGRICULTURE PRE-LOSS ASSESSMENT REPORT', 14, y)
+  y += 5
+  doc.setFontSize(8)
+  doc.setTextColor(...MUTED)
+  doc.text(`Policy ${policyNumber}`, 14, y)
+  y += 4.5
+  doc.text(`Generated ${formatDate(new Date())}`, 14, y)
+  doc.setTextColor(...TEXT)
+  y += 8
 
-  let y = 31
-  const contactLine = [cfg.companyAddress, cfg.companyPhone, cfg.companyEmail].filter(Boolean).join('  ·  ')
-  if (contactLine) {
-    doc.setFontSize(7.5)
-    doc.setTextColor(...MUTED)
-    doc.text(contactLine, 14, y)
-    doc.setTextColor(...TEXT)
-    y += 6
+  const pageHeightForFlow = doc.internal.pageSize.getHeight()
+  const ensureRoom = (need: number) => {
+    if (y + need > pageHeightForFlow - 16) { doc.addPage(); y = 20 }
   }
-  y += 3
 
-  const sectionHeading = (n: number, title: string) => {
-    doc.setFontSize(12)
-    doc.setTextColor(...BRAND_BLUE)
-    doc.text(`${n}.  ${title}`, 14, y)
-    doc.setDrawColor(220, 226, 240)
-    doc.line(14, y + 2, pageWidth - 14, y + 2)
+  // Same banded section style as the Policy Report so the two documents
+  // read as one family.
+  const sectionHeading = (_n: number, title: string) => {
+    ensureRoom(14)
+    doc.setFillColor(...NAVY)
+    doc.rect(14, y, pageWidth - 28, 8, 'F')
+    doc.setFontSize(10)
+    doc.setTextColor(255, 255, 255)
+    doc.text(title, 14 + (pageWidth - 28) / 2, y + 5.5, { align: 'center' })
     doc.setTextColor(...TEXT)
-    y += 9
+    y += 12
   }
 
   const kvRows = (rows: [string, string][]) => {

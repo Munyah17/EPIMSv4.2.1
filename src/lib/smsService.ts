@@ -23,7 +23,7 @@ export interface SmsSettings {
 
 const DEFAULTS: SmsSettings = {
   apiKey: '72bb6de19ecf8df8',
-  domain: '',
+  domain: 'sms.vas.co.zw',
   senderId: '',
 }
 

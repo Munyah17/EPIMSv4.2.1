@@ -467,6 +467,15 @@ export interface AssessmentPhoto {
   aiNote?: string
   aiFlagged?: boolean
   capturedAt: string
+  /** Whether the file carried a readable EXIF block at all. False for
+   *  screenshots, downloads and most forwarded images — the file can't
+   *  then vouch for when or how it was made. See lib/photoIntegrity.ts. */
+  exifHasData?: boolean
+  /** EXIF Software tag: names the image editor that last wrote the file,
+   *  when one did. A camera writes its own firmware string here instead. */
+  exifSoftware?: string
+  /** EXIF Make + Model, i.e. the camera that took it. */
+  exifCamera?: string
   /** Perceptual (difference) hash of the image content — computed at
    *  capture time, compared against every other assessment photo on
    *  submit to catch a recycled photo from another claim/policy being

@@ -204,9 +204,9 @@ export default function MassMessaging({ showToast }: Props) {
           <div className="card">
             <div className="card-header"><span className="card-title">Afrosoft SMS Gateway</span></div>
             <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 16 }}>
-              The account domain below is specific to our Afrosoft account and isn't published in their API docs —
-              enter it exactly as given by Afrosoft. Note: it must also be allow-listed on the server
-              (<code>AFROSOFT_SMS_DOMAIN</code> env var) before live sending will work; until then, messages are simulated.
+              Live SMS through Afrosoft. The account domain is specific to our Afrosoft account; only change it if
+              Afrosoft moves us to a different host (the server must allow-list any new host via the
+              <code> AFROSOFT_SMS_DOMAIN</code> env var). With the domain or API key blank, messages are simulated instead of sent.
             </p>
             <div className="form-row" style={{ marginBottom: 12 }}>
               <div className="form-group">
