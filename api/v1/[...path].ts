@@ -49,9 +49,30 @@ function isUuid(v: unknown): v is string {
   return typeof v === 'string' && UUID_RE.test(v)
 }
 
-async function logRequest(admin: SupabaseClient, keyId: string | null, endpoint: string, statusCode: number) {
+/**
+ * Records the request against the key that made it. Method, caller IP and
+ * elapsed time are included because a bare endpoint-and-status pair cannot
+ * answer who called, from where, or whether a key is being hammered, which
+ * is the whole reason for keeping the log.
+ *
+ * Never allowed to fail the request it describes: a broken audit write must
+ * not turn a successful API call into an error for the partner.
+ */
+async function logRequest(
+  admin: SupabaseClient, keyId: string | null, endpoint: string, statusCode: number,
+  meta: { method?: string; ip?: string; startedAt?: number } = {},
+) {
   if (!keyId) return
-  await admin.from('api_request_log').insert({ key_id: keyId, endpoint, status_code: statusCode })
+  try {
+    await admin.from('api_request_log').insert({
+      key_id: keyId, endpoint, status_code: statusCode,
+      method: meta.method ?? null,
+      ip: meta.ip ?? null,
+      duration_ms: meta.startedAt ? Date.now() - meta.startedAt : null,
+    })
+  } catch (e) {
+    console.error('api_request_log write failed', endpoint, e)
+  }
 }
 
 function scopeFor(resource: string, method: string): string | null {
@@ -78,6 +99,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   res.setHeader('Access-Control-Allow-Origin', '*')
 
+  // Captured once here so every log line for this request shares the same
+  // start time and caller identity. x-forwarded-for is a list when proxies
+  // chain; the first entry is the original client.
+  const startedAt = Date.now()
+  const forwarded = req.headers['x-forwarded-for']
+  const callerIp = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(',')[0]?.trim()
+    || req.socket?.remoteAddress
+    || undefined
+  const reqMeta = { method: req.method ?? undefined, ip: callerIp, startedAt }
+
   const supabaseUrl = process.env.VITE_SUPABASE_URL
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!supabaseUrl || !serviceKey) return res.status(500).json({ error: 'Server is not configured.' })
@@ -97,31 +128,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { data: dev } = await admin.from('api_developers').select('*').eq('id', keyRow.developer_id).eq('status', 'active').maybeSingle()
   if (!dev) {
-    await logRequest(admin, keyRow.id, path, 403)
+    await logRequest(admin, keyRow.id, path, 403, reqMeta)
     return res.status(403).json({ error: 'Developer account is suspended.' })
   }
 
   const since = new Date(Date.now() - 60000).toISOString()
   const { count } = await admin.from('api_request_log').select('*', { count: 'exact', head: true }).eq('key_id', keyRow.id).gte('ts', since)
   if ((count ?? 0) >= keyRow.rate_limit_per_min) {
-    await logRequest(admin, keyRow.id, path, 429)
+    await logRequest(admin, keyRow.id, path, 429, reqMeta)
     return res.status(429).json({ error: `Rate limit of ${keyRow.rate_limit_per_min} requests/min exceeded.` })
   }
 
   const scopeNeeded = scopeFor(resource, method)
   if (!scopeNeeded) {
-    await logRequest(admin, keyRow.id, path, 404)
+    await logRequest(admin, keyRow.id, path, 404, reqMeta)
     return res.status(404).json({ error: 'Unknown endpoint.' })
   }
   if (!(keyRow.scopes as string[]).includes(scopeNeeded)) {
-    await logRequest(admin, keyRow.id, path, 403)
+    await logRequest(admin, keyRow.id, path, 403, reqMeta)
     return res.status(403).json({ error: `This API key does not have the '${scopeNeeded}' scope.` })
   }
 
   let body: Json = {}
   if (req.body) {
     try { body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body } catch {
-      await logRequest(admin, keyRow.id, path, 400)
+      await logRequest(admin, keyRow.id, path, 400, reqMeta)
       return res.status(400).json({ error: 'Invalid JSON body.' })
     }
   }
@@ -156,7 +187,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   await admin.from('api_keys').update({ last_used_at: new Date().toISOString() }).eq('id', keyRow.id)
-  await logRequest(admin, keyRow.id, path, result.status)
+  await logRequest(admin, keyRow.id, path, result.status, reqMeta)
   return res.status(result.status).json(result.body)
 }
 

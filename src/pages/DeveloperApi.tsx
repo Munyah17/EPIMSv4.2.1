@@ -7,6 +7,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { API_TERMS_TEXT, API_TERMS_VERSION } from '../lib/apiTerms'
 import { sendSystemEmail } from '../lib/mailService'
 import { MAILBOXES } from '../lib/mailboxes'
+import { recordActivity, listActivity, subscribeToActivity, ACTION_LABELS, type ActivityRow } from '../lib/activityLog'
 
 const ALL_SCOPES = ['products:read', 'quotes:read', 'clients:write', 'policies:write', 'policies:read', 'payments:write']
 
@@ -41,16 +42,62 @@ export default function DeveloperApi({ showToast }: Props) {
   const [issueKeyFor, setIssueKeyFor] = useState<ApiDeveloper | null>(null)
   const [showDocs, setShowDocs] = useState(false)
   const [showHelp, setShowHelp] = useState(false)
+  const [activity, setActivity] = useState<ActivityRow[]>([])
+  const [showActivity, setShowActivity] = useState(false)
+
+  /** Attributes an audited action to whoever is signed in. */
+  const actor = () => ({ id: user?.id, name: user?.name ?? 'Unknown', role: user?.role ?? 'unknown' })
+
+  // Portfolio totals across every developer. Usage figures only cover the
+  // developers whose rows have been expanded, since that is when their stats
+  // are fetched -- so the cards below say "loaded" rather than implying the
+  // whole estate has been counted.
+  const totals = (() => {
+    const keys = Object.values(keysByDeveloper).flat()
+    const usage = Object.values(usageByDeveloper)
+    return {
+      activeKeys: keys.filter(k => k.status === 'active').length,
+      liveKeys: keys.filter(k => k.status === 'active' && k.environment === 'live').length,
+      sandboxKeys: keys.filter(k => k.status === 'active' && k.environment === 'sandbox').length,
+      requestsToday: usage.reduce((s, u) => s + u.requestsToday, 0),
+      requests7d: usage.reduce((s, u) => s + u.requests7d, 0),
+      errorRate7d: usage.length ? usage.reduce((s, u) => s + u.errorRate7d, 0) / usage.length : 0,
+    }
+  })()
 
   const load = () => {
-    db.developerApi.listDevelopers().then(({ data, error }) => {
+    db.developerApi.listDevelopers().then(async ({ data, error }) => {
       if (error) showToast('error', 'Failed to load developers.')
       setDevelopers(data)
       setLoading(false)
+
+      // Keys and usage for everyone, not just whichever rows get expanded --
+      // the summary cards are meant to describe the whole estate, and a
+      // total that silently counted only what you had clicked would be
+      // worse than no total at all. Expanding a row then costs no fetch.
+      const results = await Promise.all(data.map(async dev => ({
+        dev,
+        keys: (await db.developerApi.listKeys(dev.id)).data,
+        usage: (await db.developerApi.getUsageStats(dev.id)).data,
+      })))
+      setKeysByDeveloper(Object.fromEntries(results.map(r => [r.dev.id, r.keys])))
+      setUsageByDeveloper(Object.fromEntries(results.map(r => [r.dev.id, r.usage])))
     })
   }
 
   useEffect(load, [])
+
+  // Live trail of who touched keys and developer access. Subscribed rather
+  // than polled so a revocation shows up on every open screen the moment it
+  // happens, which is the point of watching at all.
+  useEffect(() => {
+    let cancelled = false
+    void listActivity({ limit: 100 }).then(rows => { if (!cancelled) setActivity(rows) })
+    const unsubscribe = subscribeToActivity(row => {
+      setActivity(prev => [row, ...prev].slice(0, 100))
+    })
+    return () => { cancelled = true; unsubscribe() }
+  }, [])
 
   const toggleExpand = async (dev: ApiDeveloper) => {
     if (expanded === dev.id) { setExpanded(null); return }
@@ -79,6 +126,7 @@ export default function DeveloperApi({ showToast }: Props) {
     if (error) { showToast('error', error); return }
     const { data: keys } = await db.developerApi.listKeys(developerId)
     setKeysByDeveloper(prev => ({ ...prev, [developerId]: keys }))
+    void recordActivity({ action: 'apikey.paused', actor: actor(), entityType: 'api_key', entityId: keyId, severity: 'notice' })
     showToast('info', 'Key paused; it can be resumed at any time.')
   }
 
@@ -87,12 +135,19 @@ export default function DeveloperApi({ showToast }: Props) {
     if (error) { showToast('error', error); return }
     const { data: keys } = await db.developerApi.listKeys(developerId)
     setKeysByDeveloper(prev => ({ ...prev, [developerId]: keys }))
+    void recordActivity({ action: 'apikey.resumed', actor: actor(), entityType: 'api_key', entityId: keyId, severity: 'notice' })
     showToast('success', 'Key resumed.')
   }
 
   const handleIssueKey = async (dev: ApiDeveloper, opts: { scopes: string[]; rateLimitPerMin: number; environment: 'sandbox' | 'live' }) => {
     const { data, error } = await db.developerApi.issueKey(dev.id, opts)
     if (error || !data) { showToast('error', error ?? 'Failed to issue key.'); return }
+    void recordActivity({
+      action: 'apikey.issued', actor: actor(),
+      entityType: 'api_key', entityId: data.publishableKey, entityLabel: dev.companyName,
+      detail: `${data.environment} key, scopes: ${opts.scopes.join(', ')}, limit ${opts.rateLimitPerMin}/min`,
+      severity: 'warning',
+    })
     setNewKey({ rawKey: data.rawKey, publishableKey: data.publishableKey, environment: data.environment, developer: dev })
     setIssueKeyFor(null)
     const { data: keys } = await db.developerApi.listKeys(dev.id)
@@ -135,6 +190,7 @@ Tariqify IMS`,
     if (error) { showToast('error', error); return }
     const { data: keys } = await db.developerApi.listKeys(developerId)
     setKeysByDeveloper(prev => ({ ...prev, [developerId]: keys }))
+    void recordActivity({ action: 'apikey.revoked', actor: actor(), entityType: 'api_key', entityId: keyId, severity: 'warning' })
     showToast('success', 'Key revoked.')
   }
 
@@ -143,6 +199,11 @@ Tariqify IMS`,
     const { error } = await db.developerApi.setDeveloperStatus(dev.id, next)
     if (error) { showToast('error', error); return }
     setDevelopers(prev => prev.map(d => d.id === dev.id ? { ...d, status: next } : d))
+    void recordActivity({
+      action: 'developer.status_changed', actor: actor(),
+      entityType: 'api_developer', entityId: dev.id, entityLabel: dev.companyName,
+      detail: `${dev.status} to ${next}`, severity: 'notice',
+    })
     showToast('success', `${dev.companyName} ${next === 'active' ? 'reactivated' : 'suspended'}.`)
   }
 
@@ -156,6 +217,11 @@ Tariqify IMS`,
     if (error) { showToast('error', error); return }
     setDevelopers(prev => prev.map(d => d.id === dev.id ? { ...d, status: 'terminated', terminationReason: reason.trim() } : d))
     setKeysByDeveloper(prev => prev[dev.id] ? { ...prev, [dev.id]: prev[dev.id].map(k => ({ ...k, status: 'revoked' })) } : prev)
+    void recordActivity({
+      action: 'developer.terminated', actor: actor(),
+      entityType: 'api_developer', entityId: dev.id, entityLabel: dev.companyName,
+      detail: reason.trim(), severity: 'warning',
+    })
     showToast('success', `${dev.companyName} terminated. All their keys have been revoked.`)
   }
 
@@ -174,13 +240,88 @@ Tariqify IMS`,
         </div>
       )}
 
+      <div className="stats-grid" style={{ marginBottom: '1.25rem' }}>
+        <div className="stat-card">
+          <div className="stat-icon" style={{ background: 'rgba(91,127,232,0.15)', color: 'var(--blue)' }}>🔌</div>
+          <div className="stat-body">
+            <div className="stat-value">{developers.length}</div>
+            <div className="stat-label">Developers</div>
+            <div className="stat-delta positive">{developers.filter(d => d.status === 'active').length} active</div>
+          </div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon" style={{ background: 'rgba(16,185,129,0.15)', color: 'var(--teal)' }}>🔑</div>
+          <div className="stat-body">
+            <div className="stat-value">{totals.activeKeys}</div>
+            <div className="stat-label">Active Keys</div>
+            <div className="stat-delta">{totals.liveKeys} live · {totals.sandboxKeys} sandbox</div>
+          </div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon" style={{ background: 'rgba(245,158,11,0.15)', color: 'var(--gold)' }}>📈</div>
+          <div className="stat-body">
+            <div className="stat-value">{totals.requestsToday.toLocaleString()}</div>
+            <div className="stat-label">Requests Today</div>
+            <div className="stat-delta">{totals.requests7d.toLocaleString()} in 7 days</div>
+          </div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon" style={{ background: totals.errorRate7d >= 10 ? 'rgba(239,68,68,0.15)' : 'rgba(139,92,246,0.15)', color: totals.errorRate7d >= 10 ? 'var(--danger)' : 'var(--purple)' }}>⚠</div>
+          <div className="stat-body">
+            <div className="stat-value">{totals.errorRate7d.toFixed(1)}%</div>
+            <div className="stat-label">Error Rate (7d)</div>
+            <div className="stat-delta">{totals.errorRate7d >= 10 ? 'Above normal' : 'Healthy'}</div>
+          </div>
+        </div>
+      </div>
+
       <div className="panel-toolbar">
         <button className="btn btn-ghost" onClick={() => setShowDocs(true)}>📖 API Documentation</button>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-ghost" onClick={() => setShowActivity(v => !v)}>
+            🕘 Activity {activity.length > 0 ? `(${activity.length})` : ''}
+          </button>
           <button className="btn btn-ghost" onClick={() => setShowHelp(true)}>💬 Assistance</button>
           <button className="btn btn-primary" onClick={() => setShowNew(true)} disabled={!canEdit}>+ New Developer</button>
         </div>
       </div>
+
+      {showActivity && (
+        <div className="card" style={{ marginBottom: '1rem' }}>
+          <div className="card-header">
+            <span className="card-title">Privilege &amp; Key Activity</span>
+            <span style={{ fontSize: 11, color: 'var(--teal)' }}>● Live</span>
+          </div>
+          <p style={{ fontSize: 11, color: 'var(--muted)', margin: '0 0 10px' }}>
+            Who changed access, keys or claim outcomes, newest first. Append-only: entries cannot be edited or
+            deleted by anyone, including an administrator.
+          </p>
+          {activity.length === 0 ? (
+            <div className="empty-state" style={{ padding: '18px 0' }}>Nothing recorded yet.</div>
+          ) : (
+            <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+              <table className="table">
+                <thead><tr><th>When</th><th>Who</th><th>Did what</th><th>To</th><th>Detail</th></tr></thead>
+                <tbody>
+                  {activity.map(row => (
+                    <tr key={row.id}>
+                      <td className="mono" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{new Date(row.ts).toLocaleString('en-GB')}</td>
+                      <td style={{ fontSize: 12 }}>{row.actorName}<span style={{ color: 'var(--muted)' }}> · {row.actorRole.replace(/_/g, ' ')}</span></td>
+                      <td style={{ fontSize: 12 }}>
+                        <span className={`pill ${row.severity === 'warning' ? 'pill-lapsed' : row.severity === 'notice' ? 'pill-pending' : 'pill-active'}`}>
+                          {ACTION_LABELS[row.action] ?? row.action}
+                        </span>
+                      </td>
+                      <td className="mono" style={{ fontSize: 11 }}>{row.entityLabel ?? row.entityId ?? '—'}</td>
+                      <td style={{ fontSize: 11, color: 'var(--muted)', maxWidth: 280 }}>{row.detail ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="card">
         {loading ? (

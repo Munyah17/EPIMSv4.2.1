@@ -10,6 +10,7 @@ import { notifyClaimCreated } from '../lib/claimNotifications'
 import { useAuth } from '../contexts/AuthContext'
 import { queueAssessment } from '../lib/offlineQueue'
 import { checkAndRecordPhotoDuplicates } from '../lib/duplicatePhotoCheck'
+import { recordActivity } from '../lib/activityLog'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -20,7 +21,7 @@ interface Props {
 }
 
 export default function Claims({ showToast, initialCategory }: Props) {
-  const { hasPermission } = useAuth()
+  const { hasPermission, user } = useAuth()
   const [claims, setClaims] = useState<Claim[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -127,6 +128,22 @@ export default function Claims({ showToast, initialCategory }: Props) {
       return
     }
     showToast('success', `Claim ${data.claimNumber} updated.`)
+
+    // Only outcome-changing transitions are audited; editing internal notes
+    // is not a privilege decision and would only dilute the trail.
+    const auditAction = data.status === 'approved' ? 'claim.approved'
+      : data.status === 'rejected' && data.stage === 'closed' && updated.stage === 'closed' ? 'claim.declined'
+      : data.stage === 'assessment' ? 'claim.intake_accepted'
+      : data.stage === 'final_review' ? 'claim.escalated'
+      : null
+    if (auditAction) {
+      void recordActivity({
+        action: auditAction, actor: { id: user?.id, name: user?.name ?? 'Unknown', role: user?.role ?? 'unknown' },
+        entityType: 'claim', entityId: data.id, entityLabel: data.claimNumber,
+        detail: `${data.clientName}, $${data.amount.toLocaleString()}${data.assignedName ? `, now with ${data.assignedName}` : ''}`,
+        severity: data.status === 'approved' ? 'warning' : 'notice',
+      })
+    }
     try { await notify() } catch { /**/ }
   }
 
