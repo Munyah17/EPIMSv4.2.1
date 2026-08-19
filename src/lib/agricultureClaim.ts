@@ -16,19 +16,43 @@
  * quietly move the payable amount.
  */
 
-/** Industry standards used to derive the expected crop for a hectarage. */
+/**
+ * Standard plant population, assumed rather than counted: 15,000 plants to
+ * the hectare.
+ */
 export const PLANTS_PER_HECTARE = 15_000
-export const LEAVES_PER_PLANT = 18
-/** 15,000 plants x 18 leaves = 270,000 leaves expected per hectare. */
-export const LEAVES_PER_HECTARE = PLANTS_PER_HECTARE * LEAVES_PER_PLANT
+
+/**
+ * Typical leaves per plant at topping. Only ever a starting suggestion --
+ * this figure is counted in the field for each assessment, because it is
+ * what the whole expected-crop calculation scales from and it genuinely
+ * varies by variety and season.
+ */
+export const TYPICAL_LEAVES_AT_TOPPING = 18
 
 /** Deductions applied to the assessed loss to reach the payable amount. */
 export const HANDLING_EXPENSE_RATE = 0.10
 export const EXCESS_RATE = 0.15
 
-export function expectedLeavesForHectares(hectares: number): number {
+/**
+ * Total leaves the crop should yield: plant population x leaves counted at
+ * topping, over the hectarage under crop.
+ */
+export function expectedLeavesForHectares(hectares: number, leavesAtTopping: number): number {
   if (!Number.isFinite(hectares) || hectares <= 0) return 0
-  return Math.round(hectares * LEAVES_PER_HECTARE)
+  if (!Number.isFinite(leavesAtTopping) || leavesAtTopping <= 0) return 0
+  return Math.round(hectares * PLANTS_PER_HECTARE * leavesAtTopping)
+}
+
+/**
+ * A barn's capacity in strings: hooks x tiers x bays. Derived rather than
+ * asked for, because the three parts are measured once at pre-loss and a
+ * separately-typed string count could quietly disagree with them.
+ */
+export function stringsFromBarnCapacity(hooks: number, tiers: number, bays: number): number {
+  const parts = [hooks, tiers, bays]
+  if (parts.some(n => !Number.isFinite(n) || n <= 0)) return 0
+  return Math.round(hooks * tiers * bays)
 }
 
 /** Leaves hanging in a barn: strings x leaves per string. */

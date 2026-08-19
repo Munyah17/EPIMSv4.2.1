@@ -10,9 +10,9 @@ import PhotoCaptureField from '../ui/PhotoCaptureField'
 import SignaturePad from '../ui/SignaturePad'
 import FraudNoticeModal from './FraudNoticeModal'
 import {
-  LEAVES_PER_HECTARE, PLANTS_PER_HECTARE, LEAVES_PER_PLANT,
-  expectedLeavesForHectares, leavesInBarn, assessLoss, calculateClaim,
-  formatPercent, formatMoney,
+  PLANTS_PER_HECTARE, TYPICAL_LEAVES_AT_TOPPING,
+  expectedLeavesForHectares, stringsFromBarnCapacity, leavesInBarn,
+  assessLoss, calculateClaim, formatPercent, formatMoney,
 } from '../../lib/agricultureClaim'
 
 export interface PendingOfflinePhoto {
@@ -88,10 +88,14 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
   // field counts for hail/windstorm, barn counts for a barn fire.
   const [hectares, setHectares] = useState('')
   const [damagedLeaves, setDamagedLeaves] = useState('')
-  const [totalLeavesAtTopping, setTotalLeavesAtTopping] = useState('')
-  const [barnStrings, setBarnStrings] = useState('')
+  /** Leaves per plant, counted in the field at topping. */
+  const [leavesAtTopping, setLeavesAtTopping] = useState(String(TYPICAL_LEAVES_AT_TOPPING))
   const [leavesPerString, setLeavesPerString] = useState('')
-  const [leavesLost, setLeavesLost] = useState('')
+  // Barn dimensions, prefilled from the pre-loss record where one exists.
+  const [barnHooks, setBarnHooks] = useState('')
+  const [barnTiers, setBarnTiers] = useState('')
+  const [barnBays, setBarnBays] = useState('')
+  const [barnFromPreLoss, setBarnFromPreLoss] = useState(false)
   const [cropStage, setCropStage] = useState('')
   const [barnCapacity, setBarnCapacity] = useState('')
   const [farmerSignature, setFarmerSignature] = useState<string | undefined>()
@@ -140,6 +144,17 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
       const baseline = data.find(a => (a.cropPopulation ?? '').trim())?.cropPopulation?.trim()
       setBaselineCropPopulation(baseline || undefined)
       if (baseline) setCropPopulation(prev => prev.trim() ? prev : baseline)
+
+      // The barn was measured before the fire, which is the whole point of
+      // recording it then. Carried forward so the assessor is working from
+      // the declared baseline rather than measuring a burnt structure.
+      const barn = data.find(a => a.barnHooks || a.barnTiers || a.barnBays)
+      if (barn) {
+        setBarnFromPreLoss(true)
+        if (barn.barnHooks) setBarnHooks(prev => prev || String(barn.barnHooks))
+        if (barn.barnTiers) setBarnTiers(prev => prev || String(barn.barnTiers))
+        if (barn.barnBays) setBarnBays(prev => prev || String(barn.barnBays))
+      }
     })
     return () => { cancelled = true }
   }, [policyId])
@@ -148,10 +163,15 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
   // Barn fire counts leaf already in the barn; hail and windstorm count
   // damage in the field. Both are measured against the whole expected crop.
   const isBarnFire = claimType === 'Barn Fire'
-  const derivedExpected = expectedLeavesForHectares(Number(hectares))
-  const leavesExpected = Number(totalLeavesAtTopping) || derivedExpected
-  const barnLeafCount = leavesInBarn(Number(barnStrings), Number(leavesPerString))
-  const countedLoss = isBarnFire ? Number(leavesLost) : Number(damagedLeaves)
+  // Expected crop: 15,000 plants per hectare, times the leaves actually
+  // counted at topping.
+  const leavesExpected = expectedLeavesForHectares(Number(hectares), Number(leavesAtTopping))
+  // Barn capacity in strings is hooks x tiers x bays, never typed directly.
+  const barnStrings = stringsFromBarnCapacity(Number(barnHooks), Number(barnTiers), Number(barnBays))
+  const barnLeafCount = leavesInBarn(barnStrings, Number(leavesPerString))
+  // A barn fire destroys what was in the barn; hail and wind damage what is
+  // still standing in the field.
+  const countedLoss = isBarnFire ? barnLeafCount : Number(damagedLeaves)
   const lossAssessment = assessLoss(countedLoss, leavesExpected)
   const claimCalc = calculateClaim(lossAssessment.percentageLoss, policy?.coverAmount ?? 0)
   // Nothing is shown until there is a real basis for it: a bare "$0.00"
@@ -296,9 +316,9 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
         hectares: Number(hectares) || undefined,
         leavesExpected: leavesExpected || undefined,
         damagedLeaves: isBarnFire ? undefined : Number(damagedLeaves) || undefined,
-        barnStrings: isBarnFire ? Number(barnStrings) || undefined : undefined,
+        barnStrings: isBarnFire ? barnStrings || undefined : undefined,
         leavesPerString: isBarnFire ? Number(leavesPerString) || undefined : undefined,
-        leavesLost: isBarnFire ? Number(leavesLost) || undefined : undefined,
+        leavesLost: isBarnFire ? barnLeafCount || undefined : undefined,
         percentageLoss: claimCalc.percentageLoss,
         grossLoss: claimCalc.grossLoss,
         handlingExpenses: claimCalc.handlingExpenses,
@@ -483,57 +503,78 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
           <h4 style={{ marginBottom: 4 }}>Loss Assessment</h4>
           <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 0, marginBottom: 12 }}>
             Count the leaves; the percentage and the payable amount are worked out from them and cannot be typed in.
-            Standard crop is {PLANTS_PER_HECTARE.toLocaleString()} plants per hectare at {LEAVES_PER_PLANT} leaves,
-            so {LEAVES_PER_HECTARE.toLocaleString()} leaves are expected per hectare at topping.
+            Plant population is taken as {PLANTS_PER_HECTARE.toLocaleString()} per hectare; the leaves at topping are counted in the field.
           </p>
 
           <div className="form-row">
             <div className="form-group">
-              <label>Hectares Under Crop</label>
+              <label>Hectares Under Crop *</label>
               <input type="number" className="form-control" min={0} step="0.01" value={hectares} onChange={e => setHectares(e.target.value)} placeholder="e.g. 1.5" />
             </div>
             <div className="form-group">
-              <label>Total Leaves Expected at Topping</label>
-              <input
-                className="form-control"
-                value={leavesExpected ? leavesExpected.toLocaleString() : ''}
-                onChange={e => setTotalLeavesAtTopping(e.target.value.replace(/\D/g, ''))}
-                placeholder="Derived from hectares, or enter a counted figure"
-              />
-              {derivedExpected > 0 && (
-                <span style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, display: 'block' }}>
-                  {hectares} ha x {LEAVES_PER_HECTARE.toLocaleString()} = {derivedExpected.toLocaleString()} leaves.
-                </span>
-              )}
+              <label>Leaves at Topping (counted, per plant) *</label>
+              <input type="number" className="form-control" min={0} value={leavesAtTopping} onChange={e => setLeavesAtTopping(e.target.value)} placeholder={`Typically ${TYPICAL_LEAVES_AT_TOPPING}`} />
+              <span style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, display: 'block' }}>
+                Counted in the field. {TYPICAL_LEAVES_AT_TOPPING} is typical, but this varies by variety and season.
+              </span>
             </div>
+          </div>
+
+          <div className="form-group">
+            <label>Total Leaves Expected After Topping</label>
+            <input className="form-control" value={leavesExpected ? leavesExpected.toLocaleString() : '—'} disabled style={{ opacity: 0.6 }} />
+            {leavesExpected > 0 && (
+              <span style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, display: 'block' }}>
+                {hectares} ha × {PLANTS_PER_HECTARE.toLocaleString()} plants × {leavesAtTopping} leaves = {leavesExpected.toLocaleString()}
+              </span>
+            )}
           </div>
 
           {isBarnFire ? (
             <>
+              <label style={{ display: 'block', margin: '1rem 0 6px', fontSize: 13, fontWeight: 600 }}>
+                Barn Capacity
+                {barnFromPreLoss && <span style={{ fontWeight: 400, color: 'var(--teal)', fontSize: 11 }}> · carried over from the pre-loss assessment</span>}
+              </label>
               <div className="form-row">
                 <div className="form-group">
-                  <label>Number of Strings in Barn</label>
-                  <input type="number" className="form-control" min={0} value={barnStrings} onChange={e => setBarnStrings(e.target.value)} placeholder="e.g. 600" />
+                  <label>Number of Hooks *</label>
+                  <input type="number" className="form-control" min={0} value={barnHooks} onChange={e => setBarnHooks(e.target.value)} placeholder="e.g. 150" />
                 </div>
                 <div className="form-group">
-                  <label>Leaves per String</label>
-                  <input type="number" className="form-control" min={0} value={leavesPerString} onChange={e => setLeavesPerString(e.target.value)} placeholder="e.g. 90" />
+                  <label>Number of Tiers *</label>
+                  <input type="number" className="form-control" min={0} value={barnTiers} onChange={e => setBarnTiers(e.target.value)} placeholder="e.g. 4" />
+                </div>
+                <div className="form-group">
+                  <label>Number of Bays *</label>
+                  <input type="number" className="form-control" min={0} value={barnBays} onChange={e => setBarnBays(e.target.value)} placeholder="e.g. 3" />
                 </div>
               </div>
+
               <div className="form-row">
                 <div className="form-group">
-                  <label>Total Leaves in Barn</label>
-                  <input className="form-control" value={barnLeafCount ? barnLeafCount.toLocaleString() : '—'} disabled style={{ opacity: 0.6 }} />
-                </div>
-                <div className="form-group">
-                  <label>Leaves Lost in the Fire *</label>
-                  <input type="number" className="form-control" min={0} value={leavesLost} onChange={e => setLeavesLost(e.target.value)} placeholder="Defaults to the whole barn if total loss" />
-                  {barnLeafCount > 0 && (
-                    <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 4 }} onClick={() => setLeavesLost(String(barnLeafCount))}>
-                      Whole barn lost ({barnLeafCount.toLocaleString()})
-                    </button>
+                  <label>Number of Strings</label>
+                  <input className="form-control" value={barnStrings ? barnStrings.toLocaleString() : '—'} disabled style={{ opacity: 0.6 }} />
+                  {barnStrings > 0 && (
+                    <span style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, display: 'block' }}>
+                      {barnHooks} hooks × {barnTiers} tiers × {barnBays} bays
+                    </span>
                   )}
                 </div>
+                <div className="form-group">
+                  <label>Leaves per String *</label>
+                  <input type="number" className="form-control" min={0} value={leavesPerString} onChange={e => setLeavesPerString(e.target.value)} placeholder="e.g. 30" />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>Total Leaves in the Barn (lost to the fire)</label>
+                <input className="form-control" value={barnLeafCount ? barnLeafCount.toLocaleString() : '—'} disabled style={{ opacity: 0.6 }} />
+                {barnLeafCount > 0 && (
+                  <span style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, display: 'block' }}>
+                    {barnStrings.toLocaleString()} strings × {leavesPerString} leaves per string
+                  </span>
+                )}
               </div>
             </>
           ) : (
