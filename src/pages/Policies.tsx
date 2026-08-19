@@ -106,7 +106,9 @@ export default function Policies({ showToast, initialCategory }: Props) {
 
   const handleAdd = async (policy: Policy) => {
     const { data, error } = await db.policies.create(policy)
-    if (error || !data) { showToast('error', 'Failed to create policy.'); return }
+    // Show the real reason: "failed to create" tells a user nothing when the
+    // refusal is a duplicate they can actually do something about.
+    if (error || !data) { showToast('error', error ?? 'Failed to create policy.'); return }
     setPolicies(prev => [data, ...prev])
     showToast('success', `Policy ${data.policyNumber} created successfully.`)
     setShowNew(false)

@@ -396,10 +396,25 @@ export const policies = {
       gps_lat: policy.gpsLat ?? null, gps_lng: policy.gpsLng ?? null,
       agent_id: policy.agentId ?? null, next_payment_date: policy.nextPaymentDate ?? null,
     }
-    const { ok, data } = await sb('policies', 'write',
-      () => supabase.from('policies').insert(row).select(POLICY_SELECT).single(),
-    )
-    if (ok && data) return { data: toPolicy(data), error: null }
+    // Inserted directly rather than through sb(), because a duplicate must
+    // be reported as a refusal. Falling back to local storage on a unique
+    // violation would tell the user their policy was created and then
+    // quietly never sync it -- the opposite of what the constraint is for.
+    const start = Date.now()
+    const { data, error } = await supabase.from('policies').insert(row).select(POLICY_SELECT).single()
+    health.record({ ts: Date.now(), type: 'write', table: 'policies', success: !error, duration: Date.now() - start, source: 'supabase', detail: error ? String(error.message) : undefined })
+
+    if (!error && data) return { data: toPolicy(data), error: null }
+    if (error?.code === '23505') {
+      const duplicateProduct = error.message.includes('policies_one_live_per_client_product')
+      return {
+        data: null,
+        error: duplicateProduct
+          ? 'This client already holds a live policy for this product. Add a different product, or upgrade the existing policy instead of issuing a second one.'
+          : 'That would duplicate an existing record. Check whether this client or policy is already on the system.',
+      }
+    }
+    // Anything else is treated as a connectivity problem, as before.
     local('policies', 'write')
     const item = { ...policy, id: uid(), createdAt: new Date().toISOString().split('T')[0] } as Policy
     return { data: localStore.policies.create(item), error: null }
