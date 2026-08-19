@@ -4,6 +4,7 @@ import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
 import { useAuth } from '../contexts/AuthContext'
+import { notifyClientRegistered } from '../lib/signupNotifications'
 import RegisterClientModal from '../components/modals/RegisterClientModal'
 import EditClientModal from '../components/modals/EditClientModal'
 import NewPolicyModal from '../components/modals/NewPolicyModal'
@@ -59,6 +60,7 @@ export default function Clients({ showToast }: Props) {
     setClients(prev => [data, ...prev])
     showToast('success', `Client ${data.name} registered.`)
     setShowRegister(false)
+    void notifyClientRegistered(data, user?.name)
   }
 
   const handleEdit = async (updated: Client) => {

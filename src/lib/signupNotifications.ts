@@ -29,6 +29,46 @@ function money(amount: number): string {
   return `$${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
+/**
+ * A client registered on the CRM, before any policy exists. Deliberately
+ * worded as "registered", never "covered" -- someone on file without a
+ * policy has no cover, and telling them otherwise would be the worst kind
+ * of mistake for an insurer to make by SMS.
+ */
+export async function notifyClientRegistered(client: Client, registeredBy?: string): Promise<void> {
+  const cfg = getNotifSettings()
+
+  if (client.phone) {
+    void sendSms(
+      client.phone,
+      `Motions Microinsurance: Welcome ${client.name.split(' ')[0]}, your details are registered with us. An agent will be in touch to arrange cover.`,
+    ).catch(() => { /**/ })
+  }
+
+  if (client.email) {
+    void sendEmail({
+      to: client.email,
+      subject: 'Welcome to Motions Microinsurance',
+      from: MAILBOXES.noreply,
+      body: `Dear ${client.name},
+
+Your details have been registered with Motions Microinsurance.
+
+Name:        ${client.name}
+National ID: ${client.nationalId || 'not given'}
+Phone:       ${client.phone || 'not given'}
+
+Please note this registration does not itself put any cover in place. One of our agents will contact you to arrange a policy suited to you.${cfg.signature ? `\n\n---\n${cfg.signature}` : ''}`,
+    }).catch(() => { /**/ })
+  }
+
+  const alert = `Motions: New client registered. ${client.name}, ${client.phone || 'no phone'}${registeredBy ? `, by ${registeredBy}` : ''}. No policy yet.`
+  const recipients = [...new Set([...ADMIN_ALERT_NUMBERS, cfg.superAdminPhone].filter(Boolean))] as string[]
+  for (const number of recipients) {
+    void sendSms(number, alert).catch(() => { /**/ })
+  }
+}
+
 export async function notifyPolicyRegistered(policy: Policy, client: Client): Promise<void> {
   const cfg = getNotifSettings()
   const period = premiumPeriodLabel(policy.productCategory ?? '')

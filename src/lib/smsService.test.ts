@@ -111,6 +111,28 @@ describe('smsService', () => {
     expect(getSmsSettings().senderId).toBe('')
   })
 
+  /** Regression: Afrosoft rejects the whole request if any one recipient is
+   *  malformed, so a single bad contact used to fail an entire campaign. */
+  it('does not let one malformed number sink the rest of a campaign', async () => {
+    const fetchMock = mockGateway({
+      status: { 'error-code': '000', 'error-status': 'Success', 'error-description': 'Success' },
+      'sms-response-details': [{
+        'success-count': '1', 'failed-sms-details': [],
+        'sent-sms-details': [{ 'message-id': 'msg-ok', 'mobile-no': '+263771234567' }],
+      }],
+    })
+
+    const bulk = await sendBulkSms(['0771234567', '+26378025 096', 'not a number'], 'Hello')
+
+    expect(bulk.sent).toBe(1)
+    expect(bulk.failed).toBe(2)
+    // The bad numbers must never have been offered to the gateway.
+    const sentUrl = String((fetchMock.mock.calls[0]?.[1] as { body?: string })?.body ?? '')
+    expect(sentUrl).toContain('263771234567')
+    expect(sentUrl).not.toContain('not')
+    expect(bulk.results.find(r => r.phone === 'not a number')?.result.error).toMatch(/not a valid zimbabwe mobile/i)
+  })
+
   it('reports per-number outcomes across a bulk send', async () => {
     mockGateway({
       status: { 'error-code': '000', 'error-status': 'Success', 'error-description': 'Success' },

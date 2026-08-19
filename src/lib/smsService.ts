@@ -88,6 +88,19 @@ function msisdnKey(raw: string): string {
   return raw.replace(/\D/g, '').slice(-9)
 }
 
+/**
+ * A Zimbabwe mobile number normalises to 263 followed by 9 digits.
+ *
+ * Worth checking before sending because Afrosoft rejects the whole request
+ * when any single recipient is malformed -- one bad number in a contact list
+ * otherwise fails the entire campaign, which is precisely what "Sent: 0 |
+ * Failed: 9" looks like from the outside.
+ */
+function isValidMsisdn(raw: string): boolean {
+  const digits = normalizeMsisdn(raw)
+  return /^263[17]\d{8}$/.test(digits)
+}
+
 interface AfrosoftResponse {
   status?: { 'error-code'?: string; 'error-status'?: string; 'error-description'?: string }
   'sms-response-details'?: Array<{
@@ -166,7 +179,21 @@ export async function sendBulkSms(numbers: string[], message: string): Promise<B
     }
   }
 
-  let result = await callAfrosoft(numbers, message, cfg)
+  // Bad numbers are separated out and reported individually, rather than
+  // being sent and taking every other recipient down with them.
+  const invalid = numbers.filter(n => !isValidMsisdn(n))
+  const valid = numbers.filter(isValidMsisdn)
+  const invalidResults = invalid.map(phone => {
+    const error = `Not a valid Zimbabwe mobile number (${phone.trim() || 'blank'}); correct it on the client record.`
+    logSmsLocally(phone, message, 'failed', error)
+    return { phone, result: { success: false, error } }
+  })
+
+  if (valid.length === 0) {
+    return { sent: 0, failed: invalidResults.length, results: invalidResults }
+  }
+
+  let result = await callAfrosoft(valid, message, cfg)
 
   // A sender ID Afrosoft doesn't recognise must never be the reason a
   // message fails to go out. If that's the complaint, drop it, clear it
@@ -175,12 +202,13 @@ export async function sendBulkSms(numbers: string[], message: string): Promise<B
   if (result.ok && cfg.senderId && isSenderIdRejection(result.data)) {
     console.warn(`[SMS] Afrosoft rejected sender ID "${cfg.senderId}"; clearing it and resending with the account default.`)
     saveSmsSettings({ ...cfg, senderId: '' })
-    result = await callAfrosoft(numbers, message, cfg, '')
+    result = await callAfrosoft(valid, message, cfg, '')
   }
 
   if (!result.ok) {
-    numbers.forEach(n => logSmsLocally(n, message, 'failed', result.error))
-    return { sent: 0, failed: numbers.length, results: numbers.map(phone => ({ phone, result: { success: false, error: result.error } })) }
+    valid.forEach(n => logSmsLocally(n, message, 'failed', result.error))
+    const failedResults = valid.map(phone => ({ phone, result: { success: false, error: result.error } }))
+    return { sent: 0, failed: failedResults.length + invalidResults.length, results: [...failedResults, ...invalidResults] }
   }
 
   const errorCode = result.data.status?.['error-code']
@@ -197,7 +225,7 @@ export async function sendBulkSms(numbers: string[], message: string): Promise<B
   const batchReason = result.data.status?.['error-description']
     || (errorCode && errorCode !== '000' ? `Afrosoft error ${errorCode}` : undefined)
 
-  const results = numbers.map(phone => {
+  const results = valid.map(phone => {
     const key = msisdnKey(phone)
     const success = sentIds.has(key)
     const error = success
@@ -212,10 +240,11 @@ export async function sendBulkSms(numbers: string[], message: string): Promise<B
     }
   })
 
+  const all = [...results, ...invalidResults]
   return {
-    sent: results.filter(r => r.result.success).length,
-    failed: results.filter(r => !r.result.success).length,
-    results,
+    sent: all.filter(r => r.result.success).length,
+    failed: all.filter(r => !r.result.success).length,
+    results: all,
   }
 }
 
