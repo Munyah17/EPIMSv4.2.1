@@ -1,14 +1,11 @@
 /**
- * SMS Service — Afrosoft Aggregator V4 HTTP API
+ * SMS Service — Afrosoft Aggregator V4 HTTP API.
  *
- * Real Afrosoft account credentials (per Afrosoft's HTTP API documentation
- * on file). The {Domain} host is account-specific and is not published in
- * Afrosoft's generic docs — it must be entered below once Afrosoft confirms
- * it, same as the API key.
- *
- * Calls are routed through /api/gateway-proxy (server-side) since Afrosoft's
- * API rejects direct browser calls via CORS, same pattern used for the
- * EcoCash/Paynow gateway calls in paymentGateways.ts.
+ * The browser no longer holds any gateway credentials: it asks
+ * /api/gateway-proxy to send, and the server supplies the key from
+ * AFROSOFT_SMS_API_KEY. Configuration that lived in localStorage meant
+ * every device had to be set up separately and one blank save silently
+ * stopped all SMS while still reporting success.
  */
 
 /**
@@ -110,35 +107,24 @@ interface AfrosoftResponse {
   }>
 }
 
-/** True when Afrosoft's complaint is specifically about the sender ID. */
-function isSenderIdRejection(data: AfrosoftResponse): boolean {
-  const texts = [
-    data.status?.['error-description'] ?? '',
-    ...(data['sms-response-details']?.[0]?.['failed-sms-details'] ?? [])
-      .flatMap(f => f.reasons ?? []).map(r => r['failed-reason'] ?? ''),
-  ]
-  return texts.some(t => /sender[-\s]?id/i.test(t))
-}
-
+/**
+ * Hands the send to the server, which holds the Afrosoft key.
+ *
+ * Nothing about the gateway is configured in the browser any more: the
+ * credentials used to live in localStorage, so every device needed setting
+ * up and a single blank save dropped sending into simulation mode without
+ * anyone noticing messages had stopped going out.
+ */
 async function callAfrosoft(
-  numbers: string[], message: string, cfg: SmsSettings, senderIdOverride?: string,
+  numbers: string[], message: string,
 ): Promise<{ ok: true; data: AfrosoftResponse } | { ok: false; error: string }> {
-  const senderId = senderIdOverride !== undefined ? senderIdOverride : cfg.senderId
   const mobiles = numbers.map(normalizeMsisdn).join(',')
-  const params = new URLSearchParams({
-    apikey: cfg.apiKey,
-    mobiles,
-    sms: message,
-    ...(senderId ? { senderid: senderId } : {}),
-    ...(/[^\x00-\x7F]/.test(message) ? { unicode: 'yes' } : {}),
-  })
-  const url = `https://${cfg.domain}/client/api/sendmessage?${params.toString()}`
 
   try {
     const res = await fetch('/api/gateway-proxy', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url, method: 'GET' }),
+      body: JSON.stringify({ action: 'sms', mobiles, message }),
     })
     if (!res.ok) {
       const err = await res.json().catch(() => ({}))
@@ -167,18 +153,6 @@ export async function sendSms(to: string, message: string): Promise<SmsResult> {
  * comma-separated numbers in a single call.
  */
 export async function sendBulkSms(numbers: string[], message: string): Promise<BulkSmsResult> {
-  const cfg = getSmsSettings()
-
-  if (!cfg.apiKey || !cfg.domain) {
-    // Simulation mode — record in console, no real SMS
-    numbers.forEach(n => { console.info(`[SMS SIM] To: ${n} | ${message}`); logSmsLocally(n, message, 'simulated') })
-    return {
-      sent: numbers.length,
-      failed: 0,
-      results: numbers.map(phone => ({ phone, result: { success: true, simulated: true, messageId: `sim_${Date.now()}` } })),
-    }
-  }
-
   // Bad numbers are separated out and reported individually, rather than
   // being sent and taking every other recipient down with them.
   const invalid = numbers.filter(n => !isValidMsisdn(n))
@@ -193,17 +167,7 @@ export async function sendBulkSms(numbers: string[], message: string): Promise<B
     return { sent: 0, failed: invalidResults.length, results: invalidResults }
   }
 
-  let result = await callAfrosoft(valid, message, cfg)
-
-  // A sender ID Afrosoft doesn't recognise must never be the reason a
-  // message fails to go out. If that's the complaint, drop it, clear it
-  // from the saved settings so it can't bite again, and resend using the
-  // account's own default sender ID.
-  if (result.ok && cfg.senderId && isSenderIdRejection(result.data)) {
-    console.warn(`[SMS] Afrosoft rejected sender ID "${cfg.senderId}"; clearing it and resending with the account default.`)
-    saveSmsSettings({ ...cfg, senderId: '' })
-    result = await callAfrosoft(valid, message, cfg, '')
-  }
+  const result = await callAfrosoft(valid, message)
 
   if (!result.ok) {
     valid.forEach(n => logSmsLocally(n, message, 'failed', result.error))

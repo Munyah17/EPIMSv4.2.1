@@ -69,7 +69,7 @@ export default function MassMessaging({ showToast }: Props) {
       const numbers = selectedClients.map(c => c.phone.replace(/\s/g, ''))
       const result = await sendBulkSms(numbers, message.trim())
       showToast(result.failed === 0 ? 'success' : 'warning',
-        `Sent: ${result.sent} | Failed: ${result.failed}${result.sent > 0 && selectedClients[0] && !smsConfig.apiKey ? ' (Simulation, configure API key to send live)' : ''}`)
+        `Sent: ${result.sent} | Failed: ${result.failed}`)
       setLog(getSmsLog())
     } finally {
       setSending(false)
@@ -145,12 +145,6 @@ export default function MassMessaging({ showToast }: Props) {
                 </span>
               </div>
 
-              {!smsConfig.apiKey && (
-                <div className="info-banner info-banner-warning" style={{ borderRadius: 8, padding: '10px 13px', marginBottom: 12, fontSize: 12 }}>
-                  ⚠ No API key configured; messages will be simulated. Go to <b>Gateway Settings</b> to enable live SMS.
-                </div>
-              )}
-
               <textarea
                 className="form-control"
                 rows={6}
@@ -203,6 +197,10 @@ export default function MassMessaging({ showToast }: Props) {
         <div style={{ maxWidth: 560 }}>
           <div className="card">
             <div className="card-header"><span className="card-title">Afrosoft SMS Gateway</span></div>
+            <div className="info-banner info-banner-info" style={{ borderRadius: 8, padding: '10px 13px', marginBottom: 12, fontSize: 12 }}>
+              The gateway credentials now live on the server, so SMS works the same from every device and
+              nothing here can switch it off. These fields are kept for reference only.
+            </div>
             <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 16 }}>
               Live SMS through Afrosoft. The account domain is specific to our Afrosoft account; only change it if
               Afrosoft moves us to a different host (the server must allow-list any new host via the

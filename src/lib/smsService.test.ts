@@ -1,8 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { sendSms, sendBulkSms, getSmsLog, clearSmsLog, getSmsSettings, saveSmsSettings } from './smsService'
+import { sendSms, sendBulkSms, getSmsLog, clearSmsLog } from './smsService'
 
-/** Replies exactly as the live Afrosoft gateway does, via the shape our
- *  /api/gateway-proxy relay returns. */
+/** Replies exactly as /api/gateway-proxy does when it relays Afrosoft. */
 function mockGateway(afrosoftBody: unknown) {
   return vi.spyOn(globalThis, 'fetch').mockResolvedValue({
     ok: true,
@@ -10,126 +9,68 @@ function mockGateway(afrosoftBody: unknown) {
   } as Response)
 }
 
+const SUCCESS = (mobile: string, id = 'msg-1') => ({
+  status: { 'error-code': '000', 'error-status': 'Success', 'error-description': 'Success' },
+  'sms-response-details': [{
+    'success-count': '1', 'failed-sms-details': [],
+    'sent-sms-details': [{ 'message-id': id, 'mobile-no': mobile }],
+  }],
+})
+
 describe('smsService', () => {
-  beforeEach(() => {
-    localStorage.clear()
-  })
-  afterEach(() => {
-    vi.restoreAllMocks()
-  })
-
-  it('ships with the Afrosoft account domain and API key configured', () => {
-    expect(getSmsSettings().domain).toBe('sms.vas.co.zw')
-    expect(getSmsSettings().apiKey).toBeTruthy()
-  })
-
-  /** Simulation is the fallback whenever the gateway isn't fully configured,
-   *  so these force that state rather than relying on the shipped defaults. */
-  const useSimulationMode = () => saveSmsSettings({ apiKey: '', domain: '', senderId: '' })
-
-  it('simulates sending when the gateway is not configured, and logs it as simulated', async () => {
-    useSimulationMode()
-    const result = await sendSms('+263770000000', 'Hello')
-    expect(result.success).toBe(true)
-    expect(result.simulated).toBe(true)
-
-    const log = getSmsLog()
-    expect(log[0].status).toBe('simulated')
-    expect(log[0].to).toBe('+263770000000')
-  })
-
-  it('clearSmsLog() empties the log', async () => {
-    useSimulationMode()
-    await sendSms('+263770000000', 'Hello')
-    expect(getSmsLog().length).toBeGreaterThan(0)
-    clearSmsLog()
-    expect(getSmsLog()).toEqual([])
-  })
+  beforeEach(() => { localStorage.clear() })
+  afterEach(() => { vi.restoreAllMocks() })
 
   /** Regression: Afrosoft is sent "263780086176" and reports it back as
-   *  "+263780086176". Matching those two as strings marked every delivered
-   *  message as failed. This is the exact live response for a success. */
+   *  "+263780086176". Matching those as strings marked every delivered
+   *  message as failed. */
   it('counts a message as sent when the gateway echoes the number back with a + prefix', async () => {
-    mockGateway({
-      status: { 'error-code': '000', 'error-status': 'Success', 'error-description': 'Success' },
-      'sms-response-details': [{
-        'success-count': '1',
-        'failed-sms-details': [],
-        'sent-sms-details': [{ 'sms-client-id': 'abc', 'message-id': 'msg-1', 'mobile-no': '+263780086176' }],
-      }],
-    })
-
+    mockGateway(SUCCESS('+263780086176', 'msg-1'))
     const result = await sendSms('+263780086176', 'Hello')
     expect(result.success).toBe(true)
     expect(result.messageId).toBe('msg-1')
     expect(getSmsLog()[0].status).toBe('sent')
   })
 
-  it('records the gateway\'s own reason against a message it refused', async () => {
+  it('sends without any gateway credentials in the browser', async () => {
+    const fetchMock = mockGateway(SUCCESS('+263771234567'))
+    await sendSms('0771234567', 'Hello')
+
+    // The request carries only the recipients and the text; the key lives
+    // on the server, so nothing here can leak or disable it.
+    const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as { body?: string })?.body ?? '{}'))
+    expect(body.action).toBe('sms')
+    expect(body.mobiles).toBe('263771234567')
+    expect(body).not.toHaveProperty('apikey')
+    expect(body).not.toHaveProperty('url')
+  })
+
+  it("records the gateway's own reason against a message it refused", async () => {
     mockGateway({
-      status: { 'error-code': '002', 'error-status': 'invalid', 'error-description': 'mobiles is invalid, mobile no min length :{10}' },
+      status: { 'error-code': '002', 'error-status': 'invalid', 'error-description': 'mobiles is invalid' },
       'sms-response-details': [{
         'success-count': '0',
         'failed-sms-details': [{ count: '1', reasons: [{ 'mobile-no': '+263770000001', 'failed-reason': 'Number is not reachable' }] }],
         'sent-sms-details': [],
       }],
     })
-
     const result = await sendSms('0770000001', 'Hello')
     expect(result.success).toBe(false)
     expect(result.error).toBe('Number is not reachable')
     expect(getSmsLog()[0].error).toBe('Number is not reachable')
   })
 
-  /** An unrecognised sender ID must never stop a message going out: the
-   *  service drops it, forgets it, and resends on the account default. */
-  it('retries without the sender ID when Afrosoft rejects it, and forgets the bad value', async () => {
-    saveSmsSettings({ apiKey: 'k', domain: 'sms.vas.co.zw', senderId: 'TARIQIFY' })
-    const rejected = {
-      status: { 'error-code': '002', 'error-status': 'invalid', 'error-description': 'sender-id is invalid, Must be a valid [sender-id]' },
-      'sms-response-details': [{ 'success-count': '0', 'failed-sms-details': [], 'sent-sms-details': [] }],
-    }
-    const accepted = {
-      status: { 'error-code': '000', 'error-status': 'Success', 'error-description': 'Success' },
-      'sms-response-details': [{
-        'success-count': '1', 'failed-sms-details': [],
-        'sent-sms-details': [{ 'message-id': 'msg-9', 'mobile-no': '+263777274385' }],
-      }],
-    }
-    const reply = (body: unknown) => ({ ok: true, json: async () => ({ status: 200, ok: true, body: JSON.stringify(body) }) }) as Response
-    const fetchMock = vi.spyOn(globalThis, 'fetch')
-      .mockResolvedValueOnce(reply(rejected))
-      .mockResolvedValueOnce(reply(accepted))
-
-    const result = await sendSms('+263777274385', 'Hello')
-
-    expect(result.success).toBe(true)
-    expect(fetchMock).toHaveBeenCalledTimes(2)
-    // The retry must not carry the rejected sender ID...
-    expect(String(fetchMock.mock.calls[1]?.[1]?.body)).not.toContain('senderid')
-    // ...and it must not be left in settings to break the next send.
-    expect(getSmsSettings().senderId).toBe('')
-  })
-
   /** Regression: Afrosoft rejects the whole request if any one recipient is
    *  malformed, so a single bad contact used to fail an entire campaign. */
   it('does not let one malformed number sink the rest of a campaign', async () => {
-    const fetchMock = mockGateway({
-      status: { 'error-code': '000', 'error-status': 'Success', 'error-description': 'Success' },
-      'sms-response-details': [{
-        'success-count': '1', 'failed-sms-details': [],
-        'sent-sms-details': [{ 'message-id': 'msg-ok', 'mobile-no': '+263771234567' }],
-      }],
-    })
-
+    const fetchMock = mockGateway(SUCCESS('+263771234567', 'msg-ok'))
     const bulk = await sendBulkSms(['0771234567', '+26378025 096', 'not a number'], 'Hello')
 
     expect(bulk.sent).toBe(1)
     expect(bulk.failed).toBe(2)
-    // The bad numbers must never have been offered to the gateway.
-    const sentUrl = String((fetchMock.mock.calls[0]?.[1] as { body?: string })?.body ?? '')
-    expect(sentUrl).toContain('263771234567')
-    expect(sentUrl).not.toContain('not')
+    const body = String((fetchMock.mock.calls[0]?.[1] as { body?: string })?.body ?? '')
+    expect(body).toContain('263771234567')
+    expect(body).not.toContain('not a number')
     expect(bulk.results.find(r => r.phone === 'not a number')?.result.error).toMatch(/not a valid zimbabwe mobile/i)
   })
 
@@ -142,11 +83,18 @@ describe('smsService', () => {
         'sent-sms-details': [{ 'message-id': 'msg-2', 'mobile-no': '+263772222222' }],
       }],
     })
-
     const bulk = await sendBulkSms(['0771111111', '0772222222'], 'Hello')
     expect(bulk.sent).toBe(1)
     expect(bulk.failed).toBe(1)
     expect(bulk.results.find(r => r.phone === '0772222222')?.result.success).toBe(true)
     expect(bulk.results.find(r => r.phone === '0771111111')?.result.error).toBe('Blacklisted')
+  })
+
+  it('clearSmsLog() empties the log', async () => {
+    mockGateway(SUCCESS('+263771234567'))
+    await sendSms('0771234567', 'Hello')
+    expect(getSmsLog().length).toBeGreaterThan(0)
+    clearSmsLog()
+    expect(getSmsLog()).toEqual([])
   })
 })
