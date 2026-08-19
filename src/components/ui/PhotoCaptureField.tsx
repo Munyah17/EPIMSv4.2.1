@@ -5,6 +5,7 @@ import { readExifSignals } from '../../lib/exifDate'
 import { analyzePhotoForFraud, fileToBase64 } from '../../lib/photoAnalysis'
 import { computePerceptualHash } from '../../lib/photoHash'
 import { assessPhotoIntegrity } from '../../lib/photoIntegrity'
+import CameraCapture from './CameraCapture'
 
 interface Props {
   label: string
@@ -17,15 +18,19 @@ interface Props {
    *  the offline branch below — passed through so a photo captured offline
    *  doesn't lose its real capture-time EXIF evidence once it syncs. */
   onOfflineCapture?: (file: File, label: string, exif?: { exifDate?: string; exifHasData: boolean; exifSoftware?: string; exifCamera?: string }) => void
+  /** Marks the whole field as a missing required entry (see
+   *  components/ui/ValidationSummary.tsx). */
+  invalid?: boolean
 }
 
-export default function PhotoCaptureField({ label, folder, recordId, claimDescription, value, onChange, onOfflineCapture }: Props) {
+export default function PhotoCaptureField({ label, folder, recordId, claimDescription, value, onChange, onOfflineCapture, invalid }: Props) {
   const [busy, setBusy] = useState(false)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [cameraOpen, setCameraOpen] = useState(false)
   const cameraRef = useRef<HTMLInputElement>(null)
   const galleryRef = useRef<HTMLInputElement>(null)
 
-  const handleFile = async (file: File | null) => {
+  const handleFile = async (file: File | null, live = false) => {
     if (!file) return
     setBusy(true)
     const capturedAt = new Date().toISOString()
@@ -76,6 +81,7 @@ export default function PhotoCaptureField({ label, folder, recordId, claimDescri
       exifSoftware: exif.software ?? undefined,
       exifCamera: [exif.make, exif.model].filter(Boolean).join(' ') || undefined,
       visibleDateStamp, aiNote, aiFlagged, capturedAt, phash: phash ?? undefined,
+      capturedLive: live || undefined,
     })
     setBusy(false)
   }
@@ -83,7 +89,7 @@ export default function PhotoCaptureField({ label, folder, recordId, claimDescri
   const concerns = value ? assessPhotoIntegrity(value) : []
 
   return (
-    <div className="photo-capture-field">
+    <div className={`photo-capture-field${invalid ? ' field-invalid-block' : ''}`}>
       <div className="photo-capture-header">
         <span className="photo-capture-label">{label}</span>
         {value && (
@@ -93,9 +99,11 @@ export default function PhotoCaptureField({ label, folder, recordId, claimDescri
 
       {!value ? (
         <div className="photo-capture-actions">
-          <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={e => handleFile(e.target.files?.[0] ?? null)} />
-          <input ref={galleryRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleFile(e.target.files?.[0] ?? null)} />
-          <button type="button" className="btn btn-outline btn-sm" disabled={busy} onClick={() => cameraRef.current?.click()}>📷 Camera</button>
+          {/* Only ever reached when the in-page camera can't run on this
+              device — CameraCapture hands off to it rather than dead-ending. */}
+          <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0] ?? null; e.target.value = ''; void handleFile(f, true) }} />
+          <input ref={galleryRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0] ?? null; e.target.value = ''; void handleFile(f) }} />
+          <button type="button" className="btn btn-outline btn-sm" disabled={busy} onClick={() => setCameraOpen(true)}>📷 Camera</button>
           <button type="button" className="btn btn-outline btn-sm" disabled={busy} onClick={() => galleryRef.current?.click()}>🖼 Gallery</button>
           {busy && <span className="photo-capture-busy">Uploading &amp; analysing…</span>}
         </div>
@@ -103,6 +111,7 @@ export default function PhotoCaptureField({ label, folder, recordId, claimDescri
         <div className="photo-capture-result">
           {previewUrl && <img src={previewUrl} alt={label} className="photo-capture-thumb" />}
           <div className="photo-capture-meta">
+            {value.capturedLive && <div style={{ color: 'var(--teal)' }}>🔒 Shot in-app on this device</div>}
             {value.exifDate && <div>📅 EXIF: {new Date(value.exifDate).toLocaleString()}</div>}
             {value.visibleDateStamp && <div>🏷 Visible date stamp: {value.visibleDateStamp}</div>}
             {value.exifCamera && <div>📷 {value.exifCamera}</div>}
@@ -113,6 +122,15 @@ export default function PhotoCaptureField({ label, folder, recordId, claimDescri
             ))}
           </div>
         </div>
+      )}
+
+      {cameraOpen && (
+        <CameraCapture
+          label={label}
+          onClose={() => setCameraOpen(false)}
+          onCapture={file => { setCameraOpen(false); void handleFile(file, true) }}
+          onUseDeviceCamera={() => { setCameraOpen(false); cameraRef.current?.click() }}
+        />
       )}
     </div>
   )

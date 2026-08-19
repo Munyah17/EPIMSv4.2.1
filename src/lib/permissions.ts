@@ -57,6 +57,13 @@ export const PERMISSION_CATALOG: PermissionGroup[] = [
     ],
   },
   {
+    group: 'Membership IDs',
+    items: [
+      { key: 'cards.view', label: 'View Membership Cards' },
+      { key: 'cards.issue', label: 'Issue Cards & Assign RFID Tags' },
+    ],
+  },
+  {
     group: 'Products',
     items: [
       { key: 'products.view', label: 'View Products' },

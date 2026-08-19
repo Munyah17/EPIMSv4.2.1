@@ -749,6 +749,65 @@ textarea.form-control{resize:vertical;min-height:80px}
 .photo-capture-ai-note{color:var(--muted);font-style:italic}
 .photo-capture-flag{color:var(--danger);font-weight:600}
 
+/* --- IN-APP CAMERA (components/ui/CameraCapture.tsx) ---
+   Sits above .modal-overlay (z-index 500) since it is opened from inside a
+   modal. dvh rather than vh so mobile browser chrome can't clip the shutter. */
+.camera-overlay{position:fixed;inset:0;z-index:900;background:#000;display:flex;flex-direction:column;height:100dvh}
+.camera-topbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 14px;color:white;flex-shrink:0}
+.camera-title{font-size:13px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.camera-stage{flex:1;min-height:0;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden}
+.camera-video,.camera-shot{width:100%;height:100%;object-fit:contain;background:#000}
+.camera-video.mirrored{transform:scaleX(-1)}
+.camera-video.hidden{display:none}
+.camera-status{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:rgba(255,255,255,0.85);font-size:13px;padding:24px}
+.camera-status-error{color:white}
+.camera-controls{flex-shrink:0;display:flex;align-items:center;justify-content:center;gap:34px;padding:16px 14px calc(16px + env(safe-area-inset-bottom))}
+.camera-icon-btn{width:44px;height:44px;border-radius:50%;border:none;background:rgba(255,255,255,0.14);color:white;font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.camera-icon-btn:disabled{opacity:0.3;cursor:not-allowed}
+.camera-shutter{width:68px;height:68px;border-radius:50%;border:4px solid white;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+.camera-shutter:disabled{opacity:0.5;cursor:not-allowed}
+.camera-shutter-inner{width:52px;height:52px;border-radius:50%;background:white;display:block}
+.camera-review-actions{display:flex;gap:10px}
+
+/* --- REQUIRED FIELD VALIDATION (components/ui/ValidationSummary.tsx) --- */
+.form-control.field-invalid{border-color:var(--danger);background:var(--danger-bg)}
+.form-control.field-invalid:focus{border-color:var(--danger);background:white}
+.field-invalid-block{border:1px solid var(--danger);border-radius:9px;background:var(--danger-bg);padding:8px 10px}
+.validation-summary{background:var(--danger-bg);border:1px solid #FECACA;color:#991b1b;border-radius:9px;padding:11px 13px;font-size:12px}
+.validation-summary-title{font-weight:700;margin-bottom:6px}
+.validation-summary-list{list-style:none;display:flex;flex-wrap:wrap;gap:6px;margin:0;padding:0}
+.validation-summary-item{background:white;border:1px solid #FECACA;border-radius:999px;padding:3px 10px;font-size:11px;font-weight:600;color:#991b1b;cursor:pointer;font-family:'DM Sans',sans-serif}
+.validation-summary-item:hover{background:#FEE2E2}
+.validation-summary-hint{margin-top:6px;font-size:11px;font-weight:400;color:#7f1d1d}
+
+/* Dependant search results on the Clients page — visually separated from
+   the client table, since a dependant is not a client. */
+.dependant-matches{border:1px solid var(--blue-soft);background:var(--blue-light);border-radius:11px;padding:12px 14px;margin-bottom:14px}
+.dependant-matches-title{font-size:11.5px;color:var(--blue-dark);font-weight:600;margin-bottom:8px;line-height:1.45}
+.dependant-matches .table{background:var(--white);border-radius:8px;overflow:hidden}
+
+/* --- MEMBERSHIP IDs (pages/MemberCards.tsx) --- */
+.member-card-toolbar{display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
+.member-card-toolbar .form-control{flex:1;min-width:240px}
+.member-card-layout{display:grid;grid-template-columns:minmax(0,1fr) 460px;gap:20px;align-items:start}
+@media(max-width:980px){.member-card-layout{grid-template-columns:1fr}}
+.member-card-list-pane{border:1px solid var(--border);border-radius:11px;overflow:hidden;background:var(--white)}
+.member-card-list-title{padding:10px 14px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);background:var(--surface);border-bottom:1px solid var(--border)}
+.member-card-list{list-style:none;margin:0;padding:0;max-height:560px;overflow-y:auto}
+.member-card-row{width:100%;text-align:left;display:flex;flex-direction:column;gap:4px;padding:11px 14px;border:none;border-bottom:1px solid var(--border);background:transparent;cursor:pointer;font-family:'DM Sans',sans-serif}
+.member-card-row:hover{background:var(--surface)}
+.member-card-row.active{background:var(--blue-light)}
+.member-card-row-main{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.member-card-row-name{font-size:13px;font-weight:600;color:var(--text)}
+.member-card-row-number{font-size:11px;color:var(--blue);font-weight:600;white-space:nowrap}
+.member-card-row-sub{font-size:11px;color:var(--muted)}
+.member-card-row-tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:2px}
+.member-card-preview-pane{border:1px solid var(--border);border-radius:11px;background:var(--white);padding:16px;display:flex;flex-direction:column;gap:14px}
+.member-card-stage{display:flex;justify-content:center;padding:8px 0}
+.member-card-actions{display:flex;justify-content:center}
+.member-card-meta{display:flex;flex-direction:column;gap:2px;border-top:1px solid var(--border);padding-top:12px}
+.member-card-export{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--border);padding-top:12px}
+
 /* --- CLAIM WORKFLOW STAGE ACTIONS --- */
 .claim-stage-action{margin-top:1rem;padding-top:1rem;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px}
 .claim-stage-action label{font-size:12px;font-weight:600;color:var(--muted)}
@@ -959,6 +1018,22 @@ textarea.form-control{resize:vertical;min-height:80px}
 .pay-method-card.active{border-color:var(--blue-mid);background:var(--blue-light);box-shadow:0 0 0 2px rgba(91,127,232,0.2)}
 .pay-method-icon{font-size:22px;line-height:1}
 .pay-method-label{font-size:11px;font-weight:500;text-align:center;color:var(--text);line-height:1.3}
+
+/* Full-width branded rails: one row each, so the client's own logo is what
+   staff pick from rather than a grid of near-identical tiles. */
+.pay-method-banners{display:flex;flex-direction:column;gap:9px;margin-top:6px}
+.pay-method-banner{display:flex;align-items:center;gap:14px;padding:12px 14px;border:1.5px solid var(--border);border-radius:11px;cursor:pointer;transition:all .15s;background:var(--white)}
+.pay-method-banner:hover{border-color:var(--blue-mid);background:var(--blue-light)}
+.pay-method-banner.active{border-color:var(--blue-mid);background:var(--blue-light);box-shadow:0 0 0 2px rgba(91,127,232,0.2)}
+/* Fixed box so three very different logo shapes still line up. */
+.pay-method-banner-badge{width:104px;height:38px;object-fit:contain;flex-shrink:0}
+.pay-method-banner-text{display:flex;flex-direction:column;gap:2px;min-width:0}
+.pay-method-banner-label{font-size:13px;font-weight:700;color:var(--text)}
+.pay-method-banner-blurb{font-size:11px;color:var(--muted);line-height:1.35}
+@media(max-width:480px){
+  .pay-method-banner{gap:10px;padding:10px}
+  .pay-method-banner-badge{width:78px;height:32px}
+}
 .zipit-details{display:flex;flex-direction:column;gap:0;border:1px solid var(--border);border-radius:9px;overflow:hidden;margin-bottom:12px}
 .zipit-details .sh-info-row{display:flex;justify-content:space-between;align-items:center;padding:9px 13px;font-size:12px;border-bottom:1px solid var(--border)}
 .zipit-details .sh-info-row:last-child{border-bottom:none}

@@ -5,6 +5,7 @@ import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
 import { useAuth } from '../contexts/AuthContext'
 import { notifyClientRegistered } from '../lib/signupNotifications'
+import { searchMembers } from '../lib/memberNumbers'
 import RegisterClientModal from '../components/modals/RegisterClientModal'
 import EditClientModal from '../components/modals/EditClientModal'
 import NewPolicyModal from '../components/modals/NewPolicyModal'
@@ -25,12 +26,17 @@ export default function Clients({ showToast }: Props) {
   const [assignPolicyClient, setAssignPolicyClient] = useState<Client | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
+  const [policies, setPolicies] = useState<Policy[]>([])
+
   useEffect(() => {
     db.clients.list().then(({ data, error }) => {
       if (error) showToast('error', 'Failed to load clients.')
       else if (data) setClients(data)
       setLoading(false)
     })
+    // Dependants live on their policies, so searching for one means
+    // searching policies — see the dependant results below.
+    db.policies.list().then(({ data }) => { if (data) setPolicies(data) })
   }, [showToast])
 
   const filtered = clients.filter(c =>
@@ -39,6 +45,18 @@ export default function Clients({ showToast }: Props) {
     c.nationalId.includes(search) ||
     c.email.toLowerCase().includes(search.toLowerCase())
   )
+
+  /**
+   * Dependants matching the same search, by member number, name or ID.
+   *
+   * A dependant is not a client and never appears as a row of their own:
+   * their cover exists only through the policyholder carrying them, so each
+   * result names that person and the policy they are on. Policyholders are
+   * dropped from the list because they are already in the table above.
+   */
+  const dependantMatches = search.trim().length >= 2
+    ? searchMembers(policies, search, 12).filter(m => m.role === 'dependant')
+    : []
 
   const toggleSelect = (id: string) => {
     setSelected(prev => {
@@ -105,7 +123,7 @@ export default function Clients({ showToast }: Props) {
         <div className="filter-row">
           <input
             className="search-input"
-            placeholder="Search name, phone, ID, email…"
+            placeholder="Search name, phone, ID, email, or a dependant's member number…"
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
@@ -118,6 +136,32 @@ export default function Clients({ showToast }: Props) {
         </div>
         <button type="button" className="btn btn-primary" onClick={() => setShowRegister(true)}>+ Register Client</button>
       </div>
+
+      {dependantMatches.length > 0 && (
+        <div className="dependant-matches">
+          <div className="dependant-matches-title">
+            {dependantMatches.length} dependant{dependantMatches.length === 1 ? '' : 's'} matched — each one is covered
+            through the policyholder named beside them, not as a client of their own.
+          </div>
+          <table className="table">
+            <thead>
+              <tr><th>Member No.</th><th>Dependant</th><th>Relationship</th><th>Plan</th><th>Carried By (Policyholder)</th><th>Policy</th></tr>
+            </thead>
+            <tbody>
+              {dependantMatches.map(m => (
+                <tr key={m.memberNumber}>
+                  <td className="mono">{m.memberNumber}</td>
+                  <td>{m.name}</td>
+                  <td>{m.relationship || '—'}</td>
+                  <td>{m.planName}</td>
+                  <td><strong>{m.holderName}</strong></td>
+                  <td className="mono">{m.policyNumber}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <div className="card">
         {loading ? (

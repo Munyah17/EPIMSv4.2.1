@@ -4,6 +4,8 @@ import { db } from '../../lib/db'
 import { scoreClaimFraud } from '../../lib/aiService'
 import { uploadDocument, deleteDocument, ACCEPTED_DOCUMENT_TYPES } from '../../lib/storage'
 import DateInput from '../ui/DateInput'
+import ValidationSummary, { fieldId, invalidClass, isMissing, scrollToField } from '../ui/ValidationSummary'
+import type { MissingField } from '../ui/ValidationSummary'
 import FraudNoticeModal from './FraudNoticeModal'
 
 interface Props {
@@ -56,9 +58,19 @@ export default function NewClaimModal({ onClose, onSave, showToast, claimKind, o
     })
   }, [])
 
-  const policy = policies.find(p => p.policyNumber.toLowerCase() === policyNumberInput.trim().toLowerCase())
+  const categoryOf = (p: Policy) => products.find(pr => pr.id === p.productId)?.category ?? ''
+  // Agriculture is deliberately absent here. Its claim is a physical loss
+  // assessment — leaf counts, photos, GPS, both signatures — and the payable
+  // amount is derived from them, so a crop loss filed on this form would
+  // skip all of it and go in for the full sum insured.
+  const ordinaryPolicies = policies.filter(p => categoryOf(p) !== 'agriculture')
+  const typedNumber = policyNumberInput.trim().toLowerCase()
+  const policy = ordinaryPolicies.find(p => p.policyNumber.toLowerCase() === typedNumber)
+  const agriculturePolicyTyped = !policy && !!typedNumber
+    ? policies.find(p => p.policyNumber.toLowerCase() === typedNumber && categoryOf(p) === 'agriculture')
+    : undefined
   const policyId = policy?.id ?? ''
-  const category = products.find(p => p.id === policy?.productId)?.category ?? ''
+  const category = policy ? categoryOf(policy) : ''
   const [client, setClient] = useState<Client | null>(null)
 
   // Auto-fill amount and client details when a policy is matched
@@ -110,11 +122,37 @@ export default function NewClaimModal({ onClose, onSave, showToast, claimKind, o
     setDocSlots(prev => prev.filter((_, i) => i !== index))
   }
 
-  const requiredDocsMissing = !docSlots[0]?.path || !docSlots[1]?.path
   const [showFraudNotice, setShowFraudNotice] = useState(false)
+  const [attempted, setAttempted] = useState(false)
+
+  const missing: MissingField[] = []
+  if (!policyId) {
+    missing.push({
+      key: 'policyNumber',
+      label: 'Policy Number',
+      hint: agriculturePolicyTyped ? 'that is an agriculture policy; use the Agriculture Claims form.' : 'must match an existing policy.',
+    })
+  }
+  if (!amount) missing.push({ key: 'amount', label: 'Claim Amount' })
+  if (!dateOfEvent) missing.push({ key: 'dateOfEvent', label: 'Date of Event' })
+  if (!description.trim()) missing.push({ key: 'description', label: 'Description' })
+  if (!docSlots[0]?.path) missing.push({ key: 'documents', label: 'National ID document' })
+  if (!docSlots[1]?.path) missing.push({ key: 'documents', label: 'Claim Document 1' })
+
+  /** Checked before the fraud declaration, so nobody is asked to sign off a
+   *  submission that was going to be refused anyway. */
+  const handleAttemptSubmit = () => {
+    setAttempted(true)
+    if (missing.length > 0) {
+      showToast?.('error', `Not submitted: ${missing.length} required ${missing.length === 1 ? 'field is' : 'fields are'} missing — ${missing.map(m => m.label).join(', ')}.`)
+      scrollToField(missing[0].key)
+      return
+    }
+    setShowFraudNotice(true)
+  }
 
   const handleSave = async () => {
-    if (!policyId || !amount || !dateOfEvent || !description || !policy || requiredDocsMissing) return
+    if (missing.length > 0 || !policy || saving) return
     setSaving(true)
     const dateSubmitted = new Date().toISOString().split('T')[0]
     const priorClaimsOnPolicy = allClaims.filter(c => c.policyId === policyId).length
@@ -172,10 +210,12 @@ export default function NewClaimModal({ onClose, onSave, showToast, claimKind, o
               </div>
             </div>
           )}
-          <div className="form-group">
+          <ValidationSummary missing={missing} attempted={attempted} />
+
+          <div className="form-group" id={fieldId('policyNumber')}>
             <label>Policy Number *</label>
             <input
-              className="form-control"
+              className={invalidClass(missing, attempted, 'policyNumber')}
               list="claim-policy-numbers"
               placeholder={loading ? 'Loading policies…' : 'Enter or select a policy number'}
               value={policyNumberInput}
@@ -183,10 +223,21 @@ export default function NewClaimModal({ onClose, onSave, showToast, claimKind, o
               disabled={loading}
             />
             <datalist id="claim-policy-numbers">
-              {policies.map(p => <option key={p.id} value={p.policyNumber} />)}
+              {ordinaryPolicies.map(p => <option key={p.id} value={p.policyNumber} />)}
             </datalist>
           </div>
-          {policyNumberInput.trim() && !policy && !loading && (
+          {agriculturePolicyTyped && !loading && (
+            <div className="info-banner info-banner-warning" style={{ marginBottom: '1rem' }}>
+              <strong>{agriculturePolicyTyped.policyNumber} is an agriculture policy.</strong> Crop and barn losses are
+              claimed through the agriculture form, which captures the site assessment the payout is calculated from.
+              {onSwitchKind && (
+                <button type="button" className="btn btn-primary btn-sm" style={{ marginTop: 8, display: 'block' }} onClick={() => onSwitchKind('agriculture')}>
+                  Switch to Agriculture Claims
+                </button>
+              )}
+            </div>
+          )}
+          {policyNumberInput.trim() && !policy && !agriculturePolicyTyped && !loading && (
             <div className="info-banner info-banner-warning" style={{ marginBottom: '1rem' }}>
               No policy found with that number.
             </div>
@@ -236,10 +287,10 @@ export default function NewClaimModal({ onClose, onSave, showToast, claimKind, o
                 {CLAIM_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
-            <div className="form-group">
+            <div className="form-group" id={fieldId('amount')}>
               <label>Claim Amount ($) *</label>
               <input
-                type="number" className="form-control" min={0} value={amount}
+                type="number" className={invalidClass(missing, attempted, 'amount')} min={0} value={amount}
                 onChange={e => setAmount(e.target.value)}
                 placeholder="Auto-filled from policy"
                 disabled={!!policy}
@@ -247,15 +298,17 @@ export default function NewClaimModal({ onClose, onSave, showToast, claimKind, o
               />
             </div>
           </div>
-          <div className="form-group">
+          <div className="form-group" id={fieldId('dateOfEvent')}>
             <label>Date of Event *</label>
-            <DateInput value={dateOfEvent} onChange={setDateOfEvent} />
+            <div className={isMissing(missing, attempted, 'dateOfEvent') ? 'field-invalid-block' : undefined}>
+              <DateInput value={dateOfEvent} onChange={setDateOfEvent} />
+            </div>
           </div>
-          <div className="form-group">
+          <div className="form-group" id={fieldId('description')}>
             <label>Description *</label>
-            <textarea className="form-control" rows={4} value={description} onChange={e => setDescription(e.target.value)} placeholder="Describe the incident…" />
+            <textarea className={invalidClass(missing, attempted, 'description')} rows={4} value={description} onChange={e => setDescription(e.target.value)} placeholder="Describe the incident…" />
           </div>
-          <div className="form-group">
+          <div className={`form-group${isMissing(missing, attempted, 'documents') ? ' field-invalid-block' : ''}`} id={fieldId('documents')}>
             <label>Supporting Documents</label>
             {docSlots.map((slot, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
@@ -283,10 +336,12 @@ export default function NewClaimModal({ onClose, onSave, showToast, claimKind, o
             <button type="button" className="btn btn-ghost btn-sm" onClick={addDocSlot} style={{ marginTop: 4 }}>+ Upload More</button>
             <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>PDF, Word, CSV, Excel, RTF, PNG, JPEG, JPG, or WEBP (up to 10MB each).</p>
           </div>
+
+          <ValidationSummary missing={missing} attempted={attempted} />
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={() => setShowFraudNotice(true)} disabled={saving || !policyId || !amount || !dateOfEvent || !description || requiredDocsMissing}>
+          <button className="btn btn-primary" onClick={handleAttemptSubmit} disabled={saving}>
             {saving ? 'Analysing & Submitting…' : 'Submit Claim'}
           </button>
         </div>

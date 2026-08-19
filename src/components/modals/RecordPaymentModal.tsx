@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import type { Payment, PaymentMethod, PaymentStatus, SplitPayment, Policy } from '../../types'
 import { db } from '../../lib/db'
 import { premiumPeriodLabel } from '../../lib/productUtils'
+import { policyBillablePremium, billableHeadCount } from '../../lib/premium'
 import DateInput from '../ui/DateInput'
 
 interface Props {
@@ -103,7 +104,11 @@ export default function RecordPaymentModal({ policyId: initialPolicyId, payment:
           {policy && (
             <div className="info-banner info-banner-info" style={{ marginBottom: '1rem' }}>
               Policy: {policy.policyNumber} ({policy.clientName})<br />
-              Expected premium: ${policy.premium.toFixed(2)}{premiumPeriodLabel(policyCategory)}
+              {/* Per head: the policyholder plus every dependant. */}
+              Expected premium: ${policyBillablePremium(policy, policyCategory).toFixed(2)}{premiumPeriodLabel(policyCategory)}
+              {billableHeadCount(policy, policyCategory) > 1 && (
+                <> &nbsp;<span style={{ fontSize: 11 }}>({billableHeadCount(policy, policyCategory)} people on this policy)</span></>
+              )}
             </div>
           )}
           {!policy && policyId && (

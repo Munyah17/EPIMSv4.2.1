@@ -149,6 +149,45 @@ export interface Dependant {
   phone?: string
 }
 
+/** Whether a physical/virtual membership card is usable. A card is
+ *  suspended or reported lost without being deleted, because the RFID tag
+ *  on it still exists in the world and a reader must be able to recognise
+ *  and refuse it. */
+export type PolicyCardStatus = 'active' | 'suspended' | 'lost' | 'replaced'
+
+/**
+ * A membership card issued to one person on a policy — the policyholder or
+ * one of their dependants — identified by their member number
+ * (see src/lib/memberNumbers.ts).
+ *
+ * The RFID tag is exactly what a school or gym card is: a fixed unique
+ * number the card transmits, meaningless on its own, resolved here to the
+ * member it was issued to. Nothing personal is stored on the card itself.
+ */
+export interface PolicyCard {
+  id: string
+  /** e.g. WEBFC12345678-01. Unique — one live card per member. */
+  memberNumber: string
+  policyId: string
+  policyNumber: string
+  /** Position on the policy: 0 = holder, 1+ = dependant. */
+  memberPosition: number
+  memberName: string
+  /** The policyholder carrying this member, denormalized so a card scan
+   *  resolves to a household without a second lookup. */
+  holderName: string
+  clientId: string
+  /** The number the physical card transmits. Unset until a card is
+   *  encoded/assigned. Unique across the estate when set. */
+  rfidTag?: string
+  status: PolicyCardStatus
+  issuedAt: string
+  issuedByName?: string
+  expiresAt?: string
+  notes?: string
+  createdAt: string
+}
+
 // pending = awaiting admin approval; waiting_period = approved (or created
 // directly) but not yet claims-eligible — lifted to active either after the
 // standard 90-day wait (non-agriculture) or instantly on first payment
@@ -481,6 +520,10 @@ export interface AssessmentPhoto {
    *  submit to catch a recycled photo from another claim/policy being
    *  resubmitted as new evidence. See lib/photoHash.ts. */
   phash?: string
+  /** Shot through the app's own camera (components/ui/CameraCapture.tsx)
+   *  rather than chosen from a gallery — the strongest provenance we have,
+   *  since the file was created here and never existed anywhere else. */
+  capturedLive?: boolean
 }
 
 export type AssessmentSyncStatus = 'synced' | 'pending_sync'

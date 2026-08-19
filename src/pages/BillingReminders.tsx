@@ -5,6 +5,7 @@ import { db } from '../lib/db'
 import { runReminderCheck, getLastCheckTime, lastDayOfMonth, firstDayOfMonth } from '../lib/reminderEngine'
 import { getGatewaySettings, saveGatewaySettings, getPaymentLog } from '../lib/paymentGateways'
 import { getSmsLog } from '../lib/smsService'
+import { policyBillablePremium } from '../lib/premium'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -155,7 +156,9 @@ export default function BillingReminders({ showToast }: Props) {
                 </div>
                 <div className="sh-info-row">
                   <span>Total premiums due this month</span>
-                  <strong>${activePolicies.reduce((s, p) => s + p.premium, 0).toLocaleString()}</strong>
+                  {/* Per head: what is actually invoiced, not the sum of
+                      policyholders' own shares. */}
+                  <strong>${activePolicies.reduce((s, p) => s + policyBillablePremium(p), 0).toLocaleString()}</strong>
                 </div>
                 <div className="sh-info-row">
                   <span>Days until due date</span>

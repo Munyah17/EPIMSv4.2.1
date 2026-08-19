@@ -3,12 +3,14 @@ import { health } from './health'
 import { localStore } from './localStore'
 import { cacheGet, cacheSet } from './offlineCache'
 import { hammingDistance, DUPLICATE_THRESHOLD } from './photoHash'
+import { policyBillablePremium } from './premium'
 import type {
   AppUser, Client, Product, Policy, Claim, Payment,
   Ticket, EmailMessage, Lead, FraudCase, Reminder, CautionFlag,
   PolicyStatus, ClaimStatus, PaymentStatus, PaymentMethod,
   TicketStatus, TicketPriority, LeadStatus, FraudCaseStatus, CustomRole,
   ClaimAssessment, PolicyAssessment, AssessmentPhoto, InsurerRecord, CropType, FraudSignalRule, HeroSlide,
+  PolicyCard,
 } from '../types'
 
 // ── helpers ───────────────────────────────────────────────────────
@@ -443,14 +445,17 @@ export const policies = {
   },
 
   /** What is standing in the way of deleting this policy. Reminders,
-   *  caution flags and pre-loss assessments all cascade, so only claims and
-   *  payments can actually block it. */
-  async deletionBlockers(id: string): Promise<{ claims: number; payments: number }> {
-    const [claimsRes, paymentsRes] = await Promise.all([
+   *  caution flags and pre-loss assessments all cascade, so what remains is
+   *  claims, payments, and the web checkout session a policy bought online
+   *  was created from -- that last one holds a plain reference that neither
+   *  cascades nor nulls itself, so it blocks silently if not accounted for. */
+  async deletionBlockers(id: string): Promise<{ claims: number; payments: number; checkouts: number }> {
+    const [claimsRes, paymentsRes, checkoutRes] = await Promise.all([
       supabase.from('claims').select('id', { count: 'exact', head: true }).eq('policy_id', id),
       supabase.from('payments').select('id', { count: 'exact', head: true }).eq('policy_id', id),
+      supabase.from('checkout_sessions').select('id', { count: 'exact', head: true }).eq('policy_id', id),
     ])
-    return { claims: claimsRes.count ?? 0, payments: paymentsRes.count ?? 0 }
+    return { claims: claimsRes.count ?? 0, payments: paymentsRes.count ?? 0, checkouts: checkoutRes.count ?? 0 }
   },
 
   /**
@@ -466,11 +471,17 @@ export const policies = {
    */
   async remove(id: string, opts: { force?: boolean } = {}) {
     if (opts.force) {
-      // Order matters: both reference the policy, so they go first.
+      // Order matters: all three reference the policy, so they go first.
       const { error: claimsError } = await supabase.from('claims').delete().eq('policy_id', id)
       if (claimsError) return { error: `Could not remove the policy's claims: ${claimsError.message}` }
       const { error: paymentsError } = await supabase.from('payments').delete().eq('policy_id', id)
       if (paymentsError) return { error: `Could not remove the policy's payments: ${paymentsError.message}` }
+      // The checkout session is a payment record in its own right, so it is
+      // detached rather than destroyed -- what the buyer paid, when, and
+      // through which gateway stays on file even though the policy it
+      // produced is gone.
+      const { error: checkoutError } = await supabase.from('checkout_sessions').update({ policy_id: null }).eq('policy_id', id)
+      if (checkoutError) return { error: `Could not detach the policy's checkout session: ${checkoutError.message}` }
     }
 
     const { error } = await supabase.from('policies').delete().eq('id', id)
@@ -480,10 +491,11 @@ export const policies = {
     // Name what is actually holding it, rather than listing everything it
     // might have been -- "claims or payments" sends someone looking for a
     // claim that was never there.
-    const { claims, payments } = await policies.deletionBlockers(id)
+    const { claims, payments, checkouts } = await policies.deletionBlockers(id)
     const parts = [
       claims > 0 && `${claims} claim${claims === 1 ? '' : 's'}`,
       payments > 0 && `${payments} payment${payments === 1 ? '' : 's'}`,
+      checkouts > 0 && `${checkouts} online checkout${checkouts === 1 ? '' : 's'}`,
     ].filter(Boolean)
     return {
       error: parts.length
@@ -941,7 +953,12 @@ async function applyCompletedPaymentToPolicy(policyId: string, amountPaid: numbe
   if (!policy) return
   const category = prods?.find(p => p.id === policy.productId)?.category ?? ''
   const cycleMonths = category === 'agriculture' ? 12 : 1
-  const periodsPaid = Math.max(1, Math.round(amountPaid / (policy.premium || amountPaid)))
+  // One period costs the whole policy's premium — the policyholder plus
+  // every dependant, since premiums are per head. Dividing by the
+  // policyholder's share alone credited a family's single monthly payment
+  // as several months of cover.
+  const perPeriod = policyBillablePremium(policy, category)
+  const periodsPaid = Math.max(1, Math.round(amountPaid / (perPeriod || amountPaid)))
   const monthsToAdvance = cycleMonths * periodsPaid
 
   const today = new Date()
@@ -1988,7 +2005,13 @@ async function loadDashboardStatsFallback(): Promise<DashboardStats> {
   const total = pol.length
   const lapsed = pol.filter(p => p.status === 'lapsed').length
   const categoryCounts = new Map<string, number>()
-  for (const p of pol) categoryCounts.set(p.productName, (categoryCounts.get(p.productName) ?? 0) + 1)
+  // Bucketed by product category, matching the primary query above — this
+  // fallback used to bucket by product NAME, so the dashboard's category
+  // breakdown listed individual packages as though they were categories.
+  for (const p of pol) {
+    const cat = p.productCategory ?? 'other'
+    categoryCounts.set(cat, (categoryCounts.get(cat) ?? 0) + 1)
+  }
   return {
     activePolicies: pol.filter(p => p.status === 'active').length,
     pendingClaims: cla.filter(c => c.status === 'pending' || c.status === 'under_review').length,
@@ -2056,6 +2079,109 @@ export const sidebarCounts = {
   },
 }
 
+// ── POLICY CARDS (member IDs + RFID) ──────────────────────────────
+
+function toPolicyCard(r: Record<string, unknown>): PolicyCard {
+  return {
+    id: r.id as string,
+    memberNumber: r.member_number as string,
+    policyId: r.policy_id as string,
+    policyNumber: r.policy_number as string,
+    memberPosition: Number(r.member_position ?? 0),
+    memberName: r.member_name as string,
+    holderName: r.holder_name as string,
+    clientId: (r.client_id as string) ?? '',
+    rfidTag: (r.rfid_tag as string) ?? undefined,
+    status: r.status as PolicyCard['status'],
+    issuedAt: r.issued_at as string,
+    issuedByName: (r.profiles as { name?: string } | null)?.name,
+    expiresAt: (r.expires_at as string) ?? undefined,
+    notes: (r.notes as string) ?? undefined,
+    createdAt: r.created_at as string,
+  }
+}
+
+const POLICY_CARD_SELECT = '*, profiles!issued_by(name)'
+
+export const policyCards = {
+  async list() {
+    const { ok, data } = await sb('policy_cards', 'read',
+      () => supabase.from('policy_cards').select(POLICY_CARD_SELECT).order('created_at', { ascending: false }),
+      d => Array.isArray(d),
+    )
+    if (ok && data) return { data: (data as Record<string, unknown>[]).map(toPolicyCard), error: null }
+    return { data: [] as PolicyCard[], error: null }
+  },
+
+  /** Issues (or re-issues) the card for one member. The member number is
+   *  unique, so re-issuing updates the existing row rather than leaving two
+   *  cards claiming to be the same person. */
+  async issue(card: Omit<PolicyCard, 'id' | 'createdAt' | 'issuedAt' | 'issuedByName'> & { issuedBy?: string }) {
+    const row = {
+      member_number: card.memberNumber,
+      policy_id: card.policyId,
+      policy_number: card.policyNumber,
+      member_position: card.memberPosition,
+      member_name: card.memberName,
+      holder_name: card.holderName,
+      client_id: card.clientId || null,
+      rfid_tag: card.rfidTag || null,
+      status: card.status,
+      issued_by: card.issuedBy || null,
+      expires_at: card.expiresAt || null,
+      notes: card.notes || null,
+      issued_at: new Date().toISOString(),
+    }
+    const { data, error } = await supabase
+      .from('policy_cards')
+      .upsert(row, { onConflict: 'member_number' })
+      .select(POLICY_CARD_SELECT)
+      .single()
+    if (error) {
+      return {
+        data: null,
+        error: error.code === '23505'
+          ? 'That RFID tag is already assigned to another member.'
+          : error.message,
+      }
+    }
+    return { data: toPolicyCard(data), error: null }
+  },
+
+  async update(id: string, updates: Partial<Pick<PolicyCard, 'rfidTag' | 'status' | 'expiresAt' | 'notes'>>) {
+    const row: Record<string, unknown> = {}
+    if (updates.rfidTag   !== undefined) row.rfid_tag  = updates.rfidTag || null
+    if (updates.status    !== undefined) row.status    = updates.status
+    if (updates.expiresAt !== undefined) row.expires_at = updates.expiresAt || null
+    if (updates.notes     !== undefined) row.notes     = updates.notes || null
+    const { data, error } = await supabase.from('policy_cards').update(row).eq('id', id).select(POLICY_CARD_SELECT).single()
+    if (error) {
+      return {
+        data: null,
+        error: error.code === '23505' ? 'That RFID tag is already assigned to another member.' : error.message,
+      }
+    }
+    return { data: toPolicyCard(data), error: null }
+  },
+
+  /** What a card reader asks: this tag just presented itself, who is it and
+   *  is the card still good? An unknown or non-active tag resolves to
+   *  nothing usable, which is the whole point of keeping lost cards on file. */
+  async findByRfid(tag: string) {
+    const { data, error } = await supabase
+      .from('policy_cards').select(POLICY_CARD_SELECT).eq('rfid_tag', tag.trim()).maybeSingle()
+    if (error) return { data: null, error: error.message }
+    return { data: data ? toPolicyCard(data) : null, error: null }
+  },
+
+  async findByMemberNumber(memberNumber: string) {
+    const { data, error } = await supabase
+      .from('policy_cards').select(POLICY_CARD_SELECT).eq('member_number', memberNumber.trim().toUpperCase()).maybeSingle()
+    if (error) return { data: null, error: error.message }
+    return { data: data ? toPolicyCard(data) : null, error: null }
+  },
+}
+
 // ── REALTIME ──────────────────────────────────────────────────────
 export function subscribeToTable(table: string, callback: () => void) {
   const channel = supabase
@@ -2070,6 +2196,7 @@ export const db = {
   policies, clients, products, claims, payments,
   tickets, emails, leads, staff, fraudCases, reminders, cautionFlags, settings, loginAttempts, developerApi,
   customRoles, claimAssessments, policyAssessments, insurers, photoHashes, cropTypes, fraudSignalRules, heroSlides,
+  policyCards,
   dashboardStats, sidebarCounts,
   subscribeToTable,
   resetLocalData: () => localStore.reset(),

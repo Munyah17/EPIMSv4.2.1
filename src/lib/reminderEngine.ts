@@ -22,8 +22,16 @@ import { MAILBOXES } from './mailboxes'
 import { sendEmail, getNotifSettings } from './mailService'
 import { sendSms } from './smsService'
 import { NETONE_SUSPENDED } from './claimNotifications'
+import { policyBillablePremium } from './premium'
 
 const CHECK_KEY = 'tqfy_reminder_last_check'
+
+/** What the client actually owes this cycle. Premiums are per head, so this
+ *  is the policyholder plus every dependant — quoting policy.premium here
+ *  asked a family to pay one person's share. */
+function amountDue(policy: Policy): number {
+  return policyBillablePremium(policy)
+}
 
 // ── Billing date helpers ───────────────────────────────────────────
 
@@ -74,21 +82,21 @@ function buildReminderEmail(policy: Policy, type: ReminderType, dueDate: Date, s
   switch (type) {
     case 'r1_pre5': return `Dear ${policy.clientName},
 
-This is a friendly reminder that your insurance premium of $${policy.premium.toFixed(2)} for policy ${policy.policyNumber} (${policy.productName}) is due in 5 days on ${due}.
+This is a friendly reminder that your insurance premium of $${amountDue(policy).toFixed(2)} for policy ${policy.policyNumber} (${policy.productName}) is due in 5 days on ${due}.
 
 Please ensure your payment is ready to avoid any lapse in cover.
 
 ${sig}`
     case 'r2_pre1': return `Dear ${policy.clientName},
 
-URGENT REMINDER: Your insurance premium of $${policy.premium.toFixed(2)} for policy ${policy.policyNumber} is due TOMORROW, ${due}.
+URGENT REMINDER: Your insurance premium of $${amountDue(policy).toFixed(2)} for policy ${policy.policyNumber} is due TOMORROW, ${due}.
 
 Please pay immediately to maintain active coverage. You can pay via EcoCash, Paynow, Zipit, or at any of our offices.
 
 ${sig}`
     case 'r3_due': return `Dear ${policy.clientName},
 
-Your insurance premium of $${policy.premium.toFixed(2)} for policy ${policy.policyNumber} is DUE TODAY, ${due}.
+Your insurance premium of $${amountDue(policy).toFixed(2)} for policy ${policy.policyNumber} is DUE TODAY, ${due}.
 
 Failure to pay today may result in your policy lapsing. Please pay now to avoid disruption to your coverage.
 
@@ -103,7 +111,7 @@ Your insurance premium for policy ${policy.policyNumber} (${policy.productName})
 
 ⚠ IMPORTANT: Your policy coverage may be at risk. Any claims submitted while your premium is in arrears may be subject to review or rejection.
 
-Please settle $${policy.premium.toFixed(2)} immediately to restore full coverage and remove this caution flag.
+Please settle $${amountDue(policy).toFixed(2)} immediately to restore full coverage and remove this caution flag.
 
 Payment methods: EcoCash | Paynow | Zipit | Cash at office
 
@@ -118,7 +126,7 @@ function buildStaffEmail(policy: Policy, type: ReminderType, dueDate: Date, sig:
 Policy: ${policy.policyNumber}
 Client: ${policy.clientName}
 Product: ${policy.productName}
-Premium Due: $${policy.premium.toFixed(2)}
+Premium Due: $${amountDue(policy).toFixed(2)}
 Due Date: ${due}
 ${type === 'r4_post5' ? '\n⚠ Caution flag has been applied to this policy. Client, agent, and insurer are notified.\n' : ''}
 
@@ -162,7 +170,7 @@ async function dispatchReminder(policy: Policy, client: Client | undefined, type
 
   if (type === 'r3_due' && clientPhone) {
     sendSms(clientPhone,
-      `Tariqify: Premium of $${policy.premium.toFixed(2)} for policy ${policy.policyNumber} is DUE TODAY. Pay now via EcoCash/Paynow to keep your coverage active.`
+      `Tariqify: Premium of $${amountDue(policy).toFixed(2)} for policy ${policy.policyNumber} is DUE TODAY. Pay now via EcoCash/Paynow to keep your coverage active.`
     ).catch(() => { /**/ })
   }
 
@@ -270,3 +278,5 @@ export function startReminderEngine(): () => void {
   }, 3600000) // every hour
   return () => clearInterval(interval)
 }
+
+

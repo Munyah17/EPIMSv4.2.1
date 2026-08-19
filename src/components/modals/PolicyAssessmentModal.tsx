@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import type { AssessmentPhoto, CropType, PolicyAssessmentSubject } from '../../types'
 import { useAuth } from '../../contexts/AuthContext'
 import { db } from '../../lib/db'
@@ -9,6 +9,8 @@ import { checkAndRecordPhotoDuplicates } from '../../lib/duplicatePhotoCheck'
 import { blockedPhotos } from '../../lib/photoIntegrity'
 import PhotoCaptureField from '../ui/PhotoCaptureField'
 import SignaturePad from '../ui/SignaturePad'
+import ValidationSummary, { fieldId, invalidClass, isMissing, scrollToField } from '../ui/ValidationSummary'
+import type { MissingField } from '../ui/ValidationSummary'
 
 const OTHER = '__other__'
 
@@ -65,6 +67,8 @@ export default function PolicyAssessmentModal({ policyId, policyNumber, subjectT
   const [farmerSignature, setFarmerSignature] = useState<string | undefined>()
   const [assessorSignature, setAssessorSignature] = useState<string | undefined>()
   const [submitting, setSubmitting] = useState(false)
+  /** Set by the first rejected submit; until then nothing is shown as wrong. */
+  const [attempted, setAttempted] = useState(false)
 
   const baseSlots = isVehicle ? VEHICLE_PHOTO_SLOTS : AGRICULTURE_PHOTO_SLOTS
   const slots = [...baseSlots, ...extraPhotoLabels]
@@ -77,9 +81,27 @@ export default function PolicyAssessmentModal({ policyId, policyNumber, subjectT
   // GPS is what ties this record to a specific field, and is what a later
   // claim gets checked against, so it's required rather than optional.
   const hasGps = gpsLat !== undefined && gpsLng !== undefined
-  const canSubmit = (isVehicle ? registrationNumber.trim().length > 0 : cropType.trim().length > 0)
-    && photoCount >= MIN_PHOTOS && rejected.length === 0 && hasGps
-    && !!farmerSignature && !!assessorSignature && !submitting
+
+  // Everything standing between this form and a saved assessment, named so
+  // the assessor is told which ones rather than left with a dead button.
+  const missing = useMemo<MissingField[]>(() => {
+    const list: MissingField[] = []
+    if (isVehicle) {
+      if (!registrationNumber.trim()) list.push({ key: 'subject', label: 'Registration Number' })
+    } else if (!cropType.trim()) {
+      list.push({ key: 'subject', label: 'Crop Type', hint: cropTypeChoice === OTHER ? 'type the crop name in the box below the picker.' : undefined })
+    }
+    if (!hasGps) list.push({ key: 'gps', label: 'GPS Coordinates', hint: 'press “Use Current Location” while standing on site.' })
+    if (photoCount < MIN_PHOTOS) {
+      list.push({ key: 'photos', label: `Photos (${photoCount} of ${MIN_PHOTOS})`, hint: `${MIN_PHOTOS - photoCount} more still needed.` })
+    }
+    if (rejected.length > 0) {
+      list.push({ key: 'photos', label: `${rejected.length} photo${rejected.length !== 1 ? 's' : ''} rejected`, hint: 'remove or re-shoot the photos listed in red below.' })
+    }
+    if (!farmerSignature) list.push({ key: 'farmerSignature', label: `${isVehicle ? 'Policyholder' : 'Farmer'} Signature` })
+    if (!assessorSignature) list.push({ key: 'assessorSignature', label: 'Assessor Signature' })
+    return list
+  }, [isVehicle, registrationNumber, cropType, cropTypeChoice, hasGps, photoCount, rejected.length, farmerSignature, assessorSignature])
 
   const addExtraSlot = () => {
     setExtraPhotoLabels(prev => (baseSlots.length + prev.length >= MAX_PHOTOS ? prev : [...prev, `Additional Photo ${prev.length + 1}`]))
@@ -112,7 +134,14 @@ export default function PolicyAssessmentModal({ policyId, policyNumber, subjectT
   }
 
   const handleSubmit = async () => {
-    if (!canSubmit || !user) return
+    setAttempted(true)
+    if (missing.length > 0) {
+      showToast('error', `Not saved: ${missing.length} required ${missing.length === 1 ? 'field is' : 'fields are'} missing — ${missing.map(m => m.label).join(', ')}.`)
+      scrollToField(missing[0].key)
+      return
+    }
+    if (!user) { showToast('error', 'Your session has expired; sign in again to save this assessment.'); return }
+    if (submitting) return
     setSubmitting(true)
     const uploadedPhotos = Object.values(photos).filter((p): p is AssessmentPhoto => !!p)
 
@@ -169,12 +198,14 @@ export default function PolicyAssessmentModal({ policyId, policyNumber, subjectT
               : "Establishes what's actually planted on this farm before any claim exists; a claim for a crop never recorded here is an obvious red flag."}
           </div>
 
+          <ValidationSummary missing={missing} attempted={attempted} action="save" />
+
           {isVehicle ? (
             <>
               <div className="form-row">
-                <div className="form-group">
+                <div className="form-group" id={fieldId('subject')}>
                   <label>Registration Number *</label>
-                  <input className="form-control" value={registrationNumber} onChange={e => setRegistrationNumber(e.target.value)} placeholder="e.g. ABC 1234" />
+                  <input className={invalidClass(missing, attempted, 'subject')} value={registrationNumber} onChange={e => setRegistrationNumber(e.target.value)} placeholder="e.g. ABC 1234" />
                 </div>
                 <div className="form-group">
                   <label>Odometer Reading</label>
@@ -198,15 +229,15 @@ export default function PolicyAssessmentModal({ policyId, policyNumber, subjectT
             </>
           ) : (
             <div className="form-row">
-              <div className="form-group">
+              <div className="form-group" id={fieldId('subject')}>
                 <label>Crop Type *</label>
-                <select className="form-control" value={cropTypeChoice} onChange={e => setCropTypeChoice(e.target.value)}>
+                <select className={invalidClass(missing, attempted, 'subject')} value={cropTypeChoice} onChange={e => setCropTypeChoice(e.target.value)}>
                   <option value="">Select crop…</option>
                   {cropTypeOptions.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                   <option value={OTHER}>Other…</option>
                 </select>
                 {cropTypeChoice === OTHER && (
-                  <input className="form-control" style={{ marginTop: 6 }} value={customCropType} onChange={e => setCustomCropType(e.target.value)} placeholder="Enter crop type" autoFocus />
+                  <input className={invalidClass(missing, attempted, 'subject')} style={{ marginTop: 6 }} value={customCropType} onChange={e => setCustomCropType(e.target.value)} placeholder="Enter crop type" autoFocus />
                 )}
               </div>
               <div className="form-group">
@@ -268,7 +299,7 @@ export default function PolicyAssessmentModal({ policyId, policyNumber, subjectT
             </>
           )}
 
-          <div className="form-group">
+          <div className={`form-group${isMissing(missing, attempted, 'gps') ? ' field-invalid-block' : ''}`} id={fieldId('gps')}>
             <label>GPS Coordinates *</label>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <button type="button" className="btn btn-outline btn-sm" disabled={gpsBusy} onClick={captureGps}>📍 {gpsBusy ? 'Getting location…' : 'Use Current Location'}</button>
@@ -280,7 +311,7 @@ export default function PolicyAssessmentModal({ policyId, policyNumber, subjectT
             </div>
           </div>
 
-          <label style={{ display: 'block', margin: '1rem 0 6px', fontSize: 13, fontWeight: 600 }}>
+          <label id={fieldId('photos')} style={{ display: 'block', margin: '1rem 0 6px', fontSize: 13, fontWeight: 600, color: isMissing(missing, attempted, 'photos') ? 'var(--danger)' : undefined }}>
             Photos ({photoCount}/{MIN_PHOTOS} minimum, up to {MAX_PHOTOS})
           </label>
           <p style={{ fontSize: 11, color: 'var(--muted)', margin: '0 0 8px' }}>
@@ -329,13 +360,19 @@ export default function PolicyAssessmentModal({ policyId, policyNumber, subjectT
           </div>
 
           <div className="form-row" style={{ marginTop: '1rem' }}>
-            <SignaturePad label={`${isVehicle ? 'Policyholder' : 'Farmer'} Signature *`} onChange={setFarmerSignature} />
-            <SignaturePad label="Assessor Signature *" onChange={setAssessorSignature} />
+            <div id={fieldId('farmerSignature')}>
+              <SignaturePad label={`${isVehicle ? 'Policyholder' : 'Farmer'} Signature *`} onChange={setFarmerSignature} invalid={isMissing(missing, attempted, 'farmerSignature')} />
+            </div>
+            <div id={fieldId('assessorSignature')}>
+              <SignaturePad label="Assessor Signature *" onChange={setAssessorSignature} invalid={isMissing(missing, attempted, 'assessorSignature')} />
+            </div>
           </div>
+
+          <ValidationSummary missing={missing} attempted={attempted} action="save" />
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSubmit} disabled={!canSubmit}>
+          <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting}>
             {submitting ? 'Saving…' : 'Save Assessment'}
           </button>
         </div>

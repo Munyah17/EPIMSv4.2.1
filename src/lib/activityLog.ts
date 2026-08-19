@@ -26,7 +26,15 @@ export type ActivityAction =
   | 'policy.created' | 'policy.updated' | 'policy.deleted'
   | 'claim.intake_accepted' | 'claim.intake_rejected' | 'claim.escalated'
   | 'claim.approved' | 'claim.declined' | 'claim.deleted'
+  // Taking a payment and validating one are different acts and are logged
+  // as such. 'payment.recorded' is money a gateway confirmed it collected.
+  // 'payment.validated' is a staff member asserting money arrived by a
+  // route the system never saw — cash over the counter, an EcoCash
+  // send-money transfer between two personal wallets, a bank transfer, or a
+  // correction after a client hit trouble paying. The second is a
+  // privileged manual act and has to be attributable to a person.
   | 'payment.recorded'
+  | 'payment.validated'
   // Bulk / outbound
   | 'sms.bulk_sent'
 
@@ -140,6 +148,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'claim.approved': 'Approved a claim',
   'claim.declined': 'Declined a claim',
   'claim.deleted': 'Deleted a claim',
-  'payment.recorded': 'Recorded a payment',
+  'payment.recorded': 'Recorded a gateway-confirmed payment',
+  'payment.validated': 'Manually validated a payment',
   'sms.bulk_sent': 'Sent a bulk SMS campaign',
 }

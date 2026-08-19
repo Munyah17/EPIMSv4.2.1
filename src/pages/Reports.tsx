@@ -4,6 +4,7 @@ import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { exportToCsv, exportToExcel, exportToPdf } from '../lib/exportUtils'
 import { formatPremium } from '../lib/productUtils'
+import { policyBillablePremium, billableHeadCount } from '../lib/premium'
 import type { Policy, Claim, Payment, Client } from '../types'
 
 interface Props {
@@ -46,12 +47,14 @@ export default function Reports({ showToast }: Props) {
   const totalPaid = paidClaims.reduce((s, c) => s + c.amount, 0)
   const claimsRatio = totalPremiums > 0 ? ((totalPaid / totalPremiums) * 100).toFixed(1) : '0'
 
+  // Revenue is what a policy actually bills — per head, so a family policy
+  // counts every dependant's premium, not just the policyholder's.
   const productBreakdown = Object.values(
     policies.reduce<Record<string, { name: string; policies: number; revenue: number }>>((acc, p) => {
       const key = p.productName || 'Unknown'
       if (!acc[key]) acc[key] = { name: key, policies: 0, revenue: 0 }
       acc[key].policies += 1
-      acc[key].revenue += p.premium
+      acc[key].revenue += policyBillablePremium(p)
       return acc
     }, {}),
   ).sort((a, b) => b.policies - a.policies)
@@ -62,7 +65,7 @@ export default function Reports({ showToast }: Props) {
   const outstanding = pendingPayments.reduce((s, p) => s + p.amount, 0)
   const failedValue = failedPayments.reduce((s, p) => s + p.amount, 0)
   const collectionRate = payments.length > 0 ? ((completedPayments.length / payments.length) * 100).toFixed(1) : '0'
-  const avgPremium = totalPolicies > 0 ? (policies.reduce((s, p) => s + p.premium, 0) / totalPolicies) : 0
+  const avgPremium = totalPolicies > 0 ? (policies.reduce((s, p) => s + policyBillablePremium(p), 0) / totalPolicies) : 0
 
   const methodBreakdown = Object.values(
     payments.reduce<Record<string, { method: string; count: number; amount: number }>>((acc, p) => {
@@ -79,7 +82,7 @@ export default function Reports({ showToast }: Props) {
       const key = p.insurer || 'Unassigned'
       if (!acc[key]) acc[key] = { name: key, policies: 0, revenue: 0 }
       acc[key].policies += 1
-      acc[key].revenue += p.premium
+      acc[key].revenue += policyBillablePremium(p)
       return acc
     }, {}),
   ).sort((a, b) => b.revenue - a.revenue)
@@ -98,7 +101,7 @@ export default function Reports({ showToast }: Props) {
     policies.reduce<Record<string, { name: string; policies: number; premium: number }>>((acc, p) => {
       if (!acc[p.clientId]) acc[p.clientId] = { name: p.clientName, policies: 0, premium: 0 }
       acc[p.clientId].policies += 1
-      acc[p.clientId].premium += p.premium
+      acc[p.clientId].premium += policyBillablePremium(p)
       return acc
     }, {}),
   ).sort((a, b) => b.premium - a.premium).slice(0, 8)
@@ -172,7 +175,12 @@ export default function Reports({ showToast }: Props) {
       title = 'Policy Report: Overview'
       baseName = 'policies-report'
       headers = ['Policy No.', 'Client', 'Product', 'Premium', 'Status', 'Start Date']
-      rows = policies.map(p => [p.policyNumber, p.clientName, p.productName, formatPremium(p.premium, p.productCategory ?? ''), p.status, p.startDate])
+      rows = policies.map(p => [
+        p.policyNumber, p.clientName, p.productName,
+        // The billed figure, with the head count that explains it.
+        `${formatPremium(policyBillablePremium(p), p.productCategory ?? '')}${billableHeadCount(p) > 1 ? ` (${billableHeadCount(p)} members)` : ''}`,
+        p.status, p.startDate,
+      ])
     }
 
     if (format === 'CSV') exportToCsv(`${baseName}-${dateStamp}.csv`, headers, rows)

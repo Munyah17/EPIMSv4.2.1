@@ -8,6 +8,8 @@ import { formatDate } from './dateUtils'
 import { getNotifSettings } from './mailService'
 import { getDocumentUrl } from './storage'
 import { reverseGeocode } from './geocode'
+import { policyBillablePremium, billableHeadCount } from './premium'
+import { holderMemberNumber, dependantMemberNumber } from './memberNumbers'
 
 function triggerDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
@@ -155,10 +157,16 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   doc.setTextColor(...TEXT)
   y += 8
 
+  // Premiums are per head everywhere except agriculture, so the figure on
+  // an official document is the whole policy's — the policyholder plus
+  // every dependant — not the policyholder's own share.
+  const billedPremium = policyBillablePremium(policy, category)
+  const heads = billableHeadCount(policy, category)
+
   autoTable(doc, {
     startY: y,
     head: [['Amount Paid', 'Payment Date', 'Expiration Date']],
-    body: [[money(policy.premium), formatDate(policy.lastPaymentDate), formatDate(policy.nextPaymentDate)]],
+    body: [[money(billedPremium), formatDate(policy.lastPaymentDate), formatDate(policy.nextPaymentDate)]],
     styles: { fontSize: 9, lineColor: [220, 226, 240], lineWidth: 0.2 },
     headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold' },
     theme: 'grid',
@@ -180,9 +188,9 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   sectionBand('POLICY INFORMATION')
   autoTable(doc, {
     startY: y,
-    head: [['Policy Number', 'Policy Package', premiumHeading, 'Cover', 'Currency', 'Status']],
+    head: [['Member No.', 'Policy Package', premiumHeading, 'Cover', 'Currency', 'Status']],
     body: [[
-      policy.policyNumber, policy.productName, money(policy.premium),
+      holderMemberNumber(policy.policyNumber), policy.productName, money(policy.premium),
       money(policy.coverAmount), 'USD', policy.status.toUpperCase(),
     ]],
     styles: { fontSize: 8.5, lineColor: [220, 226, 240], lineWidth: 0.2 },
@@ -212,12 +220,12 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
     doc.setTextColor(...TEXT)
     y += 8
   } else {
-    policy.dependants.forEach(d => {
+    policy.dependants.forEach((d, i) => {
       ensureRoom(22)
       doc.setFontSize(8)
       doc.setTextColor(...NAVY)
       const header = doc.splitTextToSize(
-        `FULL NAME: ${d.name}  |  NATIONAL ID: ${d.nationalId || '—'}  |  RELATIONSHIP: ${d.relationship}  |  DATE OF BIRTH: ${formatDate(d.dob)}`,
+        `MEMBER NO: ${dependantMemberNumber(policy.policyNumber, i)}  |  FULL NAME: ${d.name}  |  NATIONAL ID: ${d.nationalId || '—'}  |  RELATIONSHIP: ${d.relationship}  |  DATE OF BIRTH: ${formatDate(d.dob)}`,
         pageWidth - 32,
       )
       doc.text(header, 18, y)
@@ -229,7 +237,7 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
         body: [[
           d.productName ?? policy.productName,
           money(d.premium ?? policy.premium),
-          money(policy.coverAmount), 'USD', policy.status.toUpperCase(),
+          money(d.coverAmount ?? policy.coverAmount), 'USD', policy.status.toUpperCase(),
         ]],
         styles: { fontSize: 8.5, lineColor: [220, 226, 240], lineWidth: 0.2 },
         headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold' },
@@ -238,6 +246,21 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
       })
       y = (doc as any).lastAutoTable.finalY + 6
     })
+
+    // Everyone on the policy is charged, so the document says what the
+    // policy actually costs rather than leaving the client to add it up.
+    if (heads > 1) {
+      ensureRoom(14)
+      doc.setFontSize(9)
+      doc.setFont('helvetica', 'bold')
+      doc.setTextColor(...TEXT)
+      doc.text(
+        `TOTAL ${premiumHeading.toUpperCase()} (${heads} MEMBERS): ${money(billedPremium)}`,
+        pageWidth - 14, y, { align: 'right' },
+      )
+      doc.setFont('helvetica', 'normal')
+      y += 8
+    }
   }
 
   if (isAgriculture) {
@@ -252,7 +275,11 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
     y += AGRICULTURE_COVER.length * 5.5 + 4
   }
 
-  {
+  // Excess belongs to agriculture cover and nothing else. Printing it on a
+  // funeral or medical document -- and defaulting it to agriculture's 15%
+  // when the product has none configured -- told those policyholders they
+  // carry a deductible their policy does not have.
+  if (isAgriculture) {
     const excessLines = doc.splitTextToSize(policy.excess || DEFAULT_POLICY_EXCESS, pageWidth - 32)
     ensureRoom(14 + excessLines.length * 4.5)
     sectionBand('POLICY EXCESS')

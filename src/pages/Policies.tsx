@@ -172,11 +172,12 @@ export default function Policies({ showToast, initialCategory }: Props) {
   const handleDelete = async (policy: Policy) => {
     // Checked up front so the confirmation can say exactly what will be
     // destroyed, instead of failing afterwards with a generic refusal.
-    const { claims, payments } = await db.policies.deletionBlockers(policy.id)
+    const { claims, payments, checkouts } = await db.policies.deletionBlockers(policy.id)
     const attached = [
       claims > 0 && `${claims} claim${claims === 1 ? '' : 's'}`,
       payments > 0 && `${payments} payment${payments === 1 ? '' : 's'}`,
-    ].filter(Boolean).join(' and ')
+      checkouts > 0 && `${checkouts} online checkout record${checkouts === 1 ? '' : 's'}`,
+    ].filter(Boolean).join(', ')
 
     if (!attached) {
       if (!window.confirm(`Permanently delete policy ${policy.policyNumber}? This cannot be undone.`)) return

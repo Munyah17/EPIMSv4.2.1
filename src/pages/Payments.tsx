@@ -4,6 +4,7 @@ import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
 import { useAuth } from '../contexts/AuthContext'
+import { recordActivity } from '../lib/activityLog'
 import RecordPaymentModal from '../components/modals/RecordPaymentModal'
 
 interface Props {
@@ -19,7 +20,7 @@ const STATUS_CLASS: Record<PaymentStatus, string> = {
 }
 
 export default function Payments({ showToast }: Props) {
-  const { hasPermission } = useAuth()
+  const { hasPermission, user } = useAuth()
   const [payments, setPayments] = useState<Payment[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -54,10 +55,29 @@ export default function Payments({ showToast }: Props) {
   })
   const topMethod = Object.entries(methodStats).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '—'
 
+  /** Every write on this page is a manual act — money that arrived by a
+   *  route the system never saw (cash, an EcoCash send-money transfer
+   *  between two personal wallets, a bank transfer), or a correction after
+   *  a client hit trouble paying. None of it is a gateway confirming
+   *  anything, so all of it is attributed to whoever did it. */
+  const logManual = (payment: Payment, what: string) => {
+    if (!user) return
+    void recordActivity({
+      action: 'payment.validated',
+      actor: { id: user.id, name: user.name, role: user.role },
+      entityType: 'payment',
+      entityId: payment.id,
+      entityLabel: payment.reference,
+      detail: `${what}: $${payment.amount.toFixed(2)} via ${payment.method} for ${payment.clientName} (${payment.policyNumber}).`,
+      severity: 'warning',
+    })
+  }
+
   const handleAdd = async (payment: Payment) => {
     const { data, error } = await db.payments.create(payment)
     if (error || !data) { showToast('error', 'Failed to record payment.'); return }
     setPayments(prev => [data, ...prev])
+    logManual(data, 'Recorded a payment received off-system')
     showToast('success', `Payment ${data.reference} recorded successfully.`)
     setShowRecord(false)
   }
@@ -66,6 +86,7 @@ export default function Payments({ showToast }: Props) {
     const { data, error } = await db.payments.update(payment.id, { status: 'completed' })
     if (error || !data) { showToast('error', 'Failed to validate payment.'); return }
     setPayments(prev => prev.map(p => p.id === data.id ? data : p))
+    logManual(data, 'Marked a pending payment as received')
     showToast('success', `Payment ${data.reference} validated.`)
   }
 
@@ -73,6 +94,7 @@ export default function Payments({ showToast }: Props) {
     const { data, error } = await db.payments.update(updated.id, updated)
     if (error || !data) { showToast('error', 'Failed to update payment.'); return }
     setPayments(prev => prev.map(p => p.id === data.id ? data : p))
+    logManual(data, 'Amended a payment record')
     showToast('success', `Payment ${data.reference} updated.`)
     setEditPayment(null)
   }

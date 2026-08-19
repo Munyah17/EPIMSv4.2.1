@@ -57,6 +57,14 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   const [insurerOptions, setInsurerOptions] = useState<InsurerRecord[]>([])
   const product = products.find(p => p.id === productId)
 
+  /** A dependant is covered under the same kind of cover as the policy they
+   *  sit on, so the plan picker only ever offers products from the policy's
+   *  own category. Offering the full catalogue is how agriculture packages
+   *  ended up attached to funeral policies. */
+  const dependantPlanOptions = product
+    ? products.filter(p => p.active && p.category === product.category)
+    : []
+
   useEffect(() => {
     db.products.list().then(({ data }) => { if (data) setProducts(data); setProductsLoading(false) })
     db.clients.list().then(({ data }) => { if (data) setExistingClients(data) })
@@ -71,6 +79,18 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
     if (initialClient) selectExistingClient(initialClient)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])
+
+  // Changing the product after dependants were given plans would otherwise
+  // leave those plans pointing at the previous category's packages.
+  useEffect(() => {
+    if (!product) return
+    setDependants(prev => prev.map(d => {
+      if (!d.productId) return d
+      const plan = products.find(p => p.id === d.productId)
+      if (plan && plan.category === product.category) return d
+      return { ...d, productId: undefined, productName: undefined, premium: undefined, coverAmount: undefined }
+    }))
+  }, [product, products])
 
   const clearClientFields = () => {
     setClientName(''); setClientPhone(''); setClientEmail(''); setClientNationalId('')
@@ -373,9 +393,9 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                     <input className="form-control" placeholder="Relationship" value={d.relationship} onChange={e => updateDependant(i, 'relationship', e.target.value)} />
                     <DateInput value={d.dob} onChange={v => updateDependant(i, 'dob', v)} />
                     <input className="form-control" placeholder="ID (16+) or birth record no." value={d.nationalId} onChange={e => updateDependant(i, 'nationalId', e.target.value.replace(/-/g, ''))} />
-                    <select className="form-control" value={d.productId ?? ''} onChange={e => updateDependant(i, 'productId', e.target.value)}>
-                      <option value="">Select plan…</option>
-                      {products.filter(p => p.active).map(p => <option key={p.id} value={p.id}>{p.name} (${p.premium})</option>)}
+                    <select className="form-control" value={d.productId ?? ''} onChange={e => updateDependant(i, 'productId', e.target.value)} disabled={!product}>
+                      <option value="">{product ? 'Select plan…' : 'Pick the product first'}</option>
+                      {dependantPlanOptions.map(p => <option key={p.id} value={p.id}>{p.name} (${p.premium})</option>)}
                     </select>
                     <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => removeDependant(i)} title="Remove dependant">✕</button>
                   </div>

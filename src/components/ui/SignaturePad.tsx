@@ -3,12 +3,15 @@ import { useRef, useState, useEffect } from 'react'
 interface Props {
   label: string
   onChange: (dataUrl: string | undefined) => void
+  /** Highlights the pad as a missing required entry after a rejected
+   *  submit (see components/ui/ValidationSummary.tsx). */
+  invalid?: boolean
 }
 
 /** Canvas-based signature capture — draw with mouse or touch, exported as a
  *  PNG data URL. No external library; a signature pad is simple enough to
  *  hand-roll and this keeps the bundle light. */
-export default function SignaturePad({ label, onChange }: Props) {
+export default function SignaturePad({ label, onChange, invalid }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const drawing = useRef(false)
   const [hasSignature, setHasSignature] = useState(false)
@@ -86,7 +89,7 @@ export default function SignaturePad({ label, onChange }: Props) {
   }
 
   return (
-    <div className="signature-pad">
+    <div className={`signature-pad${invalid ? ' field-invalid-block' : ''}`}>
       <label>{label}</label>
       <canvas
         ref={canvasRef}

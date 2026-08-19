@@ -1,15 +1,22 @@
 /**
  * Payment Gateways
  *
- * EcoCash  — Econet merchant payment API
- * Paynow   — Zimbabwe's hosted payment gateway (supports EcoCash, OneMoney, ZimSwitch)
- * Zipit    — ZimSwitch ZIPIT bank transfer (display-only; verified manually)
+ * EcoCash Instant — Econet's own direct merchant rail (EIP). A prompt is
+ *                   pushed straight to the payer's handset and EcoCash
+ *                   debits them. Standalone: nothing to do with Paynow.
+ * Paynow          — an aggregator whose hosted page resells several rails
+ *                   (EcoCash, OneMoney, InnBucks, ZIPIT, card). Its EcoCash
+ *                   option is NOT EcoCash Instant — different credentials,
+ *                   different references, different statuses, and a
+ *                   transaction on one is invisible to the other.
+ * Zipit           — ZimSwitch ZIPIT bank transfer (display-only; verified
+ *                   manually by staff against the bank statement).
  *
- * Configure credentials in Billing & Reminders → Gateway Settings.
- * All API keys are stored in localStorage under 'tqfy_gateway_settings'.
- *
- * Live EcoCash/Paynow calls are routed through netlify/functions/gateway-proxy.ts
- * server-side, since both APIs reject direct browser calls via CORS.
+ * EcoCash Instant credentials live on the server (EIP_* env vars, see
+ * api/ecocash-instant.ts) and never touch the browser. Paynow's integration
+ * id/key are still configured in Billing & Reminders → Gateway Settings and
+ * relayed through api/gateway-proxy.ts, which exists because Paynow rejects
+ * direct browser calls via CORS.
  */
 
 import md5 from 'md5'
@@ -119,59 +126,95 @@ function logPayment(entry: OnlinePaymentLog) {
   } catch { /**/ }
 }
 
-// ── EcoCash ────────────────────────────────────────────────────────
+// ── EcoCash Instant (direct rail — not Paynow) ─────────────────────
 
+interface EipChargeReply {
+  outcome?: 'success' | 'failed' | 'pending'
+  lookupUrl?: string
+  transactionId?: string
+  message?: string
+  sandbox?: boolean
+  error?: string
+}
+
+/**
+ * Pushes an EcoCash prompt straight to the payer's handset.
+ *
+ * With EIP credentials unset on the server this returns a clearly-labelled
+ * simulation instead — never something a user could mistake for a real
+ * payment, and never a "failed" verdict for a rail that is merely switched
+ * off.
+ */
 export async function initiateEcoCash(req: PaymentRequest): Promise<PaymentResponse> {
-  const cfg = getGatewaySettings()
   const ref = req.reference
 
-  if (!cfg.ecocashMerchantCode || !cfg.ecocashMerchantPin) {
-    // Simulation mode
+  let reply: EipChargeReply
+  let httpStatus: number
+  try {
+    const res = await fetch('/api/ecocash-instant', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'charge',
+        phone: req.clientPhone,
+        amount: req.amount,
+        reference: ref,
+        description: `Insurance Premium: ${req.policyNumber}`,
+      }),
+    })
+    httpStatus = res.status
+    reply = await res.json().catch(() => ({})) as EipChargeReply
+  } catch (e) {
+    return { success: false, status: 'failed', message: `Could not reach the EcoCash service: ${e}`, gateway: 'ecocash' }
+  }
+
+  // 503 means the rail isn't configured on this deployment.
+  if (httpStatus === 503) {
     const txnId = `ECO${Date.now()}`
     logPayment({ id: txnId, policyId: req.policyId, policyNumber: req.policyNumber, gateway: 'ecocash', amount: req.amount, reference: ref, status: 'pending', transactionId: txnId, ts: new Date().toISOString() })
-    return { success: true, transactionId: txnId, status: 'pending', message: `SIMULATION: EcoCash prompt sent to ${req.clientPhone}. Check your phone to approve.`, gateway: 'ecocash', simulated: true }
+    return {
+      success: true, transactionId: txnId, status: 'pending', simulated: true, gateway: 'ecocash',
+      message: `SIMULATION: no EcoCash prompt was sent to ${req.clientPhone}. Set the EIP credentials on the server to collect for real.`,
+    }
   }
 
-  const body = {
-    merchantCode: cfg.ecocashMerchantCode,
-    merchantPin: cfg.ecocashMerchantPin,
-    merchantPhoneNumber: cfg.ecocashMerchantPhone,
-    clientPhoneNumber: req.clientPhone.replace(/\s/g, '').replace(/^\+263/, '0'),
-    amount: req.amount.toFixed(2),
-    clientReference: ref,
-    transactionOperationType: 'billpayment',
-    transactionInfo: `Insurance Premium: ${req.policyNumber}`,
+  if (reply.outcome === 'failed' || reply.error) {
+    logPayment({ id: `ECO${Date.now()}`, policyId: req.policyId, policyNumber: req.policyNumber, gateway: 'ecocash', amount: req.amount, reference: ref, status: 'failed', ts: new Date().toISOString() })
+    return { success: false, status: 'failed', message: reply.message ?? reply.error ?? 'EcoCash declined the request.', gateway: 'ecocash' }
   }
 
-  try {
-    const res = await proxyFetch(`${cfg.ecocashApiUrl}/transaction/initiate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify(body),
-    })
-    const data = await res.json() as { status?: string; transactionId?: string; pollUrl?: string; message?: string }
-    const success = data.status === 'Message' || res.ok
-    const txnId = data.transactionId ?? data.pollUrl ?? `ECO${Date.now()}`
-
-    logPayment({ id: txnId, policyId: req.policyId, policyNumber: req.policyNumber, gateway: 'ecocash', amount: req.amount, reference: ref, status: success ? 'pending' : 'failed', transactionId: String(txnId), ts: new Date().toISOString() })
-    return { success, transactionId: String(txnId), pollUrl: data.pollUrl, status: success ? 'pending' : 'failed', message: success ? `Payment prompt sent to ${req.clientPhone}. Approve on your phone.` : (data.message ?? 'EcoCash request failed'), gateway: 'ecocash' }
-  } catch (e) {
-    return { success: false, status: 'failed', message: `EcoCash error: ${e}`, gateway: 'ecocash' }
+  const txnId = reply.transactionId ?? ref
+  logPayment({ id: txnId, policyId: req.policyId, policyNumber: req.policyNumber, gateway: 'ecocash', amount: req.amount, reference: ref, status: 'pending', transactionId: txnId, ts: new Date().toISOString() })
+  return {
+    success: true,
+    transactionId: txnId,
+    pollUrl: reply.lookupUrl,
+    status: 'pending',
+    message: `Payment prompt sent to ${req.clientPhone}. Approve it on the phone${reply.sandbox ? ' (sandbox credentials: only numbers whitelisted with EcoCash will receive it)' : ''}.`,
+    gateway: 'ecocash',
   }
 }
 
-export async function pollEcoCash(pollUrl: string): Promise<{ status: 'pending' | 'success' | 'failed'; message: string }> {
-  const cfg = getGatewaySettings()
+/**
+ * Asks EcoCash what became of one transaction.
+ *
+ * Anything short of a definite answer comes back pending. A payment that
+ * has not been confirmed is not a payment that failed, and the difference
+ * decides whether a policy gets marked paid.
+ */
+export async function pollEcoCash(lookupUrl: string): Promise<{ status: 'pending' | 'success' | 'failed'; message: string }> {
   try {
-    const res = await proxyFetch(`${cfg.ecocashApiUrl}/transaction/check?pollUrl=${encodeURIComponent(pollUrl)}`, { method: 'GET' })
-    const data = await res.json() as { status?: string }
-    const status: 'pending' | 'success' | 'failed' =
-      data.status === 'Transaction Successful' ? 'success'
-      : data.status === 'Transaction Failed' ? 'failed'
-      : 'pending'
-    return { status, message: data.status ?? 'Unknown' }
+    const res = await fetch('/api/ecocash-instant', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'lookup', lookupUrl }),
+    })
+    const data = await res.json().catch(() => ({})) as { outcome?: 'success' | 'failed' | 'pending'; message?: string }
+    if (data.outcome === 'success') return { status: 'success', message: data.message ?? 'Payment confirmed by EcoCash' }
+    if (data.outcome === 'failed') return { status: 'failed', message: data.message ?? 'EcoCash declined this transaction' }
+    return { status: 'pending', message: data.message ?? 'Waiting for the payer to approve…' }
   } catch {
-    return { status: 'pending', message: 'Polling error, retrying…' }
+    return { status: 'pending', message: 'Could not reach EcoCash; still waiting…' }
   }
 }
 
@@ -182,7 +225,15 @@ function paynowHash(values: Record<string, string>, key: string): string {
   return md5(str).toUpperCase()
 }
 
-export async function initiatePaynow(req: PaymentRequest, method: 'ecocash' | 'onemoney' | 'zipit' | 'card' = 'ecocash'): Promise<PaymentResponse> {
+/**
+ * Starts a Paynow transaction.
+ *
+ * With no `method`, this is a plain HOSTED checkout: Paynow's own page
+ * presents its full rail picker (EcoCash, OneMoney, InnBucks, Omari, ZIPIT,
+ * card) and we never pre-select one on the payer's behalf. Passing a method
+ * opts into Paynow's express flow for that specific rail instead.
+ */
+export async function initiatePaynow(req: PaymentRequest, method?: 'ecocash' | 'onemoney' | 'zipit' | 'card'): Promise<PaymentResponse> {
   const cfg = getGatewaySettings()
   const ref = req.reference
 
@@ -206,7 +257,9 @@ export async function initiatePaynow(req: PaymentRequest, method: 'ecocash' | 'o
     resulturl: cfg.paynowResultUrl,
     status: 'Message',
     email: req.clientEmail,
-    ...(method !== 'card' ? { phone: req.clientPhone.replace(/\s/g, ''), method } : {}),
+    // Express flow only: a hosted checkout must not carry phone/method, or
+    // Paynow skips its own picker.
+    ...(method && method !== 'card' ? { phone: req.clientPhone.replace(/\s/g, ''), method } : {}),
   }
   fields.hash = paynowHash(fields, cfg.paynowIntegrationKey)
 

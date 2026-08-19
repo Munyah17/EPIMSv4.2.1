@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react'
 import type { Policy } from '../../types'
 import { formatDate } from '../../lib/dateUtils'
 import { premiumPeriodLabel } from '../../lib/productUtils'
+import { policyBillablePremium, billableHeadCount } from '../../lib/premium'
+import { holderMemberNumber, dependantMemberNumber } from '../../lib/memberNumbers'
 import { paymentCurrencyStatus, PAYMENT_CURRENCY_LABEL, PAYMENT_CURRENCY_CLASS } from '../../lib/policyLifecycle'
 import { db } from '../../lib/db'
 import { useAuth } from '../../contexts/AuthContext'
@@ -45,9 +47,21 @@ export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint, show
                 <span className={`pill pill-inline ${PAYMENT_CURRENCY_CLASS[paymentCurrencyStatus(policy)]}`}>{PAYMENT_CURRENCY_LABEL[paymentCurrencyStatus(policy)]}</span>
               </span>
             </div>
-            <div className="detail-item"><span className="detail-label">Client</span><span>{policy.clientName}</span></div>
+            <div className="detail-item"><span className="detail-label">Client</span><span>{policy.clientName} <span className="mono" style={{ color: 'var(--muted)', fontSize: 11 }}>{holderMemberNumber(policy.policyNumber)}</span></span></div>
             <div className="detail-item"><span className="detail-label">Product</span><span>{policy.productName}</span></div>
-            <div className="detail-item"><span className="detail-label">Premium</span><span>${policy.premium.toFixed(2)}{premiumPeriodLabel(category)}</span></div>
+            {/* Premiums are per head, so the amount billed is the holder's
+                own premium plus one for each dependant. Both are shown:
+                the total is what is collected, the per-person figure is
+                what a client queries. */}
+            <div className="detail-item">
+              <span className="detail-label">Premium Billed</span>
+              <span>
+                ${policyBillablePremium(policy, category).toFixed(2)}{premiumPeriodLabel(category)}
+                {billableHeadCount(policy, category) > 1 && (
+                  <span style={{ color: 'var(--muted)', fontSize: 11 }}> · {billableHeadCount(policy, category)} people (${policy.premium.toFixed(2)} policyholder)</span>
+                )}
+              </span>
+            </div>
             <div className="detail-item"><span className="detail-label">Cover Amount</span><span>${policy.coverAmount.toLocaleString()}</span></div>
             <div className="detail-item"><span className="detail-label">Start Date</span><span>{formatDate(policy.startDate)}</span></div>
             <div className="detail-item"><span className="detail-label">End Date</span><span>{formatDate(policy.endDate)}</span></div>
@@ -64,15 +78,17 @@ export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint, show
             <div style={{ marginTop: '1.5rem' }}>
               <h4 style={{ marginBottom: '0.75rem' }}>Dependants</h4>
               <table className="table">
-                <thead><tr><th>Name</th><th>Relationship</th><th>Date of Birth</th><th>ID Number</th><th>Plan</th></tr></thead>
+                <thead><tr><th>Member No.</th><th>Name</th><th>Relationship</th><th>Date of Birth</th><th>ID Number</th><th>Plan</th><th>Premium</th></tr></thead>
                 <tbody>
                   {policy.dependants.map((d, i) => (
                     <tr key={i}>
+                      <td className="mono">{dependantMemberNumber(policy.policyNumber, i)}</td>
                       <td>{d.name}</td>
                       <td>{d.relationship}</td>
                       <td>{formatDate(d.dob)}</td>
                       <td>{d.nationalId}</td>
-                      <td>{d.productName ?? '—'}</td>
+                      <td>{d.productName ?? policy.productName}</td>
+                      <td>${(d.premium ?? policy.premium).toFixed(2)}</td>
                     </tr>
                   ))}
                 </tbody>

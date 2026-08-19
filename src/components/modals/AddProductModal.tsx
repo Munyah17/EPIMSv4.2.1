@@ -35,7 +35,10 @@ export default function AddProductModal({ product, onClose, onSave }: Props) {
       active: product?.active ?? true,
       features: featuresText.split('\n').map(f => f.trim()).filter(Boolean),
       description,
-      excess: excess.trim() || undefined,
+      // Empty string rather than undefined, because db.products.update
+      // skips undefined fields — a product switched away from agriculture
+      // has to actively clear its excess, not merely stop sending it.
+      excess: category === 'agriculture' ? excess.trim() : '',
       policiesCount: product?.policiesCount ?? 0,
     }
     onSave(p)
@@ -101,10 +104,18 @@ export default function AddProductModal({ product, onClose, onSave }: Props) {
               <input type="number" className="form-control" value={commissionPct} onChange={e => setCommissionPct(e.target.value)} />
             </div>
           </div>
-          <div className="form-group">
-            <label>Policy Excess (optional)</label>
-            <input className="form-control" value={excess} onChange={e => setExcess(e.target.value)} placeholder="e.g. 10% of claim amount, minimum $50" />
-          </div>
+          {/* Excess belongs to agriculture cover and nothing else. Offering
+              it on every category is how funeral and medical products ended
+              up carrying a deductible their policyholders do not have. */}
+          {category === 'agriculture' && (
+            <div className="form-group">
+              <label>Policy Excess (optional)</label>
+              <input className="form-control" value={excess} onChange={e => setExcess(e.target.value)} placeholder="e.g. 15% of loss" />
+              <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+                Printed on the policy document. Leave blank to use the standard 15% of loss.
+              </span>
+            </div>
+          )}
           <div className="form-group">
             <label>Description</label>
             <textarea className="form-control" rows={2} value={description} onChange={e => setDescription(e.target.value)} />

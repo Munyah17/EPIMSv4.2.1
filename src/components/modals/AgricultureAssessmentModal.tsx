@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import type { AssessmentPhoto } from '../../types'
 import { useAuth } from '../../contexts/AuthContext'
 import { db } from '../../lib/db'
@@ -6,8 +6,11 @@ import { getCurrentCoordinates } from '../../lib/geolocation'
 import { queueAssessment } from '../../lib/offlineQueue'
 import { fileToBase64 } from '../../lib/photoAnalysis'
 import { checkAndRecordPhotoDuplicates } from '../../lib/duplicatePhotoCheck'
+import { blockedPhotos } from '../../lib/photoIntegrity'
 import PhotoCaptureField from '../ui/PhotoCaptureField'
 import SignaturePad from '../ui/SignaturePad'
+import ValidationSummary, { fieldId, invalidClass, isMissing, scrollToField } from '../ui/ValidationSummary'
+import type { MissingField } from '../ui/ValidationSummary'
 
 interface Props {
   claimId: string
@@ -43,11 +46,31 @@ export default function AgricultureAssessmentModal({ claimId, claimNumber, claim
   const [assessorSignature, setAssessorSignature] = useState<string | undefined>()
   const [farmerSelfie, setFarmerSelfie] = useState<AssessmentPhoto | undefined>()
   const [submitting, setSubmitting] = useState(false)
+  const [attempted, setAttempted] = useState(false)
   const [offlinePending, setOfflinePending] = useState<{ label: string; file: File; exifDate?: string }[]>([])
 
   const allSlots = [...PHOTO_SLOTS, ...extraPhotoLabels]
   const photoCount = Object.values(photos).filter(Boolean).length + offlinePending.length
-  const canSubmit = descriptionOfLoss.trim().length > 0 && photoCount >= MIN_PHOTOS && farmerSignature && assessorSignature && !submitting
+  const capturedPhotos = [...Object.values(photos).filter((p): p is AssessmentPhoto => !!p), ...(farmerSelfie ? [farmerSelfie] : [])]
+  // The banner above this form promises photos are checked for age and
+  // provenance automatically. This is that check — the same one pre-loss
+  // applies, and it matters more here because this is the assessment a
+  // payout is calculated from.
+  const rejected = blockedPhotos(capturedPhotos)
+
+  const missing = useMemo<MissingField[]>(() => {
+    const list: MissingField[] = []
+    if (!descriptionOfLoss.trim()) list.push({ key: 'descriptionOfLoss', label: 'Description of Loss' })
+    if (photoCount < MIN_PHOTOS) {
+      list.push({ key: 'photos', label: `Photos (${photoCount} of ${MIN_PHOTOS})`, hint: `${MIN_PHOTOS - photoCount} more still needed.` })
+    }
+    if (rejected.length > 0) {
+      list.push({ key: 'photos', label: `${rejected.length} photo${rejected.length !== 1 ? 's' : ''} rejected`, hint: 'remove or re-shoot the photos listed in red below.' })
+    }
+    if (!farmerSignature) list.push({ key: 'farmerSignature', label: 'Farmer Signature' })
+    if (!assessorSignature) list.push({ key: 'assessorSignature', label: 'Assessor Signature' })
+    return list
+  }, [descriptionOfLoss, photoCount, rejected.length, farmerSignature, assessorSignature])
 
   const captureGps = async () => {
     setGpsBusy(true)
@@ -73,7 +96,14 @@ export default function AgricultureAssessmentModal({ claimId, claimNumber, claim
   }
 
   const handleSubmit = async () => {
-    if (!canSubmit || !user) return
+    setAttempted(true)
+    if (missing.length > 0) {
+      showToast('error', `Not submitted: ${missing.length} required ${missing.length === 1 ? 'field is' : 'fields are'} missing — ${missing.map(m => m.label).join(', ')}.`)
+      scrollToField(missing[0].key)
+      return
+    }
+    if (!user) { showToast('error', 'Your session has expired; sign in again to submit this assessment.'); return }
+    if (submitting) return
     setSubmitting(true)
 
     const uploadedPhotos = Object.values(photos).filter((p): p is AssessmentPhoto => !!p)
@@ -133,9 +163,11 @@ export default function AgricultureAssessmentModal({ claimId, claimNumber, claim
             Agriculture claims require a physical site visit before they can go to final review. Photos must be no more than 3 days old; this is checked automatically from each photo's date metadata and, where available, a visible on-image date stamp.
           </div>
 
-          <div className="form-group">
+          <ValidationSummary missing={missing} attempted={attempted} />
+
+          <div className="form-group" id={fieldId('descriptionOfLoss')}>
             <label>Description of Loss (if no other proof) *</label>
-            <textarea className="form-control" rows={3} value={descriptionOfLoss} onChange={e => setDescriptionOfLoss(e.target.value)} placeholder="Describe what happened and what you observed on site…" />
+            <textarea className={invalidClass(missing, attempted, 'descriptionOfLoss')} rows={3} value={descriptionOfLoss} onChange={e => setDescriptionOfLoss(e.target.value)} placeholder="Describe what happened and what you observed on site…" />
           </div>
 
           <div className="form-group">
@@ -143,9 +175,19 @@ export default function AgricultureAssessmentModal({ claimId, claimNumber, claim
             <textarea className="form-control" rows={3} value={farmerStatement} onChange={e => setFarmerStatement(e.target.value)} placeholder="Summarize, in your own words, what the farmer told you on site, kept separate from your own remarks below." />
           </div>
 
-          <label style={{ display: 'block', margin: '1rem 0 6px', fontSize: 13, fontWeight: 600 }}>
+          <label id={fieldId('photos')} style={{ display: 'block', margin: '1rem 0 6px', fontSize: 13, fontWeight: 600, color: isMissing(missing, attempted, 'photos') ? 'var(--danger)' : undefined }}>
             Photos ({photoCount}/{MIN_PHOTOS} minimum, up to {MAX_PHOTOS})
           </label>
+          {rejected.length > 0 && (
+            <div className="info-banner info-banner-danger" style={{ marginBottom: 10 }}>
+              <strong>{rejected.length} photo{rejected.length !== 1 ? 's' : ''} cannot be accepted:</strong>
+              <ul style={{ margin: '4px 0 0 18px', padding: 0, fontSize: 12 }}>
+                {rejected.map(({ photo, concerns }) => (
+                  <li key={photo.label}>{photo.label}: {concerns.map(c => c.message).join(' ')}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           {allSlots.map(slot => (
             <div key={slot} style={{ position: 'relative' }}>
               <PhotoCaptureField
@@ -209,13 +251,19 @@ export default function AgricultureAssessmentModal({ claimId, claimNumber, claim
           </div>
 
           <div className="form-row" style={{ marginTop: '1rem' }}>
-            <SignaturePad label="Farmer Signature *" onChange={setFarmerSignature} />
-            <SignaturePad label="Assessor Signature *" onChange={setAssessorSignature} />
+            <div id={fieldId('farmerSignature')}>
+              <SignaturePad label="Farmer Signature *" onChange={setFarmerSignature} invalid={isMissing(missing, attempted, 'farmerSignature')} />
+            </div>
+            <div id={fieldId('assessorSignature')}>
+              <SignaturePad label="Assessor Signature *" onChange={setAssessorSignature} invalid={isMissing(missing, attempted, 'assessorSignature')} />
+            </div>
           </div>
+
+          <ValidationSummary missing={missing} attempted={attempted} />
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSubmit} disabled={!canSubmit}>
+          <button className="btn btn-primary" onClick={handleSubmit} disabled={submitting}>
             {submitting ? 'Submitting…' : 'Submit Assessment'}
           </button>
         </div>

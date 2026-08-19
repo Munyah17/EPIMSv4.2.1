@@ -67,6 +67,7 @@ const STAFF_SECTIONS: NavSection[] = [
     label: 'CLIENT MANAGEMENT',
     items: [
       { id: 'clients', label: 'Clients', icon: '👥' },
+      { id: 'member_cards', label: 'Membership IDs', icon: '🪪', roles: ['super_admin', 'admin', 'policy_admin', 'claims_officer', 'finance'] },
       { id: 'leads', label: 'Leads & Marketing', icon: '🎯', badge: 'AI' },
     ],
   },

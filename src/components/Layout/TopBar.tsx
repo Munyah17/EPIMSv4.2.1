@@ -32,6 +32,7 @@ const PANEL_TITLES: Record<ActivePanel, string> = {
   mass_messaging: 'Bulk SMS Messaging',
   billing_reminders: 'Billing & Reminders',
   pre_loss_assessments: 'Pre-Loss Assessments',
+  member_cards: 'Membership IDs',
   insurer_management: 'Insurer Management',
   agriculture_insurance: 'Agriculture Insurance',
   system_access_roles: 'System Access Roles',

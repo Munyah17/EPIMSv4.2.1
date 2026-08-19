@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import type { Claim, Policy, Client, Product, AssessmentPhoto, ClaimAssessment } from '../../types'
 import { db } from '../../lib/db'
 import { scoreClaimFraud } from '../../lib/aiService'
@@ -8,6 +8,8 @@ import { useAuth } from '../../contexts/AuthContext'
 import DateInput from '../ui/DateInput'
 import PhotoCaptureField from '../ui/PhotoCaptureField'
 import SignaturePad from '../ui/SignaturePad'
+import ValidationSummary, { fieldId, invalidClass, isMissing, scrollToField } from '../ui/ValidationSummary'
+import type { MissingField } from '../ui/ValidationSummary'
 import FraudNoticeModal from './FraudNoticeModal'
 import {
   PLANTS_PER_HECTARE, TYPICAL_LEAVES_AT_TOPPING,
@@ -103,6 +105,7 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
   const [farmerSelfie, setFarmerSelfie] = useState<AssessmentPhoto | undefined>()
   const [offlinePending, setOfflinePending] = useState<{ label: string; file: File; exifDate?: string }[]>([])
   const [showFraudNotice, setShowFraudNotice] = useState(false)
+  const [attempted, setAttempted] = useState(false)
 
   // Stable draft id so uploaded photos land in one folder before the claim's
   // real id exists — same pattern as NewClaimModal.
@@ -121,12 +124,15 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
   const policy = agriculturePolicies.find(p => p.policyNumber.toLowerCase() === policyNumberInput.trim().toLowerCase())
   const policyId = policy?.id ?? ''
 
+  // The amount is never seeded from the cover limit: on this form it is the
+  // assessed payable figure, and pre-filling the sum insured meant a claim
+  // submitted before the leaf counts were entered went in for the full
+  // policy value. It stays empty until the calculation below produces it.
   useEffect(() => {
+    setAmount('')
     if (policy) {
-      setAmount(policy.coverAmount.toString())
       db.clients.get(policy.clientId).then(({ data }) => setClient(data))
     } else {
-      setAmount('')
       setClient(null)
       setBaselineCropPopulation(undefined)
     }
@@ -216,12 +222,55 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
     showToast?.('warning', `No connection: "${label}" saved on this device and will upload automatically once you're back online.`)
   }
 
-  const canSave = !!policyId && !!amount && !!dateOfEvent && !!description.trim()
-    && photosComplete && farmerPhotoCovered && !!farmerSignature && !!assessorSignature
-    && descriptionOfLoss.trim().length > 0 && gpsLat !== undefined && gpsLng !== undefined && !saving
+  const missing = useMemo<MissingField[]>(() => {
+    const list: MissingField[] = []
+    if (!policyId) list.push({ key: 'policyNumber', label: 'Policy Number', hint: 'must match an existing agriculture policy.' })
+    if (!dateOfEvent) list.push({ key: 'dateOfEvent', label: 'Date of Event' })
+    if (!description.trim()) list.push({ key: 'description', label: 'Description' })
+    if (!descriptionOfLoss.trim()) list.push({ key: 'descriptionOfLoss', label: 'Description of Loss' })
+    if (!photosComplete) {
+      list.push({ key: 'photos', label: `Damage Photos (${requiredPhotoCount} of ${REQUIRED_PHOTO_SLOTS.length})`, hint: 'every labelled slot needs its own photo.' })
+    }
+
+    // The loss assessment is the claim: the payable amount is derived from
+    // these counts and nothing else, so a claim cannot be submitted without
+    // them. Which ones apply depends on the peril.
+    if (!(Number(hectares) > 0)) list.push({ key: 'hectares', label: 'Hectares Under Crop' })
+    if (!(Number(leavesAtTopping) > 0)) list.push({ key: 'leavesAtTopping', label: 'Leaves at Topping' })
+    if (isBarnFire) {
+      if (!(Number(barnHooks) > 0)) list.push({ key: 'barnHooks', label: 'Number of Hooks' })
+      if (!(Number(barnTiers) > 0)) list.push({ key: 'barnTiers', label: 'Number of Tiers' })
+      if (!(Number(barnBays) > 0)) list.push({ key: 'barnBays', label: 'Number of Bays' })
+      if (!(Number(leavesPerString) > 0)) list.push({ key: 'leavesPerString', label: 'Leaves per String' })
+    } else if (!(Number(damagedLeaves) > 0)) {
+      list.push({ key: 'damagedLeaves', label: 'Number of Damaged Leaves' })
+    }
+
+    if (gpsLat === undefined || gpsLng === undefined) {
+      list.push({ key: 'gps', label: 'GPS Coordinates', hint: 'press “Use Current Location” while on the farm.' })
+    }
+    if (!farmerPhotoCovered) list.push({ key: 'farmerPhoto', label: 'Farmer Photo' })
+    if (!farmerSignature) list.push({ key: 'farmerSignature', label: 'Farmer Signature' })
+    if (!assessorSignature) list.push({ key: 'assessorSignature', label: 'Assessor Signature' })
+    return list
+  }, [policyId, dateOfEvent, description, descriptionOfLoss, photosComplete, requiredPhotoCount,
+    hectares, leavesAtTopping, isBarnFire, barnHooks, barnTiers, barnBays, leavesPerString, damagedLeaves,
+    gpsLat, gpsLng, farmerPhotoCovered, farmerSignature, assessorSignature])
+
+  /** Runs before the fraud declaration, so the assessor isn't asked to
+   *  confirm a submission that was going to be refused anyway. */
+  const handleAttemptSubmit = () => {
+    setAttempted(true)
+    if (missing.length > 0) {
+      showToast?.('error', `Not submitted: ${missing.length} required ${missing.length === 1 ? 'field is' : 'fields are'} missing — ${missing.map(m => m.label).join(', ')}.`)
+      scrollToField(missing[0].key)
+      return
+    }
+    setShowFraudNotice(true)
+  }
 
   const handleSave = async () => {
-    if (!canSave || !policy || !user) return
+    if (missing.length > 0 || !policy || !user || saving) return
     setSaving(true)
     const dateSubmitted = new Date().toISOString().split('T')[0]
     const priorClaimsOnPolicy = allClaims.filter(c => c.policyId === policyId).length
@@ -353,10 +402,12 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
             Agriculture claims capture the full physical assessment now: at least 6 damage photos, GPS, and both signatures are required before this can be submitted. Photos must be no more than 3 days old, checked automatically from each photo's date metadata.
           </div>
 
-          <div className="form-group">
+          <ValidationSummary missing={missing} attempted={attempted} />
+
+          <div className="form-group" id={fieldId('policyNumber')}>
             <label>Policy Number *</label>
             <input
-              className="form-control"
+              className={invalidClass(missing, attempted, 'policyNumber')}
               list="ag-claim-policy-numbers"
               placeholder={loading ? 'Loading policies…' : 'Enter or select an agriculture policy number'}
               value={policyNumberInput}
@@ -405,17 +456,24 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
               </select>
             </div>
             <div className="form-group">
-              <label>Claim Amount ($) *</label>
-              <input type="number" className="form-control" min={0} value={amount} onChange={e => setAmount(e.target.value)} disabled={!!policy} style={policy ? { opacity: 0.6 } : undefined} />
+              <label>Claim Amount ($)</label>
+              {/* Always the assessed payable figure from the Loss Assessment
+                  below — never the sum insured, and never typed in. */}
+              <input className="form-control" value={calcReady ? formatMoney(claimCalc.claimPayable) : '—'} disabled style={{ opacity: 0.6 }} />
+              <span style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, display: 'block' }}>
+                Worked out from the leaf counts below.
+              </span>
             </div>
           </div>
-          <div className="form-group">
+          <div className="form-group" id={fieldId('dateOfEvent')}>
             <label>Date of Event *</label>
-            <DateInput value={dateOfEvent} onChange={setDateOfEvent} />
+            <div className={isMissing(missing, attempted, 'dateOfEvent') ? 'field-invalid-block' : undefined}>
+              <DateInput value={dateOfEvent} onChange={setDateOfEvent} />
+            </div>
           </div>
-          <div className="form-group">
+          <div className="form-group" id={fieldId('description')}>
             <label>Description *</label>
-            <textarea className="form-control" rows={3} value={description} onChange={e => setDescription(e.target.value)} placeholder="Describe the incident…" />
+            <textarea className={invalidClass(missing, attempted, 'description')} rows={3} value={description} onChange={e => setDescription(e.target.value)} placeholder="Describe the incident…" />
           </div>
           <div className="form-group">
             <label>Status</label>
@@ -425,9 +483,9 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
           <hr style={{ margin: '1.25rem 0', border: 'none', borderTop: '1px solid var(--border)' }} />
           <h4 style={{ marginBottom: 10 }}>Physical Assessment</h4>
 
-          <div className="form-group">
+          <div className="form-group" id={fieldId('descriptionOfLoss')}>
             <label>Description of Loss *</label>
-            <textarea className="form-control" rows={3} value={descriptionOfLoss} onChange={e => setDescriptionOfLoss(e.target.value)} placeholder="What the assessor observed on site…" />
+            <textarea className={invalidClass(missing, attempted, 'descriptionOfLoss')} rows={3} value={descriptionOfLoss} onChange={e => setDescriptionOfLoss(e.target.value)} placeholder="What the assessor observed on site…" />
           </div>
 
           <div className="form-group">
@@ -435,7 +493,7 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
             <textarea className="form-control" rows={3} value={farmerStatement} onChange={e => setFarmerStatement(e.target.value)} placeholder="Summarize, in your own words, what the farmer told you on site, kept separate from your own remarks below." />
           </div>
 
-          <label style={{ display: 'block', margin: '1rem 0 6px', fontSize: 13, fontWeight: 600 }}>
+          <label id={fieldId('photos')} style={{ display: 'block', margin: '1rem 0 6px', fontSize: 13, fontWeight: 600, color: isMissing(missing, attempted, 'photos') ? 'var(--danger)' : undefined }}>
             Damage / Loss Photos ({requiredPhotoCount}/{REQUIRED_PHOTO_SLOTS.length} required)
           </label>
           {allSlots.map(slot => (
@@ -448,6 +506,7 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
                 value={photos[slot]}
                 onChange={p => setPhotos(prev => ({ ...prev, [slot]: p }))}
                 onOfflineCapture={handleOfflineCapture}
+                invalid={attempted && !photosComplete && REQUIRED_PHOTO_SLOTS.includes(slot) && !isSlotCovered(slot)}
               />
               {offlinePending.some(p => p.label === slot) && (
                 <div style={{ fontSize: 11, color: 'var(--gold)', margin: '-8px 0 8px' }}>📴 Saved offline, will upload once you're back online.</div>
@@ -507,13 +566,13 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
           </p>
 
           <div className="form-row">
-            <div className="form-group">
+            <div className="form-group" id={fieldId('hectares')}>
               <label>Hectares Under Crop *</label>
-              <input type="number" className="form-control" min={0} step="0.01" value={hectares} onChange={e => setHectares(e.target.value)} placeholder="e.g. 1.5" />
+              <input type="number" className={invalidClass(missing, attempted, 'hectares')} min={0} step="0.01" value={hectares} onChange={e => setHectares(e.target.value)} placeholder="e.g. 1.5" />
             </div>
-            <div className="form-group">
+            <div className="form-group" id={fieldId('leavesAtTopping')}>
               <label>Leaves at Topping (counted, per plant) *</label>
-              <input type="number" className="form-control" min={0} value={leavesAtTopping} onChange={e => setLeavesAtTopping(e.target.value)} placeholder={`Typically ${TYPICAL_LEAVES_AT_TOPPING}`} />
+              <input type="number" className={invalidClass(missing, attempted, 'leavesAtTopping')} min={0} value={leavesAtTopping} onChange={e => setLeavesAtTopping(e.target.value)} placeholder={`Typically ${TYPICAL_LEAVES_AT_TOPPING}`} />
               <span style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, display: 'block' }}>
                 Counted in the field. {TYPICAL_LEAVES_AT_TOPPING} is typical, but this varies by variety and season.
               </span>
@@ -537,17 +596,17 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
                 {barnFromPreLoss && <span style={{ fontWeight: 400, color: 'var(--teal)', fontSize: 11 }}> · carried over from the pre-loss assessment</span>}
               </label>
               <div className="form-row">
-                <div className="form-group">
+                <div className="form-group" id={fieldId('barnHooks')}>
                   <label>Number of Hooks *</label>
-                  <input type="number" className="form-control" min={0} value={barnHooks} onChange={e => setBarnHooks(e.target.value)} placeholder="e.g. 150" />
+                  <input type="number" className={invalidClass(missing, attempted, 'barnHooks')} min={0} value={barnHooks} onChange={e => setBarnHooks(e.target.value)} placeholder="e.g. 150" />
                 </div>
-                <div className="form-group">
+                <div className="form-group" id={fieldId('barnTiers')}>
                   <label>Number of Tiers *</label>
-                  <input type="number" className="form-control" min={0} value={barnTiers} onChange={e => setBarnTiers(e.target.value)} placeholder="e.g. 4" />
+                  <input type="number" className={invalidClass(missing, attempted, 'barnTiers')} min={0} value={barnTiers} onChange={e => setBarnTiers(e.target.value)} placeholder="e.g. 4" />
                 </div>
-                <div className="form-group">
+                <div className="form-group" id={fieldId('barnBays')}>
                   <label>Number of Bays *</label>
-                  <input type="number" className="form-control" min={0} value={barnBays} onChange={e => setBarnBays(e.target.value)} placeholder="e.g. 3" />
+                  <input type="number" className={invalidClass(missing, attempted, 'barnBays')} min={0} value={barnBays} onChange={e => setBarnBays(e.target.value)} placeholder="e.g. 3" />
                 </div>
               </div>
 
@@ -561,9 +620,9 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
                     </span>
                   )}
                 </div>
-                <div className="form-group">
+                <div className="form-group" id={fieldId('leavesPerString')}>
                   <label>Leaves per String *</label>
-                  <input type="number" className="form-control" min={0} value={leavesPerString} onChange={e => setLeavesPerString(e.target.value)} placeholder="e.g. 30" />
+                  <input type="number" className={invalidClass(missing, attempted, 'leavesPerString')} min={0} value={leavesPerString} onChange={e => setLeavesPerString(e.target.value)} placeholder="e.g. 30" />
                 </div>
               </div>
 
@@ -578,9 +637,9 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
               </div>
             </>
           ) : (
-            <div className="form-group">
+            <div className="form-group" id={fieldId('damagedLeaves')}>
               <label>Number of Damaged Leaves *</label>
-              <input type="number" className="form-control" min={0} value={damagedLeaves} onChange={e => setDamagedLeaves(e.target.value)} placeholder="Leaves damaged in the field" />
+              <input type="number" className={invalidClass(missing, attempted, 'damagedLeaves')} min={0} value={damagedLeaves} onChange={e => setDamagedLeaves(e.target.value)} placeholder="Leaves damaged in the field" />
             </div>
           )}
 
@@ -660,7 +719,7 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
             )}
           </div>
 
-          <div className="form-group" style={{ marginTop: '1rem' }}>
+          <div className={`form-group${isMissing(missing, attempted, 'gps') ? ' field-invalid-block' : ''}`} id={fieldId('gps')} style={{ marginTop: '1rem' }}>
             <label>GPS Coordinates *</label>
             <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
               <button type="button" className="btn btn-outline btn-sm" disabled={gpsBusy} onClick={captureGps}>📍 {gpsBusy ? 'Getting location…' : 'Use Current Location'}</button>
@@ -670,23 +729,29 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
             </div>
           </div>
 
-          <div className="form-group">
+          <div className="form-group" id={fieldId('farmerPhoto')}>
             <label>Farmer Photo *</label>
-            <PhotoCaptureField label="Farmer Photo" folder="claims" recordId={draftId} value={farmerSelfie} onChange={setFarmerSelfie} onOfflineCapture={handleOfflineCapture} />
+            <PhotoCaptureField label="Farmer Photo" folder="claims" recordId={draftId} value={farmerSelfie} onChange={setFarmerSelfie} onOfflineCapture={handleOfflineCapture} invalid={isMissing(missing, attempted, 'farmerPhoto')} />
             {offlinePending.some(p => p.label === 'Farmer Photo') && (
               <div style={{ fontSize: 11, color: 'var(--gold)', marginTop: 4 }}>📴 Saved offline, will upload once you're back online.</div>
             )}
           </div>
 
           <div className="form-row" style={{ marginTop: '1rem' }}>
-            <SignaturePad label="Farmer Signature *" onChange={setFarmerSignature} />
-            <SignaturePad label="Assessor Signature *" onChange={setAssessorSignature} />
+            <div id={fieldId('farmerSignature')}>
+              <SignaturePad label="Farmer Signature *" onChange={setFarmerSignature} invalid={isMissing(missing, attempted, 'farmerSignature')} />
+            </div>
+            <div id={fieldId('assessorSignature')}>
+              <SignaturePad label="Assessor Signature *" onChange={setAssessorSignature} invalid={isMissing(missing, attempted, 'assessorSignature')} />
+            </div>
           </div>
           <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>Assessor: {user?.name}</p>
+
+          <ValidationSummary missing={missing} attempted={attempted} />
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={() => setShowFraudNotice(true)} disabled={!canSave}>
+          <button className="btn btn-primary" onClick={handleAttemptSubmit} disabled={saving}>
             {saving ? 'Analysing & Submitting…' : 'Submit Agriculture Claim'}
           </button>
         </div>
