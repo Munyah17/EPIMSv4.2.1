@@ -5,6 +5,7 @@ import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
 import { exportPolicyReport, getPolicyReportPdfBase64 } from '../lib/exportUtils'
 import { notifyPolicyRegistered } from '../lib/signupNotifications'
+import { recordActivity } from '../lib/activityLog'
 import { sendSystemEmail } from '../lib/mailService'
 import { MAILBOXES } from '../lib/mailboxes'
 import { useAuth } from '../contexts/AuthContext'
@@ -23,7 +24,7 @@ interface Props {
 }
 
 export default function Policies({ showToast, initialCategory }: Props) {
-  const { hasPermission } = useAuth()
+  const { hasPermission, user } = useAuth()
   const [policies, setPolicies] = useState<Policy[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -169,11 +170,48 @@ export default function Policies({ showToast, initialCategory }: Props) {
   }
 
   const handleDelete = async (policy: Policy) => {
-    if (!window.confirm(`Permanently delete policy ${policy.policyNumber}? This cannot be undone.`)) return
-    const { error } = await db.policies.remove(policy.id)
+    // Checked up front so the confirmation can say exactly what will be
+    // destroyed, instead of failing afterwards with a generic refusal.
+    const { claims, payments } = await db.policies.deletionBlockers(policy.id)
+    const attached = [
+      claims > 0 && `${claims} claim${claims === 1 ? '' : 's'}`,
+      payments > 0 && `${payments} payment${payments === 1 ? '' : 's'}`,
+    ].filter(Boolean).join(' and ')
+
+    if (!attached) {
+      if (!window.confirm(`Permanently delete policy ${policy.policyNumber}? This cannot be undone.`)) return
+      const { error } = await db.policies.remove(policy.id)
+      if (error) { showToast('error', error); return }
+      setPolicies(prev => prev.filter(p => p.id !== policy.id))
+      void recordActivity({
+        action: 'policy.deleted', actor: { id: user?.id, name: user?.name ?? 'Unknown', role: user?.role ?? 'unknown' },
+        entityType: 'policy', entityId: policy.id, entityLabel: policy.policyNumber,
+        detail: `${policy.clientName}, ${policy.productName}`, severity: 'warning',
+      })
+      showToast('success', `Policy ${policy.policyNumber} deleted.`)
+      return
+    }
+
+    const reason = window.prompt(
+      `Policy ${policy.policyNumber} has ${attached} recorded against it.\n\n`
+      + `Deleting it will also permanently remove ${attached}. Financial records are not recoverable once removed.\n\n`
+      + 'If you are sure, enter a reason for the record:',
+    )
+    if (reason === null) return
+    if (!reason.trim()) { showToast('warning', 'A reason is required to delete a policy with attached records.'); return }
+
+    // Logged before the delete, while the detail still exists to record.
+    await recordActivity({
+      action: 'policy.deleted', actor: { id: user?.id, name: user?.name ?? 'Unknown', role: user?.role ?? 'unknown' },
+      entityType: 'policy', entityId: policy.id, entityLabel: policy.policyNumber,
+      detail: `${policy.clientName}, ${policy.productName}. Also removed ${attached}. Reason: ${reason.trim()}`,
+      severity: 'warning',
+    })
+
+    const { error } = await db.policies.remove(policy.id, { force: true })
     if (error) { showToast('error', error); return }
     setPolicies(prev => prev.filter(p => p.id !== policy.id))
-    showToast('success', `Policy ${policy.policyNumber} deleted.`)
+    showToast('success', `Policy ${policy.policyNumber} and its ${attached} deleted. Recorded in the activity log.`)
   }
 
   const handlePrint = async (policy: Policy) => {

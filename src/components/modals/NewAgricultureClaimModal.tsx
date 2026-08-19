@@ -154,6 +154,9 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
   const countedLoss = isBarnFire ? Number(leavesLost) : Number(damagedLeaves)
   const lossAssessment = assessLoss(countedLoss, leavesExpected)
   const claimCalc = calculateClaim(lossAssessment.percentageLoss, policy?.coverAmount ?? 0)
+  // Nothing is shown until there is a real basis for it: a bare "$0.00"
+  // reads like an assessed nil loss rather than an unanswered question.
+  const calcReady = lossAssessment.leavesExpected > 0 && lossAssessment.leavesLost > 0 && !!policy
 
   // The claim amount IS the payable figure, so it follows the assessment
   // rather than defaulting to the full cover limit -- the old behaviour made
@@ -540,39 +543,79 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
             </div>
           )}
 
-          <div className="card" style={{ background: 'var(--surface2)', marginTop: 12 }}>
-            <div className="card-header"><span className="card-title">Claim Calculation</span></div>
-            {lossAssessment.leavesExpected === 0 || lossAssessment.leavesLost === 0 ? (
-              <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0 }}>
-                Enter the leaf counts above and the calculation will complete itself.
-              </p>
-            ) : (
-              <div className="detail-grid">
-                <div className="detail-item">
-                  <span className="detail-label">Damaged / Expected</span>
-                  <span>{lossAssessment.leavesLost.toLocaleString()} / {lossAssessment.leavesExpected.toLocaleString()} leaves</span>
-                </div>
-                <div className="detail-item">
-                  <span className="detail-label">Percentage Loss</span>
-                  <span style={{ fontWeight: 600 }}>{formatPercent(claimCalc.percentageLoss)}</span>
-                </div>
-                <div className="detail-item">
-                  <span className="detail-label">Monetary Value of Loss</span>
-                  <span>{formatMoney(claimCalc.grossLoss)} <span style={{ color: 'var(--muted)', fontSize: 11 }}>({formatPercent(claimCalc.percentageLoss)} of {formatMoney(policy?.coverAmount ?? 0)})</span></span>
-                </div>
-                <div className="detail-item">
-                  <span className="detail-label">Less Handling Expenses (10%)</span>
-                  <span style={{ color: 'var(--danger)' }}>-{formatMoney(claimCalc.handlingExpenses)}</span>
-                </div>
-                <div className="detail-item">
-                  <span className="detail-label">Less Excess (15%)</span>
-                  <span style={{ color: 'var(--danger)' }}>-{formatMoney(claimCalc.excess)}</span>
-                </div>
-                <div className="detail-item">
-                  <span className="detail-label">Claim Payable</span>
-                  <span style={{ fontWeight: 700, color: 'var(--teal)' }}>{formatMoney(claimCalc.claimPayable)}</span>
-                </div>
-              </div>
+          {/* Everything below is derived from the counts above and locked, so
+              the payable figure can only ever be what the formula produces. */}
+          <h4 style={{ margin: '1.25rem 0 4px' }}>Claim Calculation</h4>
+          <p style={{ fontSize: 11, color: 'var(--muted)', margin: '0 0 10px' }}>
+            {calcReady
+              ? 'Calculated from the counts above. These fields cannot be edited.'
+              : 'Fills in automatically once the leaf counts and a policy are entered.'}
+          </p>
+
+          <div className="form-row">
+            <div className="form-group">
+              <label>Percentage Loss</label>
+              <input
+                className="form-control"
+                value={calcReady ? formatPercent(claimCalc.percentageLoss) : '—'}
+                disabled
+                style={{ opacity: 0.6 }}
+              />
+              {calcReady && (
+                <span style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, display: 'block' }}>
+                  {lossAssessment.leavesLost.toLocaleString()} damaged ÷ {lossAssessment.leavesExpected.toLocaleString()} at topping × 100
+                </span>
+              )}
+            </div>
+            <div className="form-group">
+              <label>Loss in Monetary Value (Claim Amount)</label>
+              <input
+                className="form-control"
+                value={calcReady ? formatMoney(claimCalc.grossLoss) : '—'}
+                disabled
+                style={{ opacity: 0.6 }}
+              />
+              {calcReady && (
+                <span style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, display: 'block' }}>
+                  {formatPercent(claimCalc.percentageLoss)} × {formatMoney(policy?.coverAmount ?? 0)} sum insured
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="form-row">
+            <div className="form-group">
+              <label>Less Handling Expenses (10%)</label>
+              <input
+                className="form-control"
+                value={calcReady ? `- ${formatMoney(claimCalc.handlingExpenses)}` : '—'}
+                disabled
+                style={{ opacity: 0.6 }}
+              />
+            </div>
+            <div className="form-group">
+              <label>Less Excess (15%)</label>
+              <input
+                className="form-control"
+                value={calcReady ? `- ${formatMoney(claimCalc.excess)}` : '—'}
+                disabled
+                style={{ opacity: 0.6 }}
+              />
+            </div>
+          </div>
+
+          <div className="form-group">
+            <label style={{ fontWeight: 700 }}>Claim Payable</label>
+            <input
+              className="form-control"
+              value={calcReady ? formatMoney(claimCalc.claimPayable) : '—'}
+              disabled
+              style={{ opacity: 0.85, fontWeight: 700, color: 'var(--teal)', background: 'var(--surface2)' }}
+            />
+            {calcReady && (
+              <span style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, display: 'block' }}>
+                {formatMoney(claimCalc.grossLoss)} less {formatMoney(claimCalc.handlingExpenses)} handling and {formatMoney(claimCalc.excess)} excess. This is the amount the claim is submitted for.
+              </span>
             )}
           </div>
 

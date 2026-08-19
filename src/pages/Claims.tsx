@@ -38,8 +38,10 @@ export default function Claims({ showToast, initialCategory }: Props) {
   }, [showToast])
 
   const filtered = claims.filter(c => {
-    const matchSearch = c.claimNumber.toLowerCase().includes(search.toLowerCase()) ||
-      c.clientName.toLowerCase().includes(search.toLowerCase())
+    const q = search.toLowerCase()
+    const matchSearch = c.claimNumber.toLowerCase().includes(q) ||
+      c.clientName.toLowerCase().includes(q) ||
+      (c.policyNumber ?? '').toLowerCase().includes(q)
     const matchStatus = statusFilter === 'all' || c.status === statusFilter
     const matchCategory = !initialCategory || c.category === initialCategory
     return matchSearch && matchStatus && matchCategory
@@ -116,6 +118,33 @@ export default function Claims({ showToast, initialCategory }: Props) {
     await finishClaimSubmission(data, claim.fraudSignals)
   }
 
+  const handleDelete = async (claim: Claim) => {
+    const reason = window.prompt(
+      `Delete claim ${claim.claimNumber} for ${claim.clientName}?\n\n`
+      + 'The claim, its physical assessment and any fraud case are removed permanently and cannot be recovered. '
+      + 'A record of this deletion stays in the activity log.\n\nEnter a reason for the record:',
+    )
+    if (reason === null) return
+    if (!reason.trim()) { showToast('warning', 'A reason is required to delete a claim.'); return }
+
+    // Written before the delete, while the claim's details still exist to be
+    // captured. The log entry has to stand on its own afterwards, since
+    // there will be no claim left to look up.
+    await recordActivity({
+      action: 'claim.deleted',
+      actor: { id: user?.id, name: user?.name ?? 'Unknown', role: user?.role ?? 'unknown' },
+      entityType: 'claim', entityId: claim.id, entityLabel: claim.claimNumber,
+      detail: `${claim.clientName}, ${claim.productName}, ${claim.claimType}, $${claim.amount.toLocaleString()}, status ${claim.status}. Reason: ${reason.trim()}`,
+      severity: 'warning',
+    })
+
+    const { error } = await db.claims.remove(claim.id)
+    if (error) { showToast('error', error); return }
+    setClaims(prev => prev.filter(c => c.id !== claim.id))
+    setReviewClaim(null)
+    showToast('success', `Claim ${claim.claimNumber} deleted. The deletion is recorded in the activity log.`)
+  }
+
   const handleUpdate = async (updated: Claim, notify: () => Promise<void>) => {
     const { data, error, pendingSync } = await db.claims.update(updated.id, updated)
     if (error || !data) { showToast('error', 'Failed to update claim.'); return }
@@ -153,7 +182,7 @@ export default function Claims({ showToast, initialCategory }: Props) {
         <div className="filter-row">
           <input
             className="search-input"
-            placeholder="Search claim number or client…"
+            placeholder="Search claim number, policy number or client…"
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
@@ -179,6 +208,7 @@ export default function Claims({ showToast, initialCategory }: Props) {
             <thead>
               <tr>
                 <th>Claim No.</th>
+                <th>Policy No.</th>
                 <th>Client</th>
                 <th>Product</th>
                 <th>Type</th>
@@ -192,10 +222,11 @@ export default function Claims({ showToast, initialCategory }: Props) {
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={10} className="td-empty">No claims found.</td></tr>
+                <tr><td colSpan={11} className="td-empty">No claims found.</td></tr>
               ) : filtered.map(c => (
                 <tr key={c.id}>
                   <td><span className="mono">{c.claimNumber}</span></td>
+                  <td><span className="mono">{c.policyNumber || '—'}</span></td>
                   <td>{c.clientName}</td>
                   <td>{c.productName}</td>
                   <td>{c.claimType}</td>
@@ -215,6 +246,16 @@ export default function Claims({ showToast, initialCategory }: Props) {
                     <div className="action-btns">
                       {hasPermission('claims.edit') && (
                         <button type="button" className="btn btn-ghost btn-sm" onClick={() => setReviewClaim(c)}>Review</button>
+                      )}
+                      {hasPermission('claims.delete') && (
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          style={{ color: 'var(--danger)' }}
+                          onClick={() => handleDelete(c)}
+                        >
+                          Delete
+                        </button>
                       )}
                     </div>
                   </td>

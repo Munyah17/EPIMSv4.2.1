@@ -25,7 +25,7 @@ export type ActivityAction =
   // Money and outcomes
   | 'policy.created' | 'policy.updated' | 'policy.deleted'
   | 'claim.intake_accepted' | 'claim.intake_rejected' | 'claim.escalated'
-  | 'claim.approved' | 'claim.declined'
+  | 'claim.approved' | 'claim.declined' | 'claim.deleted'
   | 'payment.recorded'
   // Bulk / outbound
   | 'sms.bulk_sent'
@@ -139,6 +139,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'claim.escalated': 'Escalated a claim to final review',
   'claim.approved': 'Approved a claim',
   'claim.declined': 'Declined a claim',
+  'claim.deleted': 'Deleted a claim',
   'payment.recorded': 'Recorded a payment',
   'sms.bulk_sent': 'Sent a bulk SMS campaign',
 }

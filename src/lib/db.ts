@@ -442,13 +442,54 @@ export const policies = {
     return { data: localStore.policies.update(id, updates), error: null }
   },
 
-  /** RLS (policies_delete_admin) restricts this to admin/super_admin already;
-   *  hasPermission('policies.delete') additionally gates the button itself
-   *  so a custom role can hide it from a given admin/staff member too. */
-  async remove(id: string) {
+  /** What is standing in the way of deleting this policy. Reminders,
+   *  caution flags and pre-loss assessments all cascade, so only claims and
+   *  payments can actually block it. */
+  async deletionBlockers(id: string): Promise<{ claims: number; payments: number }> {
+    const [claimsRes, paymentsRes] = await Promise.all([
+      supabase.from('claims').select('id', { count: 'exact', head: true }).eq('policy_id', id),
+      supabase.from('payments').select('id', { count: 'exact', head: true }).eq('policy_id', id),
+    ])
+    return { claims: claimsRes.count ?? 0, payments: paymentsRes.count ?? 0 }
+  },
+
+  /**
+   * RLS (policies_delete_admin) restricts this to admin/super_admin already;
+   * hasPermission('policies.delete') additionally gates the button itself
+   * so a custom role can hide it from a given admin/staff member too.
+   *
+   * Claims and payments deliberately do NOT cascade in the schema, because
+   * silently destroying a payment record along with a policy is not
+   * something anyone should be able to do by accident. Passing `force`
+   * removes them explicitly, which is the caller stating that is what they
+   * meant -- and the reason for it gets written to the activity log.
+   */
+  async remove(id: string, opts: { force?: boolean } = {}) {
+    if (opts.force) {
+      // Order matters: both reference the policy, so they go first.
+      const { error: claimsError } = await supabase.from('claims').delete().eq('policy_id', id)
+      if (claimsError) return { error: `Could not remove the policy's claims: ${claimsError.message}` }
+      const { error: paymentsError } = await supabase.from('payments').delete().eq('policy_id', id)
+      if (paymentsError) return { error: `Could not remove the policy's payments: ${paymentsError.message}` }
+    }
+
     const { error } = await supabase.from('policies').delete().eq('id', id)
-    if (error) return { error: error.code === '23503' ? 'This policy has related claims or payments and cannot be deleted.' : error.message }
-    return { error: null }
+    if (!error) return { error: null }
+    if (error.code !== '23503') return { error: error.message }
+
+    // Name what is actually holding it, rather than listing everything it
+    // might have been -- "claims or payments" sends someone looking for a
+    // claim that was never there.
+    const { claims, payments } = await policies.deletionBlockers(id)
+    const parts = [
+      claims > 0 && `${claims} claim${claims === 1 ? '' : 's'}`,
+      payments > 0 && `${payments} payment${payments === 1 ? '' : 's'}`,
+    ].filter(Boolean)
+    return {
+      error: parts.length
+        ? `This policy still has ${parts.join(' and ')} recorded against it.`
+        : 'This policy is still referenced by other records and cannot be deleted.',
+    }
   },
 }
 
@@ -860,6 +901,26 @@ export const claims = {
     // they can act on.
     local('claims', 'write')
     return { data: localStore.claims.update(id, updates), error: null, pendingSync: true }
+  },
+
+  /**
+   * Removes a claim outright. Its physical assessment and any fraud case go
+   * with it (both cascade), so nothing is left orphaned pointing at a claim
+   * that no longer exists.
+   *
+   * The activity log is deliberately untouched: entity_id there is plain
+   * text rather than a foreign key, precisely so the record of who deleted
+   * what survives the deletion. A trail that disappears along with the thing
+   * it describes is not a trail.
+   *
+   * RLS (claims_delete_admin) already limits this to admin/super_admin;
+   * hasPermission('claims.delete') gates the button as well, so a custom
+   * role can withhold it from a given administrator.
+   */
+  async remove(id: string) {
+    const { error } = await supabase.from('claims').delete().eq('id', id)
+    if (error) return { error: error.message }
+    return { error: null }
   },
 }
 

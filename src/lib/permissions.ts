@@ -45,6 +45,7 @@ export const PERMISSION_CATALOG: PermissionGroup[] = [
       { key: 'claims.approve', label: 'Final Approve Claims (MD/COO)' },
       { key: 'claims.reject', label: 'Final Decline Claims (MD/COO)' },
       { key: 'claims.physical_assessment', label: 'Conduct Physical Assessments (Assessor)' },
+      { key: 'claims.delete', label: 'Delete Claims (permanent, logged)' },
     ],
   },
   {
