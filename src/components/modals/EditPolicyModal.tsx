@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import type { Policy, PolicyStatus, Insurer, InsurerRecord, AppUser } from '../../types'
+import { MANUAL_PAYMENT_METHODS } from '../../types'
 import { db } from '../../lib/db'
 import DateInput from '../ui/DateInput'
 
@@ -69,7 +70,7 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
             <div className="form-group">
               <label>Payment Method</label>
               <select className="form-control" value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}>
-                {['OneMoney', 'InnBucks', 'Airtime Balance', 'Bank Transfer', 'Cash', 'Debit Order', 'Stop Order', 'EcoCash'].map(m => (
+                {MANUAL_PAYMENT_METHODS.map(m => (
                   <option key={m} value={m}>{m}</option>
                 ))}
               </select>

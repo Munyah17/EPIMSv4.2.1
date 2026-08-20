@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import type { ToastMessage, Payment, PaymentMethod, PaymentStatus } from '../types'
+import { PAYMENT_METHODS } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
@@ -135,7 +136,7 @@ export default function Payments({ showToast }: Props) {
           />
           <select title="Filter by method" className="filter-select" value={methodFilter} onChange={e => setMethodFilter(e.target.value as PaymentMethod | 'all')}>
             <option value="all">All Methods</option>
-            {(['OneMoney', 'InnBucks', 'Airtime Balance', 'Bank Transfer', 'Cash', 'Debit Order', 'Stop Order', 'EcoCash'] as PaymentMethod[]).map(m => (
+            {PAYMENT_METHODS.map(m => (
               <option key={m} value={m}>{m}</option>
             ))}
           </select>

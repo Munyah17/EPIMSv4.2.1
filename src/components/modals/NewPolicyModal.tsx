@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import type { Policy, Dependant, Insurer, InsurerRecord, Client, Product, AppUser } from '../../types'
+import { MANUAL_PAYMENT_METHODS } from '../../types'
 import { db } from '../../lib/db'
 import { useAuth } from '../../contexts/AuthContext'
 import PhoneInput from '../ui/PhoneInput'
@@ -348,7 +349,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
               <div className="form-group">
                 <label>Payment Method *</label>
                 <select className="form-control" value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}>
-                  {['OneMoney', 'InnBucks', 'Airtime Balance', 'Bank Transfer', 'Cash', 'Debit Order', 'Stop Order', 'EcoCash'].map(m => (
+                  {MANUAL_PAYMENT_METHODS.map(m => (
                     <option key={m} value={m}>{m}</option>
                   ))}
                 </select>

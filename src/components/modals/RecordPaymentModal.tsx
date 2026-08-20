@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import type { Payment, PaymentMethod, PaymentStatus, SplitPayment, Policy } from '../../types'
+import { MANUAL_PAYMENT_METHODS } from '../../types'
 import { db } from '../../lib/db'
 import { premiumPeriodLabel } from '../../lib/productUtils'
 import { policyBillablePremium, billableHeadCount } from '../../lib/premium'
@@ -16,7 +17,7 @@ interface Props {
   onSave: (payment: Payment) => void
 }
 
-const METHODS: PaymentMethod[] = ['OneMoney', 'InnBucks', 'Airtime Balance', 'Bank Transfer', 'Cash', 'Debit Order', 'Stop Order', 'EcoCash']
+const METHODS = MANUAL_PAYMENT_METHODS
 const STATUSES: PaymentStatus[] = ['completed', 'pending', 'failed', 'reversed']
 
 export default function RecordPaymentModal({ policyId: initialPolicyId, payment: editing, onClose, onSave }: Props) {

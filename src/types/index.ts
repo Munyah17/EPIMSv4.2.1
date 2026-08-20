@@ -288,7 +288,37 @@ export interface Claim {
   resolvedAt?: string
 }
 
-export type PaymentMethod = 'OneMoney' | 'InnBucks' | 'Airtime Balance' | 'Bank Transfer' | 'Cash' | 'Debit Order' | 'Stop Order' | 'Paynow' | 'Zipit' | 'EcoCash'
+/**
+ * Every way a premium can actually reach us.
+ *
+ * One list, because there is one truth: the same values are offered in the
+ * payment forms, stored on policies, and enforced by the CHECK constraint on
+ * payments.method. They used to be re-typed in five places, drifted apart,
+ * and the database silently rejected three methods the forms happily
+ * offered - including Stop Order, which is how agriculture is collected.
+ *
+ * Card payments arrive through Paynow's hosted page and are recorded as
+ * Paynow, so there is no separate card entry.
+ */
+export const PAYMENT_METHODS = [
+  'EcoCash',
+  'OneMoney',
+  'InnBucks',
+  'Bank Transfer',
+  'Cash',
+  'Debit Order',
+  'Stop Order',
+  'Paynow',
+  'Zipit',
+] as const
+
+export type PaymentMethod = typeof PAYMENT_METHODS[number]
+
+/** The subset staff can pick when recording a payment by hand. Paynow and
+ *  Zipit are set by the online flow itself, never chosen here. */
+export const MANUAL_PAYMENT_METHODS: PaymentMethod[] = [
+  'EcoCash', 'OneMoney', 'InnBucks', 'Bank Transfer', 'Cash', 'Debit Order', 'Stop Order',
+]
 
 export type PaymentStatus = 'completed' | 'pending' | 'failed' | 'reversed'
 

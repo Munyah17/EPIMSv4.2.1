@@ -160,7 +160,7 @@ CREATE TABLE public.payments (
   reference      TEXT NOT NULL UNIQUE,
   policy_id      UUID NOT NULL REFERENCES public.policies(id) ON DELETE RESTRICT,
   amount         NUMERIC(10,2) NOT NULL,
-  method         TEXT NOT NULL CHECK (method IN ('EcoCash','OneMoney','InnBucks','Airtime Balance','Bank Transfer','Cash','Debit Order','Stop Order','Paynow','Zipit')),
+  method         TEXT NOT NULL CHECK (method IN ('EcoCash','OneMoney','InnBucks','Bank Transfer','Cash','Debit Order','Stop Order','Paynow','Zipit')),
   status         TEXT NOT NULL DEFAULT 'completed'
                    CHECK (status IN ('completed','pending','failed','reversed')),
   payment_date   DATE NOT NULL DEFAULT CURRENT_DATE,
