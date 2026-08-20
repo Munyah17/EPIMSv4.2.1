@@ -4,9 +4,10 @@ import { db } from '../lib/db'
 import { useAuth } from '../contexts/AuthContext'
 import { searchMembers, policyMembers, parseMemberNumber } from '../lib/memberNumbers'
 import type { PolicyMember } from '../lib/memberNumbers'
+import { categoryIssuesMemberCards } from '../lib/productUtils'
 import { exportCard, CARD_EXPORT_FORMATS } from '../lib/cardExport'
 import type { CardExportFormat } from '../lib/cardExport'
-import MemberCard, { CARD_WIDTH_PX } from '../components/ui/MemberCard'
+import MemberCard, { CARD_WIDTH_PX, CARD_HEIGHT_PX } from '../components/ui/MemberCard'
 import IssueCardModal from '../components/modals/IssueCardModal'
 import RfidScanModal from '../components/modals/RfidScanModal'
 
@@ -67,10 +68,27 @@ export default function MemberCards({ showToast }: Props) {
     [cards],
   )
 
-  // Only live policies get cards: a cancelled or expired policy's card is a
-  // claim waiting to happen at a service desk.
+  // Two rules decide who can hold a card.
+  //
+  // Only live policies: a cancelled or expired policy's card is a problem
+  // waiting to happen at a service desk.
+  //
+  // And only cover that follows a person. Agriculture insures a crop and a
+  // barn, motor a vehicle, property a building -- there is nobody to hand a
+  // card to, and issuing one would imply the cover travels with a person
+  // when it does not. Cards are for the funeral, hospital cash and combo
+  // plans, where the policyholder and each dependant have to be
+  // identifiable in their own right.
   const cardablePolicies = useMemo(
-    () => policies.filter(p => p.status === 'active' || p.status === 'waiting_period'),
+    () => policies.filter(p =>
+      (p.status === 'active' || p.status === 'waiting_period') &&
+      categoryIssuesMemberCards(p.productCategory)),
+    [policies],
+  )
+  const excludedByCategory = useMemo(
+    () => policies.filter(p =>
+      (p.status === 'active' || p.status === 'waiting_period') &&
+      !categoryIssuesMemberCards(p.productCategory)).length,
     [policies],
   )
 
@@ -136,6 +154,13 @@ export default function MemberCards({ showToast }: Props) {
         🪪 Every person on a policy has a member number — <strong>the policy number, a dash, and their position</strong>
         {' '}(<code>-00</code> is the policyholder, <code>-01</code> the first dependant, and so on). That number is what
         goes on their card, their signature line, and their claim.
+        {excludedByCategory > 0 && (
+          <div style={{ marginTop: 6, fontSize: 12 }}>
+            Cards cover the funeral, hospital cash and combo plans. {excludedByCategory} live{' '}
+            {excludedByCategory === 1 ? 'policy is' : 'policies are'} not listed because they insure property rather
+            than people — agriculture covers a crop and a barn, so there is nobody to issue a card to.
+          </div>
+        )}
       </div>
 
       <div className="member-card-toolbar">
@@ -203,13 +228,17 @@ export default function MemberCards({ showToast }: Props) {
           ) : (
             <>
               <div className="member-card-stage">
-                {/* Both faces are always mounted so an export can rasterise
-                    each of them; only the chosen one is on screen. */}
-                <div style={{ width: PREVIEW_WIDTH, height: previewScale * 638 }}>
-                  <div style={{ display: face === 'front' ? 'block' : 'none' }}>
+                {/* Both faces stay mounted AND laid out, because the export
+                    rasterises whichever one is not currently on screen too.
+                    The inactive face is moved off to the side rather than
+                    display:none'd -- a hidden element has no layout box, so
+                    the card's gradients resolve against zero width and
+                    html2canvas throws on the non-finite colour stops. */}
+                <div style={{ position: 'relative', width: PREVIEW_WIDTH, height: previewScale * CARD_HEIGHT_PX }}>
+                  <div className={face === 'front' ? undefined : 'member-card-face-offstage'}>
                     <MemberCard ref={frontRef} member={selected} card={selectedCard} face="front" scale={previewScale} />
                   </div>
-                  <div style={{ display: face === 'back' ? 'block' : 'none' }}>
+                  <div className={face === 'back' ? undefined : 'member-card-face-offstage'}>
                     <MemberCard ref={backRef} member={selected} card={selectedCard} face="back" scale={previewScale} />
                   </div>
                 </div>

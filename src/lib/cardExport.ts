@@ -27,6 +27,13 @@ const MIME: Record<CardImageFormat, string> = {
 const CARD_MM = { width: 85.6, height: 54 }
 
 async function renderToCanvas(node: HTMLElement): Promise<HTMLCanvasElement> {
+  // A node with no layout box (display:none, or detached) makes html2canvas
+  // resolve the card's gradients against zero width, and it throws on the
+  // resulting non-finite colour stops. Caught here so the failure names the
+  // real cause instead of surfacing as "addColorStop … non-finite".
+  if (!node.offsetWidth || !node.offsetHeight) {
+    throw new Error('the card is not laid out on screen, so it cannot be rendered')
+  }
   const { default: html2canvas } = await import('html2canvas')
   return html2canvas(node, {
     // The card paints its own background; a transparent one would print

@@ -804,6 +804,9 @@ textarea.form-control{resize:vertical;min-height:80px}
 .member-card-row-tags{display:flex;gap:6px;flex-wrap:wrap;margin-top:2px}
 .member-card-preview-pane{border:1px solid var(--border);border-radius:11px;background:var(--white);padding:16px;display:flex;flex-direction:column;gap:14px}
 .member-card-stage{display:flex;justify-content:center;padding:8px 0}
+/* The face that isn't on screen. Moved aside rather than hidden: it must
+   keep a real layout box so the export can measure and rasterise it. */
+.member-card-face-offstage{position:absolute;top:0;left:-100000px;pointer-events:none}
 .member-card-actions{display:flex;justify-content:center}
 .member-card-meta{display:flex;flex-direction:column;gap:2px;border-top:1px solid var(--border);padding-top:12px}
 .member-card-export{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--border);padding-top:12px}

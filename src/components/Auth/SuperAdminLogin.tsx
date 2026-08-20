@@ -63,11 +63,14 @@ export default function SuperAdminLogin() {
 
         <form onSubmit={handleSubmit} className="login-form">
           <div className="form-group">
-            <label htmlFor="email">Email or Full Name</label>
+            {/* Username, not full name: resolve_login_email() matches on
+                profiles.username alone, so a full name never resolved and
+                the label was promising a sign-in that could not work. */}
+            <label htmlFor="email">Email or Username</label>
             <input
               id="email"
               type="text"
-              placeholder="Enter super admin email or full name"
+              placeholder="Enter super admin email or username"
               value={email}
               onChange={e => setEmail(e.target.value)}
               required
