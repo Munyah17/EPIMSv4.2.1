@@ -25,7 +25,11 @@ CREATE TABLE IF NOT EXISTS public.policy_cards (
   rfid_tag          TEXT UNIQUE,
   status            TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','suspended','lost','replaced')),
   issued_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  issued_by         UUID REFERENCES auth.users(id),
+  -- References profiles, not auth.users: PostgREST resolves the
+  -- `profiles!issued_by(name)` embed in src/lib/db.ts through this foreign
+  -- key, and every other staff reference in the schema is wired the same
+  -- way (claim_assessments.assessor_id, fraud_signal_rules.created_by).
+  issued_by         UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
   expires_at        DATE,
   notes             TEXT,
   created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -55,14 +59,14 @@ CREATE POLICY "policy_cards_update_staff" ON public.policy_cards
 DROP POLICY IF EXISTS "policy_cards_delete_staff" ON public.policy_cards;
 
 -- A policyholder may see the cards on their own policies (the portal shows
--- them their household's member numbers), matching the same email-based
--- rule the rest of the policyholder views use.
+-- them their household's member numbers), using the same current_user_email()
+-- rule as policies_select_own rather than reaching into auth.users directly.
 DROP POLICY IF EXISTS "policy_cards_select_own" ON public.policy_cards;
 CREATE POLICY "policy_cards_select_own" ON public.policy_cards
   FOR SELECT TO authenticated USING (
     EXISTS (
       SELECT 1 FROM public.clients c
       WHERE c.id = policy_cards.client_id
-        AND c.email = (SELECT email FROM auth.users WHERE id = auth.uid())
+        AND c.email = current_user_email()
     )
   );
