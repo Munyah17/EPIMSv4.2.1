@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { GROQ_TEXT_MODEL, extractJson } from './_lib/groq.js'
+import { GROQ_TEXT_MODEL, extractJson } from './groq.js'
 
 /**
  * AI-powered lead search — run on demand from Leads & Marketing (the "Run

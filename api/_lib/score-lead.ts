@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { GROQ_TEXT_MODEL, extractJson } from './_lib/groq.js'
+import { GROQ_TEXT_MODEL, extractJson } from './groq.js'
 
 /**
  * Real AI lead scoring via Groq. Replaces the

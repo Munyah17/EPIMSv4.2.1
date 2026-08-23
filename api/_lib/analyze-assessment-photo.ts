@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { GROQ_VISION_MODEL, extractJson } from './_lib/groq.js'
+import { GROQ_VISION_MODEL, extractJson } from './groq.js'
 
 /**
  * Runs an assessment photo through Groq's vision model to help catch staged or

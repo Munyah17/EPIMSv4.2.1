@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
-import { callGroq, extractJson } from './_lib/groq.js'
+import { callGroq, extractJson } from './groq.js'
 
 /**
  * Real AI fraud scoring via Groq — replaces the
