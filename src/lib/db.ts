@@ -1,6 +1,10 @@
 import { supabase } from './supabase'
 import { health } from './health'
-import { localStore } from './localStore'
+// localStore is deliberately NOT imported here. It seeds itself from
+// src/data/mockData.ts, so serving it on a failed read put invented clients,
+// policies and payments in front of staff as though they were the real book.
+// Reads fall back to offlineCache (real rows previously fetched) or to an
+// empty result with an explanation; writes fail and say why.
 import { cacheGet, cacheSet } from './offlineCache'
 import { hammingDistance, DUPLICATE_THRESHOLD } from './photoHash'
 import { policyBillablePremium } from './premium'
@@ -403,8 +407,9 @@ export const policies = {
       () => supabase.from('policies').select(POLICY_SELECT).eq('id', id).single(),
     )
     if (ok && data) return { data: toPolicy(data), error: null }
-    local('policies', 'read')
-    return { data: localStore.policies.list().find(p => p.id === id) ?? null, error: null }
+    const cachedPolicy = cacheGet<Policy>('policies')?.data.find(p => p.id === id)
+    if (cachedPolicy) return { data: cachedPolicy, error: null }
+    return { data: null, error: 'Could not load that policy.' }
   },
 
   async create(policy: Omit<Policy, 'id'>) {
@@ -554,8 +559,9 @@ export const clients = {
       data: toClient({ ...(data as Record<string, unknown>), policy_count: ((data as Record<string, unknown>).policies as {count:number}[])?.[0]?.count ?? 0 }),
       error: null,
     }
-    local('clients', 'read')
-    return { data: localStore.clients.list().find(c => c.id === id) ?? null, error: null }
+    const cachedClient = cacheGet<Client>('clients')?.data.find(c => c.id === id)
+    if (cachedClient) return { data: cachedClient, error: null }
+    return { data: null, error: 'Could not load that client.' }
   },
 
   async create(client: Omit<Client, 'id' | 'policyCount'>) {
@@ -881,9 +887,14 @@ export const claims = {
       () => supabase.from('claims').select(CLAIM_SELECT).order('created_at', { ascending: false }),
       d => Array.isArray(d),
     )
-    if (ok && data) return { data: (data as unknown[]).map(toClaim), error: null }
-    local('claims', 'read')
-    return { data: localStore.claims.list(), error: null }
+    if (ok && data) {
+      const mapped = (data as unknown[]).map(toClaim)
+      cacheSet('claims', mapped)
+      return { data: mapped, error: null }
+    }
+    const cached = cacheGet<Claim>('claims')
+    if (cached) return { data: cached.data, error: null }
+    return { data: [] as Claim[], error: 'Could not load claims — connect to the internet at least once to cache them for offline use.' }
   },
 
   async create(claim: Omit<Claim, 'id' | 'claimNumber' | 'policyNumber' | 'clientId' | 'clientName' | 'productName'>) {
@@ -990,9 +1001,14 @@ export const payments = {
       () => supabase.from('payments').select(PAYMENT_SELECT).order('payment_date', { ascending: false }),
       d => Array.isArray(d),
     )
-    if (ok && data) return { data: (data as unknown[]).map(toPayment), error: null }
-    local('payments', 'read')
-    return { data: localStore.payments.list(), error: null }
+    if (ok && data) {
+      const mapped = (data as unknown[]).map(toPayment)
+      cacheSet('payments', mapped)
+      return { data: mapped, error: null }
+    }
+    const cached = cacheGet<Payment>('payments')
+    if (cached) return { data: cached.data, error: null }
+    return { data: [] as Payment[], error: 'Could not load payments — connect to the internet at least once to cache them for offline use.' }
   },
 
   async create(payment: Omit<Payment, 'id'>) {
@@ -1244,9 +1260,14 @@ export const tickets = {
       () => supabase.from('tickets').select(TICKET_SELECT).order('created_at', { ascending: false }),
       d => Array.isArray(d),
     )
-    if (ok && data) return { data: (data as unknown[]).map(toTicket), error: null }
-    local('tickets', 'read')
-    return { data: localStore.tickets.list(), error: null }
+    if (ok && data) {
+      const mapped = (data as unknown[]).map(toTicket)
+      cacheSet('tickets', mapped)
+      return { data: mapped, error: null }
+    }
+    const cached = cacheGet<Ticket>('tickets')
+    if (cached) return { data: cached.data, error: null }
+    return { data: [] as Ticket[], error: 'Could not load tickets.' }
   },
 
   async create(ticket: Omit<Ticket, 'id'>) {
@@ -1289,9 +1310,7 @@ export const emails = {
       d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as unknown[]).map(toEmail), error: null }
-    local('emails', 'read')
-    const rows = localStore.emails.list()
-    return { data: folder ? rows.filter(e => e.folder === folder) : rows, error: null }
+    return { data: [] as EmailMessage[], error: 'Could not load the mailbox.' }
   },
 
   async create(email: Omit<EmailMessage, 'id' | 'timestamp'>) {
@@ -1312,19 +1331,19 @@ export const emails = {
     if (updates.read    !== undefined) row.read    = updates.read
     if (updates.starred !== undefined) row.starred = updates.starred
     if (updates.folder  !== undefined) row.folder  = updates.folder
-    await sb('emails', 'write', () => supabase.from('emails').update(row).eq('id', id))
-    localStore.emails.update(id, updates)
-    return { data: localStore.emails.list().find(e => e.id === id) ?? null, error: null }
+    const { ok, data, error } = await sb('emails', 'write',
+      () => supabase.from('emails').update(row).eq('id', id).select().single(),
+    )
+    if (ok && data) return { data: toEmail(data), error: null }
+    return writeFailed('emails', error)
   },
 
   async markRead(id: string) {
     await sb('emails', 'write', () => supabase.from('emails').update({ read: true }).eq('id', id))
-    localStore.emails.update(id, { read: true } as Partial<EmailMessage>)
   },
 
   async delete(id: string) {
     await sb('emails', 'delete', () => supabase.from('emails').delete().eq('id', id))
-    localStore.emails.delete(id)
   },
 }
 
@@ -1335,9 +1354,14 @@ export const leads = {
       () => supabase.from('leads').select('*').order('created_at', { ascending: false }),
       d => Array.isArray(d),
     )
-    if (ok && data) return { data: (data as unknown[]).map(toLead), error: null }
-    local('leads', 'read')
-    return { data: localStore.leads.list(), error: null }
+    if (ok && data) {
+      const mapped = (data as unknown[]).map(toLead)
+      cacheSet('leads', mapped)
+      return { data: mapped, error: null }
+    }
+    const cached = cacheGet<Lead>('leads')
+    if (cached) return { data: cached.data, error: null }
+    return { data: [] as Lead[], error: 'Could not load leads.' }
   },
 
   async create(lead: Omit<Lead, 'id'>) {
@@ -1510,9 +1534,14 @@ export const fraudCases = {
       () => supabase.from('fraud_cases').select(FRAUD_SELECT).order('created_at', { ascending: false }),
       d => Array.isArray(d),
     )
-    if (ok && data) return { data: (data as unknown[]).map(toFraudCase), error: null }
-    local('fraud_cases', 'read')
-    return { data: localStore.fraudCases.list(), error: null }
+    if (ok && data) {
+      const mapped = (data as unknown[]).map(toFraudCase)
+      cacheSet('fraud_cases', mapped)
+      return { data: mapped, error: null }
+    }
+    const cached = cacheGet<FraudCase>('fraud_cases')
+    if (cached) return { data: cached.data, error: null }
+    return { data: [] as FraudCase[], error: 'Could not load fraud cases.' }
   },
 
   async update(id: string, updates: Partial<FraudCase>) {
@@ -1545,18 +1574,17 @@ export const reminders = {
       d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as unknown[]).map(toReminder), error: null }
-    local('reminders', 'read')
-    return { data: localStore.reminders.list(), error: null }
+    return { data: [] as Reminder[], error: 'Could not load reminders.' }
   },
 
   async markSent(id: string) {
     await sb('reminders', 'write', () => supabase.from('reminders').update({ sent: true }).eq('id', id))
-    localStore.reminders.update(id, { sent: true } as Partial<Reminder>)
+
   },
 
   async markAllSent(ids: string[]) {
     await sb('reminders', 'write', () => supabase.from('reminders').update({ sent: true }).in('id', ids))
-    ids.forEach(id => localStore.reminders.update(id, { sent: true } as Partial<Reminder>))
+
   },
 
   /** Has a reminder tagged with this stage already been logged for this
@@ -2195,5 +2223,4 @@ export const db = {
   policyCards,
   dashboardStats, sidebarCounts,
   subscribeToTable,
-  resetLocalData: () => localStore.reset(),
 }
