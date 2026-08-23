@@ -68,8 +68,22 @@ export default function MassMessaging({ showToast }: Props) {
     try {
       const numbers = selectedClients.map(c => c.phone.replace(/\s/g, ''))
       const result = await sendBulkSms(numbers, message.trim())
-      showToast(result.failed === 0 ? 'success' : 'warning',
-        `Sent: ${result.sent} | Failed: ${result.failed}`)
+
+      if (result.failed === 0) {
+        showToast('success', `Sent: ${result.sent} | Failed: 0`)
+      } else {
+        // "Failed: 1" on its own is untraceable — the gateway's reason is
+        // already captured per recipient, so say it. Distinct reasons only:
+        // a whole campaign refused for one cause should read as one cause,
+        // not as the same sentence repeated for every number.
+        const reasons = [...new Set(
+          result.results.filter(r => !r.result.success).map(r => r.result.error).filter(Boolean),
+        )] as string[]
+        const shown = reasons.slice(0, 2).join(' ')
+        const more = reasons.length > 2 ? ` (+${reasons.length - 2} other reasons)` : ''
+        showToast('error',
+          `Sent: ${result.sent} | Failed: ${result.failed}. ${shown}${more}`)
+      }
       setLog(getSmsLog())
     } finally {
       setSending(false)

@@ -130,7 +130,21 @@ async function callAfrosoft(
       const err = await res.json().catch(() => ({}))
       return { ok: false, error: (err as { error?: string })?.error ?? `Gateway proxy error (HTTP ${res.status})` }
     }
-    const { status, ok, body } = await res.json() as { status: number; ok: boolean; body: string }
+
+    // A plain `vite` dev server has no serverless functions, so it answers
+    // /api/* with the app's own HTML shell — a 200 that is not JSON. Parsing
+    // that throws "Unexpected token <", which tells nobody anything, so the
+    // failure is named instead: sending needs the API running.
+    let envelope: { status: number; ok: boolean; body: string }
+    try {
+      envelope = await res.json() as { status: number; ok: boolean; body: string }
+    } catch {
+      return {
+        ok: false,
+        error: 'The SMS service is not reachable at /api/gateway-proxy — it returned a page instead of a response. Use the deployed site, or run the dev server with API functions enabled.',
+      }
+    }
+    const { status, ok, body } = envelope
     if (!ok) return { ok: false, error: `Afrosoft HTTP ${status}: ${body.slice(0, 200)}` }
     const data = JSON.parse(body) as AfrosoftResponse
     return { ok: true, data }
