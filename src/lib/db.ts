@@ -15,9 +15,10 @@ import type {
 
 // ── helpers ───────────────────────────────────────────────────────
 function date(v: string | null | undefined): string { return v?.split('T')[0] ?? '' }
-function uid() { return `loc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}` }
+// uid() used to mint ids for records invented in browser storage when a
+// write failed. Writes no longer do that, so nothing needs a fake id.
 
-/** Try a Supabase query; record timing/health; return {ok, data}. */
+/** Try a Supabase query; record timing/health; return {ok, data, error}. */
 async function sb<T>(
   table: string,
   type: 'read' | 'write' | 'delete',
@@ -25,21 +26,40 @@ async function sb<T>(
   query: () => PromiseLike<{ data: any; error: any }>,
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   isListOk: (d: any) => boolean = (d) => d !== null,
-): Promise<{ ok: boolean; data: T | null }> {
+): Promise<{ ok: boolean; data: T | null; error: string | null }> {
   const start = Date.now()
   try {
     const { data, error } = await query()
     const duration = Date.now() - start
     const ok = !error && isListOk(data)
     health.record({ ts: Date.now(), type, table, success: ok, duration, source: 'supabase',
-      detail: error ? String(error) : undefined })
-    return { ok, data: ok ? data : null }
+      detail: error ? String(error?.message ?? error) : undefined })
+    return { ok, data: ok ? data : null, error: ok ? null : (error?.message ?? 'The database rejected this request.') }
   } catch (e) {
     const duration = Date.now() - start
     health.record({ ts: Date.now(), type, table, success: false, duration, source: 'supabase',
       detail: String(e) })
-    return { ok: false, data: null }
+    return { ok: false, data: null, error: String(e) }
   }
+}
+
+/**
+ * A write that did not reach the database is a failure, and must be
+ * reported as one.
+ *
+ * Every create/update below used to fall back to browser-local storage on
+ * any error and return `error: null`, so the UI announced success. Nothing
+ * ever syncs that storage back, so the record existed in exactly one
+ * browser: invisible to every colleague, gone when the cache cleared. It is
+ * how a policy captured on one laptop was simply not there for anyone else.
+ *
+ * Reads still fall back to the local cache — showing the last known data
+ * beats showing nothing — but a write now surfaces the real reason.
+ */
+function writeFailed(table: string, error: string | null): { data: null; error: string } {
+  health.record({ ts: Date.now(), type: 'write', table, success: false, duration: 0, source: 'supabase', detail: error ?? undefined })
+  window.dispatchEvent(new CustomEvent(DB_FALLBACK_EVENT, { detail: { table, type: 'write', error } }))
+  return { data: null, error: error ?? 'Could not save to the database. Check your connection and try again — nothing has been saved.' }
 }
 
 /** Dispatched whenever a read/write falls back to browser-local storage, so the UI can warn the user. */
@@ -416,10 +436,8 @@ export const policies = {
           : 'That would duplicate an existing record. Check whether this client or policy is already on the system.',
       }
     }
-    // Anything else is treated as a connectivity problem, as before.
-    local('policies', 'write')
-    const item = { ...policy, id: uid(), createdAt: new Date().toISOString().split('T')[0] } as Policy
-    return { data: localStore.policies.create(item), error: null }
+    // Anything else is a genuine failure: the policy does not exist.
+    return writeFailed('policies', error?.message ?? null)
   },
 
   async update(id: string, updates: Partial<Policy>) {
@@ -436,12 +454,11 @@ export const policies = {
     if (updates.coverAmount !== undefined)           row.cover_amount       = updates.coverAmount
     if (updates.endDate !== undefined)               row.end_date           = updates.endDate
     if (updates.agentId !== undefined)               row.agent_id           = updates.agentId ?? null
-    const { ok, data } = await sb('policies', 'write',
+    const { ok, data, error } = await sb('policies', 'write',
       () => supabase.from('policies').update(row).eq('id', id).select(POLICY_SELECT).single(),
     )
     if (ok && data) return { data: toPolicy(data), error: null }
-    local('policies', 'write')
-    return { data: localStore.policies.update(id, updates), error: null }
+    return writeFailed('policies', error)
   },
 
   /** What is standing in the way of deleting this policy. Reminders,
@@ -548,13 +565,11 @@ export const clients = {
       address: client.address, occupation: client.occupation ?? null,
       insurer: client.insurer ?? null, status: client.status,
     }
-    const { ok, data } = await sb('clients', 'write',
+    const { ok, data, error } = await sb('clients', 'write',
       () => supabase.from('clients').insert(row).select().single(),
     )
     if (ok && data) return { data: toClient({ ...(data as Record<string,unknown>), policy_count: 0 }), error: null }
-    local('clients', 'write')
-    const item = { ...client, id: uid(), policyCount: 0, createdAt: new Date().toISOString().split('T')[0] } as Client
-    return { data: localStore.clients.create(item), error: null }
+    return writeFailed('clients', error)
   },
 
   async update(id: string, updates: Partial<Client>) {
@@ -566,12 +581,11 @@ export const clients = {
     if (updates.occupation !== undefined) row.occupation = updates.occupation
     if (updates.insurer    !== undefined) row.insurer    = updates.insurer ?? null
     if (updates.status     !== undefined) row.status     = updates.status
-    const { ok, data } = await sb('clients', 'write',
+    const { ok, data, error } = await sb('clients', 'write',
       () => supabase.from('clients').update(row).eq('id', id).select().single(),
     )
     if (ok && data) return { data: toClient({ ...(data as Record<string,unknown>), policy_count: 0 }), error: null }
-    local('clients', 'write')
-    return { data: localStore.clients.update(id, updates), error: null }
+    return writeFailed('clients', error)
   },
 
   /**
@@ -881,18 +895,11 @@ export const claims = {
       date_of_event: claim.dateOfEvent, date_submitted: claim.dateSubmitted,
       description: claim.description, fraud_score: claim.fraudScore, documents: claim.documents,
     }
-    const { ok, data } = await sb('claims', 'write',
+    const { ok, data, error } = await sb('claims', 'write',
       () => supabase.from('claims').insert(row).select(CLAIM_SELECT).single(),
     )
     if (ok && data) return { data: toClaim(data), error: null }
-    local('claims', 'write')
-    const pol = localStore.policies.list().find(p => p.id === claim.policyId)
-    const item: Claim = {
-      ...claim, id: uid(), claimNumber,
-      policyNumber: pol?.policyNumber ?? '', clientId: pol?.clientId ?? '',
-      clientName: pol?.clientName ?? '', productName: pol?.productName ?? '',
-    }
-    return { data: localStore.claims.create(item), error: null }
+    return writeFailed('claims', error)
   },
 
   async update(id: string, updates: Partial<Claim>) {
@@ -903,16 +910,15 @@ export const claims = {
     if (updates.assessmentNotes !== undefined) row.assessment_notes = updates.assessmentNotes ?? null
     if (updates.notes      !== undefined) row.notes       = updates.notes ?? null
     if (updates.resolvedAt !== undefined) row.resolved_at = updates.resolvedAt ?? null
-    const { ok, data } = await sb('claims', 'write',
+    const { ok, data, error } = await sb('claims', 'write',
       () => supabase.from('claims').update(row).eq('id', id).select(CLAIM_SELECT).single(),
     )
-    if (ok && data) return { data: toClaim(data), error: null, pendingSync: false }
-    // Saved on this device only. Reported back rather than swallowed, so the
-    // caller can say so instead of claiming the change reached the server --
-    // announcing "updated" next to "has NOT synced" tells the user nothing
-    // they can act on.
-    local('claims', 'write')
-    return { data: localStore.claims.update(id, updates), error: null, pendingSync: true }
+    if (ok && data) return { data: toClaim(data), error: null }
+    // This used to save to browser storage and report "pending sync". There
+    // is no sync: nothing ever writes local storage back to Supabase, so the
+    // claim advanced a stage for one person and for nobody else, while the
+    // message promised it would catch up. A failed write is a failed write.
+    return writeFailed('claims', error)
   },
 
   /**
@@ -995,7 +1001,7 @@ export const payments = {
       amount: payment.amount, method: payment.method, status: payment.status,
       payment_date: payment.date, split_payments: payment.splitPayments ?? null,
     }
-    const { ok, data } = await sb('payments', 'write',
+    const { ok, data, error } = await sb('payments', 'write',
       () => supabase.from('payments').insert(row).select(PAYMENT_SELECT).single(),
     )
     if (ok && data) {
@@ -1003,9 +1009,7 @@ export const payments = {
       if (result.status === 'completed') void applyCompletedPaymentToPolicy(result.policyId, result.amount)
       return { data: result, error: null }
     }
-    local('payments', 'write')
-    const item = { ...payment, id: uid() } as Payment
-    return { data: localStore.payments.create(item), error: null }
+    return writeFailed('payments', error)
   },
 
   /** Marks a captured payment as validated (completed) or otherwise updates
@@ -1018,7 +1022,7 @@ export const payments = {
     if (updates.method !== undefined) row.method = updates.method
     if (updates.date !== undefined) row.payment_date = updates.date
     if (updates.splitPayments !== undefined) row.split_payments = updates.splitPayments ?? null
-    const { ok, data } = await sb('payments', 'write',
+    const { ok, data, error } = await sb('payments', 'write',
       () => supabase.from('payments').update(row).eq('id', id).select(PAYMENT_SELECT).single(),
     )
     if (ok && data) {
@@ -1026,8 +1030,7 @@ export const payments = {
       if (updates.status === 'completed') void applyCompletedPaymentToPolicy(result.policyId, result.amount)
       return { data: result, error: null }
     }
-    local('payments', 'write')
-    return { data: localStore.payments.update(id, updates), error: null }
+    return writeFailed('payments', error)
   },
 }
 
@@ -1253,13 +1256,11 @@ export const tickets = {
       status: ticket.status, priority: ticket.priority, category: ticket.category,
       messages: ticket.messages,
     }
-    const { ok, data } = await sb('tickets', 'write',
+    const { ok, data, error } = await sb('tickets', 'write',
       () => supabase.from('tickets').insert(row).select(TICKET_SELECT).single(),
     )
     if (ok && data) return { data: toTicket(data), error: null }
-    local('tickets', 'write')
-    const item = { ...ticket, id: uid() } as Ticket
-    return { data: localStore.tickets.create(item), error: null }
+    return writeFailed('tickets', error)
   },
 
   async update(id: string, updates: Partial<Ticket>) {
@@ -1268,12 +1269,11 @@ export const tickets = {
     if (updates.assignedTo !== undefined) row.assigned_to = updates.assignedTo ?? null
     if (updates.messages   !== undefined) row.messages    = updates.messages
     row.updated_at = new Date().toISOString()
-    const { ok, data } = await sb('tickets', 'write',
+    const { ok, data, error } = await sb('tickets', 'write',
       () => supabase.from('tickets').update(row).eq('id', id).select(TICKET_SELECT).single(),
     )
     if (ok && data) return { data: toTicket(data), error: null }
-    local('tickets', 'write')
-    return { data: localStore.tickets.update(id, updates), error: null }
+    return writeFailed('tickets', error)
   },
 }
 
@@ -1300,13 +1300,11 @@ export const emails = {
       subject: email.subject, body: email.body, read: email.read,
       folder: email.folder, linked_to: email.linkedTo ?? null,
     }
-    const { ok, data } = await sb('emails', 'write',
+    const { ok, data, error } = await sb('emails', 'write',
       () => supabase.from('emails').insert(row).select().single(),
     )
     if (ok && data) return { data: toEmail(data), error: null }
-    local('emails', 'write')
-    const item = { ...email, id: uid(), timestamp: new Date().toISOString() } as EmailMessage
-    return { data: localStore.emails.create(item), error: null }
+    return writeFailed('emails', error)
   },
 
   async update(id: string, updates: Partial<EmailMessage>) {
@@ -1361,12 +1359,11 @@ export const leads = {
     if (updates.notes       !== undefined) row.notes        = updates.notes ?? null
     if (updates.lastContact !== undefined) row.last_contact = updates.lastContact ?? null
     if (updates.assignedTo  !== undefined) row.assigned_to  = updates.assignedTo ?? null
-    const { ok, data } = await sb('leads', 'write',
+    const { ok, data, error } = await sb('leads', 'write',
       () => supabase.from('leads').update(row).eq('id', id).select().single(),
     )
     if (ok && data) return { data: toLead(data), error: null }
-    local('leads', 'write')
-    return { data: localStore.leads.update(id, updates), error: null }
+    return writeFailed('leads', error)
   },
 }
 
@@ -1524,12 +1521,11 @@ export const fraudCases = {
     if (updates.assignedTo !== undefined) row.assigned_to = updates.assignedTo ?? null
     if (updates.notes      !== undefined) row.notes       = updates.notes ?? null
     if (updates.resolvedAt !== undefined) row.resolved_at = updates.resolvedAt ?? null
-    const { ok, data } = await sb('fraud_cases', 'write',
+    const { ok, data, error } = await sb('fraud_cases', 'write',
       () => supabase.from('fraud_cases').update(row).eq('id', id).select(FRAUD_SELECT).single(),
     )
     if (ok && data) return { data: toFraudCase(data), error: null }
-    local('fraud_cases', 'write')
-    return { data: localStore.fraudCases.update(id, updates), error: null }
+    return writeFailed('fraud_cases', error)
   },
 
   /** Auto-opened when a newly submitted claim's AI fraud score clears the review threshold. */

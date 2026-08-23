@@ -95,7 +95,9 @@ export interface PaymentResponse {
   pollUrl?: string
   message: string
   gateway: 'ecocash' | 'paynow' | 'zipit'
-  simulated?: boolean
+  /** No longer set by any rail. An unconfigured gateway is reported as a
+   *  refusal, not as a pretend payment that staff could then mark received. */
+  simulated?: never
 }
 
 // ── Payment log ────────────────────────────────────────────────────
@@ -168,13 +170,15 @@ export async function initiateEcoCash(req: PaymentRequest): Promise<PaymentRespo
     return { success: false, status: 'failed', message: `Could not reach the EcoCash service: ${e}`, gateway: 'ecocash' }
   }
 
-  // 503 means the rail isn't configured on this deployment.
+  // 503 means the rail isn't configured on this deployment. That is a
+  // refusal, not a payment. It used to return success with simulated:true,
+  // which put a "pending" entry in the payment log and offered staff a
+  // button to mark it received -- money recorded for a prompt that was
+  // never sent. If EcoCash cannot be reached, nothing happened.
   if (httpStatus === 503) {
-    const txnId = `ECO${Date.now()}`
-    logPayment({ id: txnId, policyId: req.policyId, policyNumber: req.policyNumber, gateway: 'ecocash', amount: req.amount, reference: ref, status: 'pending', transactionId: txnId, ts: new Date().toISOString() })
     return {
-      success: true, transactionId: txnId, status: 'pending', simulated: true, gateway: 'ecocash',
-      message: `SIMULATION: no EcoCash prompt was sent to ${req.clientPhone}. Set the EIP credentials on the server to collect for real.`,
+      success: false, status: 'failed', gateway: 'ecocash',
+      message: 'EcoCash Instant is not configured on the server, so no prompt was sent. Set the EIP credentials to collect through this rail, or take the payment another way and record it on the Payments page.',
     }
   }
 
@@ -237,14 +241,13 @@ export async function initiatePaynow(req: PaymentRequest, method?: 'ecocash' | '
   const cfg = getGatewaySettings()
   const ref = req.reference
 
+  // Unconfigured is a refusal, not a payment. This used to hand back a
+  // fabricated DEMO redirect and log a pending transaction, so a checkout
+  // that could not possibly collect anything looked like one in progress.
   if (!cfg.paynowIntegrationId || !cfg.paynowIntegrationKey) {
-    const txnId = `PNW${Date.now()}`
-    logPayment({ id: txnId, policyId: req.policyId, policyNumber: req.policyNumber, gateway: 'paynow', amount: req.amount, reference: ref, status: 'pending', transactionId: txnId, ts: new Date().toISOString() })
     return {
-      success: true, transactionId: txnId, status: 'redirect',
-      redirectUrl: `https://www.paynow.co.zw/payment/initiate/${cfg.paynowIntegrationId || 'DEMO'}/${encodeURIComponent(ref)}`,
-      message: 'SIMULATION: Would redirect to Paynow. Configure Integration ID & Key to go live.',
-      gateway: 'paynow', simulated: true,
+      success: false, status: 'failed', gateway: 'paynow',
+      message: 'Paynow is not configured: add the Integration ID and Key in Billing & Reminders → Gateway Settings. No payment was started.',
     }
   }
 

@@ -124,7 +124,7 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
    * `validatedManually` separates the two very different things that reach
    * this function: a gateway telling us it collected the money, and a staff
    * member asserting the money arrived some other way (a bank transfer that
-   * cleared, or a simulated rail). Both produce a completed payment — the
+   * cleared). Both produce a completed payment — the
    * money is equally real — but only the second is a human judgement, so it
    * is attributed to whoever made it.
    */
@@ -148,7 +148,7 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
         entityId: policy.id,
         entityLabel: policy.policyNumber,
         detail: validatedManually
-          ? `Manually validated $${totalAmount.toFixed(2)} via ${METHOD_LABELS[method]} for ${policy.clientName}${result?.simulated ? ' (gateway in simulation mode)' : ''}. Not confirmed by a gateway.`
+          ? `Manually validated $${totalAmount.toFixed(2)} via ${METHOD_LABELS[method]} for ${policy.clientName}. Not confirmed by a gateway.`
           : `$${totalAmount.toFixed(2)} confirmed by ${METHOD_LABELS[method]} for ${policy.clientName}. Reference ${ref}.`,
         severity: validatedManually ? 'warning' : 'info',
       })
@@ -204,9 +204,6 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
       return
     }
 
-    if (res.simulated) {
-      setStep('confirm')
-    }
   }
 
   function handleManualConfirm() {
@@ -289,12 +286,6 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
                 {result.message}
               </div>
 
-              {result.simulated && (
-                <div className="info-banner info-banner-info" style={{ borderRadius: 8, padding: '10px 13px', marginBottom: 14, fontSize: 12 }}>
-                  Running in simulation mode. Configure API keys in Billing &amp; Reminders → Gateway Settings for live payments.
-                </div>
-              )}
-
               {/* Zipit bank details */}
               {method === 'zipit' && zipitDetails?.bankDetails && (
                 <div className="zipit-details">
@@ -307,7 +298,7 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
                 </div>
               )}
 
-              {(method === 'zipit' || result.simulated) && (
+              {method === 'zipit' && (
                 <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 10 }}>
                   Validating manually records this as received on your authority — use it once the money is actually
                   in hand (transfer cleared, cash counted, or an EcoCash send-money transfer verified). It is logged
@@ -355,12 +346,11 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
           {step === 'confirm' && (
             <>
               <button className="btn btn-ghost" onClick={() => { stopPoll(); onClose() }}>Close</button>
-              {/* Only ever offered where no gateway is going to answer: a
-                  bank transfer settles off-system, and a simulated rail
-                  never collected anything. A live EcoCash Instant or Paynow
-                  transaction is confirmed by the gateway or not at all —
-                  staff cannot declare it paid from here. */}
-              {(method === 'zipit' || result?.simulated) && (
+              {/* Only offered for a bank transfer, which settles off-system
+                  and which no gateway will ever report on. A live EcoCash
+                  Instant or Paynow transaction is confirmed by the gateway
+                  or not at all — staff cannot declare it paid from here. */}
+              {method === 'zipit' && (
                 <button className="btn btn-success" onClick={handleManualConfirm}>
                   ✓ Validate Payment Manually
                 </button>
