@@ -162,6 +162,14 @@ export async function lookupEip(lookupUrl: string): Promise<EipStatusResult> {
     try { data = JSON.parse(text) as Record<string, unknown> } catch { /* handled below */ }
 
     if (res.status === 404) return { outcome: 'pending', message: 'EcoCash has no record of this transaction yet.' }
+
+    // Being turned away at the door tells us nothing about the money. Bad or
+    // missing credentials return bodies like "Authentication Failed", and
+    // FAILURE_TOKENS matches "FAIL" -- so without this a config problem on
+    // our side would be reported as the payer's payment having failed.
+    if (res.status === 401 || res.status === 403) {
+      return { outcome: 'pending', message: `EcoCash rejected our credentials (HTTP ${res.status}); the transaction was not checked.` }
+    }
     if (!res.ok && Object.keys(data).length === 0) return { outcome: 'pending', message: `EcoCash lookup returned HTTP ${res.status}` }
     return interpretEipResponse(data)
   } catch (e) {
