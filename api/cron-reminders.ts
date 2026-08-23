@@ -245,11 +245,16 @@ async function liftWaitingPeriods(admin: SupabaseClient): Promise<number> {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Vercel Cron sends `Authorization: Bearer $CRON_SECRET` when the variable
-  // is set. Without that guard this endpoint would let anyone on the
-  // internet trigger a send to the entire book.
+  // Vercel Cron sends `Authorization: Bearer $CRON_SECRET`. Fail closed:
+  // this endpoint emails and texts the entire book, so an unset secret must
+  // refuse everyone rather than admit everyone. Guarding only when the
+  // variable happened to exist left it wide open on any deployment built
+  // before it was set.
   const secret = process.env.CRON_SECRET
-  if (secret && req.headers.authorization !== `Bearer ${secret}`) {
+  if (!secret) {
+    return res.status(503).json({ error: 'CRON_SECRET is not configured, so this endpoint is disabled.' })
+  }
+  if (req.headers.authorization !== `Bearer ${secret}`) {
     return res.status(401).json({ error: 'Unauthorized' })
   }
 
