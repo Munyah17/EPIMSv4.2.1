@@ -85,13 +85,6 @@ export default function MemberCards({ showToast }: Props) {
       categoryIssuesMemberCards(p.productCategory)),
     [policies],
   )
-  const excludedByCategory = useMemo(
-    () => policies.filter(p =>
-      (p.status === 'active' || p.status === 'waiting_period') &&
-      !categoryIssuesMemberCards(p.productCategory)).length,
-    [policies],
-  )
-
   const results = useMemo(() => {
     if (search.trim().length >= 2) return searchMembers(cardablePolicies, search, 40)
     // With no query, show whoever hasn't got a card yet — the actual work.
@@ -150,19 +143,6 @@ export default function MemberCards({ showToast }: Props) {
 
   return (
     <div className="panel">
-      <div className="info-banner info-banner-info" style={{ marginBottom: '1.25rem' }}>
-        🪪 Every person on a policy has a member number — <strong>the policy number, a dash, and their position</strong>
-        {' '}(<code>-00</code> is the policyholder, <code>-01</code> the first dependant, and so on). That number is what
-        goes on their card, their signature line, and their claim.
-        {excludedByCategory > 0 && (
-          <div style={{ marginTop: 6, fontSize: 12 }}>
-            Cards cover the funeral, hospital cash and combo plans. {excludedByCategory} live{' '}
-            {excludedByCategory === 1 ? 'policy is' : 'policies are'} not listed because they insure property rather
-            than people — agriculture covers a crop and a barn, so there is nobody to issue a card to.
-          </div>
-        )}
-      </div>
-
       <div className="member-card-toolbar">
         <input
           className="form-control"
