@@ -400,7 +400,7 @@ export const EMAILS: EmailMessage[] = [
   {
     id: 'em2', from: 'info@tariqify.com', fromName: 'Tariqify IMS',
     to: 'simba.dube@gmail.com', subject: 'Your policy EMA2024001 premium reminder',
-    body: 'Dear Simba Dube,\n\nThis is a friendly reminder that your funeral cover premium of $5.00 is due on 15 May 2026.\n\nPlease ensure your EcoCash wallet has sufficient funds.\n\nRegards,\nEnpassent Multiple Agents',
+    body: 'Dear Simba Dube,\n\nThis is a friendly reminder that your funeral cover premium of $5.00 is due on 15 May 2026.\n\nPlease ensure your EcoCash wallet has sufficient funds.\n\nRegards,\nEnpassent Multiple Agent',
     timestamp: '2026-05-07T09:00:00Z', read: true, folder: 'sent', linkedTo: 'pol1',
   },
   {
@@ -412,7 +412,7 @@ export const EMAILS: EmailMessage[] = [
   {
     id: 'em4', from: 'info@tariqify.com', fromName: 'Tariqify IMS',
     to: 'tafa.chirwa@gmail.com', subject: 'Welcome to Tariqify IMS - Policy EMA2024004',
-    body: 'Dear Tafadzwa Chirwa,\n\nWelcome to Enpassent Multiple Agents! Your Life Cover Essential policy (EMA2024004) is now active.\n\nCover Amount: $10,000\nMonthly Premium: $10.00\nPayment Method: OneMoney\n\nFor any queries, reply to this email or call +263 77 123 4567.\n\nEnpassent Multiple Agents',
+    body: 'Dear Tafadzwa Chirwa,\n\nWelcome to Enpassent Multiple Agent! Your Life Cover Essential policy (EMA2024004) is now active.\n\nCover Amount: $10,000\nMonthly Premium: $10.00\nPayment Method: OneMoney\n\nFor any queries, reply to this email or call +263 77 123 4567.\n\nEnpassent Multiple Agent',
     timestamp: '2026-03-01T12:00:00Z', read: true, folder: 'sent', linkedTo: 'pol4',
   },
 ]

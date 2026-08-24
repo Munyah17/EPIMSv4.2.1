@@ -441,9 +441,9 @@ ON CONFLICT (id) DO NOTHING;
 -- 5i. Emails
 INSERT INTO public.emails (id, from_address, from_name, to_address, subject, body, read, folder, linked_to) VALUES
 ('a1000001-0000-0000-0000-000000000001','nomsa.ndlovu@gmail.com','Nomsa Ndlovu','info@tariqify.com','Re: Claim CLM-2026-001 - Documents submitted','Dear Tariqify Team,\n\nPlease find attached the required documents for my claim CLM-2026-001.\n\nKindly confirm receipt.\n\nRegards,\nNomsa Ndlovu',false,'inbox','CLM-2026-001'),
-('a1000001-0000-0000-0000-000000000002','info@tariqify.com','Tariqify IMS','simba.dube@gmail.com','Your policy EMA-2024-001 premium reminder','Dear Simba Dube,\n\nThis is a friendly reminder that your funeral cover premium of $5.00 is due on 15 May 2026.\n\nRegards,\nEnpassent Multiple Agents',true,'sent','EMA-2024-001'),
+('a1000001-0000-0000-0000-000000000002','info@tariqify.com','Tariqify IMS','simba.dube@gmail.com','Your policy EMA-2024-001 premium reminder','Dear Simba Dube,\n\nThis is a friendly reminder that your funeral cover premium of $5.00 is due on 15 May 2026.\n\nRegards,\nEnpassent Multiple Agent',true,'sent','EMA-2024-001'),
 ('a1000001-0000-0000-0000-000000000003','garikai.mhike@gmail.com','Garikai Mhike','info@tariqify.com','Policy reinstatement request','Good morning,\n\nI would like to reinstate my policy EMA-2024-006.\n\nGarikai Mhike',true,'inbox',NULL),
-('a1000001-0000-0000-0000-000000000004','info@tariqify.com','Tariqify IMS','tafa.chirwa@gmail.com','Welcome to Tariqify IMS - Policy EMA-2024-004','Dear Tafadzwa Chirwa,\n\nWelcome to Enpassent Multiple Agents! Your Life Cover Essential policy is now active.\n\nEnpassent Multiple Agents',true,'sent','EMA-2024-004')
+('a1000001-0000-0000-0000-000000000004','info@tariqify.com','Tariqify IMS','tafa.chirwa@gmail.com','Welcome to Tariqify IMS - Policy EMA-2024-004','Dear Tafadzwa Chirwa,\n\nWelcome to Enpassent Multiple Agent! Your Life Cover Essential policy is now active.\n\nEnpassent Multiple Agent',true,'sent','EMA-2024-004')
 ON CONFLICT (id) DO NOTHING;
 
 -- 5j. Leads
