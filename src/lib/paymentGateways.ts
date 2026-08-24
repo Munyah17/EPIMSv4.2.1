@@ -19,26 +19,13 @@
  * direct browser calls via CORS.
  */
 
-import md5 from 'md5'
 import type { GatewaySettings } from '../types'
 
-/** Relays a request through the Netlify gateway-proxy function to avoid browser CORS blocks. */
-async function proxyFetch(
-  url: string,
-  init: { method?: 'GET' | 'POST'; headers?: Record<string, string>; body?: string } = {},
-): Promise<{ ok: boolean; status: number; text: () => Promise<string>; json: () => Promise<unknown> }> {
-  const res = await fetch('/api/gateway-proxy', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ url, method: init.method ?? 'POST', headers: init.headers, body: init.body }),
-  })
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}))
-    throw new Error((err as { error?: string })?.error ?? `Gateway proxy error (HTTP ${res.status})`)
-  }
-  const { status, ok, body } = await res.json() as { status: number; ok: boolean; body: string }
-  return { ok, status, text: async () => body, json: async () => JSON.parse(body) }
-}
+// Neither rail is assembled in the browser any more, so the generic relay
+// that used to sign and post Paynow requests from here is gone. EcoCash
+// Instant goes through api/ecocash-instant.ts and Paynow through
+// api/paynow.ts, each using that provider's own documented method with the
+// credentials held server-side. api/gateway-proxy.ts still exists for SMS.
 
 const GW_KEY = 'tqfy_gateway_settings'
 
@@ -224,77 +211,89 @@ export async function pollEcoCash(lookupUrl: string): Promise<{ status: 'pending
 
 // ── Paynow ─────────────────────────────────────────────────────────
 
-function paynowHash(values: Record<string, string>, key: string): string {
-  const str = Object.values(values).join('') + key
-  return md5(str).toUpperCase()
-}
-
 /**
  * Starts a Paynow transaction.
  *
- * With no `method`, this is a plain HOSTED checkout: Paynow's own page
- * presents its full rail picker (EcoCash, OneMoney, InnBucks, Omari, ZIPIT,
- * card) and we never pre-select one on the payer's behalf. Passing a method
- * opts into Paynow's express flow for that specific rail instead.
+ * The request is built and signed by Paynow's own SDK on the server (see
+ * api/paynow.ts). This used to be assembled here by hand and signed with
+ * MD5; Paynow signs with SHA512, so every call came back "Invalid Hash"
+ * and no transaction was ever created, whatever key was configured.
+ * Nothing in this file reimplements Paynow's protocol any more.
+ *
+ * A hosted checkout: Paynow's own page presents the full rail picker
+ * (EcoCash, OneMoney, InnBucks, Omari, ZIPIT, card), so no method is
+ * pre-selected on the payer's behalf.
  */
-export async function initiatePaynow(req: PaymentRequest, method?: 'ecocash' | 'onemoney' | 'zipit' | 'card'): Promise<PaymentResponse> {
-  const cfg = getGatewaySettings()
+export async function initiatePaynow(req: PaymentRequest): Promise<PaymentResponse> {
   const ref = req.reference
 
-  // Unconfigured is a refusal, not a payment. This used to hand back a
-  // fabricated DEMO redirect and log a pending transaction, so a checkout
-  // that could not possibly collect anything looked like one in progress.
-  if (!cfg.paynowIntegrationId || !cfg.paynowIntegrationKey) {
+  let reply: { ok?: boolean; redirectUrl?: string; pollUrl?: string; error?: string }
+  let httpStatus: number
+  try {
+    const res = await fetch('/api/paynow', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'initiate',
+        reference: ref,
+        amount: req.amount,
+        description: `Insurance Premium: ${req.policyNumber}`,
+        email: req.clientEmail,
+      }),
+    })
+    httpStatus = res.status
+    reply = await res.json().catch(() => ({}))
+  } catch (e) {
+    return { success: false, status: 'failed', message: `Could not reach the Paynow service: ${e}`, gateway: 'paynow' }
+  }
+
+  // Unconfigured is a refusal, not a payment.
+  if (httpStatus === 503) {
     return {
       success: false, status: 'failed', gateway: 'paynow',
-      message: 'Paynow is not configured: add the Integration ID and Key in Billing & Reminders → Gateway Settings. No payment was started.',
+      message: 'Paynow is not configured on the server. Set PAYNOW_INTEGRATION_ID and PAYNOW_INTEGRATION_KEY, or take the payment another way and record it on the Payments page.',
     }
   }
 
-  const fields: Record<string, string> = {
-    id: cfg.paynowIntegrationId,
-    reference: ref,
-    amount: req.amount.toFixed(2),
-    additionalinfo: `Insurance Premium: ${req.policyNumber}`,
-    returnurl: cfg.paynowReturnUrl,
-    resulturl: cfg.paynowResultUrl,
-    status: 'Message',
-    email: req.clientEmail,
-    // Express flow only: a hosted checkout must not carry phone/method, or
-    // Paynow skips its own picker.
-    ...(method && method !== 'card' ? { phone: req.clientPhone.replace(/\s/g, ''), method } : {}),
+  if (!reply.ok || !reply.redirectUrl) {
+    // Paynow's own words -- "the integration ID is in test mode…", "not a
+    // site integration", "currently inactive" -- each name the actual fix.
+    logPayment({ id: `PNW${Date.now()}`, policyId: req.policyId, policyNumber: req.policyNumber, gateway: 'paynow', amount: req.amount, reference: ref, status: 'failed', ts: new Date().toISOString() })
+    return { success: false, status: 'failed', message: reply.error ?? 'Paynow declined the request.', gateway: 'paynow' }
   }
-  fields.hash = paynowHash(fields, cfg.paynowIntegrationKey)
 
-  try {
-    const res = await proxyFetch('https://www.paynow.co.zw/interface/initiatetransaction', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams(fields).toString(),
-    })
-    const text = await res.text()
-    const parsed = Object.fromEntries(new URLSearchParams(text))
-
-    if (parsed.status === 'Ok') {
-      logPayment({ id: parsed.reference ?? ref, policyId: req.policyId, policyNumber: req.policyNumber, gateway: 'paynow', amount: req.amount, reference: ref, status: 'pending', transactionId: parsed.reference, ts: new Date().toISOString() })
-      return { success: true, transactionId: parsed.reference, redirectUrl: parsed.browserurl, pollUrl: parsed.pollurl, status: 'redirect', message: 'Redirecting to Paynow…', gateway: 'paynow' }
-    }
-    return { success: false, status: 'failed', message: parsed.error ?? 'Paynow initiation failed', gateway: 'paynow' }
-  } catch (e) {
-    return { success: false, status: 'failed', message: `Paynow request failed: ${e}`, gateway: 'paynow' }
+  logPayment({ id: ref, policyId: req.policyId, policyNumber: req.policyNumber, gateway: 'paynow', amount: req.amount, reference: ref, status: 'pending', transactionId: ref, ts: new Date().toISOString() })
+  return {
+    success: true,
+    transactionId: ref,
+    redirectUrl: reply.redirectUrl,
+    pollUrl: reply.pollUrl,
+    status: 'redirect',
+    message: 'Redirecting to Paynow…',
+    gateway: 'paynow',
   }
 }
 
+/**
+ * Asks Paynow what became of a transaction, through the SDK's own
+ * pollTransaction -- which POSTs as Paynow expects and verifies the
+ * response hash before trusting it.
+ */
 export async function pollPaynow(pollUrl: string): Promise<{ status: 'pending' | 'success' | 'failed'; message: string }> {
   try {
-    const res = await proxyFetch(pollUrl, { method: 'GET' })
-    const parsed = Object.fromEntries(new URLSearchParams(await res.text()))
-    const s = (parsed.status ?? '').toLowerCase()
-    if (s === 'paid') return { status: 'success', message: 'Payment successful' }
-    if (s.includes('fail') || s.includes('cancel')) return { status: 'failed', message: parsed.status }
-    return { status: 'pending', message: parsed.status ?? 'Awaiting payment' }
+    const res = await fetch('/api/paynow', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'poll', pollUrl }),
+    })
+    const data = await res.json().catch(() => ({})) as { status?: string; paid?: boolean }
+    if (data.paid) return { status: 'success', message: 'Payment successful' }
+    const s = (data.status ?? '').toLowerCase()
+    if (s.includes('cancel') || s.includes('disputed')) return { status: 'failed', message: data.status ?? 'Cancelled' }
+    // Anything else is not an answer yet, so it stays pending.
+    return { status: 'pending', message: data.status || 'Awaiting payment' }
   } catch {
-    return { status: 'pending', message: 'Polling…' }
+    return { status: 'pending', message: 'Could not reach Paynow; still waiting…' }
   }
 }
 
