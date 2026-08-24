@@ -68,15 +68,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'reference and a positive amount are required.' })
       }
 
-      const paynow = new Paynow(
-        integrationId,
-        integrationKey,
-        body.resultUrl || `${origin}/api/paynow-webhook`,
-        body.returnUrl || `${origin}/payment/return`,
-      )
-      // A hosted payment: Paynow's own page presents its rail picker, so no
-      // method is pre-selected on the payer's behalf.
-      const payment = paynow.createPayment(reference, body.email || '')
+      // Built the way Paynow's Node quickstart documents it: construct with
+      // the integration pair, assign the URLs as properties, createPayment,
+      // add the item, send.
+      const paynow = new Paynow(integrationId, integrationKey)
+      paynow.resultUrl = body.resultUrl || `${origin}/api/paynow-webhook`
+      paynow.returnUrl = body.returnUrl || `${origin}/payment/return`
+
+      // Web based transaction: createPayment(reference). The email is
+      // optional here -- Paynow only uses it to auto-login a registered
+      // customer -- and an integration still in test mode rejects any
+      // authemail that is not the merchant's own, so it is passed only
+      // when we actually have one.
+      const payment = body.email
+        ? paynow.createPayment(reference, body.email)
+        : paynow.createPayment(reference)
       payment.add(body.description || 'Insurance Premium', amount)
 
       const response = await paynow.send(payment)
