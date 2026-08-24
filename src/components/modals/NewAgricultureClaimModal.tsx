@@ -281,8 +281,17 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
         claimType, amount: Number(amount), coverAmount: policy.coverAmount,
         dateOfEvent, policyStartDate: policy.startDate, dateSubmitted, description, priorClaimsOnPolicy,
       })
-      fraudScore = result.score
-      signals = result.signals
+      if (result.unavailable) {
+        // fraud_score is NOT NULL, so the claim keeps the neutral baseline
+        // above — but it is recorded as unscored rather than passed off as
+        // a low-risk assessment nobody actually made. The agriculture
+        // signals below still apply: they come from the physical evidence,
+        // not the model, and they still raise the score.
+        signals = ['Not risk-assessed by AI: scoring was unavailable when this claim was submitted.']
+      } else {
+        fraudScore = result.score
+        signals = result.signals
+      }
 
       // Agriculture-specific signals the generic text-based scorer above has
       // no visibility into — these come from the physical evidence actually

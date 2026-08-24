@@ -41,7 +41,10 @@ export default function ReviewClaimModal({ claim, onClose, onSave, showToast }: 
   const [physicalAssessments, setPhysicalAssessments] = useState<ClaimAssessment[]>([])
   const [showAssessmentModal, setShowAssessmentModal] = useState(false)
   const [preLossAssessments, setPreLossAssessments] = useState<PolicyAssessment[]>([])
-  const [aiInsights, setAiInsights] = useState<{ insights: string[]; reasoning: string; score: number } | null>(null)
+  // score is null when the model could not be reached. That is shown as
+  // "unavailable", never as a number — a placeholder score sitting next to
+  // the claim's real one reads as the AI disagreeing with it.
+  const [aiInsights, setAiInsights] = useState<{ insights: string[]; reasoning: string; score: number | null } | null>(null)
   const [aiLoading, setAiLoading] = useState(false)
   const [postLossPhotoUrls, setPostLossPhotoUrls] = useState<Record<string, string>>({})
   const [postLossPlaceLabel, setPostLossPlaceLabel] = useState<string | null>(null)
@@ -101,6 +104,8 @@ export default function ReviewClaimModal({ claim, onClose, onSave, showToast }: 
         } : undefined,
       })
       setAiInsights({ insights: result.insights, reasoning: result.reasoning, score: result.score })
+    } catch {
+      setAiInsights({ insights: [], reasoning: 'AI fraud scoring could not be reached, so no AI score was produced.', score: null })
     } finally {
       setAiLoading(false)
     }
@@ -310,19 +315,36 @@ export default function ReviewClaimModal({ claim, onClose, onSave, showToast }: 
               </button>
             </div>
             {aiInsights && (
-              <div className="info-banner info-banner-info" style={{ marginTop: 8 }}>
-                <div style={{ fontWeight: 600, marginBottom: 4 }}>
-                  AI Fraud Score: <span style={{ color: aiInsights.score >= 70 ? 'var(--danger)' : aiInsights.score >= 40 ? 'var(--gold)' : 'var(--teal)' }}>{aiInsights.score}%</span>
-                </div>
-                {aiInsights.insights.length > 0 ? (
-                  <ul style={{ margin: '4px 0 0 18px', padding: 0, fontSize: 12 }}>
-                    {aiInsights.insights.map((ins, i) => <li key={i}>{ins}</li>)}
-                  </ul>
+              <div className={`info-banner ${aiInsights.score === null ? 'info-banner-warning' : 'info-banner-info'}`} style={{ marginTop: 8 }}>
+                {aiInsights.score === null ? (
+                  <>
+                    {/* No score is not a low score. Showing a placeholder
+                        number here put "AI Fraud Score: 20%" and "No
+                        specific concerns identified" directly beneath a
+                        claim flagged at 95% HIGH RISK, which reads as the
+                        AI having cleared it. */}
+                    <div style={{ fontWeight: 600, marginBottom: 4 }}>AI Fraud Score: unavailable</div>
+                    <p style={{ fontSize: 12, margin: '4px 0 0' }}>{aiInsights.reasoning}</p>
+                    <p style={{ fontSize: 12, margin: '4px 0 0' }}>
+                      The claim's own score of <strong>{claim.fraudScore}%</strong> still stands; nothing here changes it.
+                    </p>
+                  </>
                 ) : (
-                  <p style={{ fontSize: 12, margin: '4px 0 0' }}>No specific concerns identified.</p>
+                  <>
+                    <div style={{ fontWeight: 600, marginBottom: 4 }}>
+                      AI Fraud Score: <span style={{ color: aiInsights.score >= 70 ? 'var(--danger)' : aiInsights.score >= 40 ? 'var(--gold)' : 'var(--teal)' }}>{aiInsights.score}%</span>
+                    </div>
+                    {aiInsights.insights.length > 0 ? (
+                      <ul style={{ margin: '4px 0 0 18px', padding: 0, fontSize: 12 }}>
+                        {aiInsights.insights.map((ins, i) => <li key={i}>{ins}</li>)}
+                      </ul>
+                    ) : (
+                      <p style={{ fontSize: 12, margin: '4px 0 0' }}>No specific concerns identified.</p>
+                    )}
+                    <p style={{ fontSize: 11, color: 'var(--muted)', margin: '6px 0 0' }}>{aiInsights.reasoning}</p>
+                    <p style={{ fontSize: 11, color: 'var(--muted)', margin: '4px 0 0', fontStyle: 'italic' }}>This is decision support only; the final call always rests with the reviewer.</p>
+                  </>
                 )}
-                <p style={{ fontSize: 11, color: 'var(--muted)', margin: '6px 0 0' }}>{aiInsights.reasoning}</p>
-                <p style={{ fontSize: 11, color: 'var(--muted)', margin: '4px 0 0', fontStyle: 'italic' }}>This is decision support only; the final call always rests with the reviewer.</p>
               </div>
             )}
           </div>

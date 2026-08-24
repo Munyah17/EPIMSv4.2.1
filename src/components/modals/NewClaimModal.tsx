@@ -163,8 +163,15 @@ export default function NewClaimModal({ onClose, onSave, showToast, claimKind, o
         claimType, amount: Number(amount), coverAmount: policy.coverAmount,
         dateOfEvent, policyStartDate: policy.startDate, dateSubmitted, description, priorClaimsOnPolicy,
       })
-      fraudScore = result.score
-      signals = result.signals
+      if (result.unavailable) {
+        // fraud_score is NOT NULL, so the claim keeps the neutral baseline
+        // above — but it is recorded as unscored rather than passed off as
+        // a low-risk assessment nobody actually made.
+        signals = ['Not risk-assessed: AI fraud scoring was unavailable when this claim was submitted.']
+      } else {
+        fraudScore = result.score
+        signals = result.signals
+      }
     } finally {
       const claimNumber = `CLM${new Date().getFullYear()}${String(Date.now()).slice(-3)}`
       const claim: Claim & { fraudSignals?: string[] } = {
