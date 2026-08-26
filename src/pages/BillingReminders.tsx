@@ -6,6 +6,7 @@ import { runReminderCheck, getLastCheckTime, lastDayOfMonth, firstDayOfMonth } f
 import { getGatewaySettings, saveGatewaySettings, getPaymentLog } from '../lib/paymentGateways'
 import { getSmsLog } from '../lib/smsService'
 import { policyBillablePremium } from '../lib/premium'
+import { formatDate, formatDateTime } from '../lib/dateUtils'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -136,7 +137,7 @@ export default function BillingReminders({ showToast }: Props) {
               </div>
               <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
                 <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 10 }}>
-                  Last check: {lastCheck ? new Date(lastCheck).toLocaleString('en-GB') : 'Never'}<br />
+                  Last check: {lastCheck ? formatDateTime(lastCheck) : 'Never'}<br />
                   The engine checks hourly while any staff member has the app open, and dedupes through the database so it's safe to have several staff logged in at once.
                 </p>
                 <button className="btn btn-primary btn-sm" onClick={handleForceCheck} disabled={checking}>{checking ? 'Checking…' : '▶ Run Check Now'}</button>
@@ -194,7 +195,7 @@ export default function BillingReminders({ showToast }: Props) {
                     <td><span className="mono">{f.policyNumber}</span></td>
                     <td>{f.clientName}</td>
                     <td><span className="pill pill-lapsed">{f.daysOverdue}+ days</span></td>
-                    <td>{new Date(f.flaggedAt).toLocaleDateString('en-GB')}</td>
+                    <td>{formatDate(f.flaggedAt)}</td>
                     <td>{f.monthsDefaulted} month{f.monthsDefaulted !== 1 ? 's' : ''}</td>
                     <td>
                       <button className="btn btn-ghost btn-sm" style={{ color: 'var(--success)' }} onClick={() => handleClearCaution(f.policyId)}>
@@ -272,7 +273,7 @@ export default function BillingReminders({ showToast }: Props) {
               <tbody>
                 {payLog.map(p => (
                   <tr key={p.id}>
-                    <td className="mono" style={{ whiteSpace: 'nowrap', fontSize: 11 }}>{new Date(p.ts).toLocaleString('en-GB')}</td>
+                    <td className="mono" style={{ whiteSpace: 'nowrap', fontSize: 11 }}>{formatDateTime(p.ts)}</td>
                     <td><span className="mono">{p.policyNumber}</span></td>
                     <td><span style={{ textTransform: 'capitalize' }}>{p.gateway}</span></td>
                     <td>${p.amount.toFixed(2)}</td>

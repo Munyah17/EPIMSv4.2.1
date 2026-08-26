@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { db } from '../lib/db'
 import { supabase } from '../lib/supabase'
 import PhoneInput from '../components/ui/PhoneInput'
+import { formatDateTime } from '../lib/dateUtils'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -238,7 +239,7 @@ export default function Profile({ showToast }: Props) {
               <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginBottom: 16 }}>
                 <div className="stat-card">
                   <div className="stat-body">
-                    <div className="stat-value">{lastSuccess ? new Date(lastSuccess.ts).toLocaleString('en-GB') : '—'}</div>
+                    <div className="stat-value">{lastSuccess ? formatDateTime(lastSuccess.ts) : '—'}</div>
                     <div className="stat-label">Last Successful Sign-In</div>
                   </div>
                 </div>
@@ -277,7 +278,7 @@ export default function Profile({ showToast }: Props) {
                       {loginHistory.map((entry, i) => (
                         <tr key={i}>
                           <td><span className={`pill ${entry.success ? 'pill-active' : 'pill-lapsed'}`} style={{ fontSize: '0.7rem' }}>{entry.success ? 'Success' : 'Failed'}</span></td>
-                          <td className="mono" style={{ fontSize: '0.8rem' }}>{new Date(entry.ts).toLocaleString('en-GB')}</td>
+                          <td className="mono" style={{ fontSize: '0.8rem' }}>{formatDateTime(entry.ts)}</td>
                         </tr>
                       ))}
                     </tbody>

@@ -8,6 +8,7 @@ import { API_TERMS_TEXT, API_TERMS_VERSION } from '../lib/apiTerms'
 import { sendSystemEmail } from '../lib/mailService'
 import { MAILBOXES } from '../lib/mailboxes'
 import { recordActivity, listActivity, subscribeToActivity, ACTION_LABELS, type ActivityRow } from '../lib/activityLog'
+import { formatDate, formatDateTime } from '../lib/dateUtils'
 
 const ALL_SCOPES = ['products:read', 'quotes:read', 'clients:write', 'policies:write', 'policies:read', 'payments:write']
 
@@ -305,7 +306,7 @@ Tariqify IMS`,
                 <tbody>
                   {activity.map(row => (
                     <tr key={row.id}>
-                      <td className="mono" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{new Date(row.ts).toLocaleString('en-GB')}</td>
+                      <td className="mono" style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{formatDateTime(row.ts)}</td>
                       <td style={{ fontSize: 12 }}>{row.actorName}<span style={{ color: 'var(--muted)' }}> · {row.actorRole.replace(/_/g, ' ')}</span></td>
                       <td style={{ fontSize: 12 }}>
                         <span className={`pill ${row.severity === 'warning' ? 'pill-lapsed' : row.severity === 'notice' ? 'pill-pending' : 'pill-active'}`}>
@@ -371,7 +372,7 @@ Tariqify IMS`,
                         <div style={{ padding: '10px 0' }}>
                           {dev.status === 'terminated' && dev.terminationReason && (
                             <div className="info-banner info-banner-danger" style={{ marginBottom: 10 }}>
-                              Terminated{dev.terminatedAt ? ` on ${new Date(dev.terminatedAt).toLocaleDateString('en-GB')}` : ''}: {dev.terminationReason}
+                              Terminated{dev.terminatedAt ? ` on ${formatDate(dev.terminatedAt)}` : ''}: {dev.terminationReason}
                             </div>
                           )}
                           <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
@@ -431,7 +432,7 @@ Tariqify IMS`,
                                     <tbody>
                                       {auditByDeveloper[dev.id].map(row => (
                                         <tr key={row.id}>
-                                          <td style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{new Date(row.ts).toLocaleString('en-GB')}</td>
+                                          <td style={{ fontSize: 11, whiteSpace: 'nowrap' }}>{formatDateTime(row.ts)}</td>
                                           <td className="mono" style={{ fontSize: 11 }}>{row.keyPrefix ?? '—'}…</td>
                                           <td className="mono" style={{ fontSize: 11 }}>{row.endpoint}</td>
                                           <td><span className={`pill ${row.statusCode < 300 ? 'pill-active' : row.statusCode < 500 ? 'pill-lapsed' : 'pill-cancelled'}`}>{row.statusCode}</span></td>
@@ -458,7 +459,7 @@ Tariqify IMS`,
                                     <td style={{ fontSize: 11 }}>{k.scopes.join(', ')}</td>
                                     <td>{k.rateLimitPerMin}/min</td>
                                     <td><span className={`pill ${k.status === 'active' ? 'pill-active' : k.status === 'paused' ? 'pill-lapsed' : 'pill-cancelled'}`}>{k.status}</span></td>
-                                    <td>{k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString('en-GB') : 'Never'}</td>
+                                    <td>{k.lastUsedAt ? formatDateTime(k.lastUsedAt) : 'Never'}</td>
                                     <td>
                                       <div style={{ display: 'flex', gap: 4 }}>
                                         {k.status === 'active' && (

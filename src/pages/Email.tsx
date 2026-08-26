@@ -6,6 +6,7 @@ import { sendEmail } from '../lib/mailService'
 import { MAILBOXES } from '../lib/mailboxes'
 import { useAuth } from '../contexts/AuthContext'
 import { ACCEPTED_DOCUMENT_TYPES } from '../lib/storage'
+import { formatDateTime } from '../lib/dateUtils'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -41,6 +42,10 @@ const FOLDER_LABELS: Record<Folder, string> = {
   starred: 'Starred',
 }
 
+/** Inbox-list shorthand: a time for today, a weekday within the week, then
+ *  day and named month. Never a bare numeric date, so there is nothing here
+ *  that could be read month-first. The full timestamp uses the house
+ *  format below. */
 function formatDate(ts: string) {
   const d = new Date(ts)
   const diff = (Date.now() - d.getTime()) / 86400000
@@ -49,12 +54,7 @@ function formatDate(ts: string) {
   return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
 }
 
-function formatFull(ts: string) {
-  return new Date(ts).toLocaleString('en-GB', {
-    day: '2-digit', month: 'short', year: 'numeric',
-    hour: '2-digit', minute: '2-digit',
-  })
-}
+const formatFull = (ts: string) => formatDateTime(ts)
 
 export default function Email({ showToast }: Props) {
   const { user, hasPermission } = useAuth()

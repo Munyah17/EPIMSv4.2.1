@@ -6,6 +6,7 @@ import { exportToCsv, exportToExcel, exportToPdf } from '../lib/exportUtils'
 import { formatPremium } from '../lib/productUtils'
 import { policyBillablePremium, billableHeadCount } from '../lib/premium'
 import type { Policy, Claim, Payment, Client } from '../types'
+import { formatDate } from '../lib/dateUtils'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -135,7 +136,7 @@ export default function Reports({ showToast }: Props) {
           ['Lapse Rate', `${lapseRate}%`],
           ['Total Clients', clients.length],
         ],
-        `Generated ${new Date().toLocaleDateString('en-GB')}`,
+        `Generated ${formatDate(new Date())}`,
       )
       showToast('success', 'IPEC return downloaded.')
       return
@@ -185,7 +186,7 @@ export default function Reports({ showToast }: Props) {
 
     if (format === 'CSV') exportToCsv(`${baseName}-${dateStamp}.csv`, headers, rows)
     else if (format === 'Excel') await exportToExcel(`${baseName}-${dateStamp}.xlsx`, title, headers, rows)
-    else await exportToPdf(`${baseName}-${dateStamp}.pdf`, title, headers, rows, `Generated ${new Date().toLocaleDateString('en-GB')}`)
+    else await exportToPdf(`${baseName}-${dateStamp}.pdf`, title, headers, rows, `Generated ${formatDate(new Date())}`)
 
     showToast('success', `${title} exported as ${format}.`)
   }

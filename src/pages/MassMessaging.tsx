@@ -5,6 +5,7 @@ import { db } from '../lib/db'
 import { sendBulkSms, getSmsSettings, saveSmsSettings, getSmsLog, clearSmsLog } from '../lib/smsService'
 import type { SmsSettings, SmsLogEntry } from '../lib/smsService'
 import { useAuth } from '../contexts/AuthContext'
+import { formatDateTime } from '../lib/dateUtils'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -256,7 +257,7 @@ export default function MassMessaging({ showToast }: Props) {
               <tbody>
                 {log.map(entry => (
                   <tr key={entry.id}>
-                    <td className="mono" style={{ whiteSpace: 'nowrap' }}>{new Date(entry.ts).toLocaleString('en-GB')}</td>
+                    <td className="mono" style={{ whiteSpace: 'nowrap' }}>{formatDateTime(entry.ts)}</td>
                     <td>{entry.to}</td>
                     <td style={{ maxWidth: 260 }}><span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>{entry.message}</span></td>
                     <td><span className={`pill pill-${entry.status === 'sent' ? 'active' : entry.status === 'failed' ? 'lapsed' : 'pending'}`}>{entry.status}</span></td>

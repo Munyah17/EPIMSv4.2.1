@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { Ticket, TicketStatus, TicketPriority, TicketMessage, AppUser } from '../../types'
 import { ROLE_RANK } from '../../types'
 import { useAuth } from '../../contexts/AuthContext'
+import { formatDateTime } from '../../lib/dateUtils'
 
 interface Props {
   ticket: Ticket
@@ -66,7 +67,7 @@ export default function ViewTicketModal({ ticket, staff, onClose, onSave }: Prop
     })
   }
 
-  const formatTime = (ts: string) => new Date(ts).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+  const formatTime = (ts: string) => formatDateTime(ts)
 
   return (
     <div className="modal-overlay">

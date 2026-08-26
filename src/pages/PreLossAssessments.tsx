@@ -333,7 +333,7 @@ export default function PreLossAssessments({ showToast }: Props) {
                           </div>
                         )}
                         <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>
-                          {p.label}{p.exifDate ? ` · ${new Date(p.exifDate).toLocaleDateString()}` : ''}
+                          {p.label}{p.exifDate ? ` · ${formatDate(p.exifDate)}` : ''}
                         </div>
                       </a>
                     ))}

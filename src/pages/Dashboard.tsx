@@ -3,6 +3,7 @@ import type { ActivePanel } from '../App'
 import type { ToastMessage, Policy } from '../types'
 import { db, type DashboardStats } from '../lib/db'
 import { formatPremium } from '../lib/productUtils'
+import { formatDate } from '../lib/dateUtils'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -37,7 +38,7 @@ function timeAgo(iso: string | undefined): string {
   if (hours < 24) return `${hours}h ago`
   const days = Math.floor(hours / 24)
   if (days < 7) return `${days}d ago`
-  return new Date(iso).toLocaleDateString('en-GB')
+  return formatDate(iso)
 }
 
 const EMPTY_STATS: DashboardStats = {

@@ -2,6 +2,7 @@ import { forwardRef } from 'react'
 import type { PolicyCard } from '../../types'
 import type { PolicyMember } from '../../lib/memberNumbers'
 import { MOTIONS_LOGO_PNG_BASE64 } from '../../assets/motionsLogo'
+import { formatDate } from '../../lib/dateUtils'
 
 /**
  * The membership card, at real proportions.
@@ -41,13 +42,6 @@ const STATUS_COPY: Record<PolicyCard['status'], { label: string; color: string }
   replaced: { label: 'REPLACED', color: '#6B7E99' },
 }
 
-function formatDate(value?: string): string {
-  if (!value) return '—'
-  const d = new Date(value)
-  return Number.isFinite(d.getTime())
-    ? d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-    : value
-}
 
 const MemberCard = forwardRef<HTMLDivElement, Props>(function MemberCard(
   { member, card, face = 'front', scale = 1, companyName = 'Motions Microinsurance', companyPhone, companyEmail },

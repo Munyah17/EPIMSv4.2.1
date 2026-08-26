@@ -31,6 +31,16 @@ function lastDayOfMonth(d: Date): Date {
   return new Date(d.getFullYear(), d.getMonth() + 1, 0)
 }
 
+/** House date format, day-month-year with a named month, matching
+ *  src/lib/dateUtils.ts. Restated here because a serverless function cannot
+ *  import from the app bundle — and a bare toLocaleDateString() would
+ *  follow whatever locale the server happens to run in, which is how a date
+ *  ends up month-first. */
+const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
+function formatDate(d: Date): string {
+  return `${String(d.getDate()).padStart(2, '0')}-${MONTHS[d.getMonth()]}-${d.getFullYear()}`
+}
+
 /** Whole days from `from` to `to`, comparing dates only. */
 function daysDiff(from: Date, to: Date): number {
   const a = new Date(from.getFullYear(), from.getMonth(), from.getDate())
@@ -172,7 +182,7 @@ async function dispatch(
   if (already) { stats.skipped++; return }
 
   const amount = billablePremium(policy).toFixed(2)
-  const dueLabel = dueDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })
+  const dueLabel = formatDate(dueDate)
   const email = policy.clients?.email ?? ''
   const phone = policy.clients?.phone ?? ''
 
@@ -181,7 +191,7 @@ async function dispatch(
       to: email,
       subject: type === 'r4_post5'
         ? `Overdue Notice: ${policy.policy_number} Caution Flag Applied`
-        : `Premium Reminder: ${policy.policy_number} due ${dueDate.toLocaleDateString('en-GB')}`,
+        : `Premium Reminder: ${policy.policy_number} due ${formatDate(dueDate)}`,
       text: clientEmailBody(policy, type, dueLabel, amount),
     })
     if (ok) stats.emailed++

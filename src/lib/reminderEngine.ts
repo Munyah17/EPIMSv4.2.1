@@ -23,6 +23,7 @@ import { sendEmail, getNotifSettings } from './mailService'
 import { sendSms } from './smsService'
 import { NETONE_SUSPENDED } from './claimNotifications'
 import { policyBillablePremium } from './premium'
+import { formatDate } from './dateUtils'
 
 const CHECK_KEY = 'tqfy_reminder_last_check'
 
@@ -155,7 +156,7 @@ async function dispatchReminder(policy: Policy, client: Client | undefined, type
       cc: allCc,
       subject: type === 'r4_post5'
         ? `⚠ Overdue Notice: ${policy.policyNumber} Caution Flag Applied`
-        : `Premium Reminder: ${policy.policyNumber} due ${dueDate.toLocaleDateString('en-GB')}`,
+        : `Premium Reminder: ${policy.policyNumber} due ${formatDate(dueDate)}`,
       body: buildReminderEmail(policy, type, dueDate, sig),
       folder: 'inbox',
       linkedTo: policy.id,

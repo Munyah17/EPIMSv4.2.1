@@ -8,6 +8,7 @@ import { mnoStore } from '../lib/mno/mnoStore'
 import { simulateInboundRequest } from '../lib/mno/handlers'
 import { handleUssdAction } from '../lib/mno/ussd'
 import { retryFailedEvents } from '../lib/mno/webhooks'
+import { formatDate } from '../lib/dateUtils'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -22,7 +23,10 @@ function fmtTime(ts: number | string) {
   const d = new Date(typeof ts === 'number' ? ts : ts)
   return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
-function fmtDate(s: string) { return new Date(s).toLocaleDateString([], { day: '2-digit', month: 'short', year: 'numeric' }) }
+// [] means "whatever locale this device is set to", which is how a date
+// ends up month-first on some machines and not others. Pinned to the house
+// format instead.
+function fmtDate(s: string) { return formatDate(s) }
 function ago(ts: number | string) {
   const ms = Date.now() - (typeof ts === 'number' ? ts : new Date(ts).getTime())
   if (ms < 5000) return 'just now'

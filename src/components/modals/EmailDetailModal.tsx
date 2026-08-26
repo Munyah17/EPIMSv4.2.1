@@ -1,4 +1,5 @@
 import type { EmailMessage } from '../../types'
+import { formatDateTime } from '../../lib/dateUtils'
 
 interface Props {
   email: EmailMessage
@@ -7,10 +8,7 @@ interface Props {
 }
 
 export default function EmailDetailModal({ email, onClose, onReply }: Props) {
-  const formatDate = (ts: string) => new Date(ts).toLocaleString('en-GB', {
-    weekday: 'short', year: 'numeric', month: 'short', day: '2-digit',
-    hour: '2-digit', minute: '2-digit'
-  })
+  const formatDate = (ts: string) => formatDateTime(ts)
 
   return (
     <div className="modal-overlay">
