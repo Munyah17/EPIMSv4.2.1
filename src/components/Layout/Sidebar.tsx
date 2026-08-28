@@ -58,7 +58,10 @@ const STAFF_SECTIONS: NavSection[] = [
           { id: 'policies', label: 'Policies', icon: '🛡' },
           { id: 'products', label: 'Products', icon: '📦', roles: ['super_admin', 'admin', 'policy_admin'] },
           { id: 'pre_loss_assessments', label: 'Pre-Loss Assessments', icon: '🌾', roles: ['super_admin', 'admin', 'policy_admin', 'claims_officer'] },
-          { id: 'insurer_management', label: 'Insurer Management', icon: '🏢', roles: ['super_admin', 'admin'] },
+          // Insurer Management is hidden, not deleted: we are the insurer,
+          // so there is no other underwriter to manage a list of. See
+          // lib/houseInsurer.ts. The page, route and data are untouched in
+          // case this is ever needed again.
         ],
       },
     ],
