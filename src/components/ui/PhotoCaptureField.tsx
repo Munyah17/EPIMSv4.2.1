@@ -5,6 +5,7 @@ import { readExifSignals } from '../../lib/exifDate'
 import { analyzePhotoForFraud, fileToBase64 } from '../../lib/photoAnalysis'
 import { computePerceptualHash } from '../../lib/photoHash'
 import { assessPhotoIntegrity } from '../../lib/photoIntegrity'
+import { formatDateTime } from '../../lib/dateUtils'
 import CameraCapture from './CameraCapture'
 
 interface Props {
@@ -101,7 +102,11 @@ export default function PhotoCaptureField({ label, folder, recordId, claimDescri
         <div className="photo-capture-actions">
           {/* Only ever reached when the in-page camera can't run on this
               device — CameraCapture hands off to it rather than dead-ending. */}
-          <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0] ?? null; e.target.value = ''; void handleFile(f, true) }} />
+          {/* Not marked as shot in-app: this hands off to the phone's own
+              camera app, and what comes back is a file chosen through the
+              OS picker. A real camera photo carries its own Exif, which is
+              what vouches for it here. */}
+          <input ref={cameraRef} type="file" accept="image/*" capture="environment" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0] ?? null; e.target.value = ''; void handleFile(f) }} />
           <input ref={galleryRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const f = e.target.files?.[0] ?? null; e.target.value = ''; void handleFile(f) }} />
           <button type="button" className="btn btn-outline btn-sm" disabled={busy} onClick={() => setCameraOpen(true)}>📷 Camera</button>
           <button type="button" className="btn btn-outline btn-sm" disabled={busy} onClick={() => galleryRef.current?.click()}>🖼 Gallery</button>
@@ -112,7 +117,8 @@ export default function PhotoCaptureField({ label, folder, recordId, claimDescri
           {previewUrl && <img src={previewUrl} alt={label} className="photo-capture-thumb" />}
           <div className="photo-capture-meta">
             {value.capturedLive && <div style={{ color: 'var(--teal)' }}>🔒 Shot in-app on this device</div>}
-            {value.exifDate && <div>📅 EXIF: {new Date(value.exifDate).toLocaleString()}</div>}
+            {value.exifDate && <div>📅 EXIF: {formatDateTime(value.exifDate)}</div>}
+            {!value.exifDate && value.capturedLive && <div>📅 Taken: {formatDateTime(value.capturedAt)}</div>}
             {value.visibleDateStamp && <div>🏷 Visible date stamp: {value.visibleDateStamp}</div>}
             {value.exifCamera && <div>📷 {value.exifCamera}</div>}
             {concerns.map((c, i) => (

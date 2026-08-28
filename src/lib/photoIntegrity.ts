@@ -30,7 +30,17 @@ const EDITOR_SOFTWARE = ['photoshop', 'gimp', 'lightroom', 'snapseed', 'picsart'
 export function assessPhotoIntegrity(photo: AssessmentPhoto): PhotoConcern[] {
   const concerns: PhotoConcern[] = []
 
-  const dateStr = photo.exifDate || photo.visibleDateStamp
+  // A photo this app shot itself carries its own capture time: capturedAt
+  // is stamped the instant the shutter fires, before the file exists. That
+  // is better evidence than an EXIF field, not worse.
+  //
+  // The Exif block written on top of it (lib/exifWriter.ts) is for whoever
+  // receives the file later — a loss adjuster, an export, an insurer. If
+  // the browser hands back an image that block cannot be attached to, the
+  // photo is still one we watched being taken, and rejecting it for a
+  // missing file header told an assessor standing in the field that the
+  // shot they had just taken was a screenshot.
+  const dateStr = photo.exifDate || photo.visibleDateStamp || (photo.capturedLive ? photo.capturedAt : undefined)
   if (dateStr) {
     const taken = new Date(dateStr).getTime()
     if (Number.isFinite(taken)) {
@@ -58,7 +68,11 @@ export function assessPhotoIntegrity(photo: AssessmentPhoto): PhotoConcern[] {
     }
   }
 
-  if (photo.exifHasData && !photo.exifCamera) {
+  // A phone's own camera app names its hardware; a browser camera has no
+  // make or model to report, so its absence says nothing about a photo we
+  // watched being taken. Only worth raising for a file that arrived from
+  // somewhere else.
+  if (photo.exifHasData && !photo.exifCamera && !photo.capturedLive) {
     concerns.push({ severity: 'advisory', message: 'File carries no camera make/model, unusual for a photo taken on site.' })
   }
 
