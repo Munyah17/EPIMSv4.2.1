@@ -231,9 +231,10 @@ export default function BillingReminders({ showToast }: Props) {
           {/* Paynow */}
           <div className="card">
             <div className="card-header"><span className="card-title">Paynow Integration</span></div>
+            <p style={{ fontSize: 12, color: 'var(--muted)' }}>
+              The Paynow integration ID and key are held in the server environment as <b>PAYNOW_INTEGRATION_ID</b> and <b>PAYNOW_INTEGRATION_KEY</b>, and are set in the hosting dashboard. They used to be editable here, but nothing read them: the transaction is built and signed by Paynow's SDK on the server, so a key typed into this page had no effect on payments. Keeping them out of the browser also keeps them out of the page source.
+            </p>
             <div className="form-row">
-              <div className="form-group"><label>Integration ID</label><input className="form-control" value={gwSettings.paynowIntegrationId} onChange={e => setGwSettings(p => ({ ...p, paynowIntegrationId: e.target.value }))} placeholder="12345" /></div>
-              <div className="form-group"><label>Integration Key</label><input className="form-control" type="password" value={gwSettings.paynowIntegrationKey} onChange={e => setGwSettings(p => ({ ...p, paynowIntegrationKey: e.target.value }))} /></div>
               <div className="form-group"><label>Return URL</label><input className="form-control" value={gwSettings.paynowReturnUrl} onChange={e => setGwSettings(p => ({ ...p, paynowReturnUrl: e.target.value }))} /></div>
               <div className="form-group"><label>Result URL (webhook)</label><input className="form-control" value={gwSettings.paynowResultUrl} onChange={e => setGwSettings(p => ({ ...p, paynowResultUrl: e.target.value }))} /></div>
             </div>
