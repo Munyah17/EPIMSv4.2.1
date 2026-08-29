@@ -975,7 +975,23 @@ async function applyCompletedPaymentToPolicy(policyId: string, amountPaid: numbe
   // policyholder's share alone credited a family's single monthly payment
   // as several months of cover.
   const perPeriod = policyBillablePremium(policy, category)
-  const periodsPaid = Math.max(1, Math.round(amountPaid / (perPeriod || amountPaid)))
+
+  /**
+   * Cover is only extended by the whole periods the money actually covers.
+   *
+   * This used to be Math.max(1, Math.round(paid / perPeriod)), which gave a
+   * full month of cover for ANY payment at all: 50 cents against a $12
+   * premium, a zero, even a negative, all bought a month. Rounding also
+   * over-credited — $18 against $12 bought two months instead of one.
+   *
+   * floor() and no minimum: a part payment is still recorded as received
+   * (the client is owed the credit and staff can see it), but it does not
+   * move the due date until it adds up to a full period. Nothing is ever
+   * extended for free.
+   */
+  const periodsPaid = perPeriod > 0 && amountPaid > 0
+    ? Math.floor(amountPaid / perPeriod)
+    : 0
   const monthsToAdvance = cycleMonths * periodsPaid
 
   const today = new Date()
@@ -983,9 +999,14 @@ async function applyCompletedPaymentToPolicy(policyId: string, amountPaid: numbe
   const next = new Date(base)
   next.setMonth(next.getMonth() + monthsToAdvance)
 
+  // Reinstatement and activation are worth a full period, same as cover:
+  // a token payment must not bring a lapsed policy back to life. Gated on
+  // periodsPaid for exactly that reason.
   let status = policy.status
-  if (policy.status === 'lapsed') status = category === 'agriculture' ? 'active' : 'waiting_period'
-  else if (category === 'agriculture' && policy.status === 'waiting_period') status = 'active'
+  if (periodsPaid >= 1) {
+    if (policy.status === 'lapsed') status = category === 'agriculture' ? 'active' : 'waiting_period'
+    else if (category === 'agriculture' && policy.status === 'waiting_period') status = 'active'
+  }
 
   await policies.update(policyId, {
     status,

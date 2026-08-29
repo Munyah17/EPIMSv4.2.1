@@ -65,16 +65,39 @@ export default function RecordPaymentModal({ policyId: initialPolicyId, payment:
   const splitTotal = splits.reduce((sum, s) => sum + (s.amount || 0), 0)
   const splitMismatch = useSplit && Math.abs(splitTotal - Number(amount || 0)) > 0.01
 
+  /**
+   * A recorded payment is money asserted to have been received, so the
+   * figure has to be a real one.
+   *
+   * `!amount` alone let "0" through — a non-empty string is truthy — and
+   * the min={0} on the input is only a browser hint, so a negative could be
+   * typed or pasted straight past it. Both then reached the policy update
+   * and moved the next payment date.
+   */
+  const amountValue = Number(amount)
+  const amountInvalid = !amount.trim() || !Number.isFinite(amountValue) || amountValue <= 0
+  const negativeSplit = useSplit && splits.some(s => s.amount < 0)
+
+  const blockedReason = !policyId ? 'Select the policy this payment is for.'
+    : amountInvalid ? 'Enter an amount greater than zero.'
+      : negativeSplit ? 'A split line cannot be a negative amount.'
+        : splitMismatch ? 'The split lines must add up to the amount.'
+          : !policy ? 'Still loading the policy — try again in a moment.'
+            : null
+
   const handleSave = () => {
-    if (!policyId || !amount || !policy || splitMismatch) return
+    // Never a silent return: the button stays live and says what is wrong,
+    // including the policy-still-loading case, which used to make the
+    // button do nothing at all with no explanation.
+    if (blockedReason) return
     const reference = editing?.reference ?? `PAY${new Date().toISOString().slice(0, 10).replace(/-/g, '')}${String(Date.now()).slice(-3)}`
     const paymentRecord: Payment = {
       id: editing?.id ?? `pay${Date.now()}`,
       reference,
       policyId,
-      policyNumber: policy.policyNumber,
-      clientName: policy.clientName,
-      amount: Number(amount),
+      policyNumber: policy!.policyNumber,
+      clientName: policy!.clientName,
+      amount: amountValue,
       method,
       status,
       date,
@@ -166,10 +189,13 @@ export default function RecordPaymentModal({ policyId: initialPolicyId, payment:
               </p>
             </div>
           )}
+          {blockedReason && (amount.trim() || policyId) && (
+            <p style={{ fontSize: 12, color: 'var(--danger)', margin: '10px 0 0' }}>{blockedReason}</p>
+          )}
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={!policyId || !amount || splitMismatch}>
+          <button className="btn btn-primary" onClick={handleSave} disabled={!!blockedReason}>
             {editing ? 'Save Changes' : 'Record Payment'}
           </button>
         </div>

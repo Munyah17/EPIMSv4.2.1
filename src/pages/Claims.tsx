@@ -145,6 +145,37 @@ export default function Claims({ showToast, initialCategory }: Props) {
     showToast('success', `Claim ${claim.claimNumber} deleted. The deletion is recorded in the activity log.`)
   }
 
+  /**
+   * Records that an approved claim has actually been settled.
+   *
+   * Approval and payment are different events: one is a decision, the other
+   * is money leaving the business. Nothing recorded the second, so every
+   * claim stopped at 'approved' and the IPEC quarterly return reported
+   * $0.00 claims incurred and a 0% claims ratio however much had been paid
+   * out. Confirmed and logged, because it is a money statement.
+   */
+  const handleMarkPaid = async (claim: Claim) => {
+    if (!window.confirm(
+      `Record claim ${claim.claimNumber} as paid?\n\n`
+      + `${claim.clientName} — $${claim.amount.toLocaleString()}\n\n`
+      + 'Confirm only once the payout has actually been made. This is what the claims '
+      + 'incurred figure on the IPEC return is built from, and it is logged against your name.',
+    )) return
+
+    const { data, error } = await db.claims.update(claim.id, { status: 'paid', resolvedAt: new Date().toISOString() })
+    if (error || !data) { showToast('error', `Not recorded: ${error ?? 'the change did not reach the database.'}`); return }
+    setClaims(prev => prev.map(c => c.id === data.id ? data : c))
+
+    void recordActivity({
+      action: 'claim.approved',
+      actor: { id: user?.id, name: user?.name ?? 'Unknown', role: user?.role ?? 'unknown' },
+      entityType: 'claim', entityId: claim.id, entityLabel: claim.claimNumber,
+      detail: `Recorded as PAID: ${claim.clientName}, ${claim.productName}, $${claim.amount.toLocaleString()}.`,
+      severity: 'warning',
+    })
+    showToast('success', `Claim ${claim.claimNumber} recorded as paid.`)
+  }
+
   const handleUpdate = async (updated: Claim, notify: () => Promise<void>) => {
     const { data, error } = await db.claims.update(updated.id, updated)
     // The database's own words: "Failed to update claim." gave whoever hit
@@ -242,6 +273,20 @@ export default function Claims({ showToast, initialCategory }: Props) {
                     <div className="action-btns">
                       {hasPermission('claims.edit') && (
                         <button type="button" className="btn btn-ghost btn-sm" onClick={() => setReviewClaim(c)}>Review</button>
+                      )}
+                      {/* An approved claim is a decision; a paid one is money
+                          out of the door. Nothing recorded the second, so
+                          "Claims Incurred" on the IPEC return sat at $0 no
+                          matter how much had actually been settled. */}
+                      {c.status === 'approved' && hasPermission('claims.approve') && (
+                        <button
+                          type="button"
+                          className="btn btn-ghost btn-sm"
+                          style={{ color: 'var(--success)' }}
+                          onClick={() => handleMarkPaid(c)}
+                        >
+                          Mark Paid
+                        </button>
                       )}
                       {hasPermission('claims.delete') && (
                         <button

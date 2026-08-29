@@ -342,7 +342,7 @@ async function recordPayment(admin: SupabaseClient, body: Json, agentId: string)
   }
 
   const { data: policy } = await admin.from('policies')
-    .select('id, agent_id, status, product_id, premium, next_payment_date')
+    .select('id, agent_id, status, product_id, premium, dependants, next_payment_date')
     .eq('policy_number', policyNumber).maybeSingle()
   if (!policy || policy.agent_id !== agentId) return { status: 404, body: { error: 'Policy not found.' } }
 
@@ -374,15 +374,35 @@ async function recordPayment(admin: SupabaseClient, body: Json, agentId: string)
   // reminder-engine check, not by paying.
   const { data: product } = await admin.from('products').select('category').eq('id', policy.product_id).maybeSingle()
   const category = product?.category ?? ''
+
+  // Only whole periods extend cover. This used to advance a full cycle for
+  // any amount at all, so a partner posting a token payment bought a month
+  // of cover. Mirrors applyCompletedPaymentToPolicy in src/lib/db.ts.
+  //
+  // Premiums are per head, so the period price is the policyholder's
+  // premium plus one for each dependant, except agriculture which is
+  // billed on the crop.
+  const deps = Array.isArray(policy.dependants) ? policy.dependants as { premium?: number }[] : []
+  const own = Number(policy.premium) || 0
+  const perPeriod = category === 'agriculture'
+    ? own
+    : deps.reduce((sum, d) => {
+      const p = Number(d?.premium)
+      return sum + (Number.isFinite(p) && p > 0 ? p : own)
+    }, own)
+  const periodsPaid = perPeriod > 0 && amount > 0 ? Math.floor(amount / perPeriod) : 0
+
   let nextStatus = policy.status
-  if (policy.status === 'lapsed') nextStatus = category === 'agriculture' ? 'active' : 'waiting_period'
-  else if (category === 'agriculture' && policy.status === 'waiting_period') nextStatus = 'active'
+  if (periodsPaid >= 1) {
+    if (policy.status === 'lapsed') nextStatus = category === 'agriculture' ? 'active' : 'waiting_period'
+    else if (category === 'agriculture' && policy.status === 'waiting_period') nextStatus = 'active'
+  }
 
   const today = new Date()
   const cycleMonths = category === 'agriculture' ? 12 : 1
   const base = policy.next_payment_date && new Date(policy.next_payment_date) > today ? new Date(policy.next_payment_date) : today
   const next = new Date(base)
-  next.setMonth(next.getMonth() + cycleMonths)
+  next.setMonth(next.getMonth() + cycleMonths * periodsPaid)
 
   await admin.from('policies').update({
     status: nextStatus,

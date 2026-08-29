@@ -219,7 +219,8 @@ export default function MassMessaging({ showToast }: Props) {
             <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 16 }}>
               Live SMS through Afrosoft. The account domain is specific to our Afrosoft account; only change it if
               Afrosoft moves us to a different host (the server must allow-list any new host via the
-              <code> AFROSOFT_SMS_DOMAIN</code> env var). With the domain or API key blank, messages are simulated instead of sent.
+              <code> AFROSOFT_SMS_DOMAIN</code> env var). Sending no longer falls back to a simulation: if the
+              server has no key, a send fails and says so rather than reporting messages that never left.
             </p>
             <div className="form-row" style={{ marginBottom: 12 }}>
               <div className="form-group">

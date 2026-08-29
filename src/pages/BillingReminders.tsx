@@ -138,7 +138,7 @@ export default function BillingReminders({ showToast }: Props) {
               <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
                 <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 10 }}>
                   Last check: {lastCheck ? formatDateTime(lastCheck) : 'Never'}<br />
-                  The engine checks hourly while any staff member has the app open, and dedupes through the database so it's safe to have several staff logged in at once.
+                  Reminders run on the server once a day, whether or not anyone is signed in. The app also checks hourly while it's open, and both dedupe through the database, so nothing is ever sent twice.
                 </p>
                 <button className="btn btn-primary btn-sm" onClick={handleForceCheck} disabled={checking}>{checking ? 'Checking…' : '▶ Run Check Now'}</button>
               </div>
