@@ -1,10 +1,24 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import nodemailer from 'nodemailer'
+import { graphConfigured, sendViaGraph } from './_lib/graphMail.js'
 
 /**
- * Sends outgoing mail via the company's own SMTP server (a cPanel host —
- * see database/../REBUILD_INSTRUCTIONS or ops notes for the mailbox list)
- * so credentials never reach the browser. Configure via Vercel env vars:
+ * Outgoing mail. Two routes, tried in this order:
+ *
+ *  1. Microsoft 365 via Graph — the live path. See _lib/graphMail.ts.
+ *     Set MS_TENANT_ID, MS_CLIENT_ID, MS_CLIENT_SECRET and MS_SEND_AS.
+ *     No mailbox password is involved, so it is unaffected by Microsoft
+ *     retiring Basic Auth for SMTP submission, and each role mailbox
+ *     sends as itself.
+ *
+ *  2. SMTP — kept as a fallback for a non-Microsoft relay, and so mail
+ *     keeps working while a tenant is being set up.
+ *
+ * Either way credentials stay on the server and never reach the browser.
+ * With neither configured this returns { simulated: true } and the caller
+ * says so plainly; it never reports a message as sent when none was.
+ *
+ * SMTP env vars:
  *
  *   SMTP_HOST     — e.g. c3.my-control-panel.com
  *   SMTP_PORT     — defaults to 465
@@ -17,9 +31,6 @@ import nodemailer from 'nodemailer'
  * authenticates as the full mailbox address), so no separate username var
  * is needed as long as every mailbox shares one password.
  *
- * Without SMTP_HOST configured, returns { simulated: true } so the client
- * (src/lib/mailService.ts) can fall back gracefully — e.g. before the
- * mailboxes actually exist yet.
  */
 
 interface SendEmailBody {
@@ -83,10 +94,40 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'to, subject, and text are required' })
   }
 
+  // Microsoft 365 first, when it is configured. Graph is the path
+  // Microsoft actually supports: no mailbox password, unaffected by the
+  // retirement of Basic Auth for SMTP, and each role mailbox genuinely
+  // sends as itself instead of everything going out from one account.
+  // SMTP stays behind it so nothing breaks while the tenant is being set
+  // up, and so a non-Microsoft relay is still an option.
+  if (graphConfigured()) {
+    const sender = body.from || process.env.MS_SEND_AS || senderAddress()
+    if (!sender) {
+      return res.status(500).json({ error: 'No sender mailbox: set MS_SEND_AS, or supply a from address with the request.' })
+    }
+    const sent = await sendViaGraph({
+      from: sender,
+      fromName: body.fromName,
+      to: body.to,
+      cc: body.cc,
+      replyTo: body.replyTo,
+      subject: body.subject,
+      text: body.text,
+      attachmentBase64: body.attachmentBase64,
+      attachmentFilename: body.attachmentFilename,
+    })
+    if (sent.ok) return res.status(200).json({ success: true, via: 'graph' })
+    // Reported rather than silently retried over SMTP: a Graph failure is
+    // almost always a configuration fault (expired secret, missing admin
+    // consent, mailbox outside the access policy), and quietly falling
+    // back would hide the thing that needs fixing.
+    return res.status(502).json({ error: sent.error })
+  }
+
   const host = process.env.SMTP_HOST
   const password = process.env.SMTP_PASSWORD
   if (!host || !password) {
-    return res.status(200).json({ simulated: true, reason: 'SMTP_HOST/SMTP_PASSWORD not configured' })
+    return res.status(200).json({ simulated: true, reason: 'Neither Microsoft 365 (MS_TENANT_ID/MS_CLIENT_ID/MS_CLIENT_SECRET) nor SMTP (SMTP_HOST/SMTP_PASSWORD) is configured' })
   }
 
   // Providers only let you send from a domain you have verified, so when a
