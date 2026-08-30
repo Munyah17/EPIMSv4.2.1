@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import type { Policy, Dependant, Client, Product, AppUser } from '../../types'
+import type { Policy, Dependant, Insurer, InsurerRecord, Client, Product, AppUser } from '../../types'
 import { MANUAL_PAYMENT_METHODS } from '../../types'
 import { db } from '../../lib/db'
 import { useAuth } from '../../contexts/AuthContext'
@@ -7,7 +7,6 @@ import PhoneInput from '../ui/PhoneInput'
 import DateInput from '../ui/DateInput'
 import { premiumPeriodLabel } from '../../lib/productUtils'
 import { computeAssignedStartDate } from '../../lib/policyLifecycle'
-import { HOUSE_INSURER } from '../../lib/houseInsurer'
 
 interface Props {
   onClose: () => void
@@ -37,9 +36,9 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   const [clientDob, setClientDob] = useState('')
   const [clientAddress, setClientAddress] = useState('')
   const [clientOccupation, setClientOccupation] = useState('')
-  // No insurer field: we are the insurer, and this system belongs to us
-  // alone — every client and policy created here is HOUSE_INSURER by
-  // licence, not a choice made per policy. See lib/houseInsurer.ts.
+  // One insurer per policy — asked once, applied to both the client record
+  // and the policy itself (this modal used to ask twice for the same thing).
+  const [insurer, setInsurer] = useState<Insurer | ''>('')
 
   // Policy fields
   const [productId, setProductId] = useState('')
@@ -56,6 +55,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   const [products, setProducts] = useState<Product[]>([])
   const [productsLoading, setProductsLoading] = useState(true)
   const [staff, setStaff] = useState<AppUser[]>([])
+  const [insurerOptions, setInsurerOptions] = useState<InsurerRecord[]>([])
   const product = products.find(p => p.id === productId)
 
   /** A dependant is covered under the same kind of cover as the policy they
@@ -69,6 +69,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   useEffect(() => {
     db.products.list().then(({ data }) => { if (data) setProducts(data); setProductsLoading(false) })
     db.clients.list().then(({ data }) => { if (data) setExistingClients(data) })
+    db.insurers.list().then(({ data }) => setInsurerOptions(data.filter(i => i.status === 'active')))
     db.staff.list().then(({ data }) => {
       const active = (data ?? []).filter(s => s.active)
       setStaff(active)
@@ -94,7 +95,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
 
   const clearClientFields = () => {
     setClientName(''); setClientPhone(''); setClientEmail(''); setClientNationalId('')
-    setClientDob(''); setClientAddress(''); setClientOccupation('')
+    setClientDob(''); setClientAddress(''); setClientOccupation(''); setInsurer('')
   }
 
   const switchMode = (mode: 'new' | 'existing') => {
@@ -120,6 +121,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
     setClientDob(client.dob)
     setClientAddress(client.address)
     setClientOccupation(client.occupation ?? '')
+    setInsurer(client.insurer ?? '')
   }
 
   const addDependant = () => {
@@ -178,7 +180,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
     if (customerMode === 'existing' && existingClientId) {
       const { data, error } = await db.clients.update(existingClientId, {
         name: clientName, email: clientEmail, phone: clientPhone,
-        address: clientAddress, occupation: clientOccupation,
+        address: clientAddress, occupation: clientOccupation, insurer: insurer || undefined,
       })
       if (error || !data) { if (showToast) showToast('error', 'Failed to update client.'); return }
       createdClient = data
@@ -192,7 +194,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
         dob: clientDob,
         address: clientAddress,
         occupation: clientOccupation,
-        insurer: HOUSE_INSURER,
+        insurer: insurer || undefined,
         createdAt: new Date().toISOString().split('T')[0],
         policyCount: 0,
         status: 'active',
@@ -223,7 +225,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
       status: product!.category === 'agriculture' ? 'active' : 'waiting_period',
       dependants,
       paymentMethod,
-      insurer: HOUSE_INSURER,
+      insurer: insurer || undefined,
       growerNumber: product!.category === 'agriculture' ? (growerNumber || undefined) : undefined,
       createdAt: new Date().toISOString().split('T')[0],
       nextPaymentDate: new Date(new Date(startDate).setMonth(new Date(startDate).getMonth() + (product!.category === 'agriculture' ? 12 : 1))).toISOString().split('T')[0],
@@ -350,6 +352,13 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                   {MANUAL_PAYMENT_METHODS.map(m => (
                     <option key={m} value={m}>{m}</option>
                   ))}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Insurer</label>
+                <select className="form-control" value={insurer} onChange={e => setInsurer(e.target.value as Insurer)}>
+                  <option value="">Select insurer…</option>
+                  {insurerOptions.map(i => <option key={i.id} value={i.name}>{i.name}</option>)}
                 </select>
               </div>
               <div className="form-group">

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import type { Policy, PolicyStatus, AppUser } from '../../types'
+import type { Policy, PolicyStatus, Insurer, InsurerRecord, AppUser } from '../../types'
 import { MANUAL_PAYMENT_METHODS } from '../../types'
 import { db } from '../../lib/db'
 import DateInput from '../ui/DateInput'
@@ -13,14 +13,13 @@ interface Props {
 export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
   const [status, setStatus] = useState<PolicyStatus>(policy.status)
   const [paymentMethod, setPaymentMethod] = useState(policy.paymentMethod)
-  // No insurer field: we are the insurer, and this system belongs to us
-  // alone — see lib/houseInsurer.ts. policy.insurer is left as it was on
-  // the record rather than reset by this save.
+  const [insurer, setInsurer] = useState<Insurer | ''>(policy.insurer ?? '')
   const [nextPaymentDate, setNextPaymentDate] = useState(policy.nextPaymentDate ?? '')
   const [agentId, setAgentId] = useState(policy.agentId ?? '')
   const [growerNumber, setGrowerNumber] = useState(policy.growerNumber ?? '')
   const [staff, setStaff] = useState<AppUser[]>([])
   const [isAgriculture, setIsAgriculture] = useState(false)
+  const [insurerOptions, setInsurerOptions] = useState<InsurerRecord[]>([])
 
   useEffect(() => {
     db.staff.list().then(({ data }) => { if (data) setStaff(data.filter(s => s.active)) })
@@ -28,12 +27,13 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
       const category = data?.find(p => p.id === policy.productId)?.category
       setIsAgriculture(category === 'agriculture')
     })
+    db.insurers.list().then(({ data }) => setInsurerOptions(data.filter(i => i.status === 'active')))
   }, [policy.productId])
 
   const handleSave = () => {
     const agent = staff.find(s => s.id === agentId)
     onSave({
-      ...policy, status, paymentMethod, nextPaymentDate: nextPaymentDate || undefined,
+      ...policy, status, paymentMethod, insurer: insurer || undefined, nextPaymentDate: nextPaymentDate || undefined,
       agentId: agentId || undefined, agentName: agent?.name ?? (agentId ? policy.agentName : undefined),
       growerNumber: isAgriculture ? (growerNumber || undefined) : policy.growerNumber,
     })
@@ -75,6 +75,13 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
                 ))}
               </select>
             </div>
+          </div>
+          <div className="form-group">
+            <label>Insurer</label>
+            <select className="form-control" value={insurer} onChange={e => setInsurer(e.target.value as Insurer)}>
+              <option value="">Select insurer…</option>
+              {insurerOptions.map(i => <option key={i.id} value={i.name}>{i.name}</option>)}
+            </select>
           </div>
           {isAgriculture && (
             <div className="form-group">

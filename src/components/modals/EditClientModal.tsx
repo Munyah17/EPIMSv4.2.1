@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import type { Client } from '../../types'
+import { useState, useEffect } from 'react'
+import type { Client, Insurer, InsurerRecord } from '../../types'
+import { db } from '../../lib/db'
 import PhoneInput from '../ui/PhoneInput'
 
 interface Props {
@@ -15,13 +16,16 @@ export default function EditClientModal({ client, onClose, onSave, onAssignPolic
   const [phone, setPhone] = useState(client.phone)
   const [address, setAddress] = useState(client.address)
   const [occupation, setOccupation] = useState(client.occupation ?? '')
-  // No insurer field: we are the insurer, and this system belongs to us
-  // alone — see lib/houseInsurer.ts. client.insurer is left exactly as it
-  // was on the record rather than reset, so this save can't overwrite it.
+  const [insurer, setInsurer] = useState<Insurer | ''>(client.insurer ?? '')
   const [status, setStatus] = useState(client.status)
+  const [insurerOptions, setInsurerOptions] = useState<InsurerRecord[]>([])
+
+  useEffect(() => {
+    db.insurers.list().then(({ data }) => setInsurerOptions(data.filter(i => i.status === 'active')))
+  }, [])
 
   const handleSave = () => {
-    onSave({ ...client, name, email, phone, address, occupation, status })
+    onSave({ ...client, name, email, phone, address, occupation, insurer: insurer || undefined, status })
   }
 
   return (
@@ -64,6 +68,13 @@ export default function EditClientModal({ client, onClose, onSave, onAssignPolic
                 <option value="inactive">Inactive</option>
               </select>
             </div>
+          </div>
+          <div className="form-group">
+            <label>Insurer</label>
+            <select className="form-control" value={insurer} onChange={e => setInsurer(e.target.value as Insurer)}>
+              <option value="">Select insurer…</option>
+              {insurerOptions.map(i => <option key={i.id} value={i.name}>{i.name}</option>)}
+            </select>
           </div>
           <div className="form-group">
             <label>Address</label>

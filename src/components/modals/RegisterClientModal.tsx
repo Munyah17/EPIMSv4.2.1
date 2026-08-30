@@ -1,8 +1,8 @@
-import { useState } from 'react'
-import type { Client } from '../../types'
+import { useState, useEffect } from 'react'
+import type { Client, Insurer, InsurerRecord } from '../../types'
+import { db } from '../../lib/db'
 import PhoneInput from '../ui/PhoneInput'
 import DateInput from '../ui/DateInput'
-import { HOUSE_INSURER } from '../../lib/houseInsurer'
 
 interface Props {
   onClose: () => void
@@ -17,16 +17,18 @@ export default function RegisterClientModal({ onClose, onSave }: Props) {
   const [dob, setDob] = useState('')
   const [address, setAddress] = useState('')
   const [occupation, setOccupation] = useState('')
-  // No insurer field: we are the insurer, and this system belongs to us
-  // alone — see lib/houseInsurer.ts. There is no other underwriter to
-  // record a client against.
+  const [insurer, setInsurer] = useState<Insurer | ''>('')
+  const [insurerOptions, setInsurerOptions] = useState<InsurerRecord[]>([])
+
+  useEffect(() => {
+    db.insurers.list().then(({ data }) => setInsurerOptions(data.filter(i => i.status === 'active')))
+  }, [])
 
   const handleSave = () => {
     if (!name || !phone || !nationalId) return
     const client: Client = {
       id: `c${Date.now()}`,
-      name, email, phone, nationalId, dob, address, occupation,
-      insurer: HOUSE_INSURER,
+      name, email, phone, nationalId, dob, address, occupation, insurer: insurer || undefined,
       createdAt: new Date().toISOString().split('T')[0],
       policyCount: 0,
       status: 'active',
@@ -71,6 +73,13 @@ export default function RegisterClientModal({ onClose, onSave }: Props) {
               <label>Occupation</label>
               <input className="form-control" placeholder="e.g. Teacher" value={occupation} onChange={e => setOccupation(e.target.value)} />
             </div>
+          </div>
+          <div className="form-group">
+            <label>Insurer</label>
+            <select className="form-control" value={insurer} onChange={e => setInsurer(e.target.value as Insurer)}>
+              <option value="">Select insurer…</option>
+              {insurerOptions.map(i => <option key={i.id} value={i.name}>{i.name}</option>)}
+            </select>
           </div>
           <div className="form-group">
             <label>Address</label>
