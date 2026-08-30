@@ -48,6 +48,27 @@ export interface EipStatusResult {
    *  this than any paraphrase of ours. */
   message?: string
   transactionId?: string
+  /** The amount EcoCash itself reports for this transaction, when the
+   *  response actually includes one (see AMOUNT_FIELDS). Lets the caller
+   *  verify it matches what was charged before trusting a bare "success",
+   *  rather than crediting whatever the paid flag alone claims. */
+  amount?: number
+}
+
+/** paymentAmount.charginginformation.amount is nested three deep in what we
+ *  SEND; if EIP mirrors that shape back, a flat field-name search misses it,
+ *  so the charge-request nesting is also walked here specifically. */
+function pickAmount(data: Record<string, unknown>): number | undefined {
+  const nested = (data.paymentAmount as Record<string, unknown> | undefined)?.charginginformation as Record<string, unknown> | undefined
+  const candidates = nested ? [nested, ...sources(data)] : sources(data)
+  for (const source of candidates) {
+    for (const field of AMOUNT_FIELDS) {
+      const v = source[field]
+      const n = typeof v === 'number' ? v : typeof v === 'string' ? Number(v) : NaN
+      if (Number.isFinite(n)) return n
+    }
+  }
+  return undefined
 }
 
 const SUCCESS_TOKENS = ['SUCCESS', 'COMPLETED', 'CHARGED', 'PAID']
@@ -64,6 +85,14 @@ const STATUS_FIELDS = [
   'transactionStatusDescription', 'responseMessage', 'message', 'description', 'error',
 ]
 const ID_FIELDS = ['ecocashReference', 'serverReferenceCode', 'transactionId', 'referenceCode']
+// Best-effort only -- these field names mirror the shape of what we SEND
+// (paymentAmount.charginginformation.amount) plus the plainer names other
+// EIP responses have been seen to use, but have not been confirmed against
+// a live sandbox reply. Never invented as a mismatch: pickAmount() returns
+// undefined, not a wrong number, when none of these are present, so a
+// gateway that genuinely doesn't echo the amount back degrades to today's
+// paid-status-only behaviour rather than blocking every real payment.
+const AMOUNT_FIELDS = ['amount', 'transactionAmount', 'chargedAmount', 'paidAmount']
 
 function sources(data: Record<string, unknown>): Record<string, unknown>[] {
   const nested = [data.data, data.result, data.transaction, data.response]
@@ -88,7 +117,8 @@ export function interpretEipResponse(data: Record<string, unknown>): EipStatusRe
   const message = strings.find(v => v.length > 2)
   const transactionId = pick(data, ID_FIELDS)[0]
 
-  if (upper.some(v => SUCCESS_TOKENS.some(t => v.includes(t)))) return { outcome: 'success', message, transactionId }
+  const amount = pickAmount(data)
+  if (upper.some(v => SUCCESS_TOKENS.some(t => v.includes(t)))) return { outcome: 'success', message, transactionId, amount }
   if (upper.some(v => FAILURE_TOKENS.some(t => v.includes(t)))) return { outcome: 'failed', message: message ?? 'Transaction failed', transactionId }
   return { outcome: 'pending', message, transactionId }
 }

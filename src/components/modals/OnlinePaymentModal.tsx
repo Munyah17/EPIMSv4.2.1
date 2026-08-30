@@ -7,6 +7,8 @@ import type { PaymentResponse } from '../../lib/paymentGateways'
 import { db } from '../../lib/db'
 import { policyBillablePremium, billableHeadCount } from '../../lib/premium'
 import { recordActivity } from '../../lib/activityLog'
+import { ADMIN_ALERT_NUMBERS } from '../../lib/signupNotifications'
+import { sendSms } from '../../lib/smsService'
 import { useAuth } from '../../contexts/AuthContext'
 import PhoneInput from '../ui/PhoneInput'
 
@@ -17,7 +19,7 @@ interface Props {
   showToast: (type: 'success' | 'error' | 'warning' | 'info', msg: string) => void
 }
 
-type PayStep = 'select' | 'confirm' | 'processing' | 'success' | 'failed'
+type PayStep = 'select' | 'confirm' | 'processing' | 'success' | 'failed' | 'mismatch'
 
 /**
  * Three rails, because there are only three.
@@ -111,11 +113,55 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
     const url = res.pollUrl
     const fn = res.gateway === 'ecocash' ? pollEcoCash : pollPaynow
     pollRef.current = setInterval(async () => {
-      const { status, message } = await fn(url)
+      const { status, message, amount: confirmedAmount } = await fn(url)
       setPollStatus(message)
-      if (status === 'success') { stopPoll(); handleConfirmed() }
+      if (status === 'success') {
+        stopPoll()
+        // "Paid" only means the reference cleared, not that it cleared for
+        // what this transaction actually asked for. confirmedAmount is
+        // undefined when the gateway's reply had nothing recognisable as an
+        // amount (see pollEcoCash's comment) -- that is "cannot verify",
+        // not "verified", so it still proceeds; a present amount that
+        // disagrees is never waved through.
+        if (confirmedAmount !== undefined && Math.abs(confirmedAmount - totalAmount) > 0.01) {
+          void handleMismatch(res.gateway, confirmedAmount)
+        } else {
+          handleConfirmed()
+        }
+      }
       if (status === 'failed') { stopPoll(); setStep('failed') }
     }, 4000)
+  }
+
+  /**
+   * The gateway says paid, but not for the amount this transaction was for.
+   *
+   * Never credited automatically in either direction: not as a success (the
+   * amount is wrong), and not as a plain failure either (money may well have
+   * actually moved, just not the right amount, and telling a client "failed"
+   * when their money was taken would be the worse of the two mistakes). It
+   * is parked for a human, loudly -- an activity log entry staff review
+   * regardless, and an immediate SMS to the office lines, the same ones a
+   * new registration alerts, since this is rarer and more urgent than that.
+   */
+  async function handleMismatch(gateway: Method, confirmedAmount: number) {
+    setStep('mismatch')
+    const detail = `Reference ${ref}: ${METHOD_LABELS[gateway]} confirmed $${confirmedAmount.toFixed(2)}, expected $${totalAmount.toFixed(2)}, for ${policy.clientName} (${policy.policyNumber}). Not recorded -- needs manual reconciliation.`
+    if (user) {
+      void recordActivity({
+        action: 'payment.validated',
+        actor: { id: user.id, name: user.name, role: user.role },
+        entityType: 'payment',
+        entityId: policy.id,
+        entityLabel: policy.policyNumber,
+        detail: `AMOUNT MISMATCH — ${detail}`,
+        severity: 'warning',
+      })
+    }
+    const alert = `Enpassent: PAYMENT AMOUNT MISMATCH. ${detail}`
+    for (const number of ADMIN_ALERT_NUMBERS) {
+      void sendSms(number, alert).catch(() => { /**/ })
+    }
   }
 
   /**
@@ -334,6 +380,21 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
               <p style={{ color: 'var(--muted)', fontSize: 13 }}>{result?.message ?? 'Payment could not be processed.'}</p>
             </div>
           )}
+
+          {/* ── AMOUNT MISMATCH ── */}
+          {/* Deliberately not styled or worded as a failure: the gateway did
+              report the reference as paid, just not for what was expected,
+              so telling anyone "this failed" could be actively wrong. */}
+          {step === 'mismatch' && (
+            <div style={{ textAlign: 'center', padding: '24px 0' }}>
+              <div style={{ fontSize: 42, marginBottom: 12 }}>⚠️</div>
+              <h4 style={{ marginBottom: 8 }}>Needs Manual Review</h4>
+              <p style={{ color: 'var(--muted)', fontSize: 13 }}>
+                The gateway confirmed a different amount than expected for {policy.policyNumber}. It has not been
+                recorded automatically. The office has been alerted and will reconcile this by hand.
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="modal-footer">
@@ -365,6 +426,14 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
               <button className="btn btn-ghost" onClick={onClose}>Close</button>
               <button className="btn btn-primary" onClick={() => setStep('select')}>Try Again</button>
             </>
+          )}
+          {step === 'mismatch' && (
+            // No "Try Again" here on purpose: the gateway said this
+            // reference WAS paid, just not for the right amount, so
+            // starting a fresh transaction risks collecting a second time
+            // before the first is even reconciled. This one needs a human
+            // to look at it, not another attempt.
+            <button className="btn btn-primary btn-full" onClick={onClose}>Close</button>
           )}
         </div>
       </div>

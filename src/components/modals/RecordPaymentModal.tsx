@@ -143,7 +143,7 @@ export default function RecordPaymentModal({ policyId: initialPolicyId, payment:
           <div className="form-row">
             <div className="form-group">
               <label>Amount ($) *</label>
-              <input type="number" className="form-control" min={0} value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" />
+              <input type="number" className="form-control" min={0} step="0.01" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" />
             </div>
             <div className="form-group">
               <label>Payment Method *</label>

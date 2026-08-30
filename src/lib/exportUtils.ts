@@ -10,6 +10,7 @@ import { getDocumentUrl } from './storage'
 import { reverseGeocode } from './geocode'
 import { policyBillablePremium, billableHeadCount } from './premium'
 import { holderMemberNumber, dependantMemberNumber } from './memberNumbers'
+import { isHouseInsurer } from './insurerAssignment'
 
 function triggerDownload(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob)
@@ -71,12 +72,24 @@ function money(amount: number): string {
   return `$${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
-/** Shared masthead for official client-facing documents: real logo top-left,
- *  Head Office contact block right-aligned. Only prints what's actually
- *  configured (Settings -> Notifications -> Company Details); a wrong
- *  address on an official document is worse than an absent one. */
-function drawLetterhead(doc: jsPDF, pageWidth: number, logo: string, cfg: ReturnType<typeof getNotifSettings>) {
-  doc.addImage(logo, 'PNG', 14, 8, 20, 20)
+/** Shared masthead for official client-facing documents: real logo (or, for
+ *  cover placed with anyone but the house insurer, a plain text mark --
+ *  Enpassent places business with almost every insurer in Zimbabwe, so this
+ *  logo must never appear on a document for cover it does not itself
+ *  underwrite) top-left, Head Office contact block right-aligned. Only
+ *  prints what's actually configured (Settings -> Notifications -> Company
+ *  Details); a wrong address on an official document is worse than an
+ *  absent one. */
+function drawLetterhead(doc: jsPDF, pageWidth: number, logo: string | null, brandName: string, cfg: ReturnType<typeof getNotifSettings>) {
+  if (logo) {
+    doc.addImage(logo, 'PNG', 14, 8, 20, 20)
+  } else {
+    doc.setFontSize(12)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(...NAVY)
+    doc.text(brandName, 14, 20)
+    doc.setFont('helvetica', 'normal')
+  }
   let ry = 11
   if (cfg.companyAddress || cfg.companyPhone || cfg.companyEmail) {
     doc.setFontSize(8)
@@ -124,6 +137,11 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   ])
   const doc = new jsPDF()
   const insurerName = policy.insurer ?? 'the insurer'
+  // The logo (and the letterhead's own name) show Motions only when Motions
+  // actually underwrites this policy. For anyone else's cover the letterhead
+  // reads Enpassent -- the broker issuing the document -- never the house
+  // insurer's mark on business that isn't its own.
+  const isHouseCover = isHouseInsurer(policy.insurer)
   const pageWidth = doc.internal.pageSize.getWidth()
   const pageHeight = doc.internal.pageSize.getHeight()
   const cfg = getNotifSettings()
@@ -132,7 +150,7 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
     if (y + need > pageHeight - 16) { doc.addPage(); y = 20 }
   }
 
-  drawLetterhead(doc, pageWidth, MOTIONS_LOGO_PNG_BASE64, cfg)
+  drawLetterhead(doc, pageWidth, isHouseCover ? MOTIONS_LOGO_PNG_BASE64 : null, isHouseCover ? insurerName : 'Enpassent Multiple Agent', cfg)
 
   let y = 28
   doc.setFontSize(9.5)
@@ -298,12 +316,15 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   doc.text('Disclaimer:', 14, y)
   y += 4
   const terms = doc.splitTextToSize(
-    `Terms and Conditions apply, and are subject to the full Policy Terms and Conditions of ${insurerName}. Terms and Conditions can be found at www.motions.co.zw. Cover incepts on the start date above, subject to any applicable waiting period. Claims must be reported as soon as reasonably possible and are subject to verification. Premiums must be kept up to date for cover to remain in force; a lapsed policy may require reinstatement. This document is a summary and does not itself constitute the full policy contract.`,
+    `Terms and Conditions apply, and are subject to the full Policy Terms and Conditions of ${insurerName}, available from Enpassent Multiple Agent on request. Cover incepts on the start date above, subject to any applicable waiting period. Claims must be reported as soon as reasonably possible and are subject to verification. Premiums must be kept up to date for cover to remain in force; a lapsed policy may require reinstatement. This document is a summary and does not itself constitute the full policy contract.`,
     pageWidth - 28,
   )
   doc.text(terms, 14, y)
   y += terms.length * 4 + 4
-  doc.text('Copyright © Motions Microinsurance. All rights reserved.', 14, y)
+  // This document is issued by Enpassent regardless of who underwrites the
+  // policy -- the underwriter is already named above -- so the copyright
+  // line is never the house insurer's by default.
+  doc.text('Copyright © Enpassent Multiple Agent. All rights reserved.', 14, y)
 
   return doc
 }
@@ -490,6 +511,11 @@ export async function exportClaimAssessmentReport(
  *  farm before any claim exists rather than the damage evidence after one. */
 export async function exportPolicyAssessmentReport(
   assessment: PolicyAssessment, policyNumber: string, clientName: string,
+  /** The policy's own insurer, when the caller has it to hand. Only when
+   *  this really is the house insurer does the letterhead carry its logo --
+   *  a report for cover placed with anyone else, or with nobody chosen yet,
+   *  reads Enpassent instead. */
+  insurerName?: string,
 ) {
   const [{ jsPDF }, { MOTIONS_LOGO_PNG_BASE64 }] = await Promise.all([
     import('jspdf'), import('../assets/motionsLogo'),
@@ -497,8 +523,9 @@ export async function exportPolicyAssessmentReport(
   const doc = new jsPDF()
   const pageWidth = doc.internal.pageSize.getWidth()
   const cfg = getNotifSettings()
+  const isHouseCover = isHouseInsurer(insurerName)
 
-  drawLetterhead(doc, pageWidth, MOTIONS_LOGO_PNG_BASE64, cfg)
+  drawLetterhead(doc, pageWidth, isHouseCover ? MOTIONS_LOGO_PNG_BASE64 : null, isHouseCover && insurerName ? insurerName : 'Enpassent Multiple Agent', cfg)
 
   let y = 28
   doc.setFontSize(9.5)

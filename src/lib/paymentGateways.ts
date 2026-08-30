@@ -193,15 +193,20 @@ export async function initiateEcoCash(req: PaymentRequest): Promise<PaymentRespo
  * has not been confirmed is not a payment that failed, and the difference
  * decides whether a policy gets marked paid.
  */
-export async function pollEcoCash(lookupUrl: string): Promise<{ status: 'pending' | 'success' | 'failed'; message: string }> {
+export async function pollEcoCash(lookupUrl: string): Promise<{ status: 'pending' | 'success' | 'failed'; message: string; amount?: number }> {
   try {
     const res = await fetch('/api/ecocash-instant', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'lookup', lookupUrl }),
     })
-    const data = await res.json().catch(() => ({})) as { outcome?: 'success' | 'failed' | 'pending'; message?: string }
-    if (data.outcome === 'success') return { status: 'success', message: data.message ?? 'Payment confirmed by EcoCash' }
+    const data = await res.json().catch(() => ({})) as { outcome?: 'success' | 'failed' | 'pending'; message?: string; amount?: number }
+    // amount is best-effort here -- see AMOUNT_FIELDS in
+    // api/_lib/ecocashInstant.ts -- undefined means EcoCash's reply did not
+    // include anything recognisable as one, not that it was checked and
+    // matched. The caller should only treat a present amount as a real
+    // reconciliation, not absence-of-amount as absence-of-risk.
+    if (data.outcome === 'success') return { status: 'success', message: data.message ?? 'Payment confirmed by EcoCash', amount: data.amount }
     if (data.outcome === 'failed') return { status: 'failed', message: data.message ?? 'EcoCash declined this transaction' }
     return { status: 'pending', message: data.message ?? 'Waiting for the payer to approve…' }
   } catch {
@@ -239,6 +244,9 @@ export async function initiatePaynow(req: PaymentRequest): Promise<PaymentRespon
         amount: req.amount,
         description: `Insurance Premium: ${req.policyNumber}`,
         email: req.clientEmail,
+        // Required server-side so api/paynow-webhook.ts has a record of
+        // what this reference was actually for -- see paynow_transactions.
+        policyId: req.policyId,
       }),
     })
     httpStatus = res.status
@@ -279,15 +287,20 @@ export async function initiatePaynow(req: PaymentRequest): Promise<PaymentRespon
  * pollTransaction -- which POSTs as Paynow expects and verifies the
  * response hash before trusting it.
  */
-export async function pollPaynow(pollUrl: string): Promise<{ status: 'pending' | 'success' | 'failed'; message: string }> {
+export async function pollPaynow(pollUrl: string): Promise<{ status: 'pending' | 'success' | 'failed'; message: string; amount?: number }> {
   try {
     const res = await fetch('/api/paynow', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'poll', pollUrl }),
     })
-    const data = await res.json().catch(() => ({})) as { status?: string; paid?: boolean }
-    if (data.paid) return { status: 'success', message: 'Payment successful' }
+    const data = await res.json().catch(() => ({})) as { status?: string; paid?: boolean; amount?: number | null }
+    // Paynow always states an amount for a real transaction, so the caller
+    // is expected to check it against what it asked for before crediting
+    // "paid" -- see OnlinePaymentModal.tsx's reconciliation against
+    // totalAmount, and api/paynow-webhook.ts for the same check on the
+    // server-side path.
+    if (data.paid) return { status: 'success', message: 'Payment successful', amount: data.amount ?? undefined }
     const s = (data.status ?? '').toLowerCase()
     if (s.includes('cancel') || s.includes('disputed')) return { status: 'failed', message: data.status ?? 'Cancelled' }
     // Anything else is not an answer yet, so it stays pending.

@@ -3,6 +3,7 @@ import type { PolicyCard } from '../../types'
 import type { PolicyMember } from '../../lib/memberNumbers'
 import { MOTIONS_LOGO_PNG_BASE64 } from '../../assets/motionsLogo'
 import { formatDate } from '../../lib/dateUtils'
+import { isHouseInsurer } from '../../lib/insurerAssignment'
 
 /**
  * The membership card, at real proportions.
@@ -44,10 +45,20 @@ const STATUS_COPY: Record<PolicyCard['status'], { label: string; color: string }
 
 
 const MemberCard = forwardRef<HTMLDivElement, Props>(function MemberCard(
-  { member, card, face = 'front', scale = 1, companyName = 'Motions Microinsurance', companyPhone, companyEmail },
+  { member, card, face = 'front', scale = 1, companyName, companyPhone, companyEmail },
   ref,
 ) {
   const status = card ? STATUS_COPY[card.status] : { label: 'NOT ISSUED', color: '#6B7E99' }
+
+  // Enpassent places business with almost every insurer in Zimbabwe, so a
+  // card must never assume it is any one of them by default. It names
+  // whichever insurer actually underwrites this member's policy
+  // (member.insurer, passed down by the caller); only once that is unknown
+  // does it fall back to Enpassent itself as the issuing broker. The house
+  // logo is drawn only when the resolved name really is Motions -- it must
+  // never appear, even implicitly, on cover placed with anyone else.
+  const resolvedName = companyName || member.insurer || 'Enpassent Multiple Agent'
+  const showHouseLogo = isHouseInsurer(resolvedName)
 
   // px() keeps every dimension proportional to `scale`, so one layout
   // serves both the small on-screen preview and the full-size export.
@@ -97,7 +108,7 @@ const MemberCard = forwardRef<HTMLDivElement, Props>(function MemberCard(
         </div>
 
         <div style={{ position: 'absolute', bottom: px(40), left: px(56), right: px(56), fontSize: px(20), lineHeight: 1.45, color: 'rgba(255,255,255,0.62)' }}>
-          This card remains the property of {companyName} and must be returned on request. It proves membership only;
+          This card remains the property of {resolvedName} and must be returned on request. It proves membership only;
           cover is subject to the policy terms and to premiums being up to date.
           {(companyPhone || companyEmail) && (
             <div style={{ marginTop: px(8), color: 'rgba(255,255,255,0.8)' }}>
@@ -123,10 +134,13 @@ const MemberCard = forwardRef<HTMLDivElement, Props>(function MemberCard(
 
       <div style={{ position: 'absolute', top: px(44), left: px(56), right: px(56), display: 'flex', alignItems: 'center', gap: px(18) }}>
         {/* The asset is stored bare for jsPDF's addImage; an <img> needs the
-            data: prefix put back on. */}
-        <img src={`data:image/png;base64,${MOTIONS_LOGO_PNG_BASE64}`} alt="" style={{ width: px(76), height: px(76), objectFit: 'contain' }} />
+            data: prefix put back on. Only drawn for Motions's own cover --
+            it must never appear on a card for cover placed elsewhere. */}
+        {showHouseLogo && (
+          <img src={`data:image/png;base64,${MOTIONS_LOGO_PNG_BASE64}`} alt="" style={{ width: px(76), height: px(76), objectFit: 'contain' }} />
+        )}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: px(30), fontWeight: 700, letterSpacing: px(0.5) }}>{companyName}</div>
+          <div style={{ fontSize: px(30), fontWeight: 700, letterSpacing: px(0.5) }}>{resolvedName}</div>
           <div style={{ fontSize: px(19), letterSpacing: px(3), textTransform: 'uppercase', color: 'rgba(255,255,255,0.6)' }}>
             Membership Card
           </div>

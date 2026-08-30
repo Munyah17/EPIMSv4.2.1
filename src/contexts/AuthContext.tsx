@@ -181,6 +181,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
           email = resolved as string
         }
+
+        // 5 failed attempts in a row (broken by any success in between)
+        // locks sign-in until a human clears it -- see
+        // database/add_login_lockout.sql. Checked via a SECURITY DEFINER
+        // function because login_attempts' own RLS only grants SELECT to
+        // staff, and this has to work for someone who isn't signed in yet.
+        // Not logged as another attempt: it never got as far as trying a
+        // password, and the lockout state doesn't need another row to prove
+        // it -- the same 5 that caused it are still what future checks see.
+        const { data: locked, error: lockError } = await supabase.rpc('is_login_locked', { p_email: email })
+        if (!lockError && locked) {
+          return {
+            profile: null,
+            error: 'Too many failed sign-in attempts. This account has been locked for security — email admin@enpassent.co.zw to have it unlocked.',
+          }
+        }
+
         const { data, error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) {
           errorDetail = error.message

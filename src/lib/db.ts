@@ -8,8 +8,9 @@ import { health } from './health'
 import { cacheGet, cacheSet } from './offlineCache'
 import { hammingDistance, DUPLICATE_THRESHOLD } from './photoHash'
 import { policyBillablePremium } from './premium'
+import { houseInsurerFirst } from './insurerAssignment'
 import type {
-  AppUser, Client, Product, Policy, Claim, Payment,
+  AppUser, Client, Product, ClientSafeProduct, Policy, Claim, Payment,
   Ticket, EmailMessage, Lead, FraudCase, Reminder, CautionFlag,
   PolicyStatus, ClaimStatus, PaymentStatus, PaymentMethod,
   TicketStatus, TicketPriority, LeadStatus, FraudCaseStatus, CustomRole,
@@ -115,13 +116,17 @@ function toClient(r: Record<string, unknown>): Client {
     address:     (r.address as string) ?? '',
     occupation:  r.occupation as string | undefined,
     insurer:     (r.insurer as Client['insurer']) ?? undefined,
+    insurerProvisional: (r.insurer_provisional as boolean) ?? false,
     createdAt:   date(r.created_at as string),
     policyCount: (r.policy_count as number) ?? 0,
     status:      r.status as Client['status'],
   }
 }
 
-function toProduct(r: Record<string, unknown>): Product {
+/** Shared by toProduct and toClientSafeProduct — every column the client-safe
+ *  view actually carries. Kept as one function so the two never drift apart
+ *  on the fields both are allowed to see. */
+function toClientSafeProduct(r: Record<string, unknown>): ClientSafeProduct {
   return {
     id:                r.id as string,
     name:              r.name as string,
@@ -132,12 +137,18 @@ function toProduct(r: Record<string, unknown>): Product {
     waitingPeriodDays: r.waiting_period_days as number,
     minAge:            r.min_age as number,
     maxAge:            r.max_age as number,
-    commissionPct:     r.commission_pct as number,
     active:            r.active as boolean,
     features:          (r.features as string[]) ?? [],
     description:       (r.description as string) ?? '',
+    excess:            (r.excess as string) || undefined,
+  }
+}
+
+function toProduct(r: Record<string, unknown>): Product {
+  return {
+    ...toClientSafeProduct(r),
+    commissionPct:     r.commission_pct as number,
     policiesCount:     (r.policies_count as number) ?? 0,
-    excess:            (r.excess as string) ?? undefined,
   }
 }
 
@@ -570,6 +581,7 @@ export const clients = {
       national_id: client.nationalId, dob: client.dob || null,
       address: client.address, occupation: client.occupation ?? null,
       insurer: client.insurer ?? null, status: client.status,
+      insurer_provisional: client.insurerProvisional ?? false,
     }
     const { ok, data, error } = await sb('clients', 'write',
       () => supabase.from('clients').insert(row).select().single(),
@@ -586,6 +598,7 @@ export const clients = {
     if (updates.address    !== undefined) row.address    = updates.address
     if (updates.occupation !== undefined) row.occupation = updates.occupation
     if (updates.insurer    !== undefined) row.insurer    = updates.insurer ?? null
+    if (updates.insurerProvisional !== undefined) row.insurer_provisional = updates.insurerProvisional
     if (updates.status     !== undefined) row.status     = updates.status
     const { ok, data, error } = await sb('clients', 'write',
       () => supabase.from('clients').update(row).eq('id', id).select().single(),
@@ -630,6 +643,32 @@ export const products = {
     const cached = cacheGet<Product>('products')
     if (cached) return { data: cached.data, error: null }
     local('products', 'read')
+    return { data: [], error: 'Could not load products — connect to the internet at least once to cache them for offline use.' }
+  },
+
+  /**
+   * For anyone who is not staff — a client viewing their own cover, or a
+   * future public quote/checkout flow. Reads public.products_client_safe
+   * (see database/add_products_client_safe_view.sql) instead of the base
+   * table, so commission_pct and policies_count never reach the browser in
+   * the first place -- not merely go unrendered by whichever page called
+   * this. Cached under its own key so a client-safe read can never be the
+   * thing that backfills the full-Product cache products.list() falls back
+   * to when offline.
+   */
+  async listClientSafe(): Promise<{ data: ClientSafeProduct[]; error: string | null }> {
+    const { ok, data } = await sb('products_client_safe', 'read',
+      () => supabase.from('products_client_safe').select('*').order('name'),
+      d => Array.isArray(d),
+    )
+    if (ok && data) {
+      const mapped = (data as Record<string,unknown>[]).map(toClientSafeProduct)
+      cacheSet('products_client_safe', mapped)
+      return { data: mapped, error: null }
+    }
+    const cached = cacheGet<ClientSafeProduct>('products_client_safe')
+    if (cached) return { data: cached.data, error: null }
+    local('products_client_safe', 'read')
     return { data: [], error: 'Could not load products — connect to the internet at least once to cache them for offline use.' }
   },
 
@@ -691,15 +730,6 @@ function toInsurer(r: any): InsurerRecord {
     commissionPercent: r.commission_percent ?? undefined,
     status: r.status, notes: r.notes ?? undefined, coverTypes: r.cover_types ?? [], createdAt: r.created_at,
   }
-}
-
-/** We are the default underwriter, so we lead the list everywhere it's
- *  shown (policy creation/update especially) rather than sitting wherever
- *  the alphabet happens to put us. Everything else stays A-Z. */
-const HOUSE_INSURER = 'motions'
-function houseInsurerFirst(list: InsurerRecord[]): InsurerRecord[] {
-  const isHouse = (i: InsurerRecord) => i.name.toLowerCase().includes(HOUSE_INSURER)
-  return [...list.filter(isHouse), ...list.filter(i => !isHouse(i))]
 }
 
 export const insurers = {
@@ -898,6 +928,9 @@ export const claims = {
   },
 
   async create(claim: Omit<Claim, 'id' | 'claimNumber' | 'policyNumber' | 'clientId' | 'clientName' | 'productName'>) {
+    if (!Number.isFinite(claim.amount) || claim.amount <= 0) {
+      return { data: null, error: 'Claim amount must be greater than zero.' }
+    }
     const claimNumber = `CLM${new Date().getFullYear()}${String(Date.now()).slice(-4)}`
     const row = {
       claim_number: claimNumber, policy_id: claim.policyId,
@@ -1033,6 +1066,14 @@ export const payments = {
   },
 
   async create(payment: Omit<Payment, 'id'>) {
+    // A zero or negative amount recorded as 'completed' still advances
+    // nextPaymentDate and can reinstate a lapsed policy for free (see
+    // applyCompletedPaymentToPolicy's Math.max(1, ...) floor) -- checked
+    // here rather than trusting every caller (a UI form, the manual
+    // recording flow, a future one) to have validated it first.
+    if (!Number.isFinite(payment.amount) || payment.amount <= 0) {
+      return { data: null, error: 'Payment amount must be greater than zero.' }
+    }
     const row = {
       reference: payment.reference, policy_id: payment.policyId,
       amount: payment.amount, method: payment.method, status: payment.status,
@@ -1053,6 +1094,9 @@ export const payments = {
    *  its status — the "payments capturing and validation" split from the
    *  2026-08 access review: capture = record(), validation = this. */
   async update(id: string, updates: Partial<Payment>) {
+    if (updates.amount !== undefined && (!Number.isFinite(updates.amount) || updates.amount <= 0)) {
+      return { data: null, error: 'Payment amount must be greater than zero.' }
+    }
     const row: Record<string, unknown> = {}
     if (updates.status !== undefined) row.status = updates.status
     if (updates.amount !== undefined) row.amount = updates.amount

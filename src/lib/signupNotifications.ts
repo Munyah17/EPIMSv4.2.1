@@ -3,21 +3,28 @@ import { sendSms } from './smsService'
 import { sendEmail, getNotifSettings } from './mailService'
 import { MAILBOXES } from './mailboxes'
 import { premiumPeriodLabel } from './productUtils'
+import { db } from './db'
 
 /**
  * Fires the moment a policy is registered, by whatever route -- an agent in
  * the office, or a self-service checkout on the public site.
  *
- * Both the new client and the Motions team are told immediately: the client
- * gets confirmation they are covered, and the team gets a heads-up they can
- * act on without opening the system.
+ * Both the new client and the Enpassent office are told immediately: the
+ * client gets confirmation of what was registered, and the office gets a
+ * heads-up they can act on without opening the system.
+ *
+ * Enpassent is the broker the client actually deals with -- it places
+ * business with almost every insurer in Zimbabwe, Motions included -- so
+ * every client-facing message here speaks as Enpassent. Which insurer ends
+ * up carrying the risk is a separate fact, shown on the policy itself, never
+ * baked into the greeting.
  *
  * Everything here is best-effort and never rethrows. A registration that
  * succeeded must not appear to fail because a text message or a mailbox was
  * temporarily unreachable.
  */
 
-/** Motions office lines that receive a text on every new registration. */
+/** Office lines that receive a text on every new registration. */
 export const ADMIN_ALERT_NUMBERS = [
   '+263780086175',
   '+263780086176',
@@ -41,18 +48,18 @@ export async function notifyClientRegistered(client: Client, registeredBy?: stri
   if (client.phone) {
     void sendSms(
       client.phone,
-      `Motions Microinsurance: Welcome ${client.name.split(' ')[0]}, your details are registered with us. An agent will be in touch to arrange cover.`,
+      `Enpassent Multiple Agent: Welcome ${client.name.split(' ')[0]}, your details are registered with us. An agent will be in touch to arrange cover.`,
     ).catch(() => { /**/ })
   }
 
   if (client.email) {
     void sendEmail({
       to: client.email,
-      subject: 'Welcome to Motions Microinsurance',
+      subject: 'Welcome to Enpassent Multiple Agent',
       from: MAILBOXES.noreply,
       body: `Dear ${client.name},
 
-Your details have been registered with Motions Microinsurance.
+Your details have been registered with Enpassent Multiple Agent.
 
 Name:        ${client.name}
 National ID: ${client.nationalId || 'not given'}
@@ -62,7 +69,15 @@ Please note this registration does not itself put any cover in place. One of our
     }).catch(() => { /**/ })
   }
 
-  const alert = `Motions: New client registered. ${client.name}, ${client.phone || 'no phone'}${registeredBy ? `, by ${registeredBy}` : ''}. No policy yet.`
+  // Staff only. The client's own SMS and email above say nothing about this:
+  // every insurer on the list is screened and under agreement, so a
+  // provisional placement is a housekeeping detail for the office, not news
+  // for the client. It goes here because it is the office's queue of people
+  // still to be asked which insurer they want.
+  const provisional = client.insurerProvisional && client.insurer
+    ? ` No insurer chosen; provisionally with ${client.insurer}.`
+    : ''
+  const alert = `Enpassent: New client registered. ${client.name}, ${client.phone || 'no phone'}${registeredBy ? `, by ${registeredBy}` : ''}. No policy yet.${provisional}`
   const recipients = [...new Set([...ADMIN_ALERT_NUMBERS, cfg.superAdminPhone].filter(Boolean))] as string[]
   for (const number of recipients) {
     void sendSms(number, alert).catch(() => { /**/ })
@@ -82,21 +97,21 @@ export async function notifyPolicyRegistered(policy: Policy, client: Client): Pr
       : ' Your cover is active.'
     void sendSms(
       client.phone,
-      `Motions Microinsurance: Welcome ${client.name.split(' ')[0]}. Policy ${policy.policyNumber} (${policy.productName}) is registered, cover ${cover}.${waiting}`,
+      `Enpassent Multiple Agent: Welcome ${client.name.split(' ')[0]}. Policy ${policy.policyNumber} (${policy.productName}) is registered, cover ${cover}.${waiting}`,
     ).catch(() => { /**/ })
   }
 
   if (client.email) {
     void sendEmail({
       to: client.email,
-      subject: `Policy ${policy.policyNumber} registered: welcome to Motions Microinsurance`,
+      subject: `Policy ${policy.policyNumber} registered: welcome to Enpassent Multiple Agent`,
       from: MAILBOXES.noreply,
       body: `Dear ${client.name},
 
-Thank you for choosing Motions Microinsurance. Your policy has been registered.
+Thank you for choosing Enpassent Multiple Agent. Your policy has been registered.
 
 Policy Number:  ${policy.policyNumber}
-Product:        ${policy.productName}
+Product:        ${policy.productName}${policy.insurer ? `\nInsurer:        ${policy.insurer}` : ''}
 Cover Amount:   ${cover}
 Premium:        ${premium}
 Start Date:     ${policy.startDate}
@@ -110,8 +125,8 @@ Keep this email for your records. If any detail above is wrong, contact us and w
     }).catch(() => { /**/ })
   }
 
-  // ── The Motions team ──────────────────────────────────────────────
-  const alert = `Motions: New policy ${policy.policyNumber} registered. ${client.name}, ${policy.productName}, cover ${cover}, premium ${premium}. Contact ${client.phone || 'not given'}.`
+  // ── The office ─────────────────────────────────────────────────────
+  const alert = `Enpassent: New policy ${policy.policyNumber} registered. ${client.name}, ${policy.productName}, cover ${cover}, premium ${premium}. Contact ${client.phone || 'not given'}.`
   // Deduplicated in case the configured super-admin line is already one of
   // the office numbers -- nobody wants the same alert twice.
   const recipients = [...new Set([...ADMIN_ALERT_NUMBERS, cfg.superAdminPhone].filter(Boolean))] as string[]
@@ -119,9 +134,27 @@ Keep this email for your records. If any detail above is wrong, contact us and w
     void sendSms(number, alert).catch(() => { /**/ })
   }
 
-  if (cfg.insurerEmail) {
+  // A broker places business with almost every insurer in Zimbabwe, so one
+  // fixed cfg.insurerEmail cannot be "the" insurer for every policy -- it
+  // used to receive every new-policy notice regardless of who actually
+  // underwrites it. This looks up the insurer that policy.insurer actually
+  // names and, when that record has its own contact address on file, sends
+  // there instead. cfg.insurerEmail survives only as a fallback: for a
+  // policy with no insurer chosen yet, for an insurer without a contact
+  // email on file, or if the lookup itself fails -- never silently dropped,
+  // but never assumed to be correct either.
+  let insurerRecipient = cfg.insurerEmail
+  if (policy.insurer) {
+    try {
+      const { data: insurerRecords } = await db.insurers.list()
+      const matched = insurerRecords.find(i => i.name.toLowerCase() === policy.insurer!.toLowerCase())
+      if (matched?.contactEmail) insurerRecipient = matched.contactEmail
+    } catch { /* falls back to cfg.insurerEmail below */ }
+  }
+
+  if (insurerRecipient) {
     void sendEmail({
-      to: cfg.insurerEmail,
+      to: insurerRecipient,
       subject: `[New Policy] ${policy.policyNumber}: ${client.name}`,
       from: MAILBOXES.admin,
       body: `A new policy has been registered.
@@ -132,6 +165,7 @@ National ID:    ${client.nationalId || 'not given'}
 Phone:          ${client.phone || 'not given'}
 Email:          ${client.email || 'not given'}
 Product:        ${policy.productName}
+Insurer:        ${policy.insurer || 'not chosen yet'}
 Cover Amount:   ${cover}
 Premium:        ${premium}
 Start Date:     ${policy.startDate}

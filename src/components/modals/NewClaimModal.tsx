@@ -133,7 +133,7 @@ export default function NewClaimModal({ onClose, onSave, showToast, claimKind, o
       hint: agriculturePolicyTyped ? 'that is an agriculture policy; use the Agriculture Claims form.' : 'must match an existing policy.',
     })
   }
-  if (!amount) missing.push({ key: 'amount', label: 'Claim Amount' })
+  if (!(Number(amount) > 0)) missing.push({ key: 'amount', label: 'Claim Amount', hint: amount ? 'must be greater than zero.' : undefined })
   if (!dateOfEvent) missing.push({ key: 'dateOfEvent', label: 'Date of Event' })
   if (!description.trim()) missing.push({ key: 'description', label: 'Description' })
   if (!docSlots[0]?.path) missing.push({ key: 'documents', label: 'National ID document' })

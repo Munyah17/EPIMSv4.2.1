@@ -124,6 +124,11 @@ export interface Client {
   address: string
   occupation?: string
   insurer?: Insurer
+  /** True when nobody picked an insurer and the client was provisionally
+   *  placed with the house insurer. Staff-facing only: it marks a client who
+   *  still has to be asked, and it is never allowed to decide the insurer on
+   *  a policy. See src/lib/insurerAssignment.ts. */
+  insurerProvisional?: boolean
   createdAt: string
   policyCount: number
   status: 'active' | 'inactive'
@@ -247,6 +252,20 @@ export interface Product {
   /** Policy excess/deductible, free text (e.g. "10% of claim, min $50"). Blank if not applicable. */
   excess?: string
 }
+
+/**
+ * What a product looks like to someone who is not staff — a client viewing
+ * their own cover, or a future public quote/checkout flow.
+ *
+ * Deliberately missing commissionPct (the broker's margin on this product)
+ * and policiesCount (book-size, competitively sensitive). Both are real
+ * trade secrets: neither belongs in a browser response a client can open
+ * devtools on, regardless of whether the page's own UI happens to render
+ * them. Backed by the public.products_client_safe view — see
+ * database/add_products_client_safe_view.sql — which excludes the columns
+ * at the query level rather than trusting every caller to omit them.
+ */
+export type ClientSafeProduct = Omit<Product, 'commissionPct' | 'policiesCount'>
 
 export type ClaimStatus = 'pending' | 'under_review' | 'approved' | 'rejected' | 'paid'
 

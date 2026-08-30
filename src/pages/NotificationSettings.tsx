@@ -64,19 +64,21 @@ export default function NotificationSettings({ showToast }: Props) {
         {/* Insurer */}
         <div className="card">
           <div className="card-header">
-            <span className="card-title">🏢 Insurer: Motions Microinsurance</span>
+            <span className="card-title">🏢 Insurer Notifications</span>
           </div>
           <p className="notif-settings-desc">
-            Receives all claim notifications. This is the primary underwriter for all policies.
+            A single mailbox that gets copied on every new policy. Enpassent places business with
+            almost every insurer in Zimbabwe, so this is not any one underwriter -- which insurer
+            actually carries a given policy is set on the policy itself, not here.
           </p>
           <div className="form-row">
             <div className="form-group">
-              <label>Insurer Name</label>
+              <label>Label</label>
               <input
                 className="form-control"
                 value={settings.insurerName}
                 onChange={e => update('insurerName', e.target.value)}
-                placeholder="e.g. Motions Microinsurance"
+                placeholder="e.g. Underwriting Desk"
               />
             </div>
             <div className="form-group">

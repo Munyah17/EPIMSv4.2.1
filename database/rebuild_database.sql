@@ -140,7 +140,7 @@ CREATE TABLE public.claims (
   claim_number   TEXT NOT NULL UNIQUE,
   policy_id      UUID NOT NULL REFERENCES public.policies(id) ON DELETE RESTRICT,
   claim_type     TEXT NOT NULL,
-  amount         NUMERIC(14,2) NOT NULL,
+  amount         NUMERIC(14,2) NOT NULL CHECK (amount > 0),
   status         TEXT NOT NULL DEFAULT 'pending'
                    CHECK (status IN ('pending','under_review','approved','rejected','paid')),
   date_of_event  DATE NOT NULL,
@@ -159,7 +159,7 @@ CREATE TABLE public.payments (
   id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   reference      TEXT NOT NULL UNIQUE,
   policy_id      UUID NOT NULL REFERENCES public.policies(id) ON DELETE RESTRICT,
-  amount         NUMERIC(10,2) NOT NULL,
+  amount         NUMERIC(10,2) NOT NULL CHECK (amount > 0),
   method         TEXT NOT NULL CHECK (method IN ('EcoCash','OneMoney','InnBucks','Bank Transfer','Cash','Debit Order','Stop Order','Paynow','Zipit')),
   status         TEXT NOT NULL DEFAULT 'completed'
                    CHECK (status IN ('completed','pending','failed','reversed')),
@@ -513,6 +513,14 @@ CREATE POLICY "policies_delete_admin" ON public.policies
 CREATE POLICY "claims_select_staff" ON public.claims
   FOR SELECT TO authenticated USING (is_staff());
 
+-- Policyholders can read their own claims (owns_policy is defined above,
+-- for exactly this). Without this, RLS policies for one command are OR'd
+-- together and there is no second one granting a policyholder anything, so
+-- every policyholder's "My Claims" page reads back empty regardless of what
+-- is actually on file for them.
+CREATE POLICY "claims_select_own" ON public.claims
+  FOR SELECT TO authenticated USING (public.owns_policy(policy_id));
+
 -- Claims officers and admins can write claims
 CREATE POLICY "claims_write" ON public.claims
   FOR ALL TO authenticated
@@ -527,6 +535,11 @@ CREATE POLICY "claims_delete_admin" ON public.claims
 -- Staff can read all payments
 CREATE POLICY "payments_select_staff" ON public.payments
   FOR SELECT TO authenticated USING (is_staff());
+
+-- Policyholders can read their own payments -- same gap, same fix as
+-- claims_select_own above.
+CREATE POLICY "payments_select_own" ON public.payments
+  FOR SELECT TO authenticated USING (public.owns_policy(policy_id));
 
 -- Finance and admins can write payments
 CREATE POLICY "payments_write" ON public.payments
@@ -920,6 +933,24 @@ CREATE OR REPLACE FUNCTION public.trim_login_attempts()
 RETURNS VOID LANGUAGE sql SECURITY DEFINER AS $$
   DELETE FROM public.login_attempts WHERE ts < NOW() - INTERVAL '7 days'
 $$;
+
+-- Locks sign-in after 5 consecutive failures for one email (broken by any
+-- success in between). See database/add_login_lockout.sql for the full
+-- rationale -- unlocking is a human clearing login_attempts, not a timer.
+CREATE OR REPLACE FUNCTION public.is_login_locked(p_email TEXT)
+RETURNS BOOLEAN LANGUAGE sql STABLE SECURITY DEFINER AS $$
+  SELECT COUNT(*) = 5 FROM (
+    SELECT success FROM public.login_attempts
+    WHERE email = lower(trim(p_email))
+    ORDER BY ts DESC
+    LIMIT 5
+  ) recent
+  WHERE NOT success
+$$;
+
+REVOKE ALL ON FUNCTION public.is_login_locked(TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.is_login_locked(TEXT) TO anon, authenticated;
+
 -- Developer API platform: lets an external developer/app sell this
 -- company's insurance products through their own product, via an API key.
 -- A developer is represented internally by a real profiles row (role

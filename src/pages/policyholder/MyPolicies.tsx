@@ -23,7 +23,11 @@ export default function MyPolicies({ setActivePanel }: Props) {
       if (data) setPolicies(data)
       setLoading(false)
     })
-    db.products.list().then(({ data }) => {
+    // Client-safe read: a full products.list() also carries commissionPct
+    // (the broker's margin) and policiesCount, neither of which belongs in a
+    // client's browser even though this page only ever reads .category off
+    // it. See db.products.listClientSafe().
+    db.products.listClientSafe().then(({ data }) => {
       if (data) setCategoryByProductId(Object.fromEntries(data.map(p => [p.id, p.category])))
     })
   }, [])
