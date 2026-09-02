@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { Paynow } from 'paynow'
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 
 /**
  * Paynow, through Paynow's own SDK.
@@ -30,12 +30,19 @@ function integrationFor(currency: PaynowCurrency): { id?: string; key?: string }
     : { id: process.env.PAYNOW_INTEGRATION_ID, key: process.env.PAYNOW_INTEGRATION_KEY }
 }
 
-/** Units of `currency` per 1 USD. USD is always 1; ZWG comes from
- *  PAYNOW_ZWG_RATE and has no default -- an unset rate means ZWG cannot be
- *  charged at all, rather than being charged at the USD figure. */
-function rateFor(currency: PaynowCurrency): number | null {
+/**
+ * Units of `currency` per 1 USD. USD is always 1; ZWG is whatever rate is
+ * currently on record, set from the admin portal.
+ *
+ * There is no default and no fallback: an unset rate means ZWG cannot be
+ * charged at all, rather than being charged at the USD figure.
+ */
+async function rateFor(currency: PaynowCurrency, admin: SupabaseClient): Promise<number | null> {
   if (currency !== 'ZWG') return 1
-  const rate = Number(process.env.PAYNOW_ZWG_RATE)
+  const { data } = await admin.from('exchange_rates')
+    .select('rate').eq('currency', 'ZWG')
+    .order('effective_date', { ascending: false }).limit(1).maybeSingle()
+  const rate = Number(data?.rate)
   return Number.isFinite(rate) && rate > 0 ? rate : null
 }
 
@@ -101,17 +108,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'reference and a positive amount are required.' })
       }
 
-      // No rate means the charge cannot be worked out, so nothing is sent to
-      // Paynow. Charging the USD figure unconverted would take a fraction of
-      // what is owed and leave the policy uncredited.
-      const rate = rateFor(currency)
-      if (rate === null) {
-        return res.status(503).json({ error: `${currency} payments are unavailable at the moment.` })
-      }
-      const amount = Math.round(usdAmount * rate * 100) / 100
-      if (!Number.isFinite(amount) || amount <= 0) {
-        return res.status(400).json({ error: 'Could not determine the amount to charge.' })
-      }
       // Required, not optional: without it, api/paynow-webhook.ts has no
       // record of what this reference was actually FOR, and can only ever
       // trust Paynow's own "paid" flag blindly -- exactly the gap that lets
@@ -125,6 +121,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(500).json({ error: 'Server is not configured (missing Supabase service credentials).' })
       }
       const admin = createClient(supabaseUrl, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } })
+
+      // No rate means the charge cannot be worked out, so nothing is sent to
+      // Paynow. Charging the USD figure unconverted would take a fraction of
+      // what is owed and leave the policy uncredited.
+      const rate = await rateFor(currency, admin)
+      if (rate === null) {
+        return res.status(503).json({ error: 'ZiG payments are unavailable until an exchange rate is set.' })
+      }
+      const amount = Math.round(usdAmount * rate * 100) / 100
+      if (!Number.isFinite(amount) || amount <= 0) {
+        return res.status(400).json({ error: 'Could not determine the amount to charge.' })
+      }
 
       // Built the way Paynow's Node quickstart documents it: construct with
       // the integration pair, assign the URLs as properties, createPayment,

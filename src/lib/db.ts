@@ -9,6 +9,7 @@ import { cacheGet, cacheSet } from './offlineCache'
 import { hammingDistance, DUPLICATE_THRESHOLD } from './photoHash'
 import { policyBillablePremium } from './premium'
 import { houseInsurerFirst } from './insurerAssignment'
+import type { ExchangeRate } from './exchangeRate'
 import type {
   AppUser, Client, Product, ClientSafeProduct, Policy, Claim, Payment,
   Ticket, EmailMessage, Lead, FraudCase, Reminder, CautionFlag,
@@ -1711,6 +1712,68 @@ export const cautionFlags = {
   },
 }
 
+// ── EXCHANGE RATES ────────────────────────────────────────────────
+
+function toExchangeRate(row: Record<string, unknown>): ExchangeRate {
+  return {
+    id: String(row.id),
+    currency: 'ZWG',
+    rate: Number(row.rate),
+    effectiveDate: String(row.effective_date),
+    source: row.source === 'estimate' ? 'estimate' : 'manual',
+    note: (row.note as string) ?? undefined,
+    setBy: (row.set_by as string) ?? undefined,
+    createdAt: String(row.created_at),
+  }
+}
+
+export const exchangeRates = {
+  /** The rate in force: the newest effective_date on record. */
+  async current(currency: 'ZWG' = 'ZWG') {
+    const { data, error } = await supabase.from('exchange_rates')
+      .select('*').eq('currency', currency)
+      .order('effective_date', { ascending: false }).limit(1).maybeSingle()
+    if (error || !data) return { data: null, error: error?.message ?? null }
+    return { data: toExchangeRate(data), error: null }
+  },
+
+  /** Newest first, for the history table and the trend chart. */
+  async history(currency: 'ZWG' = 'ZWG', limit = 60) {
+    const { data, error } = await supabase.from('exchange_rates')
+      .select('*').eq('currency', currency)
+      .order('effective_date', { ascending: false }).limit(limit)
+    if (error) return { data: [] as ExchangeRate[], error: error.message }
+    return { data: (data ?? []).map(toExchangeRate), error: null }
+  },
+
+  /**
+   * Records a rate. One row per day: setting a rate twice on the same date
+   * replaces that day's figure rather than adding a second one, so the
+   * history stays one reading per effective date.
+   */
+  async set(input: {
+    rate: number
+    effectiveDate: string
+    source?: 'manual' | 'estimate'
+    note?: string
+    setBy?: string
+    currency?: 'ZWG'
+  }) {
+    const row = {
+      currency: input.currency ?? 'ZWG',
+      rate: input.rate,
+      effective_date: input.effectiveDate,
+      source: input.source ?? 'manual',
+      note: input.note ?? null,
+      set_by: input.setBy ?? null,
+    }
+    const { data, error } = await supabase.from('exchange_rates')
+      .upsert(row, { onConflict: 'currency,effective_date' }).select('*').single()
+    if (error || !data) return { data: null, error: error?.message ?? 'Could not save the rate.' }
+    return { data: toExchangeRate(data), error: null }
+  },
+}
+
 // ── DEVELOPER API ─────────────────────────────────────────────────
 export interface ApiDeveloper {
   id: string
@@ -2287,6 +2350,7 @@ export function subscribeToTable(table: string, callback: () => void) {
 export const db = {
   policies, clients, products, claims, payments,
   tickets, emails, leads, staff, fraudCases, reminders, cautionFlags, settings, loginAttempts, developerApi,
+  exchangeRates,
   customRoles, claimAssessments, policyAssessments, insurers, photoHashes, cropTypes, fraudSignalRules, heroSlides,
   policyCards,
   dashboardStats, sidebarCounts,

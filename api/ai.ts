@@ -3,6 +3,7 @@ import analyzeAssessmentPhoto from './_lib/analyze-assessment-photo.js'
 import scoreClaimFraud from './_lib/score-claim-fraud.js'
 import scoreLead from './_lib/score-lead.js'
 import searchLeads from './_lib/search-leads.js'
+import estimateExchangeRate from './_lib/estimate-exchange-rate.js'
 
 /**
  * One function for all four Groq-backed endpoints.
@@ -26,6 +27,7 @@ const ROUTES: Record<string, (req: VercelRequest, res: VercelResponse) => Promis
   'score-claim-fraud': scoreClaimFraud,
   'score-lead': scoreLead,
   'search-leads': searchLeads,
+  'estimate-exchange-rate': estimateExchangeRate,
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

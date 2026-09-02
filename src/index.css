@@ -1025,6 +1025,34 @@ textarea.form-control{resize:vertical;min-height:80px}
 /* Full-width branded rails: one row each, so the client's own logo is what
    staff pick from rather than a grid of near-identical tiles. */
 .pay-method-banners{display:flex;flex-direction:column;gap:9px;margin-top:6px}
+/* Exchange rate */
+.dash-alert{display:flex;align-items:center;gap:12px;padding:12px 14px;margin-bottom:16px;border:1px solid #FCD34D;background:#FFFBEB;border-radius:10px}
+.dash-alert-icon{font-size:20px;line-height:1}
+.dash-alert-body{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+.dash-alert-title{font-size:13px;font-weight:600;color:#92400E}
+.dash-alert-text{font-size:11.5px;color:#A16207}
+.card-warning{border-color:#FCD34D}
+.rate-current{display:flex;flex-direction:column;gap:2px;margin:4px 0 12px}
+.rate-current-value{font-size:22px;font-weight:700;letter-spacing:-.02em}
+.rate-current-meta{font-size:11px;color:var(--muted)}
+.rate-form{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-start}
+.rate-form .form-group{flex:1;min-width:150px;margin-bottom:0}
+.rate-suggestion{margin-top:12px;padding:11px 12px;border:1px dashed var(--border);border-radius:9px;background:var(--bg-subtle,#FAFAFA)}
+.rate-suggestion-head{display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.rate-suggestion-confidence{font-weight:500;text-transform:none;letter-spacing:0}
+.rate-suggestion-figures{display:flex;gap:8px;flex-wrap:wrap;margin:9px 0 7px}
+.rate-suggestion-figure{display:inline-flex;align-items:center;gap:7px;padding:5px 10px;border:1px solid var(--border);border-radius:7px;background:var(--card,#fff);font-size:12.5px;font-weight:600;cursor:pointer}
+.rate-suggestion-figure:hover{border-color:var(--primary,#2563EB)}
+.rate-suggestion-figure span{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.05em;color:var(--primary,#2563EB)}
+.rate-suggestion-basis{font-size:11px;color:var(--muted);margin:0}
+.rate-suggestion-warning{font-size:11px;color:#92400E;margin:6px 0 0}
+.rate-chart{width:100%;overflow-x:auto}
+.rate-chart svg{width:100%;height:auto;min-width:320px;display:block}
+.rate-chart-grid{stroke:var(--border);stroke-width:1;stroke-dasharray:3 3}
+.rate-chart-label{font-size:9px;fill:var(--muted)}
+.rate-chart-area{fill:rgba(37,99,235,.10);stroke:none}
+.rate-chart-line{fill:none;stroke:#2563EB;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.rate-chart-dot{fill:#2563EB}
 .pay-currency-link{background:none;border:none;padding:0;font-size:11px;color:var(--muted);cursor:pointer;text-decoration:underline;text-underline-offset:2px}
 .pay-currency-link:hover{color:var(--text)}
 .pay-currency-link-quiet{margin-top:7px;opacity:.6;font-size:10px}

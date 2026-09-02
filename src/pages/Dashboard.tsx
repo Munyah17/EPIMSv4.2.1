@@ -4,6 +4,8 @@ import type { ToastMessage, Policy } from '../types'
 import { db, type DashboardStats } from '../lib/db'
 import { formatPremium } from '../lib/productUtils'
 import { formatDate } from '../lib/dateUtils'
+import { useAuth } from '../contexts/AuthContext'
+import { isStale, rateAgeLabel, type ExchangeRate } from '../lib/exchangeRate'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -50,10 +52,20 @@ export default function Dashboard({ setActivePanel }: Props) {
   const [stats, setStats] = useState<DashboardStats>(EMPTY_STATS)
   const [loading, setLoading] = useState(true)
   const [chartPeriod, setChartPeriod] = useState<'week' | 'month' | 'quarter'>('month')
+  const [rate, setRate] = useState<ExchangeRate | null>(null)
+  const [rateLoaded, setRateLoaded] = useState(false)
 
   useEffect(() => {
     db.dashboardStats.load().then(({ data }) => { setStats(data); setLoading(false) })
   }, [])
+
+  const { user } = useAuth()
+  const isSuperAdmin = user?.role === 'super_admin'
+
+  useEffect(() => {
+    if (!isSuperAdmin) return
+    db.exchangeRates.current().then(({ data }) => { setRate(data); setRateLoaded(true) })
+  }, [isSuperAdmin])
 
   const recentPolicies: Policy[] = stats.recentPolicies
   const maxCount = Math.max(...stats.productBreakdown.map(p => p.count), 1)
@@ -70,8 +82,29 @@ export default function Dashboard({ setActivePanel }: Props) {
 
   if (loading) return <div className="panel"><div className="empty-state">Loading dashboard…</div></div>
 
+  const rateNeedsAttention = isSuperAdmin && rateLoaded && isStale(rate)
+
   return (
     <div className="panel">
+      {rateNeedsAttention && (
+        <div className="dash-alert" role="status">
+          <span className="dash-alert-icon">💱</span>
+          <div className="dash-alert-body">
+            <span className="dash-alert-title">
+              {rate ? 'The exchange rate is due for review' : 'No exchange rate is set'}
+            </span>
+            <span className="dash-alert-text">
+              {rate
+                ? `1 USD = ${rate.rate} ZiG, effective ${formatDate(rate.effectiveDate)}. ${rateAgeLabel(rate)}.`
+                : 'ZiG payments are refused until a rate is set.'}
+            </span>
+          </div>
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => setActivePanel('settings')}>
+            Update
+          </button>
+        </div>
+      )}
+
       <div className="stats-grid">
         <div className="stat-card stat-card-clickable" onClick={() => setActivePanel('policies')}>
           <div className="stat-icon stat-icon-blue">🛡</div>
