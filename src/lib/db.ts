@@ -1795,7 +1795,9 @@ export const developerApi = {
     return { data: (data ?? []).map(toApiKeyRow), error: null }
   },
 
-  /** Calls create-api-developer.ts — needs the service-role key to create the partner's login-disabled identity. */
+  /** Calls api-partners.ts (action=create-developer, routed by a vercel.json
+   *  rewrite from this URL) — needs the service-role key to create the
+   *  partner's login-disabled identity. */
   async createDeveloper(input: { companyName: string; contactEmail: string; contactPhone?: string; termsVersion: string }) {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) return { data: null, error: 'Not signed in.' }
@@ -1818,7 +1820,8 @@ export const developerApi = {
     }
   },
 
-  /** Calls create-api-key.ts. Returns the raw secret key ONCE — it is never
+  /** Calls api-partners.ts (action=create-key, routed by a vercel.json
+   *  rewrite from this URL). Returns the raw secret key ONCE — it is never
    *  stored or retrievable again. The publishable key is safe to fetch and
    *  display again later (it's just a display/lookup id, not a credential). */
   async issueKey(developerId: string, opts?: { scopes?: string[]; rateLimitPerMin?: number; environment?: 'sandbox' | 'live' }) {

@@ -4,6 +4,8 @@
     { "source": "/api/score-claim-fraud", "destination": "/api/ai?action=score-claim-fraud" },
     { "source": "/api/score-lead", "destination": "/api/ai?action=score-lead" },
     { "source": "/api/search-leads", "destination": "/api/ai?action=search-leads" },
+    { "source": "/api/create-api-developer", "destination": "/api/api-partners?action=create-developer" },
+    { "source": "/api/create-api-key", "destination": "/api/api-partners?action=create-key" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "crons": [
