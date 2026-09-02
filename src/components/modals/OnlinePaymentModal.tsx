@@ -4,6 +4,12 @@ import {
   initiateEcoCash, initiatePaynow, getZipitDetails, pollEcoCash, pollPaynow, CURRENCY_SYMBOL,
 } from '../../lib/paymentGateways'
 import type { PaymentResponse, PaymentCurrency } from '../../lib/paymentGateways'
+import {
+  getCurrencySettings, isActive, DEFAULT_CURRENCY_SETTINGS, CURRENCY_UNAVAILABLE_MESSAGE,
+  type CurrencySettings,
+} from '../../lib/currencies'
+import { convertUsdToZig } from '../../lib/exchangeRate'
+import { taggedReference } from '../../lib/originTag'
 import { db } from '../../lib/db'
 import { policyBillablePremium, billableHeadCount } from '../../lib/premium'
 import { recordActivity } from '../../lib/activityLog'
@@ -67,6 +73,19 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
   const [step, setStep] = useState<PayStep>('select')
   const [method, setMethod] = useState<Method>('paynow')
   const [currency, setCurrency] = useState<PaymentCurrency>('USD')
+  const [currencySettings, setCurrencySettings] = useState<CurrencySettings>(DEFAULT_CURRENCY_SETTINGS)
+  const [zigRate, setZigRate] = useState<number | null>(null)
+
+  useEffect(() => {
+    void getCurrencySettings().then(setCurrencySettings)
+    void db.exchangeRates.current().then(({ data }) => setZigRate(data?.rate ?? null))
+  }, [])
+
+  // ZiG needs both a rate to price from and the currency switched on.
+  const zigAvailable = isActive(currencySettings, 'ZWG') && zigRate !== null
+  useEffect(() => {
+    if (currency === 'ZWG' && !zigAvailable) setCurrency('USD')
+  }, [currency, zigAvailable])
   const [phone, setPhone] = useState('')
   const [result, setResult] = useState<PaymentResponse | null>(null)
   const [zipitDetails, setZipitDetails] = useState<ReturnType<typeof getZipitDetails> | null>(null)
@@ -86,7 +105,7 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
     })
   }, [policy.clientId, policy.productId])
   const isAgriculture = category === 'agriculture'
-  const ref = `${policy.policyNumber}${Date.now().toString(36).toUpperCase()}`
+  const ref = taggedReference(`${policy.policyNumber}${Date.now().toString(36).toUpperCase()}`)
   // Premiums are per head: the amount collected covers the policyholder and
   // every dependant on the policy, not the policyholder alone.
   const perPeriod = policyBillablePremium(policy, category)
@@ -316,15 +335,25 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
                 {method === 'paynow' && (
                   currency === 'ZWG' ? (
                     <div className="pay-currency-note">
-                      <span>Charging in ZiG at the current rate.</span>
+                      <span>
+                        Charging ZiG {zigRate !== null ? convertUsdToZig(totalAmount, zigRate).toFixed(2) : '—'}
+                      </span>
                       <button type="button" className="pay-currency-link" onClick={() => setCurrency('USD')}>
                         Use USD
                       </button>
                     </div>
-                  ) : (
+                  ) : zigAvailable ? (
                     <button type="button" className="pay-currency-link pay-currency-link-quiet" onClick={() => setCurrency('ZWG')}>
                       Other currency
                     </button>
+                  ) : (
+                    <span
+                      className="pay-currency-link pay-currency-link-quiet is-disabled"
+                      title={CURRENCY_UNAVAILABLE_MESSAGE}
+                      aria-disabled="true"
+                    >
+                      Other currency
+                    </span>
                   )
                 )}
               </div>

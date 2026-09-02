@@ -133,7 +133,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { data: txn } = await admin
     .from('paynow_transactions')
-    .select('reference, policy_id, expected_amount, status, currency, usd_amount')
+    .select('reference, policy_id, expected_amount, status, currency, rate')
     .eq('reference', reference)
     .maybeSingle()
 
@@ -151,15 +151,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // confirmedAmount and expected_amount are both in the transaction's own
-  // currency, so they compare directly. usdAmount is what the policy is
-  // credited with -- everything downstream of here is USD.
-  const usdAmount = Number(txn.usd_amount)
-  if (!Number.isFinite(usdAmount) || usdAmount <= 0) {
-    console.error('paynow-webhook: transaction has no usable USD amount', reference)
+  // currency. The payment is recorded in that currency too -- a ZiG payment
+  // is a ZiG payment, and is not turned back into a dollar figure.
+  const txnCurrency = txn.currency === 'ZWG' ? 'ZWG' : 'USD'
+  const expectedAmount = Number(txn.expected_amount)
+  const txnRate = Number(txn.rate)
+  if (!Number.isFinite(expectedAmount) || expectedAmount <= 0) {
+    console.error('paynow-webhook: transaction has no usable amount', reference)
     return res.status(200).json({ ok: false, error: 'Transaction has no usable amount; not credited.' })
   }
 
-  const amountMatches = Math.abs(confirmedAmount - Number(txn.expected_amount)) <= 0.01
+  const amountMatches = Math.abs(confirmedAmount - expectedAmount) <= 0.01
   const paidLike = status === 'paid' || status === 'awaiting delivery'
   const failedLike = status === 'cancelled' || status === 'disputed'
 
@@ -207,7 +209,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // hits that constraint and is treated as success, not an error. Whichever
   // path gets there first wins; nothing is credited twice.
   const { error: payError } = await admin.from('payments').insert({
-    reference, policy_id: policy.id, amount: usdAmount, method: 'Paynow',
+    reference, policy_id: policy.id, amount: confirmedAmount, method: 'Paynow',
+    currency: txnCurrency,
+    rate: Number.isFinite(txnRate) && txnRate > 0 ? txnRate : null,
     status: 'completed', payment_date: new Date().toISOString().split('T')[0],
   })
   if (payError && payError.code !== '23505') {
@@ -229,8 +233,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const { data: product } = await admin.from('products').select('category').eq('id', policy.product_id).maybeSingle()
     const category = product?.category ?? ''
     const cycleMonths = category === 'agriculture' ? 12 : 1
-    const perPeriod = billablePremium(policy)
-    const periodsPaid = perPeriod > 0 ? Math.max(1, Math.round(usdAmount / perPeriod)) : 1
+    // Premiums are held in USD. To count how many periods a payment covers,
+    // the PRICE is expressed in the currency that was charged -- the payment
+    // itself is never converted.
+    const rateUsed = Number.isFinite(txnRate) && txnRate > 0 ? txnRate : 1
+    const perPeriod = Math.round(billablePremium(policy) * rateUsed * 100) / 100
+    const periodsPaid = perPeriod > 0 ? Math.max(1, Math.round(confirmedAmount / perPeriod)) : 1
     const monthsToAdvance = cycleMonths * periodsPaid
 
     const today = new Date()

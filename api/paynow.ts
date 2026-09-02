@@ -37,6 +37,14 @@ function integrationFor(currency: PaynowCurrency): { id?: string; key?: string }
  * There is no default and no fallback: an unset rate means ZWG cannot be
  * charged at all, rather than being charged at the USD figure.
  */
+/** Whether a currency is currently accepted. Absent settings mean accepted,
+ *  matching the app's own default. */
+async function currencyIsActive(currency: PaynowCurrency, admin: SupabaseClient): Promise<boolean> {
+  const { data } = await admin.from('app_settings').select('value').eq('key', 'currency_settings').maybeSingle()
+  const active = (data?.value as { active?: Record<string, boolean> } | null)?.active
+  return active?.[currency] !== false
+}
+
 async function rateFor(currency: PaynowCurrency, admin: SupabaseClient): Promise<number | null> {
   if (currency !== 'ZWG') return 1
   const { data } = await admin.from('exchange_rates')
@@ -122,9 +130,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       const admin = createClient(supabaseUrl, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } })
 
-      // No rate means the charge cannot be worked out, so nothing is sent to
-      // Paynow. Charging the USD figure unconverted would take a fraction of
-      // what is owed and leave the policy uncredited.
+      // Enforced here as well as in the UI: hiding an option in the browser
+      // is a presentation choice, not a control.
+      if (currency !== 'USD' && !(await currencyIsActive(currency, admin))) {
+        return res.status(503).json({ error: 'Temporary Unavailable Due To Maintenance' })
+      }
+
+      // Prices are held in USD; this works out the price in the currency
+      // being charged. Without a rate there is no price to charge, so
+      // nothing is sent to Paynow -- sending the USD figure unconverted
+      // would ask for a fraction of what is owed.
       const rate = await rateFor(currency, admin)
       if (rate === null) {
         return res.status(503).json({ error: 'ZiG payments are unavailable until an exchange rate is set.' })
