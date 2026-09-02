@@ -1025,6 +1025,10 @@ textarea.form-control{resize:vertical;min-height:80px}
 /* Full-width branded rails: one row each, so the client's own logo is what
    staff pick from rather than a grid of near-identical tiles. */
 .pay-method-banners{display:flex;flex-direction:column;gap:9px;margin-top:6px}
+.pay-currency-link{background:none;border:none;padding:0;font-size:11px;color:var(--muted);cursor:pointer;text-decoration:underline;text-underline-offset:2px}
+.pay-currency-link:hover{color:var(--text)}
+.pay-currency-link-quiet{margin-top:7px;opacity:.6;font-size:10px}
+.pay-currency-note{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:11px;color:var(--text)}
 .pay-method-banner{display:flex;align-items:center;gap:14px;padding:12px 14px;border:1.5px solid var(--border);border-radius:11px;cursor:pointer;transition:all .15s;background:var(--white)}
 .pay-method-banner:hover{border-color:var(--blue-mid);background:var(--blue-light)}
 .pay-method-banner.active{border-color:var(--blue-mid);background:var(--blue-light);box-shadow:0 0 0 2px rgba(91,127,232,0.2)}

@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
 import type { Policy } from '../../types'
 import {
-  initiateEcoCash, initiatePaynow, getZipitDetails, pollEcoCash, pollPaynow,
+  initiateEcoCash, initiatePaynow, getZipitDetails, pollEcoCash, pollPaynow, CURRENCY_SYMBOL,
 } from '../../lib/paymentGateways'
-import type { PaymentResponse } from '../../lib/paymentGateways'
+import type { PaymentResponse, PaymentCurrency } from '../../lib/paymentGateways'
 import { db } from '../../lib/db'
 import { policyBillablePremium, billableHeadCount } from '../../lib/premium'
 import { recordActivity } from '../../lib/activityLog'
@@ -66,6 +66,7 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
   const { user } = useAuth()
   const [step, setStep] = useState<PayStep>('select')
   const [method, setMethod] = useState<Method>('paynow')
+  const [currency, setCurrency] = useState<PaymentCurrency>('USD')
   const [phone, setPhone] = useState('')
   const [result, setResult] = useState<PaymentResponse | null>(null)
   const [zipitDetails, setZipitDetails] = useState<ReturnType<typeof getZipitDetails> | null>(null)
@@ -100,6 +101,7 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
     clientEmail: client?.email || '',
     amount: totalAmount,
     reference: ref,
+    currency,
   }
 
   function stopPoll() {
@@ -111,9 +113,14 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
   function startPoll(res: PaymentResponse) {
     if (!res.pollUrl) return
     const url = res.pollUrl
-    const fn = res.gateway === 'ecocash' ? pollEcoCash : pollPaynow
+    // A confirmed amount comes back in the currency the gateway charged, so
+    // it is reconciled against what was charged, not the USD figure billed.
+    const expected = res.chargedAmount ?? totalAmount
+    const paidCurrency: PaymentCurrency = res.currency ?? 'USD'
     pollRef.current = setInterval(async () => {
-      const { status, message, amount: confirmedAmount } = await fn(url)
+      const { status, message, amount: confirmedAmount } = res.gateway === 'ecocash'
+        ? await pollEcoCash(url)
+        : await pollPaynow(url, paidCurrency)
       setPollStatus(message)
       if (status === 'success') {
         stopPoll()
@@ -123,8 +130,8 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
         // amount (see pollEcoCash's comment) -- that is "cannot verify",
         // not "verified", so it still proceeds; a present amount that
         // disagrees is never waved through.
-        if (confirmedAmount !== undefined && Math.abs(confirmedAmount - totalAmount) > 0.01) {
-          void handleMismatch(res.gateway, confirmedAmount)
+        if (confirmedAmount !== undefined && Math.abs(confirmedAmount - expected) > 0.01) {
+          void handleMismatch(res.gateway, confirmedAmount, expected, paidCurrency)
         } else {
           handleConfirmed()
         }
@@ -144,9 +151,10 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
    * regardless, and an immediate SMS to the office lines, the same ones a
    * new registration alerts, since this is rarer and more urgent than that.
    */
-  async function handleMismatch(gateway: Method, confirmedAmount: number) {
+  async function handleMismatch(gateway: Method, confirmedAmount: number, expected: number, paidCurrency: PaymentCurrency) {
     setStep('mismatch')
-    const detail = `Reference ${ref}: ${METHOD_LABELS[gateway]} confirmed $${confirmedAmount.toFixed(2)}, expected $${totalAmount.toFixed(2)}, for ${policy.clientName} (${policy.policyNumber}). Not recorded -- needs manual reconciliation.`
+    const sym = CURRENCY_SYMBOL[paidCurrency]
+    const detail = `Reference ${ref}: ${METHOD_LABELS[gateway]} confirmed ${sym}${confirmedAmount.toFixed(2)}, expected ${sym}${expected.toFixed(2)}, for ${policy.clientName} (${policy.policyNumber}). Not recorded -- needs manual reconciliation.`
     if (user) {
       void recordActivity({
         action: 'payment.validated',
@@ -305,6 +313,20 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
                     </label>
                   ))}
                 </div>
+                {method === 'paynow' && (
+                  currency === 'ZWG' ? (
+                    <div className="pay-currency-note">
+                      <span>Charging in ZiG at the current rate.</span>
+                      <button type="button" className="pay-currency-link" onClick={() => setCurrency('USD')}>
+                        Use USD
+                      </button>
+                    </div>
+                  ) : (
+                    <button type="button" className="pay-currency-link pay-currency-link-quiet" onClick={() => setCurrency('ZWG')}>
+                      Other currency
+                    </button>
+                  )
+                )}
               </div>
 
               {method === 'ecocash' && (

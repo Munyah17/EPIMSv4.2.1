@@ -64,14 +64,23 @@ export function saveGatewaySettings(s: GatewaySettings) {
 
 // ── Common types ────────────────────────────────────────────────────
 
+/** Currencies a payment can be collected in. Amounts everywhere else in the
+ *  system are USD; this only affects what a gateway charges. */
+export type PaymentCurrency = 'USD' | 'ZWG'
+
+export const CURRENCY_SYMBOL: Record<PaymentCurrency, string> = { USD: '$', ZWG: 'ZiG ' }
+
 export interface PaymentRequest {
   policyId: string
   policyNumber: string
   clientName: string
   clientPhone: string
   clientEmail: string
+  /** Always USD. */
   amount: number
   reference: string
+  /** Defaults to USD. */
+  currency?: PaymentCurrency
 }
 
 export interface PaymentResponse {
@@ -82,6 +91,12 @@ export interface PaymentResponse {
   pollUrl?: string
   message: string
   gateway: 'ecocash' | 'paynow' | 'zipit'
+  /** What the gateway was actually asked to charge, and in what. Absent
+   *  means USD at the requested amount. A poll's confirmed amount comes back
+   *  in this currency, so it must be reconciled against this, not the USD
+   *  figure the policy is billed. */
+  currency?: PaymentCurrency
+  chargedAmount?: number
   /** No longer set by any rail. An unconfigured gateway is reported as a
    *  refusal, not as a pretend payment that staff could then mark received. */
   simulated?: never
@@ -232,7 +247,9 @@ export async function pollEcoCash(lookupUrl: string): Promise<{ status: 'pending
 export async function initiatePaynow(req: PaymentRequest): Promise<PaymentResponse> {
   const ref = req.reference
 
-  let reply: { ok?: boolean; redirectUrl?: string; pollUrl?: string; error?: string }
+  const currency: PaymentCurrency = req.currency ?? 'USD'
+
+  let reply: { ok?: boolean; redirectUrl?: string; pollUrl?: string; error?: string; currency?: PaymentCurrency; amount?: number }
   let httpStatus: number
   try {
     const res = await fetch('/api/paynow', {
@@ -242,6 +259,7 @@ export async function initiatePaynow(req: PaymentRequest): Promise<PaymentRespon
         action: 'initiate',
         reference: ref,
         amount: req.amount,
+        currency,
         description: `Insurance Premium: ${req.policyNumber}`,
         email: req.clientEmail,
         // Required server-side so api/paynow-webhook.ts has a record of
@@ -259,7 +277,8 @@ export async function initiatePaynow(req: PaymentRequest): Promise<PaymentRespon
   if (httpStatus === 503) {
     return {
       success: false, status: 'failed', gateway: 'paynow',
-      message: 'Paynow is not configured on the server. Set PAYNOW_INTEGRATION_ID and PAYNOW_INTEGRATION_KEY, or take the payment another way and record it on the Payments page.',
+      message: reply?.error
+        ?? 'Paynow is not available at the moment. Take the payment another way and record it on the Payments page.',
     }
   }
 
@@ -279,6 +298,8 @@ export async function initiatePaynow(req: PaymentRequest): Promise<PaymentRespon
     status: 'redirect',
     message: 'Redirecting to Paynow…',
     gateway: 'paynow',
+    currency: reply.currency ?? currency,
+    chargedAmount: Number.isFinite(Number(reply.amount)) ? Number(reply.amount) : undefined,
   }
 }
 
@@ -287,12 +308,14 @@ export async function initiatePaynow(req: PaymentRequest): Promise<PaymentRespon
  * pollTransaction -- which POSTs as Paynow expects and verifies the
  * response hash before trusting it.
  */
-export async function pollPaynow(pollUrl: string): Promise<{ status: 'pending' | 'success' | 'failed'; message: string; amount?: number }> {
+export async function pollPaynow(pollUrl: string, currency: PaymentCurrency = 'USD'): Promise<{ status: 'pending' | 'success' | 'failed'; message: string; amount?: number }> {
   try {
     const res = await fetch('/api/paynow', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'poll', pollUrl }),
+      // The status reply is signed with the integration that created the
+      // transaction, so the currency has to travel with the poll.
+      body: JSON.stringify({ action: 'poll', pollUrl, currency }),
     })
     const data = await res.json().catch(() => ({})) as { status?: string; paid?: boolean; amount?: number | null }
     // Paynow always states an amount for a real transaction, so the caller

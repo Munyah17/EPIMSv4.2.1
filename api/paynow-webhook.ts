@@ -75,28 +75,41 @@ function billablePremium(policy: { premium: number; dependants: unknown }): numb
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  const integrationKey = process.env.PAYNOW_INTEGRATION_KEY
+  // A status update is signed with the integration key that created the
+  // transaction, and each currency has its own integration. Which one this
+  // update belongs to is only known once it is parsed, so every configured
+  // key is tried; the update has to verify against one of them.
+  const integrationKeys = [
+    process.env.PAYNOW_INTEGRATION_KEY,
+    process.env.PAYNOW_ZWG_INTEGRATION_KEY,
+  ].filter((k): k is string => !!k)
   const supabaseUrl = process.env.VITE_SUPABASE_URL
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   // Answering 200 here (not 503) is deliberate: Paynow retries a non-2xx up
   // to ten times, and a missing env var will not fix itself between
   // retries, so there is nothing to gain from making it try again.
-  if (!integrationKey || !supabaseUrl || !serviceKey) {
-    console.error('paynow-webhook: server not configured (PAYNOW_INTEGRATION_KEY / Supabase service credentials missing)')
+  if (integrationKeys.length === 0 || !supabaseUrl || !serviceKey) {
+    console.error('paynow-webhook: server not configured (integration key / Supabase service credentials missing)')
     return res.status(200).json({ ok: false, error: 'Server not configured.' })
   }
 
   const rawBody = await readRawBody(req)
-  const paynow = new Paynow('', integrationKey, '', '')
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let update: any
-  try {
-    update = paynow.parseStatusUpdate(rawBody)
-  } catch (e) {
+  let verificationError: unknown
+  for (const key of integrationKeys) {
+    try {
+      update = new Paynow('', key, '', '').parseStatusUpdate(rawBody)
+      break
+    } catch (e) {
+      verificationError = e
+    }
+  }
+  if (!update) {
     // Genuinely not from Paynow (or the body was mangled in transit) --
     // this is a rejection, not a "try later", so it does not get a 200.
-    console.error('paynow-webhook: hash verification failed', e)
+    console.error('paynow-webhook: hash verification failed', verificationError)
     return res.status(400).json({ ok: false, error: 'Hash verification failed.' })
   }
 
@@ -120,7 +133,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { data: txn } = await admin
     .from('paynow_transactions')
-    .select('reference, policy_id, expected_amount, status')
+    .select('reference, policy_id, expected_amount, status, currency, usd_amount')
     .eq('reference', reference)
     .maybeSingle()
 
@@ -135,6 +148,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (txn.status === 'paid') {
     // Already handled -- most likely the client-side poll got there first.
     return res.status(200).json({ ok: true, note: 'Already recorded.' })
+  }
+
+  // confirmedAmount and expected_amount are both in the transaction's own
+  // currency, so they compare directly. usdAmount is what the policy is
+  // credited with -- everything downstream of here is USD.
+  const usdAmount = Number(txn.usd_amount)
+  if (!Number.isFinite(usdAmount) || usdAmount <= 0) {
+    console.error('paynow-webhook: transaction has no usable USD amount', reference)
+    return res.status(200).json({ ok: false, error: 'Transaction has no usable amount; not credited.' })
   }
 
   const amountMatches = Math.abs(confirmedAmount - Number(txn.expected_amount)) <= 0.01
@@ -185,7 +207,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // hits that constraint and is treated as success, not an error. Whichever
   // path gets there first wins; nothing is credited twice.
   const { error: payError } = await admin.from('payments').insert({
-    reference, policy_id: policy.id, amount: confirmedAmount, method: 'Paynow',
+    reference, policy_id: policy.id, amount: usdAmount, method: 'Paynow',
     status: 'completed', payment_date: new Date().toISOString().split('T')[0],
   })
   if (payError && payError.code !== '23505') {
@@ -208,7 +230,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const category = product?.category ?? ''
     const cycleMonths = category === 'agriculture' ? 12 : 1
     const perPeriod = billablePremium(policy)
-    const periodsPaid = perPeriod > 0 ? Math.max(1, Math.round(confirmedAmount / perPeriod)) : 1
+    const periodsPaid = perPeriod > 0 ? Math.max(1, Math.round(usdAmount / perPeriod)) : 1
     const monthsToAdvance = cycleMonths * periodsPaid
 
     const today = new Date()

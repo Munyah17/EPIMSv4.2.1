@@ -20,10 +20,32 @@ import { createClient } from '@supabase/supabase-js'
  * and PAYNOW_INTEGRATION_KEY; the browser never sees them.
  */
 
+export type PaynowCurrency = 'USD' | 'ZWG'
+
+/** Paynow settles in the currency of the integration that created the
+ *  transaction, so each currency has its own integration pair. */
+function integrationFor(currency: PaynowCurrency): { id?: string; key?: string } {
+  return currency === 'ZWG'
+    ? { id: process.env.PAYNOW_ZWG_INTEGRATION_ID, key: process.env.PAYNOW_ZWG_INTEGRATION_KEY }
+    : { id: process.env.PAYNOW_INTEGRATION_ID, key: process.env.PAYNOW_INTEGRATION_KEY }
+}
+
+/** Units of `currency` per 1 USD. USD is always 1; ZWG comes from
+ *  PAYNOW_ZWG_RATE and has no default -- an unset rate means ZWG cannot be
+ *  charged at all, rather than being charged at the USD figure. */
+function rateFor(currency: PaynowCurrency): number | null {
+  if (currency !== 'ZWG') return 1
+  const rate = Number(process.env.PAYNOW_ZWG_RATE)
+  return Number.isFinite(rate) && rate > 0 ? rate : null
+}
+
 interface InitiateBody {
   action?: string
   reference?: string
+  /** Always USD -- the billed amount. Converted below when charging in
+   *  another currency. */
   amount?: number
+  currency?: string
   description?: string
   /** Only sent when it is genuinely the payer's address. An integration
    *  still in test mode rejects any authemail that is not the merchant's
@@ -40,14 +62,14 @@ interface InitiateBody {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  const integrationId = process.env.PAYNOW_INTEGRATION_ID
-  const integrationKey = process.env.PAYNOW_INTEGRATION_KEY
-  if (!integrationId || !integrationKey) {
-    return res.status(503).json({ error: 'Paynow is not configured on the server (PAYNOW_INTEGRATION_ID / PAYNOW_INTEGRATION_KEY).' })
-  }
-
   const body = (typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body ?? {})) as InitiateBody
   const origin = `https://${req.headers.host}`
+
+  const currency: PaynowCurrency = body.currency === 'ZWG' ? 'ZWG' : 'USD'
+  const { id: integrationId, key: integrationKey } = integrationFor(currency)
+  if (!integrationId || !integrationKey) {
+    return res.status(503).json({ error: `Paynow is not configured on the server for ${currency}.` })
+  }
 
   try {
     if (body.action === 'poll') {
@@ -73,10 +95,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (body.action === 'initiate') {
       const reference = String(body.reference ?? '')
-      const amount = Number(body.amount)
+      const usdAmount = Number(body.amount)
       const policyId = String(body.policyId ?? '')
-      if (!reference || !Number.isFinite(amount) || amount <= 0) {
+      if (!reference || !Number.isFinite(usdAmount) || usdAmount <= 0) {
         return res.status(400).json({ error: 'reference and a positive amount are required.' })
+      }
+
+      // No rate means the charge cannot be worked out, so nothing is sent to
+      // Paynow. Charging the USD figure unconverted would take a fraction of
+      // what is owed and leave the policy uncredited.
+      const rate = rateFor(currency)
+      if (rate === null) {
+        return res.status(503).json({ error: `${currency} payments are unavailable at the moment.` })
+      }
+      const amount = Math.round(usdAmount * rate * 100) / 100
+      if (!Number.isFinite(amount) || amount <= 0) {
+        return res.status(400).json({ error: 'Could not determine the amount to charge.' })
       }
       // Required, not optional: without it, api/paynow-webhook.ts has no
       // record of what this reference was actually FOR, and can only ever
@@ -137,6 +171,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // for this one reference is degraded to poll-only until it is fixed.
       const { error: trackError } = await admin.from('paynow_transactions').insert({
         reference, policy_id: policyId, expected_amount: amount, status: 'pending',
+        currency, usd_amount: usdAmount, rate,
       })
       if (trackError) {
         console.error('paynow_transactions insert failed', reference, trackError.message)
@@ -146,6 +181,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ok: true,
         redirectUrl: String(response.redirectUrl ?? ''),
         pollUrl: String(response.pollUrl ?? ''),
+        currency,
+        // What Paynow will actually charge, so the payer is shown the figure
+        // they are about to be asked for rather than the USD equivalent.
+        amount,
       })
     }
 
