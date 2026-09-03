@@ -3,7 +3,7 @@ import type { PolicyCard } from '../../types'
 import type { PolicyMember } from '../../lib/memberNumbers'
 import { MOTIONS_LOGO_PNG_BASE64 } from '../../assets/motionsLogo'
 import { formatDate } from '../../lib/dateUtils'
-import { isHouseInsurer } from '../../lib/insurerAssignment'
+import { COMPANY_NAME } from '../../lib/company'
 
 /**
  * The membership card, at real proportions.
@@ -50,15 +50,8 @@ const MemberCard = forwardRef<HTMLDivElement, Props>(function MemberCard(
 ) {
   const status = card ? STATUS_COPY[card.status] : { label: 'NOT ISSUED', color: '#6B7E99' }
 
-  // Enpassent places business with almost every insurer in Zimbabwe, so a
-  // card must never assume it is any one of them by default. It names
-  // whichever insurer actually underwrites this member's policy
-  // (member.insurer, passed down by the caller); only once that is unknown
-  // does it fall back to Enpassent itself as the issuing broker. The house
-  // logo is drawn only when the resolved name really is Motions -- it must
-  // never appear, even implicitly, on cover placed with anyone else.
-  const resolvedName = companyName || member.insurer || 'Enpassent Multiple Agent'
-  const showHouseLogo = isHouseInsurer(resolvedName)
+  const resolvedName = companyName || COMPANY_NAME
+  const showHouseLogo = true
 
   // px() keeps every dimension proportional to `scale`, so one layout
   // serves both the small on-screen preview and the full-size export.

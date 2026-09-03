@@ -33,7 +33,6 @@ const PANEL_TITLES: Record<ActivePanel, string> = {
   billing_reminders: 'Billing & Reminders',
   pre_loss_assessments: 'Pre-Loss Assessments',
   member_cards: 'Membership IDs',
-  insurer_management: 'Insurer Management',
   agriculture_insurance: 'Agriculture Insurance',
   system_access_roles: 'System Access Roles',
   profile: 'My Profile',

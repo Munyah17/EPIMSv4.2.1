@@ -78,16 +78,6 @@ export default function Reports({ showToast }: Props) {
     }, {}),
   ).sort((a, b) => b.amount - a.amount)
 
-  const insurerBreakdown = Object.values(
-    policies.reduce<Record<string, { name: string; policies: number; revenue: number }>>((acc, p) => {
-      const key = p.insurer || 'Unassigned'
-      if (!acc[key]) acc[key] = { name: key, policies: 0, revenue: 0 }
-      acc[key].policies += 1
-      acc[key].revenue += policyBillablePremium(p)
-      return acc
-    }, {}),
-  ).sort((a, b) => b.revenue - a.revenue)
-
   const monthlyCollections = Object.values(
     completedPayments.reduce<Record<string, { month: string; amount: number; count: number }>>((acc, p) => {
       const key = (p.date || '').slice(0, 7) || 'Unknown'
@@ -126,7 +116,7 @@ export default function Reports({ showToast }: Props) {
       await exportToPdf(
         `ipec-return-${dateStamp}.pdf`, 'IPEC Quarterly Return', ['Field', 'Value'],
         [
-          ['Intermediary Name', 'Enpassent Multiple Agent (Pvt) Ltd'],
+          ['Intermediary Name', 'Motions Microinsurance'],
           ['IPEC Reg. Number', 'IPEC/IB/2020/001'],
           ['Total Policies Issued', totalPolicies],
           ['Active Policies', activePolicies],
@@ -162,7 +152,7 @@ export default function Reports({ showToast }: Props) {
       baseName = 'ipec-return'
       headers = ['Field', 'Value']
       rows = [
-        ['Intermediary Name', 'Enpassent Multiple Agent (Pvt) Ltd'],
+        ['Intermediary Name', 'Motions Microinsurance'],
         ['IPEC Reg. Number', 'IPEC/IB/2020/001'],
         ['Total Policies Issued', totalPolicies],
         ['Active Policies', activePolicies],
@@ -307,45 +297,24 @@ export default function Reports({ showToast }: Props) {
             </table>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginTop: '1.5rem' }}>
-            <div className="card">
-              <div className="card-header"><h3 className="card-title">Top Clients by Premium</h3></div>
-              <table className="table">
-                <thead>
-                  <tr><th>Client</th><th>Policies</th><th>Annual Premium</th></tr>
-                </thead>
-                <tbody>
-                  {topClients.length === 0 ? (
-                    <tr><td colSpan={3} className="td-empty">No policies yet.</td></tr>
-                  ) : topClients.map(c => (
-                    <tr key={c.name}>
-                      <td><strong>{c.name}</strong></td>
-                      <td>{c.policies}</td>
-                      <td>${c.premium.toFixed(2)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="card">
-              <div className="card-header"><h3 className="card-title">Business by Insurer</h3></div>
-              <table className="table">
-                <thead>
-                  <tr><th>Insurer</th><th>Policies</th><th>Revenue</th></tr>
-                </thead>
-                <tbody>
-                  {insurerBreakdown.length === 0 ? (
-                    <tr><td colSpan={3} className="td-empty">No policies yet.</td></tr>
-                  ) : insurerBreakdown.map(i => (
-                    <tr key={i.name}>
-                      <td>{i.name}</td>
-                      <td>{i.policies}</td>
-                      <td>${i.revenue.toFixed(2)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+          <div className="card" style={{ marginTop: '1.5rem' }}>
+            <div className="card-header"><h3 className="card-title">Top Clients by Premium</h3></div>
+            <table className="table">
+              <thead>
+                <tr><th>Client</th><th>Policies</th><th>Annual Premium</th></tr>
+              </thead>
+              <tbody>
+                {topClients.length === 0 ? (
+                  <tr><td colSpan={3} className="td-empty">No policies yet.</td></tr>
+                ) : topClients.map(c => (
+                  <tr key={c.name}>
+                    <td><strong>{c.name}</strong></td>
+                    <td>{c.policies}</td>
+                    <td>${c.premium.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </>
       )}
@@ -516,7 +485,7 @@ export default function Reports({ showToast }: Props) {
           <h3 style={{ marginBottom: '1.5rem' }}>IPEC Quarterly Return: Q2 2026</h3>
           <table className="table">
             <tbody>
-              <tr><td><strong>Intermediary Name</strong></td><td>Enpassent Multiple Agent (Pvt) Ltd</td></tr>
+              <tr><td><strong>Intermediary Name</strong></td><td>Motions Microinsurance</td></tr>
               <tr><td><strong>IPEC Reg. Number</strong></td><td>IPEC/IB/2020/001</td></tr>
               <tr><td><strong>Reporting Period</strong></td><td>01 April – 30 June 2026</td></tr>
               <tr><td><strong>Total Policies Issued</strong></td><td>{totalPolicies}</td></tr>

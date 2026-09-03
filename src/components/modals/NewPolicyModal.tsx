@@ -1,12 +1,10 @@
 import { useState, useEffect } from 'react'
-import type { Policy, Dependant, Insurer, InsurerRecord, Client, Product, AppUser } from '../../types'
+import type { Policy, Dependant, Client, Product, AppUser } from '../../types'
 import { MANUAL_PAYMENT_METHODS } from '../../types'
 import { db } from '../../lib/db'
 import { useAuth } from '../../contexts/AuthContext'
 import PhoneInput from '../ui/PhoneInput'
 import DateInput from '../ui/DateInput'
-import InsurerSelect from '../ui/InsurerSelect'
-import { resolveClientInsurer } from '../../lib/insurerAssignment'
 import { premiumPeriodLabel } from '../../lib/productUtils'
 import { computeAssignedStartDate } from '../../lib/policyLifecycle'
 
@@ -38,9 +36,6 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   const [clientDob, setClientDob] = useState('')
   const [clientAddress, setClientAddress] = useState('')
   const [clientOccupation, setClientOccupation] = useState('')
-  // One insurer per policy — asked once, applied to both the client record
-  // and the policy itself (this modal used to ask twice for the same thing).
-  const [insurer, setInsurer] = useState<Insurer | ''>('')
 
   // Policy fields
   const [productId, setProductId] = useState('')
@@ -57,7 +52,6 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   const [products, setProducts] = useState<Product[]>([])
   const [productsLoading, setProductsLoading] = useState(true)
   const [staff, setStaff] = useState<AppUser[]>([])
-  const [insurerOptions, setInsurerOptions] = useState<InsurerRecord[]>([])
   const product = products.find(p => p.id === productId)
 
   /** A dependant is covered under the same kind of cover as the policy they
@@ -71,7 +65,6 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   useEffect(() => {
     db.products.list().then(({ data }) => { if (data) setProducts(data); setProductsLoading(false) })
     db.clients.list().then(({ data }) => { if (data) setExistingClients(data) })
-    db.insurers.list().then(({ data }) => setInsurerOptions(data.filter(i => i.status === 'active')))
     db.staff.list().then(({ data }) => {
       const active = (data ?? []).filter(s => s.active)
       setStaff(active)
@@ -97,7 +90,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
 
   const clearClientFields = () => {
     setClientName(''); setClientPhone(''); setClientEmail(''); setClientNationalId('')
-    setClientDob(''); setClientAddress(''); setClientOccupation(''); setInsurer('')
+    setClientDob(''); setClientAddress(''); setClientOccupation('')
   }
 
   const switchMode = (mode: 'new' | 'existing') => {
@@ -123,7 +116,6 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
     setClientDob(client.dob)
     setClientAddress(client.address)
     setClientOccupation(client.occupation ?? '')
-    setInsurer(client.insurer ?? '')
   }
 
   const addDependant = () => {
@@ -178,25 +170,11 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
     // changed since they were first registered) rather than creating a
     // duplicate client row — this is what lets one person hold more than
     // one policy.
-    // Insurer is optional here too; blank places the client with the house
-    // insurer provisionally. This decides the CLIENT record only -- the
-    // policy's own insurer below is never back-filled from it, because that
-    // is the party who pays the claim. See src/lib/insurerAssignment.ts.
-    const resolvedInsurer = resolveClientInsurer(insurer, insurerOptions)
-
     let createdClient: Client | null
     if (customerMode === 'existing' && existingClientId) {
-      const prior = existingClients.find(c => c.id === existingClientId)
-      // Only speak to the provisional flag when this modal actually decided
-      // something. Reopening a client who was already provisionally placed
-      // and saving without touching the picker must not quietly convert that
-      // placement into a choice they never made.
-      const decidedHere = !prior?.insurer || (insurer || undefined) !== prior.insurer
       const { data, error } = await db.clients.update(existingClientId, {
         name: clientName, email: clientEmail, phone: clientPhone,
         address: clientAddress, occupation: clientOccupation,
-        insurer: resolvedInsurer.insurer,
-        ...(decidedHere ? { insurerProvisional: resolvedInsurer.insurerProvisional } : {}),
       })
       if (error || !data) { if (showToast) showToast('error', 'Failed to update client.'); return }
       createdClient = data
@@ -210,8 +188,6 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
         dob: clientDob,
         address: clientAddress,
         occupation: clientOccupation,
-        insurer: resolvedInsurer.insurer,
-        insurerProvisional: resolvedInsurer.insurerProvisional,
         createdAt: new Date().toISOString().split('T')[0],
         policyCount: 0,
         status: 'active',
@@ -242,12 +218,6 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
       status: product!.category === 'agriculture' ? 'active' : 'waiting_period',
       dependants,
       paymentMethod,
-      // Deliberately the raw selection, not resolvedInsurer: a policy's
-      // insurer is the party that pays the claim, so it is only ever what
-      // someone actually chose. Blank stays blank and shows up as unplaced,
-      // which is a question staff can still answer -- a provisional default
-      // silently hardened into cover is one they could not.
-      insurer: insurer || undefined,
       growerNumber: product!.category === 'agriculture' ? (growerNumber || undefined) : undefined,
       createdAt: new Date().toISOString().split('T')[0],
       nextPaymentDate: new Date(new Date(startDate).setMonth(new Date(startDate).getMonth() + (product!.category === 'agriculture' ? 12 : 1))).toISOString().split('T')[0],
@@ -375,10 +345,6 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                     <option key={m} value={m}>{m}</option>
                   ))}
                 </select>
-              </div>
-              <div className="form-group">
-                <label>Insurer <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(optional)</span></label>
-                <InsurerSelect value={insurer} onChange={v => setInsurer(v as Insurer)} options={insurerOptions} />
               </div>
               <div className="form-group">
                 <label>Agent</label>

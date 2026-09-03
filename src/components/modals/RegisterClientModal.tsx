@@ -1,10 +1,7 @@
-import { useState, useEffect } from 'react'
-import type { Client, Insurer, InsurerRecord } from '../../types'
-import { db } from '../../lib/db'
+import { useState } from 'react'
+import type { Client } from '../../types'
 import PhoneInput from '../ui/PhoneInput'
 import DateInput from '../ui/DateInput'
-import InsurerSelect from '../ui/InsurerSelect'
-import { resolveClientInsurer } from '../../lib/insurerAssignment'
 
 interface Props {
   onClose: () => void
@@ -19,24 +16,13 @@ export default function RegisterClientModal({ onClose, onSave }: Props) {
   const [dob, setDob] = useState('')
   const [address, setAddress] = useState('')
   const [occupation, setOccupation] = useState('')
-  const [insurer, setInsurer] = useState<Insurer | ''>('')
-  const [insurerOptions, setInsurerOptions] = useState<InsurerRecord[]>([])
 
-  useEffect(() => {
-    db.insurers.list().then(({ data }) => setInsurerOptions(data.filter(i => i.status === 'active')))
-  }, [])
 
   const handleSave = () => {
     if (!name || !phone || !nationalId) return
-    // Insurer is optional. Left blank, the client is provisionally placed
-    // with the house insurer and flagged so staff know to ask -- registering
-    // a client puts no cover in place, so nothing has been decided for them
-    // yet. See src/lib/insurerAssignment.ts.
-    const { insurer: assignedInsurer, insurerProvisional } = resolveClientInsurer(insurer, insurerOptions)
     const client: Client = {
       id: `c${Date.now()}`,
       name, email, phone, nationalId, dob, address, occupation,
-      insurer: assignedInsurer, insurerProvisional,
       createdAt: new Date().toISOString().split('T')[0],
       policyCount: 0,
       status: 'active',
@@ -81,10 +67,6 @@ export default function RegisterClientModal({ onClose, onSave }: Props) {
               <label>Occupation</label>
               <input className="form-control" placeholder="e.g. Teacher" value={occupation} onChange={e => setOccupation(e.target.value)} />
             </div>
-          </div>
-          <div className="form-group">
-            <label>Insurer <span style={{ fontWeight: 400, color: 'var(--muted)' }}>(optional)</span></label>
-            <InsurerSelect value={insurer} onChange={v => setInsurer(v as Insurer)} options={insurerOptions} />
           </div>
           <div className="form-group">
             <label>Address</label>

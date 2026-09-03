@@ -58,7 +58,6 @@ const STAFF_SECTIONS: NavSection[] = [
           { id: 'policies', label: 'Policies', icon: '🛡' },
           { id: 'products', label: 'Products', icon: '📦', roles: ['super_admin', 'admin', 'policy_admin'] },
           { id: 'pre_loss_assessments', label: 'Pre-Loss Assessments', icon: '🌾', roles: ['super_admin', 'admin', 'policy_admin', 'claims_officer'] },
-          { id: 'insurer_management', label: 'Insurer Management', icon: '🏢', roles: ['super_admin', 'admin'] },
         ],
       },
     ],
@@ -264,7 +263,7 @@ function SidebarHeader({ onClose }: { onClose: () => void }) {
       <div className="sidebar-logo-mark">T</div>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div className="sidebar-logo-name">TARIQIFY IMS</div>
-        <div className="sidebar-logo-sub">Enpassent Multiple Agent</div>
+        <div className="sidebar-logo-sub">Motions Microinsurance</div>
       </div>
       <button className="sidebar-close-btn" onClick={onClose} aria-label="Close sidebar">✕</button>
     </div>

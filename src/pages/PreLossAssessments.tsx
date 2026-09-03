@@ -108,10 +108,7 @@ export default function PreLossAssessments({ showToast }: Props) {
     .slice(0, 8)
 
   const handlePrint = (a: PolicyAssessment) => {
-    // So the letterhead only shows the house insurer's logo when this
-    // policy is actually placed with it -- see exportPolicyAssessmentReport.
-    const insurer = policies.find(p => p.id === a.policyId)?.insurer
-    void exportPolicyAssessmentReport(a, a.policyNumber, a.clientName ?? '', insurer)
+    void exportPolicyAssessmentReport(a, a.policyNumber, a.clientName ?? '')
   }
 
   const canRecord = hasPermission('claims.physical_assessment')

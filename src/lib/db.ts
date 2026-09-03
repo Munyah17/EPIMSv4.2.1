@@ -8,14 +8,13 @@ import { health } from './health'
 import { cacheGet, cacheSet } from './offlineCache'
 import { hammingDistance, DUPLICATE_THRESHOLD } from './photoHash'
 import { policyBillablePremium } from './premium'
-import { houseInsurerFirst } from './insurerAssignment'
 import type { ExchangeRate } from './exchangeRate'
 import type {
   AppUser, Client, Product, ClientSafeProduct, Policy, Claim, Payment,
   Ticket, EmailMessage, Lead, FraudCase, Reminder, CautionFlag,
   PolicyStatus, ClaimStatus, PaymentStatus, PaymentMethod,
   TicketStatus, TicketPriority, LeadStatus, FraudCaseStatus, CustomRole,
-  ClaimAssessment, PolicyAssessment, AssessmentPhoto, InsurerRecord, CropType, FraudSignalRule, HeroSlide,
+  ClaimAssessment, PolicyAssessment, AssessmentPhoto, CropType, FraudSignalRule, HeroSlide,
   PolicyCard,
 } from '../types'
 
@@ -718,57 +717,6 @@ export const products = {
       return { data: null, error: error.code === '23505' ? 'That product code is already in use; please choose a different one.' : error.message }
     }
     return { data: toProduct(data as Record<string,unknown>), error: null }
-  },
-}
-
-// ── INSURERS ──────────────────────────────────────────────────────
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function toInsurer(r: any): InsurerRecord {
-  return {
-    id: r.id, name: r.name,
-    contactEmail: r.contact_email ?? undefined, contactPhone: r.contact_phone ?? undefined,
-    address: r.address ?? undefined, regNumber: r.reg_number ?? undefined,
-    commissionPercent: r.commission_percent ?? undefined,
-    status: r.status, notes: r.notes ?? undefined, coverTypes: r.cover_types ?? [], createdAt: r.created_at,
-  }
-}
-
-export const insurers = {
-  async list() {
-    const { ok, data } = await sb('insurers', 'read',
-      () => supabase.from('insurers').select('*').order('name'),
-      d => Array.isArray(d),
-    )
-    if (ok && data) return { data: houseInsurerFirst((data as Record<string, unknown>[]).map(toInsurer)), error: null }
-    return { data: [] as InsurerRecord[], error: null }
-  },
-
-  async create(input: { name: string; contactEmail?: string; contactPhone?: string; address?: string; regNumber?: string; commissionPercent?: number; notes?: string; coverTypes?: string[] }) {
-    const row = {
-      name: input.name, contact_email: input.contactEmail || null, contact_phone: input.contactPhone || null,
-      address: input.address || null, reg_number: input.regNumber || null,
-      commission_percent: input.commissionPercent ?? null, notes: input.notes || null,
-      cover_types: input.coverTypes ?? [],
-    }
-    const { data, error } = await supabase.from('insurers').insert(row).select().single()
-    if (error) return { data: null, error: error.code === '23505' ? 'An insurer with that name already exists.' : error.message }
-    return { data: toInsurer(data), error: null }
-  },
-
-  async update(id: string, updates: Partial<Omit<InsurerRecord, 'id' | 'createdAt'>>) {
-    const row: Record<string, unknown> = {}
-    if (updates.name              !== undefined) row.name = updates.name
-    if (updates.contactEmail      !== undefined) row.contact_email = updates.contactEmail || null
-    if (updates.contactPhone      !== undefined) row.contact_phone = updates.contactPhone || null
-    if (updates.address           !== undefined) row.address = updates.address || null
-    if (updates.regNumber         !== undefined) row.reg_number = updates.regNumber || null
-    if (updates.commissionPercent !== undefined) row.commission_percent = updates.commissionPercent ?? null
-    if (updates.status            !== undefined) row.status = updates.status
-    if (updates.notes             !== undefined) row.notes = updates.notes || null
-    if (updates.coverTypes        !== undefined) row.cover_types = updates.coverTypes
-    const { data, error } = await supabase.from('insurers').update(row).eq('id', id).select().single()
-    if (error) return { data: null, error: error.code === '23505' ? 'An insurer with that name already exists.' : error.message }
-    return { data: toInsurer(data), error: null }
   },
 }
 
@@ -2351,7 +2299,7 @@ export const db = {
   policies, clients, products, claims, payments,
   tickets, emails, leads, staff, fraudCases, reminders, cautionFlags, settings, loginAttempts, developerApi,
   exchangeRates,
-  customRoles, claimAssessments, policyAssessments, insurers, photoHashes, cropTypes, fraudSignalRules, heroSlides,
+  customRoles, claimAssessments, policyAssessments, photoHashes, cropTypes, fraudSignalRules, heroSlides,
   policyCards,
   dashboardStats, sidebarCounts,
   subscribeToTable,

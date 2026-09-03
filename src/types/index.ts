@@ -29,27 +29,10 @@ export const ROLE_RANK: Record<UserRole, number> = {
   policyholder: 0,
 }
 
-/** No longer a fixed union — insurer partners are now managed records (see
- *  InsurerRecord/Insurer Management page) rather than a hardcoded list
- *  duplicated across every client/policy modal. */
+/** This system belongs to a single insurer -- there is no insurer selection
+ *  or insurer list anywhere in it. The field survives on Client/Policy only
+ *  because existing rows carry it; nothing here reads or writes it anymore. */
 export type Insurer = string
-
-export interface InsurerRecord {
-  id: string
-  name: string
-  contactEmail?: string
-  contactPhone?: string
-  address?: string
-  regNumber?: string
-  commissionPercent?: number
-  status: 'active' | 'inactive'
-  notes?: string
-  /** Product categories this insurer actually underwrites — same set as
-   *  Product['category']. Free-standing strings (not FK'd to products)
-   *  since an insurer can offer a category before any product exists. */
-  coverTypes: string[]
-  createdAt: string
-}
 
 export interface CropType {
   id: string
@@ -124,10 +107,9 @@ export interface Client {
   address: string
   occupation?: string
   insurer?: Insurer
-  /** True when nobody picked an insurer and the client was provisionally
-   *  placed with the house insurer. Staff-facing only: it marks a client who
-   *  still has to be asked, and it is never allowed to decide the insurer on
-   *  a policy. See src/lib/insurerAssignment.ts. */
+  /** No longer set or read anywhere -- this system has one insurer, so
+   *  there is nothing to be provisional about. Kept only because existing
+   *  rows carry it. */
   insurerProvisional?: boolean
   createdAt: string
   policyCount: number

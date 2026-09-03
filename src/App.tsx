@@ -41,7 +41,6 @@ const DeveloperApi = lazyWithRecovery('DeveloperApi', () => import('./pages/Deve
 const MassMessaging = lazyWithRecovery('MassMessaging', () => import('./pages/MassMessaging'))
 const BillingReminders = lazyWithRecovery('BillingReminders', () => import('./pages/BillingReminders'))
 const PreLossAssessments = lazyWithRecovery('PreLossAssessments', () => import('./pages/PreLossAssessments'))
-const InsurerManagement = lazyWithRecovery('InsurerManagement', () => import('./pages/InsurerManagement'))
 const AgricultureInsurance = lazyWithRecovery('AgricultureInsurance', () => import('./pages/AgricultureInsurance'))
 const MemberCards = lazyWithRecovery('MemberCards', () => import('./pages/MemberCards'))
 const MyPolicies = lazyWithRecovery('MyPolicies', () => import('./pages/policyholder/MyPolicies'))
@@ -53,7 +52,7 @@ export type ActivePanel =
   | 'dashboard' | 'policies' | 'claims' | 'payments' | 'products'
   | 'clients' | 'staff' | 'system_access_roles' | 'reminders' | 'reports' | 'leads'
   | 'email' | 'tickets' | 'fraud' | 'profile' | 'mno_integration'
-  | 'system_health' | 'settings' | 'developer_api' | 'mass_messaging' | 'billing_reminders' | 'pre_loss_assessments' | 'insurer_management' | 'agriculture_insurance' | 'member_cards'
+  | 'system_health' | 'settings' | 'developer_api' | 'mass_messaging' | 'billing_reminders' | 'pre_loss_assessments' | 'agriculture_insurance' | 'member_cards'
   | 'my_policies' | 'my_claims' | 'my_payments' | 'live_chat'
 
 function AppInner() {
@@ -143,7 +142,6 @@ function AppInner() {
       case 'mass_messaging': return <MassMessaging {...panelProps} />
       case 'billing_reminders': return <BillingReminders {...panelProps} />
       case 'pre_loss_assessments': return <PreLossAssessments {...panelProps} />
-      case 'insurer_management': return <InsurerManagement {...panelProps} />
       case 'agriculture_insurance': return <AgricultureInsurance {...panelProps} />
       case 'member_cards': return <MemberCards {...panelProps} />
       case 'profile': return <Profile {...panelProps} />

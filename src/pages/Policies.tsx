@@ -52,9 +52,9 @@ export default function Policies({ showToast, initialCategory }: Props) {
   const products = [...new Set(policies.map(p => p.productName))]
   const clientById = new Map(clients.map(c => [c.id, c]))
 
-  // Search matches policy number, client name, grower number, insurer,
-  // product name, and the client's phone/national ID — grower number is
-  // ranked first since it's the field agriculture staff look up by most.
+  // Search matches policy number, client name, grower number, product name,
+  // and the client's phone/national ID — grower number is ranked first
+  // since it's the field agriculture staff look up by most.
   const q = search.trim().toLowerCase()
   const matchScore = (p: Policy): number => {
     if (!q) return 0
@@ -62,7 +62,7 @@ export default function Policies({ showToast, initialCategory }: Props) {
     const grower = (p.growerNumber ?? '').toLowerCase()
     if (grower.startsWith(q)) return 0
     if (grower.includes(q)) return 1
-    const fields = [p.policyNumber, p.clientName, p.insurer, p.productName, client?.phone, client?.nationalId]
+    const fields = [p.policyNumber, p.clientName, p.productName, client?.phone, client?.nationalId]
       .filter(Boolean).map(v => String(v).toLowerCase())
     if (fields.some(f => f.startsWith(q))) return 2
     if (fields.some(f => f.includes(q))) return 3
@@ -285,7 +285,6 @@ export default function Policies({ showToast, initialCategory }: Props) {
                 <th>Product</th>
                 <th>Cover</th>
                 <th>Grower No.</th>
-                <th>Insurer</th>
                 <th>Start Date</th>
                 <th>Status</th>
                 <th>Actions</th>
@@ -293,7 +292,7 @@ export default function Policies({ showToast, initialCategory }: Props) {
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={9} className="td-empty">No policies found.</td></tr>
+                <tr><td colSpan={8} className="td-empty">No policies found.</td></tr>
               ) : filtered.map(p => (
                 <tr key={p.id}>
                   <td><span className="mono">{p.policyNumber}</span></td>
@@ -301,7 +300,6 @@ export default function Policies({ showToast, initialCategory }: Props) {
                   <td>{p.productName}</td>
                   <td>${p.coverAmount.toLocaleString()}</td>
                   <td>{p.growerNumber ?? '—'}</td>
-                  <td>{p.insurer ?? '—'}</td>
                   <td>{formatDate(p.startDate)}</td>
                   <td>
                     <span className={`pill pill-${p.status}`}>{p.status.replace('_', ' ')}</span>

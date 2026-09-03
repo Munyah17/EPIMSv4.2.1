@@ -91,11 +91,6 @@ export interface PolicyMember {
   policyNumber: string
   policyStatus: Policy['status']
   productCategory?: string
-  /** Which insurer actually underwrites this cover -- Enpassent places
-   *  business with almost every insurer in Zimbabwe, so a card must never
-   *  assume it is any one of them by default. Undefined when the policy
-   *  hasn't had an insurer chosen yet. */
-  insurer?: string
   /** Who carries this member. A dependant is never shown or fetched on
    *  their own — they always arrive attached to their policyholder. */
   holderName: string
@@ -118,7 +113,6 @@ function dependantMember(policy: Policy, dependant: Dependant, index: number): P
     policyNumber: policy.policyNumber,
     policyStatus: policy.status,
     productCategory: policy.productCategory,
-    insurer: policy.insurer,
     holderName: policy.clientName,
     holderClientId: policy.clientId,
   }
@@ -140,7 +134,6 @@ export function holderMember(policy: Policy, holderDob = '', holderNationalId = 
     policyNumber: policy.policyNumber,
     policyStatus: policy.status,
     productCategory: policy.productCategory,
-    insurer: policy.insurer,
     holderName: policy.clientName,
     holderClientId: policy.clientId,
   }

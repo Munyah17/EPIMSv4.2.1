@@ -185,7 +185,7 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
         severity: 'warning',
       })
     }
-    const alert = `Enpassent: PAYMENT AMOUNT MISMATCH. ${detail}`
+    const alert = `Motions: PAYMENT AMOUNT MISMATCH. ${detail}`
     for (const number of ADMIN_ALERT_NUMBERS) {
       void sendSms(number, alert).catch(() => { /**/ })
     }

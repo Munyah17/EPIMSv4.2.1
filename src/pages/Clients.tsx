@@ -175,7 +175,6 @@ export default function Clients({ showToast }: Props) {
                 <th>Phone</th>
                 <th>National ID</th>
                 <th>Email</th>
-                <th>Insurer</th>
                 <th>Policies</th>
                 <th>Joined</th>
                 <th>Status</th>
@@ -184,7 +183,7 @@ export default function Clients({ showToast }: Props) {
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={10} className="td-empty">No clients found.</td></tr>
+                <tr><td colSpan={9} className="td-empty">No clients found.</td></tr>
               ) : filtered.map(c => (
                 <tr key={c.id} className={selected.has(c.id) ? 'row-selected' : ''}>
                   <td><input type="checkbox" title={`Select ${c.name}`} checked={selected.has(c.id)} onChange={() => toggleSelect(c.id)} /></td>
@@ -192,7 +191,6 @@ export default function Clients({ showToast }: Props) {
                   <td>{c.phone}</td>
                   <td><span className="mono">{c.nationalId}</span></td>
                   <td>{c.email}</td>
-                  <td>{c.insurer ?? '—'}</td>
                   <td><span className="pill pill-active">{c.policyCount}</span></td>
                   <td>{formatDate(c.createdAt)}</td>
                   <td><span className={`pill ${c.status === 'active' ? 'pill-active' : 'pill-lapsed'}`}>{c.status}</span></td>
