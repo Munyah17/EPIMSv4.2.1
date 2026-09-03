@@ -8,6 +8,7 @@ import { health } from './health'
 import { cacheGet, cacheSet } from './offlineCache'
 import { hammingDistance, DUPLICATE_THRESHOLD } from './photoHash'
 import { policyBillablePremium } from './premium'
+import { toIsoDate } from './dateUtils'
 import type { ExchangeRate } from './exchangeRate'
 import type {
   AppUser, Client, Product, ClientSafeProduct, Policy, Claim, Payment,
@@ -992,8 +993,8 @@ async function applyCompletedPaymentToPolicy(policyId: string, amountPaid: numbe
 
   await policies.update(policyId, {
     status,
-    lastPaymentDate: today.toISOString().split('T')[0],
-    nextPaymentDate: next.toISOString().split('T')[0],
+    lastPaymentDate: toIsoDate(today),
+    nextPaymentDate: toIsoDate(next),
   })
 }
 

@@ -1,4 +1,5 @@
 import type { Policy } from '../types'
+import { toIsoDate } from './dateUtils'
 
 /**
  * When a policy actually starts: capture date (today, when staff register
@@ -13,7 +14,7 @@ export function computeAssignedStartDate(registrationDate: Date = new Date()): s
   const year = registrationDate.getFullYear()
   const month = registrationDate.getMonth()
   const assigned = day < 10 ? new Date(year, month, 1) : new Date(year, month + 1, 1)
-  return assigned.toISOString().split('T')[0]
+  return toIsoDate(assigned)
 }
 
 export type PaymentCurrencyStatus = 'current' | 'arrears' | 'prepaid'

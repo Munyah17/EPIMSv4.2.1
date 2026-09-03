@@ -5,6 +5,7 @@ import { db } from '../../lib/db'
 import { premiumPeriodLabel } from '../../lib/productUtils'
 import { policyBillablePremium, billableHeadCount } from '../../lib/premium'
 import DateInput from '../ui/DateInput'
+import { toIsoDate } from '../../lib/dateUtils'
 
 interface Props {
   /** When omitted, the modal lets the user pick a policy from a dropdown. */
@@ -28,7 +29,7 @@ export default function RecordPaymentModal({ policyId: initialPolicyId, payment:
   const [amount, setAmount] = useState(editing ? String(editing.amount) : '')
   const [method, setMethod] = useState<PaymentMethod>(editing?.method ?? 'OneMoney')
   const [status, setStatus] = useState<PaymentStatus>(editing?.status ?? 'completed')
-  const [date, setDate] = useState(editing?.date ?? new Date().toISOString().split('T')[0])
+  const [date, setDate] = useState(editing?.date ?? toIsoDate(new Date()))
   const [useSplit, setUseSplit] = useState(!!editing?.splitPayments?.length)
   const [splits, setSplits] = useState<SplitPayment[]>(
     editing?.splitPayments?.length ? editing.splitPayments : [{ method: 'EcoCash', amount: 0 }, { method: 'OneMoney', amount: 0 }]

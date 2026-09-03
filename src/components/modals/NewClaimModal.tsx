@@ -7,6 +7,7 @@ import DateInput from '../ui/DateInput'
 import ValidationSummary, { fieldId, invalidClass, isMissing, scrollToField } from '../ui/ValidationSummary'
 import type { MissingField } from '../ui/ValidationSummary'
 import FraudNoticeModal from './FraudNoticeModal'
+import { toIsoDate } from '../../lib/dateUtils'
 
 interface Props {
   onClose: () => void
@@ -154,7 +155,7 @@ export default function NewClaimModal({ onClose, onSave, showToast, claimKind, o
   const handleSave = async () => {
     if (missing.length > 0 || !policy || saving) return
     setSaving(true)
-    const dateSubmitted = new Date().toISOString().split('T')[0]
+    const dateSubmitted = toIsoDate(new Date())
     const priorClaimsOnPolicy = allClaims.filter(c => c.policyId === policyId).length
     let fraudScore = 20
     let signals: string[] = []

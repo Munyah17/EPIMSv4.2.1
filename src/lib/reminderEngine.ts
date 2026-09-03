@@ -23,7 +23,7 @@ import { sendEmail, getNotifSettings } from './mailService'
 import { sendSms } from './smsService'
 import { NETONE_SUSPENDED } from './claimNotifications'
 import { policyBillablePremium } from './premium'
-import { formatDate } from './dateUtils'
+import { formatDate, toIsoDate } from './dateUtils'
 
 const CHECK_KEY = 'tqfy_reminder_last_check'
 
@@ -137,7 +137,7 @@ ${sig}`
 // ── Core dispatch ──────────────────────────────────────────────────
 
 async function dispatchReminder(policy: Policy, client: Client | undefined, type: ReminderType, dueDate: Date) {
-  const dueISO = dueDate.toISOString().split('T')[0]
+  const dueISO = toIsoDate(dueDate)
   const tag = STAGE_TAG[type]
 
   const already = await db.reminders.existsForStage(policy.id, dueISO, tag)

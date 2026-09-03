@@ -7,6 +7,8 @@ import PhoneInput from '../ui/PhoneInput'
 import DateInput from '../ui/DateInput'
 import { premiumPeriodLabel } from '../../lib/productUtils'
 import { computeAssignedStartDate } from '../../lib/policyLifecycle'
+import { toIsoDate } from '../../lib/dateUtils'
+import { ORIGIN_TAG } from '../../lib/originTag'
 
 interface Props {
   onClose: () => void
@@ -188,7 +190,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
         dob: clientDob,
         address: clientAddress,
         occupation: clientOccupation,
-        createdAt: new Date().toISOString().split('T')[0],
+        createdAt: toIsoDate(new Date()),
         policyCount: 0,
         status: 'active',
       }
@@ -198,7 +200,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
     }
 
     // Create policy with the client
-    const policyNumber = `EMA${new Date().getFullYear()}${String(Date.now()).slice(-3)}`
+    const policyNumber = `${ORIGIN_TAG}${new Date().getFullYear()}${String(Date.now()).slice(-3)}`
     const endDate = new Date(startDate)
     endDate.setFullYear(endDate.getFullYear() + 1)
     const policy: Policy = {
@@ -211,7 +213,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
       premium: product!.premium,
       coverAmount: product!.coverAmount,
       startDate,
-      endDate: endDate.toISOString().split('T')[0],
+      endDate: toIsoDate(endDate),
       // Every new policy starts in a waiting period, lifted to active after
       // 90 days — except agriculture, which has NO waiting period at all
       // and activates instantly on creation. See src/lib/reminderEngine.ts.
@@ -219,8 +221,8 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
       dependants,
       paymentMethod,
       growerNumber: product!.category === 'agriculture' ? (growerNumber || undefined) : undefined,
-      createdAt: new Date().toISOString().split('T')[0],
-      nextPaymentDate: new Date(new Date(startDate).setMonth(new Date(startDate).getMonth() + (product!.category === 'agriculture' ? 12 : 1))).toISOString().split('T')[0],
+      createdAt: toIsoDate(new Date()),
+      nextPaymentDate: toIsoDate(new Date(new Date(startDate).setMonth(new Date(startDate).getMonth() + (product!.category === 'agriculture' ? 12 : 1)))),
       agentId: agentId || undefined,
       agentName: staff.find(s => s.id === agentId)?.name,
     }

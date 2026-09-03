@@ -16,9 +16,10 @@ import { localStore } from '../localStore'
 import { mnoStore } from './mnoStore'
 import { runGatewayAuth, okResponse, logApiRequest } from './gateway'
 import { emitEvent } from './webhooks'
+import { toIsoDate } from '../dateUtils'
 
 function uid() { return `loc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}` }
-function shortDate() { return new Date().toISOString().split('T')[0] }
+function shortDate() { return toIsoDate(new Date()) }
 function now() { return new Date().toISOString() }
 
 // ── Menu Text Templates ────────────────────────────────────────────────

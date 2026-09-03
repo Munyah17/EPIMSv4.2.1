@@ -8,7 +8,7 @@ import { mnoStore } from '../lib/mno/mnoStore'
 import { simulateInboundRequest } from '../lib/mno/handlers'
 import { handleUssdAction } from '../lib/mno/ussd'
 import { retryFailedEvents } from '../lib/mno/webhooks'
-import { formatDate } from '../lib/dateUtils'
+import { formatDate, toIsoDate } from '../lib/dateUtils'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -384,7 +384,7 @@ function ApiKeysTab({ apiKeys, partners, reload, showToast }: {
       id: `key-${Date.now()}`, partnerId: newKey.partnerId, partnerName: partner?.name ?? '',
       label: newKey.label, keyPrefix: prefix, environment: newKey.environment,
       permissions: newKey.permissions.length ? newKey.permissions : ['products:read'],
-      status: 'active', createdAt: new Date().toISOString().split('T')[0],
+      status: 'active', createdAt: toIsoDate(new Date()),
       requestCount: 0, rateLimit: newKey.rateLimit,
     })
     reload()

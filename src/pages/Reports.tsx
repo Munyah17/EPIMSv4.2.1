@@ -6,7 +6,7 @@ import { exportToCsv, exportToExcel, exportToPdf } from '../lib/exportUtils'
 import { formatPremium } from '../lib/productUtils'
 import { policyBillablePremium, billableHeadCount } from '../lib/premium'
 import type { Policy, Claim, Payment, Client } from '../types'
-import { formatDate } from '../lib/dateUtils'
+import { formatDate, toIsoDate } from '../lib/dateUtils'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -109,7 +109,7 @@ export default function Reports({ showToast }: Props) {
 
   const maxMonthlyAmount = Math.max(1, ...monthlyCollections.map(m => m.amount))
 
-  const dateStamp = new Date().toISOString().split('T')[0]
+  const dateStamp = toIsoDate(new Date())
 
   const handleExport = async (format: 'PDF' | 'Excel' | 'CSV' | 'IPEC PDF') => {
     if (format === 'IPEC PDF') {

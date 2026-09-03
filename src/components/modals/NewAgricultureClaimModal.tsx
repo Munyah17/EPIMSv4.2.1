@@ -16,6 +16,7 @@ import {
   expectedLeavesForHectares, stringsFromBarnCapacity, leavesInBarn,
   assessLoss, calculateClaim, formatPercent, formatMoney,
 } from '../../lib/agricultureClaim'
+import { toIsoDate } from '../../lib/dateUtils'
 
 export interface PendingOfflinePhoto {
   label: string
@@ -272,7 +273,7 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
   const handleSave = async () => {
     if (missing.length > 0 || !policy || !user || saving) return
     setSaving(true)
-    const dateSubmitted = new Date().toISOString().split('T')[0]
+    const dateSubmitted = toIsoDate(new Date())
     const priorClaimsOnPolicy = allClaims.filter(c => c.policyId === policyId).length
     let fraudScore = 20
     let signals: string[] = []

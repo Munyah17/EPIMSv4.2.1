@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { Lead, LeadStatus } from '../../types'
-import { formatDate } from '../../lib/dateUtils'
+import { formatDate, toIsoDate } from '../../lib/dateUtils'
 
 interface Props {
   lead: Lead
@@ -17,7 +17,7 @@ export default function ViewLeadModal({ lead, onClose, onSave }: Props) {
       ...lead,
       status,
       notes,
-      lastContact: new Date().toISOString().split('T')[0],
+      lastContact: toIsoDate(new Date()),
     })
   }
 

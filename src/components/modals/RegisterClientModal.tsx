@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { Client } from '../../types'
 import PhoneInput from '../ui/PhoneInput'
 import DateInput from '../ui/DateInput'
+import { toIsoDate } from '../../lib/dateUtils'
 
 interface Props {
   onClose: () => void
@@ -23,7 +24,7 @@ export default function RegisterClientModal({ onClose, onSave }: Props) {
     const client: Client = {
       id: `c${Date.now()}`,
       name, email, phone, nationalId, dob, address, occupation,
-      createdAt: new Date().toISOString().split('T')[0],
+      createdAt: toIsoDate(new Date()),
       policyCount: 0,
       status: 'active',
     }

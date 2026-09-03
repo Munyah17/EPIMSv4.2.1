@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Lead } from '../../types'
 import { searchForLeads, type FoundLead } from '../../lib/leadsSearch'
+import { toIsoDate } from '../../lib/dateUtils'
 
 interface Props {
   onClose: () => void
@@ -51,7 +52,7 @@ export default function LeadsSearchModal({ onClose, onImport }: Props) {
         productInterest: r.productInterest,
         status: 'new',
         intentScore: r.intentScore,
-        createdAt: new Date().toISOString().split('T')[0],
+        createdAt: toIsoDate(new Date()),
         notes: r.notes,
       }
     })

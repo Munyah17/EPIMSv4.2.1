@@ -3,6 +3,7 @@ import type { Policy } from '../../types'
 import {
   initiateEcoCash, initiatePaynow, getZipitDetails, pollEcoCash, pollPaynow, CURRENCY_SYMBOL,
 } from '../../lib/paymentGateways'
+import { toIsoDate } from '../../lib/dateUtils'
 import type { PaymentResponse, PaymentCurrency } from '../../lib/paymentGateways'
 import {
   getCurrencySettings, isActive, DEFAULT_CURRENCY_SETTINGS, CURRENCY_UNAVAILABLE_MESSAGE,
@@ -210,7 +211,7 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
       amount: totalAmount,
       method: method === 'zipit' ? 'Zipit' : method === 'paynow' ? 'Paynow' : 'EcoCash',
       status: 'completed',
-      date: new Date().toISOString().split('T')[0],
+      date: toIsoDate(new Date()),
     })
 
     if (user) {
