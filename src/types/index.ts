@@ -1,6 +1,9 @@
 /** super_admin/admin/tech_support are SYSTEM access roles — managed on the
- *  System Access Roles page, Super Admin only. Everything else is a WORK
- *  role — managed on Staff Management. */
+ *  System Access Roles page, Super Admin only. claims_officer through agent
+ *  are WORK roles — managed on Staff Management. `policyholder` is not a
+ *  staff role at all: it is what a client's own portal login (created
+ *  automatically the first time they buy cover) is tagged with in
+ *  `profiles`, so it must never be treated as one of the roles above. */
 export type UserRole =
   | 'super_admin'
   | 'admin'
@@ -13,6 +16,15 @@ export type UserRole =
   | 'policyholder'
 
 export const SYSTEM_ROLES: UserRole[] = ['super_admin', 'admin', 'tech_support']
+
+/** Every role that is actually a staff member -- everything BUT
+ *  `policyholder` (a client's own portal login). db.staff.list() filters to
+ *  exactly this set: it is the single source every staff picker, assignee
+ *  list and the Staff Management page itself reads from, so a client's
+ *  portal account can never surface as though it were a colleague. */
+export const STAFF_ROLES: UserRole[] = [
+  'super_admin', 'admin', 'tech_support', 'claims_officer', 'policy_admin', 'finance', 'client_relations', 'agent',
+]
 
 /** Seniority ranking used to gate task delegation (Tickets) — a staff
  *  member can delegate to their own rank or below, not upward. Peers

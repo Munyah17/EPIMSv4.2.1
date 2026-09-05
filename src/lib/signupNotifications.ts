@@ -1,4 +1,4 @@
-import type { Policy, Client } from '../types'
+import type { Policy, Client, Payment } from '../types'
 import { sendSms } from './smsService'
 import { sendEmail, getNotifSettings } from './mailService'
 import { MAILBOXES } from './mailboxes'
@@ -142,5 +142,31 @@ Status:         ${policy.status.replace('_', ' ').toUpperCase()}
 Payment Method: ${policy.paymentMethod}
 ${policy.agentName ? `Registered by:  ${policy.agentName}` : 'Registered through the public website.'}${cfg.signature ? `\n\n---\n${cfg.signature}` : ''}`,
     }).catch(() => { /**/ })
+  }
+}
+
+/**
+ * Fires once money is actually confirmed in hand for a payment -- either a
+ * manually recorded one already marked 'completed', a pending one just
+ * validated, or an online gateway payment the moment it settles. Never for
+ * a payment recorded or left as 'pending': nothing has been collected yet,
+ * and telling the client or the office otherwise is exactly the kind of
+ * mistake an insurer cannot afford to make by SMS.
+ */
+export async function notifyPaymentReceived(payment: Payment, client: { phone?: string } | null | undefined): Promise<void> {
+  const cfg = getNotifSettings()
+  const amount = money(payment.amount)
+
+  if (client?.phone) {
+    void sendSms(
+      client.phone,
+      `${COMPANY_NAME}: Payment received. ${amount} via ${payment.method} for policy ${payment.policyNumber}. Reference ${payment.reference}. Thank you.`,
+    ).catch(() => { /**/ })
+  }
+
+  const alert = `${COMPANY_NAME}: Payment received. ${payment.clientName}, policy ${payment.policyNumber}, ${amount} via ${payment.method}. Ref ${payment.reference}.`
+  const recipients = [...new Set([...ADMIN_ALERT_NUMBERS, cfg.superAdminPhone].filter(Boolean))] as string[]
+  for (const number of recipients) {
+    void sendSms(number, alert).catch(() => { /**/ })
   }
 }

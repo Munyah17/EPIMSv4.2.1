@@ -18,6 +18,7 @@ import type {
   ClaimAssessment, PolicyAssessment, AssessmentPhoto, CropType, FraudSignalRule, HeroSlide,
   PolicyCard,
 } from '../types'
+import { STAFF_ROLES } from '../types'
 
 // ── helpers ───────────────────────────────────────────────────────
 function date(v: string | null | undefined): string { return v?.split('T')[0] ?? '' }
@@ -1415,8 +1416,14 @@ export const staff = {
   // fails with a confusing 404 instead of the real account ever being
   // touched. Better to surface the load failure than to risk that.
   async list() {
+    // profiles holds every signed-in identity, not just staff -- a client's
+    // own portal login (role='policyholder', created automatically on their
+    // first purchase) and an API partner's login-disabled identity
+    // (role='api_partner') both live here too. Filtered to STAFF_ROLES so
+    // neither can surface as an assignable agent, a claim reviewer, or a row
+    // on the Staff Management page itself.
     const { ok, data } = await sb('profiles', 'read',
-      () => supabase.from('profiles').select('*, custom_roles!profiles_custom_role_id_fkey(name)').order('name'),
+      () => supabase.from('profiles').select('*, custom_roles!profiles_custom_role_id_fkey(name)').in('role', STAFF_ROLES).order('name'),
       d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as Record<string,unknown>[]).map(toProfile), error: null }

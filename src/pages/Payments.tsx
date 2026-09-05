@@ -6,6 +6,7 @@ import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
 import { useAuth } from '../contexts/AuthContext'
 import { recordActivity } from '../lib/activityLog'
+import { notifyPaymentReceived } from '../lib/signupNotifications'
 import RecordPaymentModal from '../components/modals/RecordPaymentModal'
 
 interface Props {
@@ -74,6 +75,17 @@ export default function Payments({ showToast }: Props) {
     })
   }
 
+  /** The client SMS needs a phone number, which a Payment row doesn't carry
+   *  itself -- resolved via the policy it's against. Best-effort: a lookup
+   *  failure here must never block the payment that already succeeded. */
+  const notifyReceived = async (payment: Payment) => {
+    try {
+      const { data: policy } = await db.policies.get(payment.policyId)
+      const client = policy ? (await db.clients.get(policy.clientId)).data ?? undefined : undefined
+      void notifyPaymentReceived(payment, client)
+    } catch { /* best-effort */ }
+  }
+
   const handleAdd = async (payment: Payment) => {
     const { data, error } = await db.payments.create(payment)
     if (error || !data) { showToast('error', 'Failed to record payment.'); return }
@@ -81,6 +93,9 @@ export default function Payments({ showToast }: Props) {
     logManual(data, 'Recorded a payment received off-system')
     showToast('success', `Payment ${data.reference} recorded successfully.`)
     setShowRecord(false)
+    // Only when money is actually confirmed in hand -- a payment recorded
+    // as still pending has nothing to tell anyone yet.
+    if (data.status === 'completed') void notifyReceived(data)
   }
 
   const handleValidate = async (payment: Payment) => {
@@ -89,6 +104,7 @@ export default function Payments({ showToast }: Props) {
     setPayments(prev => prev.map(p => p.id === data.id ? data : p))
     logManual(data, 'Marked a pending payment as received')
     showToast('success', `Payment ${data.reference} validated.`)
+    void notifyReceived(data)
   }
 
   const handleEdit = async (updated: Payment) => {

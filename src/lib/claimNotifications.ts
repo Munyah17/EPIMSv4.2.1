@@ -3,6 +3,8 @@ import { sendEmail, getNotifSettings } from './mailService'
 import { db } from './db'
 import { MAILBOXES } from './mailboxes'
 import { sendSms } from './smsService'
+import { COMPANY_NAME } from './company'
+import { ADMIN_ALERT_NUMBERS } from './signupNotifications'
 
 /** NetOne distribution partnership is suspended for now — flip this back
  *  once it resumes rather than re-wiring the notification pipeline. */
@@ -58,8 +60,9 @@ Please retain this email for your records. All parties will be copied on further
     void sendEmail({ to: client.email, cc, subject, body: clientBody, linkedTo: claim.id, folder: 'claims', from: MAILBOXES.claims })
   }
   if (client.phone) {
-    void sendSms(client.phone, `Tariqify: Your claim ${claim.claimNumber} has been submitted. You'll be notified as it progresses.`).catch(() => { /**/ })
+    void sendSms(client.phone, `${COMPANY_NAME}: Your claim ${claim.claimNumber} has been submitted. You'll be notified as it progresses.`).catch(() => { /**/ })
   }
+  notifyOffice(claim, `submitted by ${claim.clientName}, $${claim.amount.toLocaleString()}, awaiting intake.`)
 }
 
 export async function notifyClaimStatusChanged(claim: Claim, previousStatus: ClaimStatus): Promise<void> {
@@ -107,15 +110,20 @@ We will keep you informed as this claim progresses. All parties are copied on th
 
 interface StaffContact { email?: string; phone?: string; name: string }
 
-/** Every claims-pipeline stage escalates to the Super Admin (SMS) and the
- *  Motions info mailbox (email CC) — configured phone or not, in addition
- *  to the client and whichever staff member is picking the claim up next. */
+/** Every claims-pipeline stage alerts the office (SMS) and the Motions info
+ *  mailbox (email CC), in addition to the client and whichever staff member
+ *  is picking the claim up next. */
 const CLAIMS_ESCALATION_CC_EMAIL = 'info@motions.co.zw'
 
-function notifySuperAdmin(claim: Claim, stageMessage: string) {
+/** The four fixed office lines, plus the configured Super Admin number if
+ *  it isn't already one of them — the same set every other event in the
+ *  system (a new client, a new policy, a payment) alerts, so a claim is
+ *  never the one thing the office doesn't hear about by text. */
+function notifyOffice(claim: Claim, stageMessage: string) {
   const cfg = getNotifSettings()
-  if (cfg.superAdminPhone) {
-    void sendSms(cfg.superAdminPhone, `Tariqify: Claim ${claim.claimNumber}: ${stageMessage}`).catch(() => { /**/ })
+  const recipients = [...new Set([...ADMIN_ALERT_NUMBERS, cfg.superAdminPhone].filter(Boolean))] as string[]
+  for (const number of recipients) {
+    void sendSms(number, `${COMPANY_NAME}: Claim ${claim.claimNumber}: ${stageMessage}`).catch(() => { /**/ })
   }
 }
 
@@ -123,7 +131,7 @@ export async function notifyClaimIntakeAccepted(claim: Claim, processor: StaffCo
   const cfg = getNotifSettings()
   const client = await getClientContact(claim)
   const subject = `[Claim Received] ${claim.claimNumber}: Now with Claims Processing`
-  notifySuperAdmin(claim, `accepted at intake, assigned to ${processor.name} for assessment.`)
+  notifyOffice(claim, `accepted at intake, assigned to ${processor.name} for assessment.`)
 
   if (client.email) {
     void sendEmail({
@@ -131,7 +139,7 @@ export async function notifyClaimIntakeAccepted(claim: Claim, processor: StaffCo
       body: `Dear ${claim.clientName},\n\nYour claim ${claim.claimNumber} has been received and accepted for processing.${claimSummaryBlock(claim)}\n\nIt is now with our claims processing team for assessment.${signature(cfg.signature)}`,
     })
   }
-  if (client.phone) void sendSms(client.phone, `Tariqify: Your claim ${claim.claimNumber} was received and is now being processed.`).catch(() => { /**/ })
+  if (client.phone) void sendSms(client.phone, `${COMPANY_NAME}: Your claim ${claim.claimNumber} was received and is now being processed.`).catch(() => { /**/ })
 
   if (processor.email) {
     void sendEmail({
@@ -139,28 +147,28 @@ export async function notifyClaimIntakeAccepted(claim: Claim, processor: StaffCo
       body: `${claim.claimNumber} has been accepted at intake and assigned to you for assessment.${claimSummaryBlock(claim)}\n\nLog in to Tariqify IMS to review.${signature(cfg.signature)}`,
     })
   }
-  if (processor.phone) void sendSms(processor.phone, `Tariqify: Claim ${claim.claimNumber} assigned to you for assessment.`).catch(() => { /**/ })
+  if (processor.phone) void sendSms(processor.phone, `${COMPANY_NAME}: Claim ${claim.claimNumber} assigned to you for assessment.`).catch(() => { /**/ })
 }
 
 export async function notifyClaimIntakeRejected(claim: Claim): Promise<void> {
   const cfg = getNotifSettings()
   const client = await getClientContact(claim)
   const subject = `[Claim Not Accepted] ${claim.claimNumber}`
-  notifySuperAdmin(claim, 'rejected at intake.')
+  notifyOffice(claim, 'rejected at intake.')
   if (client.email) {
     void sendEmail({
       to: client.email, cc: CLAIMS_ESCALATION_CC_EMAIL, subject, linkedTo: claim.id, folder: 'claims', from: MAILBOXES.claims,
       body: `Dear ${claim.clientName},\n\nWe were unable to accept your claim ${claim.claimNumber} for processing.${claimSummaryBlock(claim)}\n\nPlease contact us if you believe this is in error.${signature(cfg.signature)}`,
     })
   }
-  if (client.phone) void sendSms(client.phone, `Tariqify: Your claim ${claim.claimNumber} could not be accepted. Please contact us for details.`).catch(() => { /**/ })
+  if (client.phone) void sendSms(client.phone, `${COMPANY_NAME}: Your claim ${claim.claimNumber} could not be accepted. Please contact us for details.`).catch(() => { /**/ })
 }
 
 export async function notifyClaimEscalated(claim: Claim, reviewer: StaffContact): Promise<void> {
   const cfg = getNotifSettings()
   const client = await getClientContact(claim)
   const subject = `[Claim Under Final Review] ${claim.claimNumber}`
-  notifySuperAdmin(claim, `escalated to ${reviewer.name} for final review.`)
+  notifyOffice(claim, `escalated to ${reviewer.name} for final review.`)
 
   if (client.email) {
     void sendEmail({
@@ -168,7 +176,7 @@ export async function notifyClaimEscalated(claim: Claim, reviewer: StaffContact)
       body: `Dear ${claim.clientName},\n\nYour claim ${claim.claimNumber} has completed assessment and is now with our final reviewer for a decision.${claimSummaryBlock(claim)}${signature(cfg.signature)}`,
     })
   }
-  if (client.phone) void sendSms(client.phone, `Tariqify: Your claim ${claim.claimNumber} is now with our final reviewer.`).catch(() => { /**/ })
+  if (client.phone) void sendSms(client.phone, `${COMPANY_NAME}: Your claim ${claim.claimNumber} is now with our final reviewer.`).catch(() => { /**/ })
 
   if (reviewer.email) {
     void sendEmail({
@@ -176,7 +184,7 @@ export async function notifyClaimEscalated(claim: Claim, reviewer: StaffContact)
       body: `${claim.claimNumber} has been assessed and escalated to you for a final decision.${claimSummaryBlock(claim)}${claim.assessmentNotes ? `\n\nAssessment notes:\n${claim.assessmentNotes}` : ''}\n\nLog in to Tariqify IMS to approve or decline.${signature(cfg.signature)}`,
     })
   }
-  if (reviewer.phone) void sendSms(reviewer.phone, `Tariqify: Claim ${claim.claimNumber} needs your final decision.`).catch(() => { /**/ })
+  if (reviewer.phone) void sendSms(reviewer.phone, `${COMPANY_NAME}: Claim ${claim.claimNumber} needs your final decision.`).catch(() => { /**/ })
 }
 
 export async function notifyClaimFinalDecision(claim: Claim): Promise<void> {
@@ -184,7 +192,7 @@ export async function notifyClaimFinalDecision(claim: Claim): Promise<void> {
   const client = await getClientContact(claim)
   const approved = claim.status === 'approved'
   const subject = `[Claim ${approved ? 'Approved' : 'Declined'}] ${claim.claimNumber}`
-  notifySuperAdmin(claim, `final decision: ${approved ? 'APPROVED' : 'DECLINED'}.`)
+  notifyOffice(claim, `final decision: ${approved ? 'APPROVED' : 'DECLINED'}.`)
 
   if (client.email) {
     void sendEmail({
@@ -193,7 +201,7 @@ export async function notifyClaimFinalDecision(claim: Claim): Promise<void> {
     })
   }
   if (client.phone) {
-    void sendSms(client.phone, `Tariqify: Your claim ${claim.claimNumber} has been ${approved ? 'APPROVED' : 'DECLINED'}.`).catch(() => { /**/ })
+    void sendSms(client.phone, `${COMPANY_NAME}: Your claim ${claim.claimNumber} has been ${approved ? 'APPROVED' : 'DECLINED'}.`).catch(() => { /**/ })
   }
 }
 
@@ -225,4 +233,8 @@ Thank you for choosing our insurance services.${signature(cfg.signature)}`
   if (client.email) {
     void sendEmail({ to: client.email, cc, subject, body: clientBody, linkedTo: claim.id, folder: 'claims', from: MAILBOXES.claims })
   }
+  if (client.phone) {
+    void sendSms(client.phone, `${COMPANY_NAME}: Your claim ${claim.claimNumber} has been paid. $${claim.amount.toLocaleString()} processed. Thank you.`).catch(() => { /**/ })
+  }
+  notifyOffice(claim, `paid, $${claim.amount.toLocaleString()} processed. Closed.`)
 }

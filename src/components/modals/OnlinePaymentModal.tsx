@@ -14,7 +14,7 @@ import { taggedReference } from '../../lib/originTag'
 import { db } from '../../lib/db'
 import { policyBillablePremium, billableHeadCount } from '../../lib/premium'
 import { recordActivity } from '../../lib/activityLog'
-import { ADMIN_ALERT_NUMBERS } from '../../lib/signupNotifications'
+import { ADMIN_ALERT_NUMBERS, notifyPaymentReceived } from '../../lib/signupNotifications'
 import { sendSms } from '../../lib/smsService'
 import { useAuth } from '../../contexts/AuthContext'
 import PhoneInput from '../ui/PhoneInput'
@@ -203,7 +203,7 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
    * is attributed to whoever made it.
    */
   async function handleConfirmed(validatedManually = false) {
-    await db.payments.create({
+    const { data: recorded } = await db.payments.create({
       reference: ref,
       policyId: policy.id,
       policyNumber: policy.policyNumber,
@@ -213,6 +213,10 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
       status: 'completed',
       date: toIsoDate(new Date()),
     })
+    // Confirmed by the gateway (or, for validatedManually, by staff looking
+    // at proof of payment) either way -- the client and office both hear
+    // about it now, the same as every other confirmed payment in the system.
+    if (recorded) void notifyPaymentReceived(recorded, client)
 
     if (user) {
       void recordActivity({
