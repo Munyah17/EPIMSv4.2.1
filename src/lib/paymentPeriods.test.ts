@@ -10,7 +10,7 @@ import { describe, it, expect } from 'vitest'
  * nothing, and neither was visible on any screen.
  *
  * Mirrors applyCompletedPaymentToPolicy in lib/db.ts and recordPayment in
- * api/v1/[...path].ts, which must agree with each other.
+ * api/v1.ts, which must agree with each other.
  */
 function periodsPaid(amountPaid: number, perPeriod: number): number {
   return perPeriod > 0 && amountPaid > 0 ? Math.floor(amountPaid / perPeriod) : 0

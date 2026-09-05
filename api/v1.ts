@@ -28,6 +28,18 @@ import crypto from 'crypto'
  * DOB, wrong cover amount, etc.) goes through POST /api/v1/tickets, which
  * files a real support ticket for Super Admin to action, never a direct
  * write from the API caller.
+ *
+ * Lives at api/v1.ts, not api/v1/[...path].ts. It used to be the bracket
+ * catch-all convention, which every real caller (confirmed against
+ * TopMe's own traffic in api_request_log) hit as a 404 with an empty
+ * resolved path: a single segment ("/api/v1/products") reached the
+ * function with req.query.path empty, and two or more segments never
+ * reached it at all -- Vercel's own platform 404, before this code ever
+ * ran. vercel.json now rewrites /api/v1/:path* here explicitly, with the
+ * captured tail passed as a plain query string this file splits itself,
+ * the same mechanism already proven working for api/ai.ts and
+ * api/api-partners.ts, rather than depend on the bracket file convention
+ * again.
  */
 
 type Json = Record<string, unknown>
@@ -114,7 +126,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!supabaseUrl || !serviceKey) return res.status(500).json({ error: 'Server is not configured.' })
   const admin = createClient(supabaseUrl, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } })
 
-  const segments = ([] as string[]).concat(req.query.path as string | string[] ?? []).filter(Boolean)
+  // The rewrite in vercel.json hands the whole tail after /api/v1/ as one
+  // string (e.g. "policies/ABC123"), captured exactly as :path* matched it
+  // -- split here rather than trusting Vercel's dynamic-route array
+  // population, which is the part that was silently failing.
+  const rawPath = req.query.path
+  const pathString = Array.isArray(rawPath) ? rawPath.join('/') : (rawPath ?? '')
+  const segments = pathString.split('/').filter(Boolean)
   const path = segments.join('/')
   const resource = segments[0] ?? ''
   const method = req.method ?? 'GET'

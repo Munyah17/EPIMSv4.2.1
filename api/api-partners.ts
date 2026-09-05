@@ -8,7 +8,7 @@ import crypto from 'crypto'
  *
  * These were two functions (create-api-developer.ts, create-api-key.ts).
  * They are one now purely because Vercel's Hobby plan allows 12 serverless
- * functions per deployment and this project reached 13 -- api/v1/[...path].ts
+ * functions per deployment and this project reached 13 -- api/v1.ts
  * sits in a subdirectory and is easy to forget when counting. Nothing about
  * the two flows changed: same request bodies, same responses, same
  * admin-only authorization, and vercel.json rewrites keep both original
@@ -135,7 +135,7 @@ async function createKey(req: VercelRequest, res: VercelResponse, admin: Supabas
   const keyHash = crypto.createHash('sha256').update(rawKey).digest('hex')
   const keyPrefix = rawKey.slice(0, 22)
 
-  // support:write (submit a ticket, see api/v1/[...path].ts) is always
+  // support:write (submit a ticket, see api/v1.ts) is always
   // granted regardless of what's chosen — it's a developer's only path to
   // flag a problem at all, since the API has no update/delete endpoints.
   const chosenScopes = body.scopes?.length ? body.scopes : DEFAULT_SCOPES

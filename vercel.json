@@ -7,6 +7,7 @@
     { "source": "/api/estimate-exchange-rate", "destination": "/api/ai?action=estimate-exchange-rate" },
     { "source": "/api/create-api-developer", "destination": "/api/api-partners?action=create-developer" },
     { "source": "/api/create-api-key", "destination": "/api/api-partners?action=create-key" },
+    { "source": "/api/v1/:path*", "destination": "/api/v1?path=:path*" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "crons": [
