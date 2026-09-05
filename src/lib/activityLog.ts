@@ -105,10 +105,18 @@ function toRow(r: any): ActivityRow {
   }
 }
 
-export async function listActivity(opts: { limit?: number; action?: string; actorId?: string } = {}): Promise<ActivityRow[]> {
+export async function listActivity(
+  opts: { limit?: number; action?: string; actorId?: string; entityTypes?: string[] } = {},
+): Promise<ActivityRow[]> {
   let query = supabase.from('activity_log').select('*').order('ts', { ascending: false }).limit(opts.limit ?? 200)
   if (opts.action) query = query.eq('action', opts.action)
   if (opts.actorId) query = query.eq('actor_id', opts.actorId)
+  // Scopes the feed to one domain (e.g. only api_key/api_developer rows for
+  // the Developers & API page) -- without this, every caller of this
+  // function sees the same unfiltered, system-wide feed, which is exactly
+  // how an API partner's page ended up showing an unrelated super admin's
+  // "deleted a user" entry instead of that partner's own activity.
+  if (opts.entityTypes?.length) query = query.in('entity_type', opts.entityTypes)
   const { data, error } = await query
   if (error || !data) return []
   return (data as unknown[]).map(toRow)

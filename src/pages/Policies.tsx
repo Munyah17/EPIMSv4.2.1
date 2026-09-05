@@ -4,7 +4,9 @@ import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
 import { exportPolicyReport, getPolicyReportPdfBase64 } from '../lib/exportUtils'
-import { notifyPolicyRegistered } from '../lib/signupNotifications'
+import { notifyPolicyRegistered, ADMIN_ALERT_NUMBERS } from '../lib/signupNotifications'
+import { sendSms } from '../lib/smsService'
+import { COMPANY_NAME } from '../lib/company'
 import { recordActivity } from '../lib/activityLog'
 import { sendSystemEmail } from '../lib/mailService'
 import { MAILBOXES } from '../lib/mailboxes'
@@ -190,6 +192,9 @@ export default function Policies({ showToast, initialCategory }: Props) {
         detail: `${policy.clientName}, ${policy.productName}`, severity: 'warning',
       })
       showToast('success', `Policy ${policy.policyNumber} deleted.`)
+      for (const number of ADMIN_ALERT_NUMBERS) {
+        void sendSms(number, `${COMPANY_NAME}: Policy ${policy.policyNumber} (${policy.clientName}) was DELETED by ${user?.name ?? 'a staff member'}.`).catch(() => { /**/ })
+      }
       return
     }
 
@@ -213,6 +218,9 @@ export default function Policies({ showToast, initialCategory }: Props) {
     if (error) { showToast('error', error); return }
     setPolicies(prev => prev.filter(p => p.id !== policy.id))
     showToast('success', `Policy ${policy.policyNumber} and its ${attached} deleted. Recorded in the activity log.`)
+    for (const number of ADMIN_ALERT_NUMBERS) {
+      void sendSms(number, `${COMPANY_NAME}: Policy ${policy.policyNumber} (${policy.clientName}) was DELETED by ${user?.name ?? 'a staff member'}, along with ${attached}.`).catch(() => { /**/ })
+    }
   }
 
   const handlePrint = async (policy: Policy) => {

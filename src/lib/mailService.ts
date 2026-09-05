@@ -39,15 +39,15 @@ export const DEFAULT_NOTIF_SETTINGS: NotifSettings = {
   // NETONE_SUSPENDED in claimNotifications.ts and reminderEngine.ts).
   netoneEmail: 'insurance@netone.co.zw',
   netonePhone: '+263712001234',
-  fromAddress: 'noreply@enpassent.co.zw',
+  fromAddress: 'noreply@motions.co.zw',
   fromName: 'Motions Microinsurance',
-  replyTo: 'admin@enpassent.co.zw',
+  replyTo: 'admin@motions.co.zw',
   smsEnabled: false,
-  signature: 'Regards,\nMotions Microinsurance',
+  signature: 'Regards,\nMotions Microinsurance\n+263 780 086 175\nwww.motions.co.zw',
   superAdminPhone: '',
   companyAddress: '24 Midlothian Avenue, Eastlea, Harare, Zimbabwe',
   companyPhone: '+263 780 086 175 / +263 780 086 176 / +263 780 086 177 / +263 780 086 178',
-  companyEmail: 'info@enpassent.co.zw',
+  companyEmail: 'info@motions.co.zw',
 }
 
 export function getNotifSettings(): NotifSettings {

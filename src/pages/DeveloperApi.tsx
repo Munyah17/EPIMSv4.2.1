@@ -88,13 +88,19 @@ export default function DeveloperApi({ showToast }: Props) {
 
   useEffect(load, [])
 
-  // Live trail of who touched keys and developer access. Subscribed rather
-  // than polled so a revocation shows up on every open screen the moment it
-  // happens, which is the point of watching at all.
+  // Live trail of who touched keys and developer access -- API partner
+  // activity only, never the system-wide feed. This page shows a partner's
+  // own history back to them (and staff reviewing it); a super admin
+  // deleting a user, or any other unrelated staff action, has no business
+  // appearing here. Subscribed rather than polled so a revocation shows up
+  // on every open screen the moment it happens, which is the point of
+  // watching at all.
+  const DEVELOPER_ACTIVITY_ENTITY_TYPES = ['api_key', 'api_developer']
   useEffect(() => {
     let cancelled = false
-    void listActivity({ limit: 100 }).then(rows => { if (!cancelled) setActivity(rows) })
+    void listActivity({ limit: 100, entityTypes: DEVELOPER_ACTIVITY_ENTITY_TYPES }).then(rows => { if (!cancelled) setActivity(rows) })
     const unsubscribe = subscribeToActivity(row => {
+      if (!row.entityType || !DEVELOPER_ACTIVITY_ENTITY_TYPES.includes(row.entityType)) return
       setActivity(prev => [row, ...prev].slice(0, 100))
     })
     return () => { cancelled = true; unsubscribe() }

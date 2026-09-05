@@ -22,10 +22,18 @@ import { MAILBOXES } from './mailboxes'
 import { sendEmail, getNotifSettings } from './mailService'
 import { sendSms } from './smsService'
 import { NETONE_SUSPENDED } from './claimNotifications'
+import { ADMIN_ALERT_NUMBERS } from './signupNotifications'
 import { policyBillablePremium } from './premium'
 import { formatDate, toIsoDate } from './dateUtils'
+import { COMPANY_NAME } from './company'
 
 const CHECK_KEY = 'tqfy_reminder_last_check'
+
+/** Where a reminder email sends someone to actually pay -- the client
+ *  portal, logged in, is the only place "pay this policy online" already
+ *  exists (My Policies -> Pay Online), so this is that, not a new
+ *  unauthenticated payment page invented for the email alone. */
+const PAY_ONLINE_URL = 'https://portal.motions.co.zw/login'
 
 /** What the client actually owes this cycle. Premiums are per head, so this
  *  is the policyholder plus every dependant — quoting policy.premium here
@@ -87,12 +95,14 @@ This is a friendly reminder that your insurance premium of $${amountDue(policy).
 
 Please ensure your payment is ready to avoid any lapse in cover.
 
+Pay online: ${PAY_ONLINE_URL}
+
 ${sig}`
     case 'r2_pre1': return `Dear ${policy.clientName},
 
 URGENT REMINDER: Your insurance premium of $${amountDue(policy).toFixed(2)} for policy ${policy.policyNumber} is due TOMORROW, ${due}.
 
-Please pay immediately to maintain active coverage. You can pay via EcoCash, Paynow, Zipit, or at any of our offices.
+Please pay immediately to maintain active coverage. You can pay via EcoCash, Paynow, Zipit, at any of our offices, or online: ${PAY_ONLINE_URL}
 
 ${sig}`
     case 'r3_due': return `Dear ${policy.clientName},
@@ -101,7 +111,7 @@ Your insurance premium of $${amountDue(policy).toFixed(2)} for policy ${policy.p
 
 Failure to pay today may result in your policy lapsing. Please pay now to avoid disruption to your coverage.
 
-Payment methods: EcoCash | Paynow | Zipit | Cash at office
+Payment methods: EcoCash | Paynow | Zipit | Cash at office | Online: ${PAY_ONLINE_URL}
 
 ${sig}`
     case 'r4_post5': return `Dear ${policy.clientName},
@@ -112,9 +122,9 @@ Your insurance premium for policy ${policy.policyNumber} (${policy.productName})
 
 ⚠ IMPORTANT: Your policy coverage may be at risk. Any claims submitted while your premium is in arrears may be subject to review or rejection.
 
-Please settle $${amountDue(policy).toFixed(2)} immediately to restore full coverage and remove this caution flag.
+Please settle ${amountDue(policy).toFixed(2)} immediately to restore full coverage and remove this caution flag.
 
-Payment methods: EcoCash | Paynow | Zipit | Cash at office
+Payment methods: EcoCash | Paynow | Zipit | Cash at office | Online: ${PAY_ONLINE_URL}
 
 ${sig}`
   }
@@ -169,10 +179,19 @@ async function dispatchReminder(policy: Policy, client: Client | undefined, type
   if (cfg.insurerEmail) void sendEmail({ to: cfg.insurerEmail, cc: NETONE_SUSPENDED ? undefined : cfg.netoneEmail, subject: staffSubject, body: staffBody, folder: 'inbox', from: MAILBOXES.noreply })
   if (!NETONE_SUSPENDED && cfg.netoneEmail) void sendEmail({ to: cfg.netoneEmail, subject: staffSubject, body: staffBody, folder: 'inbox', from: MAILBOXES.noreply })
 
-  if (type === 'r3_due' && clientPhone) {
-    sendSms(clientPhone,
-      `Tariqify: Premium of $${amountDue(policy).toFixed(2)} for policy ${policy.policyNumber} is DUE TODAY. Pay now via EcoCash/Paynow to keep your coverage active.`
-    ).catch(() => { /**/ })
+  // Every stage texts the client, not just the due-today one -- a reminder
+  // that only ever arrives by email is easy to miss, and this is the one
+  // system-wide event that already had three of its four stages silently
+  // SMS-less.
+  if (clientPhone) {
+    const smsBody = type === 'r1_pre5'
+      ? `${COMPANY_NAME}: Premium of $${amountDue(policy).toFixed(2)} for policy ${policy.policyNumber} is due in 5 days on ${formatDate(dueDate)}.`
+      : type === 'r2_pre1'
+      ? `${COMPANY_NAME}: URGENT - Premium of $${amountDue(policy).toFixed(2)} for policy ${policy.policyNumber} is due TOMORROW.`
+      : type === 'r3_due'
+      ? `${COMPANY_NAME}: Premium of $${amountDue(policy).toFixed(2)} for policy ${policy.policyNumber} is DUE TODAY. Pay now via EcoCash/Paynow to keep your coverage active.`
+      : `${COMPANY_NAME}: Policy ${policy.policyNumber} is now 5 days overdue and has LAPSED. Pay $${amountDue(policy).toFixed(2)} to reinstate your cover.`
+    sendSms(clientPhone, smsBody).catch(() => { /**/ })
   }
 
   if (type === 'r4_post5') {
@@ -192,6 +211,13 @@ async function dispatchReminder(policy: Policy, client: Client | undefined, type
     // back to active (see applyCompletedPaymentToPolicy in db.ts).
     if (policy.status !== 'lapsed') {
       await db.policies.update(policy.id, { status: 'lapsed' })
+    }
+    // The office hears about every lapse the same way it hears about every
+    // other money event in the system -- the four fixed lines, not just
+    // whoever happens to have Billing & Reminders open.
+    const recipients = [...new Set([...ADMIN_ALERT_NUMBERS, cfg.superAdminPhone].filter(Boolean))] as string[]
+    for (const number of recipients) {
+      sendSms(number, `${COMPANY_NAME}: Policy ${policy.policyNumber} LAPSED. ${policy.clientName}, $${amountDue(policy).toFixed(2)} overdue 5 days. Caution flag applied.`).catch(() => { /**/ })
     }
   }
 
