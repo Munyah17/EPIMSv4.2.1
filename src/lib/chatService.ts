@@ -147,3 +147,43 @@ export async function claimSession(sessionId: string, agentId: string) {
 export async function closeSession(sessionId: string) {
   return supabase.from('chat_sessions').update({ status: 'closed', closed_at: new Date().toISOString() }).eq('id', sessionId)
 }
+
+/** 5 minutes of silence from either side ends an active chat -- neither a
+ *  visitor who wandered off nor an agent who got pulled away should leave a
+ *  session sitting open indefinitely. Staleness is measured from the last
+ *  message regardless of who sent it, so it doesn't matter which side went
+ *  quiet. Runs only from LiveChat.tsx's existing poll (an authenticated
+ *  staff session): listing every active session is not something an
+ *  anonymous visitor's widget should be able to do, so this is not called
+ *  from ChatWidget.tsx. A session with no staff online to watch it will not
+ *  auto-close until someone opens Live Chat again -- the same limitation
+ *  the billing reminder engine had before it moved server-side; a cron for
+ *  chat would close that gap if it ever matters in practice. */
+export const CHAT_INACTIVITY_LIMIT_MS = 5 * 60 * 1000
+
+export async function autoCloseStaleSessions(): Promise<void> {
+  const active = await listActiveSessions()
+  if (active.length === 0) return
+
+  const { data: lastMessages } = await supabase
+    .from('chat_messages')
+    .select('session_id, created_at')
+    .in('session_id', active.map(s => s.id))
+    .order('created_at', { ascending: false })
+
+  const lastActivity = new Map<string, string>()
+  for (const row of lastMessages ?? []) {
+    if (!lastActivity.has(row.session_id)) lastActivity.set(row.session_id, row.created_at)
+  }
+
+  const now = Date.now()
+  const stale = active.filter(s => {
+    // No messages yet -- fall back to when the agent picked it up, so a
+    // claimed-but-abandoned session still ages out.
+    const last = lastActivity.get(s.id) ?? s.startedAt
+    if (!last) return false
+    return now - new Date(last).getTime() > CHAT_INACTIVITY_LIMIT_MS
+  })
+
+  await Promise.all(stale.map(s => closeSession(s.id)))
+}

@@ -5,6 +5,7 @@ import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
 import NewTicketModal from '../components/modals/NewTicketModal'
 import ViewTicketModal from '../components/modals/ViewTicketModal'
+import { notifyTicketCreated, notifyTicketReplied, notifyTicketClosed } from '../lib/ticketNotifications'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -59,14 +60,29 @@ export default function Tickets({ showToast }: Props) {
     setTickets(prev => [data, ...prev])
     showToast('success', `Ticket ${data.ticketNumber} created.`)
     setShowNew(false)
+    const { data: client } = await db.clients.get(data.clientId)
+    if (client) void notifyTicketCreated(data, client)
   }
 
   const handleUpdate = async (updated: Ticket) => {
+    const previous = tickets.find(t => t.id === updated.id)
     const { data, error } = await db.tickets.update(updated.id, updated)
     if (error || !data) { showToast('error', 'Failed to update ticket.'); return }
     setTickets(prev => prev.map(t => t.id === data.id ? data : t))
     showToast('success', `Ticket ${data.ticketNumber} updated.`)
     setViewTicket(null)
+
+    // Best-effort: whatever changed here already succeeded above, so a
+    // notification failure must never surface as though the save itself failed.
+    const { data: client } = await db.clients.get(data.clientId)
+    if (!client) return
+    const staffReplyAdded = data.messages.length > (previous?.messages.length ?? 0)
+      && data.messages[data.messages.length - 1]?.isStaff
+    if (data.status === 'closed' && previous?.status !== 'closed') {
+      void notifyTicketClosed(data, client)
+    } else if (staffReplyAdded) {
+      void notifyTicketReplied(data, client, data.messages[data.messages.length - 1].message)
+    }
   }
 
   return (

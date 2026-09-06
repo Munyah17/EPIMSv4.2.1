@@ -134,6 +134,17 @@ export default function ViewTicketModal({ ticket, staff, onClose, onSave }: Prop
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          {/* One click, not "change the dropdown then remember to save" --
+              this is for the moment a client calls back dissatisfied and
+              staff need to act on it immediately. */}
+          {(ticket.status === 'closed' || ticket.status === 'resolved') && (
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => onSave({ ...ticket, status: 'open', messages, updatedAt: new Date().toISOString() })}
+            >
+              🔄 Reopen Ticket
+            </button>
+          )}
           <button className="btn btn-primary" onClick={handleSave}>Save & Update</button>
         </div>
       </div>

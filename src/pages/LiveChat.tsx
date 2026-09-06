@@ -45,7 +45,11 @@ export default function LiveChat({ showToast }: Props) {
     // Polling backstop alongside realtime — see the matching note in
     // ChatWidget.tsx for why this matters, not just belt-and-braces.
     const interval = setInterval(reload, 8000)
-    return () => { unsub(); clearInterval(interval) }
+    // Auto-close piggybacks on this same interval rather than its own —
+    // see chatService.autoCloseStaleSessions for why this only runs here
+    // (staff-side), not from the visitor widget.
+    const staleCheck = setInterval(() => { void chat.autoCloseStaleSessions() }, 30000)
+    return () => { unsub(); clearInterval(interval); clearInterval(staleCheck) }
   }, [reload])
 
   useEffect(() => {
