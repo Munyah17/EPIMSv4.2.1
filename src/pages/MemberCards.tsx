@@ -5,7 +5,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { searchMembers, policyMembers, parseMemberNumber } from '../lib/memberNumbers'
 import type { PolicyMember } from '../lib/memberNumbers'
 import { categoryIssuesMemberCards } from '../lib/productUtils'
-import { exportCard, CARD_EXPORT_FORMATS } from '../lib/cardExport'
+import { exportCard, printCard, CARD_EXPORT_FORMATS } from '../lib/cardExport'
 import type { CardExportFormat } from '../lib/cardExport'
 import MemberCard, { CARD_WIDTH_PX, CARD_HEIGHT_PX } from '../components/ui/MemberCard'
 import IssueCardModal from '../components/modals/IssueCardModal'
@@ -114,6 +114,19 @@ export default function MemberCards({ showToast }: Props) {
       showToast('success', `Card exported as ${format.toUpperCase()}.`)
     } catch (e) {
       showToast('error', `Could not export the card: ${e}`)
+    }
+    setExporting(false)
+  }
+
+  const handlePrint = async () => {
+    if (!selected) return
+    const nodes = [frontRef.current, backRef.current].filter((n): n is HTMLDivElement => !!n)
+    if (nodes.length === 0) return
+    setExporting(true)
+    try {
+      await printCard(nodes)
+    } catch (e) {
+      showToast('error', `Could not open the card for printing: ${e}`)
     }
     setExporting(false)
   }
@@ -253,6 +266,9 @@ export default function MemberCards({ showToast }: Props) {
                   </select>
                   <button type="button" className="btn btn-primary btn-sm" onClick={handleExport} disabled={exporting}>
                     {exporting ? 'Exporting…' : '⬇ Download'}
+                  </button>
+                  <button type="button" className="btn btn-outline btn-sm" onClick={handlePrint} disabled={exporting} title="Opens a true-size, print-ready PDF in a new tab -- print it to a card printer the same as any other printer.">
+                    🖨 Print
                   </button>
                   {canIssue && (
                     <button type="button" className="btn btn-outline btn-sm" onClick={() => setIssueOpen(true)}>

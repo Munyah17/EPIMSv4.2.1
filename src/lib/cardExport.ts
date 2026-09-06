@@ -93,6 +93,34 @@ export async function exportCard(
   }
 }
 
+/**
+ * Sends a card straight to the browser's print dialog instead of a file on
+ * disk -- for a small flatbed card printer plugged in like any other
+ * printer, where "download the PDF, find it, open it, print it" is three
+ * unnecessary steps. Same true-size, one-page-per-face PDF the "Download"
+ * PDF option builds, opened in a new tab where the browser's own PDF
+ * viewer already has a print button -- nothing fancier than that; an
+ * auto-triggered print() on a freshly opened PDF is unreliable enough
+ * across browsers that a visible, familiar print button beats a clever
+ * trick that sometimes does nothing.
+ */
+export async function printCard(nodes: HTMLElement[]): Promise<void> {
+  const faces = nodes.filter(Boolean)
+  if (faces.length === 0) return
+
+  const [{ jsPDF }, canvases] = await Promise.all([
+    import('jspdf'),
+    Promise.all(faces.map(renderToCanvas)),
+  ])
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [CARD_MM.width, CARD_MM.height] })
+  canvases.forEach((canvas, i) => {
+    if (i > 0) doc.addPage([CARD_MM.width, CARD_MM.height], 'landscape')
+    doc.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, CARD_MM.width, CARD_MM.height)
+  })
+  const blobUrl = doc.output('bloburl')
+  window.open(blobUrl, '_blank')
+}
+
 /** The card as a data URL, for attaching to an email or showing a preview. */
 export async function cardToDataUrl(node: HTMLElement, format: CardImageFormat = 'png'): Promise<string> {
   const canvas = await renderToCanvas(node)
