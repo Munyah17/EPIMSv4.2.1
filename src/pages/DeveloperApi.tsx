@@ -16,7 +16,7 @@ const ENDPOINTS: { method: string; path: string; scope: string; desc: string }[]
   { method: 'GET', path: '/api/v1/products', scope: 'products:read', desc: 'List active insurance products available to sell.' },
   { method: 'POST', path: '/api/v1/quotes', scope: 'quotes:read', desc: 'Get a premium quote and eligibility check for a product.' },
   { method: 'POST', path: '/api/v1/clients', scope: 'clients:write', desc: 'Register a new client (or fetch an existing one by national ID).' },
-  { method: 'POST', path: '/api/v1/policies', scope: 'policies:write', desc: 'Create a policy for a client. Attributed to the developer as agent.' },
+  { method: 'POST', path: '/api/v1/policies', scope: 'policies:write', desc: 'Create a policy for a client. Attributed to the developer as agent. Debits the wallet float for the premium; agriculture products require the account to be separately enabled by a Super Admin.' },
   { method: 'GET', path: '/api/v1/policies/:policyNumber', scope: 'policies:read', desc: 'Look up a policy the developer created.' },
   { method: 'POST', path: '/api/v1/payments', scope: 'payments:write', desc: 'Record a premium payment against a policy.' },
   { method: 'POST', path: '/api/v1/tickets', scope: 'support:write (always granted)', desc: "File a support ticket for one of your clients, the only way to request a correction. There is no update/delete endpoint for clients or policies." },
@@ -232,6 +232,45 @@ Tariqify IMS`,
     showToast('success', `${dev.companyName} terminated. All their keys have been revoked.`)
   }
 
+  /** A policy can only be issued through the API against money already on
+   *  deposit here, so a top-up only ever records money that has actually
+   *  arrived from the developer's own settlement -- never something the
+   *  API itself can trigger on a partner's own say-so. */
+  const handleTopUp = async (dev: ApiDeveloper) => {
+    const raw = window.prompt(`Record a wallet top-up for ${dev.companyName}.\n\nCurrent balance: $${dev.walletBalance.toFixed(2)}\n\nAmount received:`)
+    if (raw === null) return
+    const amount = Number(raw.trim())
+    if (!Number.isFinite(amount) || amount <= 0) { showToast('warning', 'Enter a positive amount.'); return }
+    const note = window.prompt('Note (e.g. how it was settled) — optional:') ?? ''
+    const { data, error } = await db.developerApi.topUpWallet(dev.id, amount, note.trim(), user?.name)
+    if (error || !data) { showToast('error', error ?? 'Failed to record top-up.'); return }
+    setDevelopers(prev => prev.map(d => d.id === dev.id ? data : d))
+    void recordActivity({
+      action: 'developer.wallet_topup', actor: actor(),
+      entityType: 'api_developer', entityId: dev.id, entityLabel: dev.companyName,
+      detail: `+$${amount.toFixed(2)}, new balance $${data.walletBalance.toFixed(2)}${note.trim() ? `. ${note.trim()}` : ''}`, severity: 'notice',
+    })
+    showToast('success', `Wallet topped up. New balance: $${data.walletBalance.toFixed(2)}.`)
+  }
+
+  /** Super Admin only -- see the comment on ApiDeveloper.agricultureEnabled
+   *  for why this is gated tighter than the rest of this page. */
+  const handleToggleAgriculture = async (dev: ApiDeveloper) => {
+    const next = !dev.agricultureEnabled
+    if (next && !window.confirm(
+      `Enable agriculture cover for ${dev.companyName}?\n\nAgriculture is billed once a year via Stop Order, so this issues real cover on our name before any money is collected. Only do this for a partner you have verified directly.`,
+    )) return
+    const { data, error } = await db.developerApi.setAgricultureEnabled(dev.id, next)
+    if (error || !data) { showToast('error', error ?? 'Failed to update.'); return }
+    setDevelopers(prev => prev.map(d => d.id === dev.id ? data : d))
+    void recordActivity({
+      action: 'developer.agriculture_toggled', actor: actor(),
+      entityType: 'api_developer', entityId: dev.id, entityLabel: dev.companyName,
+      detail: next ? 'Agriculture cover ENABLED' : 'Agriculture cover disabled', severity: next ? 'warning' : 'notice',
+    })
+    showToast('success', `Agriculture cover ${next ? 'enabled' : 'disabled'} for ${dev.companyName}.`)
+  }
+
   const handleCommission = async (dev: ApiDeveloper, value: string) => {
     const pct = value.trim() === '' ? null : Number(value)
     const { error } = await db.developerApi.setCommissionOverride(dev.id, pct)
@@ -389,11 +428,33 @@ Tariqify IMS`,
                             <button className="btn btn-ghost btn-sm" onClick={() => toggleAudit(dev.id)}>
                               {showAudit === dev.id ? 'Hide Audit Log' : '📜 View Audit Log'}
                             </button>
+                            <button className="btn btn-ghost btn-sm" onClick={() => handleTopUp(dev)} disabled={!canEdit || dev.status === 'terminated'}>
+                              💰 Top Up Wallet
+                            </button>
                             {dev.status !== 'terminated' && (
                               <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => handleTerminate(dev)} disabled={!canEdit}>
                                 Terminate Developer
                               </button>
                             )}
+                          </div>
+
+                          <div className="info-banner" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
+                            <div>
+                              <strong>Wallet balance: ${dev.walletBalance.toFixed(2)}</strong>
+                              <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>
+                                A non-agriculture policy can only be issued through the API against this float.
+                              </div>
+                            </div>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5 }}>
+                              <input
+                                type="checkbox"
+                                checked={dev.agricultureEnabled}
+                                disabled={user?.role !== 'super_admin'}
+                                onChange={() => handleToggleAgriculture(dev)}
+                              />
+                              Agriculture cover enabled
+                              {user?.role !== 'super_admin' && <span style={{ color: 'var(--muted)' }}>(Super Admin only)</span>}
+                            </label>
                           </div>
 
                           {usageByDeveloper[dev.id] && (

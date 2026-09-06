@@ -1744,6 +1744,15 @@ export interface ApiDeveloper {
   terminatedAt?: string
   terminationReason?: string
   createdAt: string
+  /** Money this Digital Agent has on deposit with us. A non-agriculture
+   *  policy can only be issued through the API against this float —
+   *  enforced server-side in api/v1.ts, never trusted from the client. */
+  walletBalance: number
+  /** Off by default -- agriculture is billed once a year via Stop Order,
+   *  so it is never funded from the float, and enabling it means real
+   *  cover goes out on our name before any money is in hand. Only a Super
+   *  Admin may switch this on, per developer. */
+  agricultureEnabled: boolean
 }
 
 export interface ApiKeyRow {
@@ -1787,6 +1796,8 @@ function toApiDeveloper(r: any): ApiDeveloper {
     termsAcceptedAt: r.terms_accepted_at ?? undefined, termsVersion: r.terms_version ?? undefined,
     terminatedAt: r.terminated_at ?? undefined, terminationReason: r.termination_reason ?? undefined,
     createdAt: r.created_at,
+    walletBalance: Number(r.wallet_balance) || 0,
+    agricultureEnabled: !!r.agriculture_enabled,
   }
 }
 
@@ -1812,6 +1823,48 @@ export const developerApi = {
     const { data, error } = await supabase.from('api_keys').select('*').eq('developer_id', developerId).order('created_at', { ascending: false })
     if (error) return { data: [] as ApiKeyRow[], error: error.message }
     return { data: (data ?? []).map(toApiKeyRow), error: null }
+  },
+
+  /** Only ever raises the float, and only by a Super Admin/Admin action
+   *  here -- never automatically from anything the API itself reports,
+   *  since a Digital Agent's own claim of having been paid is not a
+   *  trustworthy signal to credit its own spending limit. The developer's
+   *  own settlement (paying us back) happens off-system; this is staff
+   *  recording that it happened. */
+  async topUpWallet(developerId: string, amount: number, note: string, createdBy?: string) {
+    if (!Number.isFinite(amount) || amount <= 0) return { data: null, error: 'Amount must be a positive number.' }
+    const { data: dev, error: devError } = await supabase.from('api_developers').select('wallet_balance').eq('id', developerId).single()
+    if (devError || !dev) return { data: null, error: devError?.message ?? 'Developer not found.' }
+    const newBalance = Math.round((Number(dev.wallet_balance) + amount) * 100) / 100
+    const { data, error } = await supabase.from('api_developers').update({ wallet_balance: newBalance }).eq('id', developerId).select('*').single()
+    if (error || !data) return { data: null, error: error?.message ?? 'Failed to update wallet.' }
+    await supabase.from('api_wallet_transactions').insert({
+      developer_id: developerId, type: 'topup', amount, balance_after: newBalance, note: note || null, created_by: createdBy ?? null,
+    })
+    return { data: toApiDeveloper(data), error: null }
+  },
+
+  /** Super Admin only, enforced by RLS on api_developers as well as by the
+   *  page itself -- see the column comment on ApiDeveloper.agricultureEnabled
+   *  for why this is gated this tightly. */
+  async setAgricultureEnabled(developerId: string, enabled: boolean) {
+    const { data, error } = await supabase.from('api_developers').update({ agriculture_enabled: enabled }).eq('id', developerId).select('*').single()
+    if (error || !data) return { data: null, error: error?.message ?? 'Failed to update.' }
+    return { data: toApiDeveloper(data), error: null }
+  },
+
+  async listWalletTransactions(developerId: string, limit = 50) {
+    const { data, error } = await supabase
+      .from('api_wallet_transactions').select('*')
+      .eq('developer_id', developerId).order('created_at', { ascending: false }).limit(limit)
+    if (error) return { data: [], error: error.message }
+    return {
+      data: (data ?? []).map(r => ({
+        id: r.id as string, type: r.type as string, amount: Number(r.amount), balanceAfter: Number(r.balance_after),
+        note: (r.note as string) ?? undefined, createdBy: (r.created_by as string) ?? undefined, createdAt: r.created_at as string,
+      })),
+      error: null,
+    }
   },
 
   /** Calls api-partners.ts (action=create-developer, routed by a vercel.json

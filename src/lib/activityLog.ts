@@ -21,7 +21,7 @@ export type ActivityAction =
   | 'role.permissions_changed'
   | 'apikey.issued' | 'apikey.paused' | 'apikey.resumed' | 'apikey.revoked'
   | 'developer.registered' | 'developer.status_changed' | 'developer.terminated'
-  | 'developer.commission_changed'
+  | 'developer.commission_changed' | 'developer.wallet_topup' | 'developer.agriculture_toggled'
   // Money and outcomes
   | 'policy.created' | 'policy.updated' | 'policy.deleted'
   | 'claim.intake_accepted' | 'claim.intake_rejected' | 'claim.escalated'
@@ -147,6 +147,8 @@ export const ACTION_LABELS: Record<string, string> = {
   'developer.status_changed': 'Changed developer status',
   'developer.terminated': 'Terminated a developer',
   'developer.commission_changed': 'Changed developer commission',
+  'developer.wallet_topup': 'Topped up a developer wallet',
+  'developer.agriculture_toggled': 'Changed developer agriculture access',
   'policy.created': 'Created a policy',
   'policy.updated': 'Updated a policy',
   'policy.deleted': 'Deleted a policy',
