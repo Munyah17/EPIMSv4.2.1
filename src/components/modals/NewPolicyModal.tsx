@@ -50,10 +50,6 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   // rather than seeding a mandatory first row.
   const [dependants, setDependants] = useState<Dependant[]>([])
   const [growerNumber, setGrowerNumber] = useState('')
-  const [vehicleRegistrationNumber, setVehicleRegistrationNumber] = useState('')
-  const [vehicleMake, setVehicleMake] = useState('')
-  const [vehicleModel, setVehicleModel] = useState('')
-  const [discDeliveryAddress, setDiscDeliveryAddress] = useState('')
   const [agentId, setAgentId] = useState('')
   const [products, setProducts] = useState<Product[]>([])
   const [productsLoading, setProductsLoading] = useState(true)
@@ -161,10 +157,6 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
       if (showToast) showToast('error', 'The policyholder must be at least 18 years old.')
       return
     }
-    if (product!.category === 'motor' && !vehicleRegistrationNumber.trim()) {
-      if (showToast) showToast('error', 'Enter the vehicle registration number — it goes on the windscreen insurance disc.')
-      return
-    }
     const incompleteDependant = dependants.find(d => d.name.trim() && (!d.dob || !d.nationalId.trim()))
     if (incompleteDependant) {
       if (showToast) showToast('error', 'Enter date of birth and ID number for every dependant.')
@@ -228,12 +220,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
       status: product!.category === 'agriculture' ? 'active' : 'waiting_period',
       dependants,
       paymentMethod,
-      productCategory: product!.category,
       growerNumber: product!.category === 'agriculture' ? (growerNumber || undefined) : undefined,
-      vehicleRegistrationNumber: product!.category === 'motor' ? (vehicleRegistrationNumber || undefined) : undefined,
-      vehicleMake: product!.category === 'motor' ? (vehicleMake || undefined) : undefined,
-      vehicleModel: product!.category === 'motor' ? (vehicleModel || undefined) : undefined,
-      discDeliveryAddress: product!.category === 'motor' ? (discDeliveryAddress || clientAddress || undefined) : undefined,
       createdAt: toIsoDate(new Date()),
       nextPaymentDate: toIsoDate(new Date(new Date(startDate).setMonth(new Date(startDate).getMonth() + (product!.category === 'agriculture' ? 12 : 1)))),
       agentId: agentId || undefined,
@@ -345,31 +332,6 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                   <label>Grower Number</label>
                   <input className="form-control" placeholder="Grower registration number" value={growerNumber} onChange={e => setGrowerNumber(e.target.value)} />
                 </div>
-              )}
-              {product?.category === 'motor' && (
-                <>
-                  <div className="info-banner info-banner-info">
-                    Law requires a windscreen insurance disc for this cover — Motions prints and delivers it. See Vehicle & Disc Delivery below.
-                  </div>
-                  <div className="form-row">
-                    <div className="form-group">
-                      <label>Registration Number *</label>
-                      <input className="form-control" placeholder="e.g. ABC 1234" value={vehicleRegistrationNumber} onChange={e => setVehicleRegistrationNumber(e.target.value.toUpperCase())} />
-                    </div>
-                    <div className="form-group">
-                      <label>Make</label>
-                      <input className="form-control" placeholder="e.g. Toyota" value={vehicleMake} onChange={e => setVehicleMake(e.target.value)} />
-                    </div>
-                    <div className="form-group">
-                      <label>Model</label>
-                      <input className="form-control" placeholder="e.g. Hilux" value={vehicleModel} onChange={e => setVehicleModel(e.target.value)} />
-                    </div>
-                  </div>
-                  <div className="form-group">
-                    <label>Disc Delivery Address</label>
-                    <input className="form-control" placeholder="Defaults to the client's address if left blank" value={discDeliveryAddress} onChange={e => setDiscDeliveryAddress(e.target.value)} />
-                  </div>
-                </>
               )}
               <div className="form-group">
                 <label>Start Date *</label>

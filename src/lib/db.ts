@@ -181,14 +181,6 @@ function toPolicy(r: any): Policy {
     createdAt:       date(r.created_at),
     nextPaymentDate: r.next_payment_date ? date(r.next_payment_date) : undefined,
     lastPaymentDate: r.last_payment_date ? date(r.last_payment_date) : undefined,
-    vehicleRegistrationNumber: r.vehicle_registration_number ?? undefined,
-    vehicleMake:               r.vehicle_make ?? undefined,
-    vehicleModel:              r.vehicle_model ?? undefined,
-    discStatus:            (r.disc_status as Policy['discStatus']) ?? undefined,
-    discDeliveryAddress:   r.disc_delivery_address ?? undefined,
-    discPrintedAt:         r.disc_printed_at ?? undefined,
-    discDispatchedAt:      r.disc_dispatched_at ?? undefined,
-    discDeliveredAt:       r.disc_delivered_at ?? undefined,
   }
 }
 
@@ -354,8 +346,6 @@ const POLICY_SELECT = `
   id, policy_number, client_id, product_id, premium, cover_amount,
   start_date, end_date, status, dependants, payment_method, insurer,
   grower_number, gps_lat, gps_lng, agent_id, next_payment_date, last_payment_date, created_at,
-  vehicle_registration_number, vehicle_make, vehicle_model,
-  disc_status, disc_delivery_address, disc_printed_at, disc_dispatched_at, disc_delivered_at,
   clients!client_id(id, name),
   products!product_id(id, name, category, excess),
   profiles!agent_id(id, name)
@@ -445,13 +435,6 @@ export const policies = {
       insurer: policy.insurer ?? null, grower_number: policy.growerNumber ?? null,
       gps_lat: policy.gpsLat ?? null, gps_lng: policy.gpsLng ?? null,
       agent_id: policy.agentId ?? null, next_payment_date: policy.nextPaymentDate ?? null,
-      vehicle_registration_number: policy.vehicleRegistrationNumber ?? null,
-      vehicle_make: policy.vehicleMake ?? null, vehicle_model: policy.vehicleModel ?? null,
-      // Every motor policy needs a disc; nothing else does. Decided from the
-      // product category at creation time, not left for someone to remember
-      // to set later.
-      disc_status: policy.productCategory === 'motor' ? 'pending' : 'not_required',
-      disc_delivery_address: policy.discDeliveryAddress ?? null,
     }
     // Inserted directly rather than through sb(), because a duplicate must
     // be reported as a refusal. Falling back to local storage on a unique
@@ -489,14 +472,6 @@ export const policies = {
     if (updates.coverAmount !== undefined)           row.cover_amount       = updates.coverAmount
     if (updates.endDate !== undefined)               row.end_date           = updates.endDate
     if (updates.agentId !== undefined)               row.agent_id           = updates.agentId ?? null
-    if (updates.vehicleRegistrationNumber !== undefined) row.vehicle_registration_number = updates.vehicleRegistrationNumber ?? null
-    if (updates.vehicleMake !== undefined)           row.vehicle_make       = updates.vehicleMake ?? null
-    if (updates.vehicleModel !== undefined)          row.vehicle_model      = updates.vehicleModel ?? null
-    if (updates.discStatus !== undefined)            row.disc_status        = updates.discStatus ?? null
-    if (updates.discDeliveryAddress !== undefined)   row.disc_delivery_address = updates.discDeliveryAddress ?? null
-    if (updates.discPrintedAt !== undefined)         row.disc_printed_at    = updates.discPrintedAt ?? null
-    if (updates.discDispatchedAt !== undefined)      row.disc_dispatched_at = updates.discDispatchedAt ?? null
-    if (updates.discDeliveredAt !== undefined)       row.disc_delivered_at  = updates.discDeliveredAt ?? null
     const { ok, data, error } = await sb('policies', 'write',
       () => supabase.from('policies').update(row).eq('id', id).select(POLICY_SELECT).single(),
     )

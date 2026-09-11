@@ -226,23 +226,6 @@ export interface Policy {
   createdAt: string
   nextPaymentDate?: string
   lastPaymentDate?: string
-  /** Motor policies only. The registration number is what actually goes on
-   *  the printed windscreen insurance disc, so it has to be on the policy
-   *  itself, captured at issue -- not only in a later claim assessment,
-   *  which may never happen. */
-  vehicleRegistrationNumber?: string
-  vehicleMake?: string
-  vehicleModel?: string
-  /** The disc a Zimbabwean motor policy is legally required to display on
-   *  the windscreen. 'not_required' for every non-motor policy; a motor
-   *  policy starts 'pending' the moment it's created. Motions prints AND
-   *  delivers it -- see discDeliveryAddress -- which is a stated selling
-   *  point on the public site, not just an operational status. */
-  discStatus?: 'not_required' | 'pending' | 'printed' | 'dispatched' | 'delivered'
-  discDeliveryAddress?: string
-  discPrintedAt?: string
-  discDispatchedAt?: string
-  discDeliveredAt?: string
 }
 
 export interface Product {

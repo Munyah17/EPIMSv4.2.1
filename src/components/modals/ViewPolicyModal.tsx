@@ -9,14 +9,6 @@ import { db } from '../../lib/db'
 import { useAuth } from '../../contexts/AuthContext'
 import PolicyAssessmentModal from './PolicyAssessmentModal'
 
-const DISC_STATUS_LABEL: Record<string, string> = {
-  not_required: 'Not required',
-  pending: 'Pending — not yet printed',
-  printed: 'Printed — ready to dispatch',
-  dispatched: 'Dispatched for delivery',
-  delivered: 'Delivered',
-}
-
 interface Props {
   policy: Policy
   onClose: () => void
@@ -24,14 +16,10 @@ interface Props {
   /** Omitted when the policy's product isn't loaded yet or is a funeral
    *  package — printed reports aren't offered for those. */
   onPrint?: () => void
-  /** Motor policies only — prints the windscreen insurance disc. */
-  onPrintDisc?: () => void
-  /** Advances the disc one step: pending -> printed -> dispatched -> delivered. */
-  onAdvanceDisc?: (next: 'printed' | 'dispatched' | 'delivered') => void
   showToast: (type: 'success' | 'error' | 'warning' | 'info', message: string) => void
 }
 
-export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint, onPrintDisc, onAdvanceDisc, showToast }: Props) {
+export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint, showToast }: Props) {
   const { hasPermission } = useAuth()
   const [category, setCategory] = useState('')
   const [showAssessment, setShowAssessment] = useState(false)
@@ -108,37 +96,6 @@ export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint, onPr
             </div>
           )}
 
-          {category === 'motor' && policy.discStatus && policy.discStatus !== 'not_required' && (
-            <div style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid var(--border)' }}>
-              <h4 style={{ margin: '0 0 8px' }}>🪟 Windscreen Insurance Disc</h4>
-              <p style={{ fontSize: 12, margin: '0 0 8px' }}>
-                <strong>{policy.vehicleRegistrationNumber ?? 'No registration number on file'}</strong>
-                {(policy.vehicleMake || policy.vehicleModel) && ` — ${[policy.vehicleMake, policy.vehicleModel].filter(Boolean).join(' ')}`}
-              </p>
-              <p style={{ fontSize: 12, margin: '0 0 4px' }}>
-                Status: <span className={`pill ${policy.discStatus === 'delivered' ? 'pill-active' : policy.discStatus === 'pending' ? 'pill-lapsed' : 'pill-caution'}`}>
-                  {DISC_STATUS_LABEL[policy.discStatus]}
-                </span>
-              </p>
-              {policy.discDeliveryAddress && (
-                <p style={{ fontSize: 11.5, color: 'var(--muted)', margin: '0 0 10px' }}>Delivery address: {policy.discDeliveryAddress}</p>
-              )}
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {onPrintDisc && (
-                  <button type="button" className="btn btn-outline btn-sm" onClick={onPrintDisc}>🖨 Print Disc</button>
-                )}
-                {onAdvanceDisc && policy.discStatus === 'printed' && (
-                  <button type="button" className="btn btn-primary btn-sm" onClick={() => onAdvanceDisc('dispatched')}>📦 Mark Dispatched</button>
-                )}
-                {onAdvanceDisc && policy.discStatus === 'dispatched' && (
-                  <button type="button" className="btn btn-primary btn-sm" onClick={() => onAdvanceDisc('delivered')}>✅ Mark Delivered</button>
-                )}
-              </div>
-              <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>
-                It is a legal requirement to display this on the vehicle's windscreen.
-              </p>
-            </div>
-          )}
           {(category === 'agriculture' || category === 'motor') && hasPermission('claims.physical_assessment') && (
             <div style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid var(--border)' }}>
               <button type="button" className="btn btn-outline btn-sm" onClick={() => setShowAssessment(true)}>

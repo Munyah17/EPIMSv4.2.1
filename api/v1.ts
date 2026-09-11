@@ -356,15 +356,6 @@ async function createPolicy(admin: SupabaseClient, body: Json, dev: Record<strin
     dependants,
     payment_method: paymentMethod,
     agent_id: agentId,
-    // Every motor policy legally needs a windscreen insurance disc, which
-    // Motions prints and delivers -- the registration number is optional
-    // here (a Digital Agent may not always have it up front) but needed
-    // before the disc can actually be printed; staff can add it later if
-    // it's missing.
-    vehicle_registration_number: product.category === 'motor' && body.vehicleRegistrationNumber ? String(body.vehicleRegistrationNumber).toUpperCase() : null,
-    vehicle_make: body.vehicleMake ? String(body.vehicleMake) : null,
-    vehicle_model: body.vehicleModel ? String(body.vehicleModel) : null,
-    disc_status: product.category === 'motor' ? 'pending' : 'not_required',
   }).select('id, policy_number').single()
   if (error) return { status: 400, body: { error: error.message } }
 
