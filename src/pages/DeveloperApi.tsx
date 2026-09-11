@@ -12,6 +12,15 @@ import { formatDate, formatDateTime } from '../lib/dateUtils'
 
 const ALL_SCOPES = ['products:read', 'quotes:read', 'clients:write', 'policies:write', 'policies:read', 'payments:write']
 
+/** The one thing that broke the first real integration attempt (TopMe):
+ *  this used to be printed in the docs as the bare path "/api/v1", with no
+ *  host -- correct only for someone already standing on this domain,
+ *  meaningless to a developer's own app on their own domain. Hardcoded to
+ *  the real production host rather than window.location.origin, so this
+ *  is right even when staff are viewing the page from a preview
+ *  deployment or the vercel.app alias. */
+const API_BASE_URL = 'https://portal.motions.co.zw/api/v1'
+
 const ENDPOINTS: { method: string; path: string; scope: string; desc: string }[] = [
   { method: 'GET', path: '/api/v1/products', scope: 'products:read', desc: 'List active insurance products available to sell.' },
   { method: 'POST', path: '/api/v1/quotes', scope: 'quotes:read', desc: 'Get a premium quote and eligibility check for a product.' },
@@ -179,7 +188,11 @@ Secret Key: ${newKey.rawKey}
 
 The secret key authorizes real requests and must be kept server-side only; never expose it in a browser, mobile app bundle, or public repository. Treat it exactly like a password. If it's ever compromised, contact us immediately to have it revoked and reissued.
 
-Full API documentation is available on request.
+BASE URL: ${API_BASE_URL}
+
+Every endpoint below is this base URL plus the path shown. Every request needs the header Authorization: Bearer <secret key> -- the key starting tqfy_sk_ above, never the publishable one.
+
+${ENDPOINTS.map(e => `${e.method}  ${API_BASE_URL}${e.path.replace('/api/v1', '')}\n     Scope: ${e.scope}\n     ${e.desc}`).join('\n\n')}
 
 Regards,
 Tariqify IMS`,
@@ -626,16 +639,30 @@ Tariqify IMS`,
               <button className="modal-close" onClick={() => setShowDocs(false)}>✕</button>
             </div>
             <div className="modal-body">
-              <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>
-                Base URL: <code>/api/v1</code>. Every request needs <code>Authorization: Bearer &lt;api key&gt;</code>. Requests are rate-limited per key (default 60/min) and scoped to the calling developer's own clients and policies only.
-              </p>
+              {/* This is the exact thing that broke TopMe's first integration
+                  attempt: the base URL used to be printed as the bare path
+                  /api/v1, which reads as "relative to wherever you're
+                  looking at this page" -- fine for staff on this page,
+                  meaningless to a developer copying it into their own app on
+                  their own domain. Hardcoded (not window.location.origin) so
+                  this always shows the real production host, even if staff
+                  happen to be viewing it from a preview deployment or the
+                  vercel.app alias. */}
+              <div className="info-banner" style={{ marginBottom: 12 }}>
+                <strong>Base URL:</strong> <code style={{ fontSize: 13, userSelect: 'all' }}>{API_BASE_URL}</code>
+                <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4 }}>
+                  Every endpoint below is this, plus the path shown -- e.g. <code>{API_BASE_URL}/products</code>.
+                  Every request needs <code>Authorization: Bearer &lt;api key&gt;</code> (the secret key, starting <code>tqfy_sk_</code> — never the publishable <code>tqfy_pk_</code> one).
+                  Requests are rate-limited per key (default 60/min) and scoped to the calling developer's own clients and policies only.
+                </div>
+              </div>
               <table className="table">
-                <thead><tr><th>Method</th><th>Endpoint</th><th>Scope</th><th>Description</th></tr></thead>
+                <thead><tr><th>Method</th><th>Full URL</th><th>Scope</th><th>Description</th></tr></thead>
                 <tbody>
                   {ENDPOINTS.map(e => (
                     <tr key={e.path + e.method}>
                       <td className="mono" style={{ fontSize: 11 }}>{e.method}</td>
-                      <td className="mono" style={{ fontSize: 11 }}>{e.path}</td>
+                      <td className="mono" style={{ fontSize: 11, userSelect: 'all' }}>{API_BASE_URL}{e.path.replace('/api/v1', '')}</td>
                       <td style={{ fontSize: 11 }}>{e.scope}</td>
                       <td style={{ fontSize: 12 }}>{e.desc}</td>
                     </tr>
