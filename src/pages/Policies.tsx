@@ -3,7 +3,7 @@ import type { ToastMessage, Policy, PolicyStatus, CautionFlag, Client } from '..
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
-import { exportPolicyReport, getPolicyReportPdfBase64 } from '../lib/exportUtils'
+import { exportPolicyReport, getPolicyReportPdfBase64, printInsuranceDisc } from '../lib/exportUtils'
 import { notifyPolicyRegistered, ADMIN_ALERT_NUMBERS } from '../lib/signupNotifications'
 import { sendSms } from '../lib/smsService'
 import { COMPANY_NAME } from '../lib/company'
@@ -229,6 +229,51 @@ export default function Policies({ showToast, initialCategory }: Props) {
     await exportPolicyReport(policy, client, category)
   }
 
+  const handlePrintDisc = async (policy: Policy) => {
+    try {
+      await printInsuranceDisc(policy)
+    } catch (e) {
+      showToast('error', `${e}`)
+      return
+    }
+    // Printing IS the "printed" milestone -- no separate click needed for
+    // the step that just happened.
+    if (policy.discStatus === 'pending') void handleAdvanceDisc(policy, 'printed')
+  }
+
+  const DISC_STAGE_LABEL: Record<string, string> = {
+    printed: 'Printed',
+    dispatched: 'Dispatched for delivery',
+    delivered: 'Delivered',
+  }
+
+  /** Moves a motor policy's disc one step forward -- pending -> printed ->
+   *  dispatched -> delivered. Delivering the disc, not just issuing the
+   *  policy, is the thing being marketed as a selling point, so the client
+   *  hears about dispatch and delivery specifically, not only that they
+   *  have cover. */
+  const handleAdvanceDisc = async (policy: Policy, next: 'printed' | 'dispatched' | 'delivered') => {
+    const timestampField = next === 'printed' ? 'discPrintedAt' : next === 'dispatched' ? 'discDispatchedAt' : 'discDeliveredAt'
+    const { data, error } = await db.policies.update(policy.id, {
+      discStatus: next,
+      [timestampField]: new Date().toISOString(),
+    } as Partial<Policy>)
+    if (error || !data) { showToast('error', error ?? 'Failed to update disc status.'); return }
+    setPolicies(prev => prev.map(p => p.id === data.id ? data : p))
+    setViewPolicy(prev => prev && prev.id === data.id ? data : prev)
+    showToast('success', `Disc marked as ${DISC_STAGE_LABEL[next].toLowerCase()}.`)
+
+    if (next === 'dispatched' || next === 'delivered') {
+      const { client } = await getReportContext(policy)
+      if (client?.phone) {
+        const body = next === 'dispatched'
+          ? `${COMPANY_NAME}: Your windscreen insurance disc for ${policy.vehicleRegistrationNumber ?? 'your vehicle'} (Policy ${policy.policyNumber}) is on its way to you.`
+          : `${COMPANY_NAME}: Your windscreen insurance disc for ${policy.vehicleRegistrationNumber ?? 'your vehicle'} (Policy ${policy.policyNumber}) has been delivered. It's a legal requirement to display it on your windscreen.`
+        void sendSms(client.phone, body).catch(() => { /**/ })
+      }
+    }
+  }
+
   return (
     <div className="panel">
       <div className="panel-toolbar">
@@ -354,6 +399,8 @@ export default function Policies({ showToast, initialCategory }: Props) {
           onClose={() => setViewPolicy(null)}
           onEdit={() => { setEditPolicy(viewPolicy); setViewPolicy(null) }}
           onPrint={() => handlePrint(viewPolicy)}
+          onPrintDisc={() => handlePrintDisc(viewPolicy)}
+          onAdvanceDisc={next => handleAdvanceDisc(viewPolicy, next)}
           showToast={showToast}
         />
       )}

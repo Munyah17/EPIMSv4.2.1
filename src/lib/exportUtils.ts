@@ -330,6 +330,89 @@ export async function getPolicyReportPdfBase64(policy: Policy, client: Client, c
   return doc.output('datauristring').split(',')[1]
 }
 
+/**
+ * The windscreen insurance disc Zimbabwe law requires a motor vehicle to
+ * display, alongside the ZINARA licence and radio discs -- cut from a
+ * printed sheet and shown on the left side of the windscreen. This draws
+ * just the insurance one: a dashed circular cut guide with the registration
+ * number, policy number and cover period inside. There is no official
+ * template reproduced here (IPEC/ZINARA's exact prescribed artwork is not
+ * something this system has access to) -- this is a clear, functional
+ * stand-in carrying the information the disc needs to carry, not a claim
+ * to replicate a government-issued design.
+ */
+async function buildInsuranceDiscDoc(policy: Policy) {
+  const { jsPDF } = await import('jspdf')
+  // A small card-sized page around the disc, not the disc's own size --
+  // gives scissors something to hold onto past the cut line.
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: [70, 70] })
+  const cx = 35
+  const cy = 35
+  const r = 30
+
+  doc.setDrawColor(150, 150, 150)
+  doc.setLineDashPattern([1.5, 1.5], 0)
+  doc.circle(cx, cy, r, 'S')
+  doc.setLineDashPattern([], 0)
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(8)
+  doc.setTextColor(30, 30, 30)
+  doc.text(COMPANY_NAME.toUpperCase(), cx, cy - 20, { align: 'center' })
+
+  doc.setFontSize(6.5)
+  doc.setFont('helvetica', 'normal')
+  doc.text('INSURANCE DISC', cx, cy - 15, { align: 'center' })
+
+  doc.setDrawColor(200, 200, 200)
+  doc.line(cx - 18, cy - 11, cx + 18, cy - 11)
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(13)
+  doc.text((policy.vehicleRegistrationNumber || '—').toUpperCase(), cx, cy - 1, { align: 'center' })
+
+  if (policy.vehicleMake || policy.vehicleModel) {
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7)
+    doc.text([policy.vehicleMake, policy.vehicleModel].filter(Boolean).join(' '), cx, cy + 5, { align: 'center' })
+  }
+
+  doc.setFontSize(6)
+  doc.text(`Policy ${policy.policyNumber}`, cx, cy + 12, { align: 'center' })
+  doc.text(`Valid: ${formatDate(policy.startDate)} - ${formatDate(policy.endDate)}`, cx, cy + 17, { align: 'center' })
+
+  return doc
+}
+
+/** Downloads the disc as a PDF file. */
+export async function exportInsuranceDisc(policy: Policy) {
+  const doc = await buildInsuranceDiscDoc(policy)
+  doc.save(`${policy.policyNumber}-Insurance-Disc.pdf`)
+}
+
+/**
+ * Sends the disc straight to the browser's print dialog, the same
+ * Safari-safe pattern as printCard in cardExport.ts: the tab is opened
+ * blank, synchronously, before any of the async PDF-building work, and
+ * only pointed at the finished blob once it exists. Opening it only after
+ * awaiting jsPDF is what fails on iOS Safari with "WebKitBlobResource
+ * error 1" -- by then the tab is no longer considered part of the click
+ * that triggered it.
+ */
+export async function printInsuranceDisc(policy: Policy): Promise<void> {
+  const printTab = window.open('', '_blank')
+  if (!printTab) {
+    throw new Error('The browser blocked the new tab. Allow pop-ups for this site and try again.')
+  }
+  try {
+    const doc = await buildInsuranceDiscDoc(policy)
+    printTab.location.href = doc.output('bloburl').toString()
+  } catch (e) {
+    printTab.close()
+    throw e
+  }
+}
+
 async function fetchImageAsDataUrl(path: string): Promise<string | null> {
   try {
     const url = await getDocumentUrl(path)
