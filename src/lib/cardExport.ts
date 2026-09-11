@@ -103,22 +103,43 @@ export async function exportCard(
  * auto-triggered print() on a freshly opened PDF is unreliable enough
  * across browsers that a visible, familiar print button beats a clever
  * trick that sometimes does nothing.
+ *
+ * The tab is opened here, synchronously, as the very first thing this
+ * function does -- before any of the rendering work below, all of which is
+ * async. Safari (particularly iOS) ties a blob: URL's lifetime to the
+ * browsing context that created it, and only honours window.open as a
+ * genuine new tab, not a blocked popup, when it runs inside the same tick
+ * as the click that triggered it. Calling window.open AFTER awaiting
+ * html2canvas/jsPDF -- which is what this used to do -- opens well outside
+ * that window on Safari and fails with "WebKitBlobResource error 1"
+ * instead of showing the PDF. Opening blank first and only pointing it at
+ * the blob once it exists keeps the tab inside the gesture that opened it.
  */
 export async function printCard(nodes: HTMLElement[]): Promise<void> {
   const faces = nodes.filter(Boolean)
   if (faces.length === 0) return
 
-  const [{ jsPDF }, canvases] = await Promise.all([
-    import('jspdf'),
-    Promise.all(faces.map(renderToCanvas)),
-  ])
-  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [CARD_MM.width, CARD_MM.height] })
-  canvases.forEach((canvas, i) => {
-    if (i > 0) doc.addPage([CARD_MM.width, CARD_MM.height], 'landscape')
-    doc.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, CARD_MM.width, CARD_MM.height)
-  })
-  const blobUrl = doc.output('bloburl')
-  window.open(blobUrl, '_blank')
+  const printTab = window.open('', '_blank')
+  if (!printTab) {
+    throw new Error('The browser blocked the new tab. Allow pop-ups for this site and try again.')
+  }
+
+  try {
+    const [{ jsPDF }, canvases] = await Promise.all([
+      import('jspdf'),
+      Promise.all(faces.map(renderToCanvas)),
+    ])
+    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: [CARD_MM.width, CARD_MM.height] })
+    canvases.forEach((canvas, i) => {
+      if (i > 0) doc.addPage([CARD_MM.width, CARD_MM.height], 'landscape')
+      doc.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, CARD_MM.width, CARD_MM.height)
+    })
+    const blobUrl = doc.output('bloburl')
+    printTab.location.href = blobUrl.toString()
+  } catch (e) {
+    printTab.close()
+    throw e
+  }
 }
 
 /** The card as a data URL, for attaching to an email or showing a preview. */
