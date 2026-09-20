@@ -28,8 +28,7 @@ export interface NotifSettings {
 }
 
 export const DEFAULT_NOTIF_SETTINGS: NotifSettings = {
-  // NOTE: a single global insurerName/insurerEmail cannot really represent a
-  // broker that places business with almost every insurer in Zimbabwe --
+  // Motions Microinsurance is the sole insurer this system underwrites for.
   insurerName: 'Motions Microinsurance',
   insurerEmail: 'info@motions.co.zw',
   insurerPhone: '+263242000000',

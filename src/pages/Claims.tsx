@@ -150,7 +150,7 @@ export default function Claims({ showToast, initialCategory }: Props) {
    *
    * Approval and payment are different events: one is a decision, the other
    * is money leaving the business. Nothing recorded the second, so every
-   * claim stopped at 'approved' and the IPEC quarterly return reported
+   * claim stopped at 'approved' and the statutory quarterly return reported
    * $0.00 claims incurred and a 0% claims ratio however much had been paid
    * out. Confirmed and logged, because it is a money statement.
    */
@@ -159,7 +159,7 @@ export default function Claims({ showToast, initialCategory }: Props) {
       `Record claim ${claim.claimNumber} as paid?\n\n`
       + `${claim.clientName} — $${claim.amount.toLocaleString()}\n\n`
       + 'Confirm only once the payout has actually been made. This is what the claims '
-      + 'incurred figure on the IPEC return is built from, and it is logged against your name.',
+      + 'incurred figure on the statutory return is built from, and it is logged against your name.',
     )) return
 
     const { data, error } = await db.claims.update(claim.id, { status: 'paid', resolvedAt: new Date().toISOString() })
@@ -276,7 +276,7 @@ export default function Claims({ showToast, initialCategory }: Props) {
                       )}
                       {/* An approved claim is a decision; a paid one is money
                           out of the door. Nothing recorded the second, so
-                          "Claims Incurred" on the IPEC return sat at $0 no
+                          "Claims Incurred" on the statutory return sat at $0 no
                           matter how much had actually been settled. */}
                       {c.status === 'approved' && hasPermission('claims.approve') && (
                         <button

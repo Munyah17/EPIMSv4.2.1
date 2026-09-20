@@ -106,7 +106,7 @@ async function sendMail(origin: string, input: { to: string; subject: string; te
     const res = await fetch(`${origin}/api/send-email`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from: 'noreply@enpassent.co.zw', fromName: 'Motions Microinsurance', ...input }),
+      body: JSON.stringify({ from: 'noreply@motions.co.zw', fromName: 'Motions Microinsurance', ...input }),
     })
     return res.ok
   } catch { return false }

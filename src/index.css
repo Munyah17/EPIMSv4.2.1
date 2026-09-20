@@ -32,8 +32,6 @@ input,textarea,.mono,.select-text{-webkit-user-select:text;user-select:text}
 .logo-icon svg{width:14px;height:14px;fill:white}
 .logo-name{font-family:'DM Serif Display',serif;font-size:15px;color:white}
 .logo-sub{font-size:9px;color:rgba(255,255,255,0.35);letter-spacing:0.08em;text-transform:uppercase;margin-top:1px}
-.ipec-badge{margin-top:8px;display:inline-flex;align-items:center;gap:4px;background:rgba(255,255,255,0.07);border-radius:4px;padding:2px 7px;font-size:9px;color:rgba(255,255,255,0.4)}
-.ipec-dot{width:4px;height:4px;background:#34D399;border-radius:50%;flex-shrink:0}
 .sidebar-close-btn{display:none;margin-left:auto;background:rgba(255,255,255,0.1);border:none;border-radius:5px;padding:4px 9px;cursor:pointer;color:rgba(255,255,255,0.7);font-size:18px;line-height:1}
 .sidebar-close-btn:hover{background:rgba(255,255,255,0.2)}
 .sidebar-nav{flex:1;min-height:0;padding:7px 0;overflow-y:auto}

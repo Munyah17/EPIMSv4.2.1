@@ -25,8 +25,8 @@ const ENDPOINTS: { method: string; path: string; scope: string; desc: string }[]
   { method: 'GET', path: '/api/v1/products', scope: 'products:read', desc: 'List active insurance products available to sell.' },
   { method: 'POST', path: '/api/v1/quotes', scope: 'quotes:read', desc: 'Get a premium quote and eligibility check for a product.' },
   { method: 'POST', path: '/api/v1/clients', scope: 'clients:write', desc: 'Register a new client (or fetch an existing one by national ID).' },
-  { method: 'POST', path: '/api/v1/policies', scope: 'policies:write', desc: 'Create a policy for a client. Attributed to the developer as agent. Debits the wallet float for the premium; agriculture products require the account to be separately enabled by a Super Admin.' },
-  { method: 'GET', path: '/api/v1/policies/:policyNumber', scope: 'policies:read', desc: 'Look up a policy the developer created.' },
+  { method: 'POST', path: '/api/v1/policies', scope: 'policies:write', desc: 'Create a policy for a client. Attributed to the developer as agent. Debits the wallet float for the premium; agriculture products require the account to be separately enabled by a Super Admin. Body: { clientId, productId, paymentMethod?, startDate?, dependants? } — dependants is an optional array of { name, relationship, dob, nationalId } covering each dependant on the policy; each dependant adds one premium to the wallet debit.' },
+  { method: 'GET', path: '/api/v1/policies/:policyNumber', scope: 'policies:read', desc: 'Look up a policy the developer created. Returns the policy including its dependants array.' },
   { method: 'POST', path: '/api/v1/payments', scope: 'payments:write', desc: 'Record a premium payment against a policy.' },
   { method: 'POST', path: '/api/v1/tickets', scope: 'support:write (always granted)', desc: "File a support ticket for one of your clients, the only way to request a correction. There is no update/delete endpoint for clients or policies." },
 ]

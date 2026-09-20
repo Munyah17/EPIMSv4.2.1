@@ -1,9 +1,11 @@
--- Insurer partner management — previously "insurer" was just a free-text
+-- Insurer records — previously "insurer" was just a free-text
 -- column on clients/policies backed by an identical hardcoded array
 -- duplicated across four modals (EditClientModal, EditPolicyModal,
--- NewPolicyModal, RegisterClientModal). This gives Admin/Super Admin an
--- actual place to manage the partners themselves (contact info, status,
--- commission override, notes) instead of only ever typing a name.
+-- NewPolicyModal, RegisterClientModal). This table backs the insurer value
+-- stored on client/policy records.
+--
+-- Motions Microinsurance is the ONLY insurer this system underwrites for.
+-- The seed below inserts exactly one row; do not add further rows here.
 
 CREATE TABLE IF NOT EXISTS public.insurers (
   id                    UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -26,9 +28,7 @@ CREATE POLICY "insurers_select_staff" ON public.insurers FOR SELECT TO authentic
 DROP POLICY IF EXISTS "insurers_write_admin" ON public.insurers;
 CREATE POLICY "insurers_write_admin" ON public.insurers FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
 
--- Seed with the insurers that were previously hardcoded, so nothing
--- selectable in existing client/policy records disappears.
+-- Seed with the sole insurer this system underwrites for.
 INSERT INTO public.insurers (name, status) VALUES
-  ('Motions', 'active'), ('CBZ Life', 'active'), ('EcoSure', 'active'),
-  ('ZB Life', 'active'), ('Nyaradzo Funeral', 'active'), ('Doves', 'active')
+  ('Motions Microinsurance', 'active')
 ON CONFLICT (name) DO NOTHING;

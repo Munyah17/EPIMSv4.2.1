@@ -1,56 +1,31 @@
--- Replace the insurer list with the registered entity names.
+-- Single-insurer cleanup.
 --
--- The list held trading names (CBZ Life, Doves, EcoSure, Nyaradzo Funeral,
--- ZB Life). These are the registered names as they appear in IPEC's
--- quarterly returns: Table 5-3 (short-term insurers) and Table 7-3
--- (microinsurers), as at 31 March 2026.
+-- This system underwrites for Motions Microinsurance only. Earlier seeds
+-- filled the insurers table with every registered insurer in the country,
+-- which is how competitor names ended up selectable on forms. This script
+-- removes them: rows no policy/client references are deleted outright;
+-- anything still referenced is deactivated rather than deleted, because
+-- policies.insurer holds the name as text, not a foreign key, and deleting
+-- it would orphan those records.
 --
--- Motions stays as plain "Motions" rather than its registered
--- "Motions Microinsurance", and leads the list everywhere -- see
--- houseInsurerFirst() in src/lib/db.ts, which pins it to the top and
--- leaves everything else A-Z.
+-- Run once against the live database.
 
--- Old trading names, dropped only where no policy actually points at them.
--- policies.insurer holds the name as text rather than a foreign key, so
--- removing one that is in use would orphan those policies.
+-- Normalize the house insurer's name to the full registered name.
+UPDATE public.insurers
+   SET name = 'Motions Microinsurance'
+ WHERE name = 'Motions';
+
+INSERT INTO public.insurers (name, status) VALUES
+  ('Motions Microinsurance', 'active')
+ON CONFLICT (name) DO NOTHING;
+
+-- Deactivate every other insurer so nothing else can ever be selected.
+UPDATE public.insurers
+   SET status = 'inactive'
+ WHERE name <> 'Motions Microinsurance';
+
+-- Drop unreferenced rows entirely; referenced ones stay but inactive.
 DELETE FROM public.insurers
- WHERE name IN ('CBZ Life', 'Doves', 'EcoSure', 'Nyaradzo Funeral', 'ZB Life')
-   AND name NOT IN (SELECT DISTINCT insurer FROM public.policies WHERE insurer IS NOT NULL);
-
--- Short-term insurers (IPEC Table 5-3).
-INSERT INTO public.insurers (name, status) VALUES
-  ('AFC', 'active'),
-  ('Alliance', 'active'),
-  ('Allied', 'active'),
-  ('CBZ', 'active'),
-  ('CELL', 'active'),
-  ('Champions', 'active'),
-  ('Clarion', 'active'),
-  ('Credsure', 'active'),
-  ('ECGC', 'active'),
-  ('Econet', 'active'),
-  ('Empaya', 'active'),
-  ('Evolution', 'active'),
-  ('FBC', 'active'),
-  ('Hamilton', 'active'),
-  ('Misty', 'active'),
-  ('Nicoz Diamond', 'active'),
-  ('Old Mutual', 'active'),
-  ('Quality', 'active'),
-  ('Safel', 'active'),
-  ('Sanctuary', 'active'),
-  ('Zimnat Lion', 'active')
-ON CONFLICT (name) DO NOTHING;
-
--- Microinsurers (IPEC Table 7-3). Motions is deliberately absent: it is
--- already on file as "Motions" and must stay that way.
-INSERT INTO public.insurers (name, status) VALUES
-  ('Bayce Microinsurance', 'active'),
-  ('Clientsure Microinsurance', 'active'),
-  ('Coverlink Microinsurance', 'active'),
-  ('Ethical Microinsurance', 'active'),
-  ('Golden Knot Microinsurance', 'active'),
-  ('Highground Microinsurance', 'active'),
-  ('Microsure Microinsurance', 'active'),
-  ('Mountsentry Microinsurance', 'active')
-ON CONFLICT (name) DO NOTHING;
+ WHERE name <> 'Motions Microinsurance'
+   AND name NOT IN (SELECT DISTINCT insurer FROM public.policies WHERE insurer IS NOT NULL)
+   AND name NOT IN (SELECT DISTINCT insurer FROM public.clients WHERE insurer IS NOT NULL);

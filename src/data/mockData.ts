@@ -6,7 +6,7 @@ import type {
 export const USERS: AppUser[] = [
   {
     id: 'u1',
-    name: 'Enpassent Multiple Agent',
+    name: 'Motions Microinsurance',
     email: 'admin@tariqify.com',
     password: 'admin1234',
     role: 'super_admin',
@@ -190,16 +190,16 @@ export const PRODUCTS: Product[] = [
 ]
 
 export const CLIENTS: Client[] = [
-  { id: 'c1', name: 'Simba Dube', email: 'simba.dube@gmail.com', phone: '+263 71 678 9012', nationalId: '631234567A00', dob: '1990-03-15', address: '12 Borrowdale Rd, Harare', occupation: 'Engineer', insurer: 'Motions', createdAt: '2024-01-10', policyCount: 2, status: 'active' },
-  { id: 'c2', name: 'Nomsa Ndlovu', email: 'nomsa.ndlovu@gmail.com', phone: '+263 77 234 5678', nationalId: '782345678B00', dob: '1978-07-22', address: '45 Bulawayo Ave, Bulawayo', occupation: 'Teacher', insurer: 'CBZ Life', createdAt: '2024-02-05', policyCount: 3, status: 'active' },
-  { id: 'c3', name: 'Tafadzwa Chirwa', email: 'tafa.chirwa@gmail.com', phone: '+263 73 345 6789', nationalId: '853456789C00', dob: '1985-11-08', address: '7 Mutare Road, Mutare', occupation: 'Nurse', insurer: 'EcoSure', createdAt: '2024-02-20', policyCount: 1, status: 'active' },
-  { id: 'c4', name: 'Patience Mukamuri', email: 'patience.m@yahoo.com', phone: '+263 78 456 7890', nationalId: '924567890D00', dob: '1992-05-30', address: '23 Gweru Drive, Gweru', occupation: 'Accountant', insurer: 'ZB Life', createdAt: '2024-03-12', policyCount: 2, status: 'active' },
-  { id: 'c5', name: 'Garikai Mhike', email: 'garikai.mhike@gmail.com', phone: '+263 71 567 8901', nationalId: '705678901E00', dob: '1970-09-14', address: '89 Masvingo Road, Masvingo', occupation: 'Farmer', insurer: 'Nyaradzo Funeral', createdAt: '2024-03-28', policyCount: 1, status: 'inactive' },
-  { id: 'c6', name: 'Rutendo Zvobgo', email: 'rutendo.z@gmail.com', phone: '+263 77 678 9012', nationalId: '886789012F00', dob: '1988-12-01', address: '34 Harare Gardens, Harare', occupation: 'Lawyer', insurer: 'Doves', createdAt: '2024-04-15', policyCount: 2, status: 'active' },
-  { id: 'c7', name: 'Kudakwashe Muzenda', email: 'kuda.muzenda@gmail.com', phone: '+263 73 789 0123', nationalId: '957890123G00', dob: '1995-02-18', address: '56 Zvishavane Way, Zvishavane', occupation: 'Miner', insurer: 'Motions', createdAt: '2024-05-01', policyCount: 1, status: 'active' },
-  { id: 'c8', name: 'Chiedza Hove', email: 'chiedza.h@gmail.com', phone: '+263 78 890 1234', nationalId: '828901234H00', dob: '1982-08-25', address: '12 Chitungwiza Ave, Chitungwiza', occupation: 'Social Worker', insurer: 'CBZ Life', createdAt: '2024-05-20', policyCount: 1, status: 'active' },
-  { id: 'c9', name: 'Munyaradzi Gumbo', email: 'munya.gumbo@gmail.com', phone: '+263 71 901 2345', nationalId: '759012345I00', dob: '1975-04-10', address: '78 Chinhoyi Road, Chinhoyi', occupation: 'Driver', insurer: 'EcoSure', createdAt: '2024-06-08', policyCount: 2, status: 'active' },
-  { id: 'c10', name: 'Tsitsi Manyonga', email: 'tsitsi.m@gmail.com', phone: '+263 77 012 3456', nationalId: '900123456J00', dob: '1990-06-15', address: '5 Norton Heights, Norton', occupation: 'Business Owner', insurer: 'ZB Life', createdAt: '2024-07-14', policyCount: 1, status: 'active' },
+  { id: 'c1', name: 'Simba Dube', email: 'simba.dube@gmail.com', phone: '+263 71 678 9012', nationalId: '631234567A00', dob: '1990-03-15', address: '12 Borrowdale Rd, Harare', occupation: 'Engineer', insurer: 'Motions Microinsurance', createdAt: '2024-01-10', policyCount: 2, status: 'active' },
+  { id: 'c2', name: 'Nomsa Ndlovu', email: 'nomsa.ndlovu@gmail.com', phone: '+263 77 234 5678', nationalId: '782345678B00', dob: '1978-07-22', address: '45 Bulawayo Ave, Bulawayo', occupation: 'Teacher', insurer: 'Motions Microinsurance', createdAt: '2024-02-05', policyCount: 3, status: 'active' },
+  { id: 'c3', name: 'Tafadzwa Chirwa', email: 'tafa.chirwa@gmail.com', phone: '+263 73 345 6789', nationalId: '853456789C00', dob: '1985-11-08', address: '7 Mutare Road, Mutare', occupation: 'Nurse', insurer: 'Motions Microinsurance', createdAt: '2024-02-20', policyCount: 1, status: 'active' },
+  { id: 'c4', name: 'Patience Mukamuri', email: 'patience.m@yahoo.com', phone: '+263 78 456 7890', nationalId: '924567890D00', dob: '1992-05-30', address: '23 Gweru Drive, Gweru', occupation: 'Accountant', insurer: 'Motions Microinsurance', createdAt: '2024-03-12', policyCount: 2, status: 'active' },
+  { id: 'c5', name: 'Garikai Mhike', email: 'garikai.mhike@gmail.com', phone: '+263 71 567 8901', nationalId: '705678901E00', dob: '1970-09-14', address: '89 Masvingo Road, Masvingo', occupation: 'Farmer', insurer: 'Motions Microinsurance', createdAt: '2024-03-28', policyCount: 1, status: 'inactive' },
+  { id: 'c6', name: 'Rutendo Zvobgo', email: 'rutendo.z@gmail.com', phone: '+263 77 678 9012', nationalId: '886789012F00', dob: '1988-12-01', address: '34 Harare Gardens, Harare', occupation: 'Lawyer', insurer: 'Motions Microinsurance', createdAt: '2024-04-15', policyCount: 2, status: 'active' },
+  { id: 'c7', name: 'Kudakwashe Muzenda', email: 'kuda.muzenda@gmail.com', phone: '+263 73 789 0123', nationalId: '957890123G00', dob: '1995-02-18', address: '56 Zvishavane Way, Zvishavane', occupation: 'Miner', insurer: 'Motions Microinsurance', createdAt: '2024-05-01', policyCount: 1, status: 'active' },
+  { id: 'c8', name: 'Chiedza Hove', email: 'chiedza.h@gmail.com', phone: '+263 78 890 1234', nationalId: '828901234H00', dob: '1982-08-25', address: '12 Chitungwiza Ave, Chitungwiza', occupation: 'Social Worker', insurer: 'Motions Microinsurance', createdAt: '2024-05-20', policyCount: 1, status: 'active' },
+  { id: 'c9', name: 'Munyaradzi Gumbo', email: 'munya.gumbo@gmail.com', phone: '+263 71 901 2345', nationalId: '759012345I00', dob: '1975-04-10', address: '78 Chinhoyi Road, Chinhoyi', occupation: 'Driver', insurer: 'Motions Microinsurance', createdAt: '2024-06-08', policyCount: 2, status: 'active' },
+  { id: 'c10', name: 'Tsitsi Manyonga', email: 'tsitsi.m@gmail.com', phone: '+263 77 012 3456', nationalId: '900123456J00', dob: '1990-06-15', address: '5 Norton Heights, Norton', occupation: 'Business Owner', insurer: 'Motions Microinsurance', createdAt: '2024-07-14', policyCount: 1, status: 'active' },
 ]
 
 export const POLICIES: Policy[] = [
@@ -208,7 +208,7 @@ export const POLICIES: Policy[] = [
     productId: 'p1', productName: 'Funeral Cover Basic', premium: 5.00, coverAmount: 3000,
     startDate: '2024-01-15', endDate: '2025-01-15', status: 'active',
     dependants: [{ name: 'Tanaka Dube', relationship: 'Child', dob: '2015-06-02', nationalId: '15060200A00' }],
-    paymentMethod: 'EcoCash', insurer: 'Motions', agentId: 'u5', agentName: 'Chipo Sibanda',
+    paymentMethod: 'EcoCash', insurer: 'Motions Microinsurance', agentId: 'u5', agentName: 'Chipo Sibanda',
     createdAt: '2024-01-10', nextPaymentDate: '2026-05-15', lastPaymentDate: '2026-04-15',
   },
   {
@@ -216,7 +216,7 @@ export const POLICIES: Policy[] = [
     productId: 'p4', productName: 'Hospital Cash Plan', premium: 8.00, coverAmount: 50,
     startDate: '2024-02-01', endDate: '2025-02-01', status: 'active',
     dependants: [],
-    paymentMethod: 'EcoCash', insurer: 'CBZ Life', agentId: 'u5', agentName: 'Chipo Sibanda',
+    paymentMethod: 'EcoCash', insurer: 'Motions Microinsurance', agentId: 'u5', agentName: 'Chipo Sibanda',
     createdAt: '2024-01-28', nextPaymentDate: '2026-05-01', lastPaymentDate: '2026-04-01',
   },
   {
@@ -227,7 +227,7 @@ export const POLICIES: Policy[] = [
       { name: 'Thabo Ndlovu', relationship: 'Child', dob: '2012-09-14', nationalId: '12091400B00' },
       { name: 'Nomsa Ndlovu Jnr', relationship: 'Child', dob: '2016-03-22', nationalId: '16032200B00' },
     ],
-    paymentMethod: 'Bank Transfer', insurer: 'EcoSure', agentId: 'u3', agentName: 'Blessing Moyo',
+    paymentMethod: 'Bank Transfer', insurer: 'Motions Microinsurance', agentId: 'u3', agentName: 'Blessing Moyo',
     createdAt: '2024-02-05', nextPaymentDate: '2026-05-10', lastPaymentDate: '2026-04-10',
   },
   {
@@ -235,7 +235,7 @@ export const POLICIES: Policy[] = [
     productId: 'p3', productName: 'Life Cover Essential', premium: 10.00, coverAmount: 10000,
     startDate: '2024-03-01', endDate: '2025-03-01', status: 'active',
     dependants: [{ name: 'Blessing Chirwa', relationship: 'Child', dob: '2018-01-05', nationalId: '18010500C00' }],
-    paymentMethod: 'OneMoney', insurer: 'ZB Life', agentId: 'u3', agentName: 'Blessing Moyo',
+    paymentMethod: 'OneMoney', insurer: 'Motions Microinsurance', agentId: 'u3', agentName: 'Blessing Moyo',
     createdAt: '2024-02-25', nextPaymentDate: '2026-06-01', lastPaymentDate: '2026-05-01',
   },
   {
@@ -243,7 +243,7 @@ export const POLICIES: Policy[] = [
     productId: 'p1', productName: 'Funeral Cover Basic', premium: 5.00, coverAmount: 3000,
     startDate: '2024-03-15', endDate: '2025-03-15', status: 'active',
     dependants: [],
-    paymentMethod: 'EcoCash', insurer: 'Nyaradzo Funeral', agentId: 'u5', agentName: 'Chipo Sibanda',
+    paymentMethod: 'EcoCash', insurer: 'Motions Microinsurance', agentId: 'u5', agentName: 'Chipo Sibanda',
     createdAt: '2024-03-12', nextPaymentDate: '2026-05-15', lastPaymentDate: '2026-04-15',
   },
   {
@@ -251,7 +251,7 @@ export const POLICIES: Policy[] = [
     productId: 'p5', productName: 'Personal Accident Cover', premium: 3.00, coverAmount: 5000,
     startDate: '2024-04-01', endDate: '2025-04-01', status: 'lapsed',
     dependants: [],
-    paymentMethod: 'Cash', insurer: 'Doves', agentId: 'u5', agentName: 'Chipo Sibanda',
+    paymentMethod: 'Cash', insurer: 'Motions Microinsurance', agentId: 'u5', agentName: 'Chipo Sibanda',
     createdAt: '2024-03-28', nextPaymentDate: '2026-05-01', lastPaymentDate: '2026-01-01',
   },
   {
@@ -259,7 +259,7 @@ export const POLICIES: Policy[] = [
     productId: 'p3', productName: 'Life Cover Essential', premium: 10.00, coverAmount: 10000,
     startDate: '2024-04-20', endDate: '2025-04-20', status: 'active',
     dependants: [{ name: 'Lisa Zvobgo', relationship: 'Child', dob: '2014-11-30', nationalId: '14113000D00' }],
-    paymentMethod: 'InnBucks', insurer: 'Motions', agentId: 'u3', agentName: 'Blessing Moyo',
+    paymentMethod: 'InnBucks', insurer: 'Motions Microinsurance', agentId: 'u3', agentName: 'Blessing Moyo',
     createdAt: '2024-04-15', nextPaymentDate: '2026-05-20', lastPaymentDate: '2026-04-20',
   },
   {
@@ -267,7 +267,7 @@ export const POLICIES: Policy[] = [
     productId: 'p4', productName: 'Hospital Cash Plan', premium: 8.00, coverAmount: 50,
     startDate: '2024-05-05', endDate: '2025-05-05', status: 'active',
     dependants: [],
-    paymentMethod: 'EcoCash', insurer: 'CBZ Life', agentId: 'u5', agentName: 'Chipo Sibanda',
+    paymentMethod: 'EcoCash', insurer: 'Motions Microinsurance', agentId: 'u5', agentName: 'Chipo Sibanda',
     createdAt: '2024-05-01', nextPaymentDate: '2026-06-05', lastPaymentDate: '2026-05-05',
   },
   {
@@ -275,7 +275,7 @@ export const POLICIES: Policy[] = [
     productId: 'p5', productName: 'Personal Accident Cover', premium: 3.00, coverAmount: 5000,
     startDate: '2024-05-22', endDate: '2025-05-22', status: 'pending',
     dependants: [],
-    paymentMethod: 'Bank Transfer', insurer: 'EcoSure', agentId: 'u3', agentName: 'Blessing Moyo',
+    paymentMethod: 'Bank Transfer', insurer: 'Motions Microinsurance', agentId: 'u3', agentName: 'Blessing Moyo',
     createdAt: '2024-05-20', nextPaymentDate: '2026-06-22', lastPaymentDate: undefined,
   },
   {
@@ -283,7 +283,7 @@ export const POLICIES: Policy[] = [
     productId: 'p2', productName: 'Funeral Cover Premium', premium: 12.00, coverAmount: 8000,
     startDate: '2024-06-12', endDate: '2025-06-12', status: 'active',
     dependants: [{ name: 'Rose Gumbo', relationship: 'Spouse', dob: '1993-08-19', nationalId: '93081900E00' }],
-    paymentMethod: 'Debit Order', insurer: 'ZB Life', agentId: 'u5', agentName: 'Chipo Sibanda',
+    paymentMethod: 'Debit Order', insurer: 'Motions Microinsurance', agentId: 'u5', agentName: 'Chipo Sibanda',
     createdAt: '2024-06-08', nextPaymentDate: '2026-06-12', lastPaymentDate: '2026-05-12',
   },
 ]
@@ -400,7 +400,7 @@ export const EMAILS: EmailMessage[] = [
   {
     id: 'em2', from: 'info@tariqify.com', fromName: 'Tariqify IMS',
     to: 'simba.dube@gmail.com', subject: 'Your policy EMA2024001 premium reminder',
-    body: 'Dear Simba Dube,\n\nThis is a friendly reminder that your funeral cover premium of $5.00 is due on 15 May 2026.\n\nPlease ensure your EcoCash wallet has sufficient funds.\n\nRegards,\nEnpassent Multiple Agent',
+    body: 'Dear Simba Dube,\n\nThis is a friendly reminder that your funeral cover premium of $5.00 is due on 15 May 2026.\n\nPlease ensure your EcoCash wallet has sufficient funds.\n\nRegards,\nMotions Microinsurance',
     timestamp: '2026-05-07T09:00:00Z', read: true, folder: 'sent', linkedTo: 'pol1',
   },
   {
@@ -412,7 +412,7 @@ export const EMAILS: EmailMessage[] = [
   {
     id: 'em4', from: 'info@tariqify.com', fromName: 'Tariqify IMS',
     to: 'tafa.chirwa@gmail.com', subject: 'Welcome to Tariqify IMS - Policy EMA2024004',
-    body: 'Dear Tafadzwa Chirwa,\n\nWelcome to Enpassent Multiple Agent! Your Life Cover Essential policy (EMA2024004) is now active.\n\nCover Amount: $10,000\nMonthly Premium: $10.00\nPayment Method: OneMoney\n\nFor any queries, reply to this email or call +263 77 123 4567.\n\nEnpassent Multiple Agent',
+    body: 'Dear Tafadzwa Chirwa,\n\nWelcome to Motions Microinsurance! Your Life Cover Essential policy (EMA2024004) is now active.\n\nCover Amount: $10,000\nMonthly Premium: $10.00\nPayment Method: OneMoney\n\nFor any queries, reply to this email or call +263 77 123 4567.\n\nMotions Microinsurance',
     timestamp: '2026-03-01T12:00:00Z', read: true, folder: 'sent', linkedTo: 'pol4',
   },
 ]
@@ -439,7 +439,7 @@ export const FRAUD_CASES: FraudCase[] = [
     clientName: 'Rutendo Zvobgo', fraudScore: 62,
     signals: ['Medical certificate from unregistered practitioner', 'Prior rejected claim history', 'No police report for workplace accident'],
     status: 'confirmed', assignedTo: 'u2', createdAt: '2026-03-15T09:00:00Z', resolvedAt: '2026-04-01T12:00:00Z',
-    notes: 'Claim rejected. Evidence submitted to police. Case referred to IPEC.',
+    notes: 'Claim rejected. Evidence submitted to police. Case referred to the regulator.',
   },
 ]
 

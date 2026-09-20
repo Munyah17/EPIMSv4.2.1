@@ -1,16 +1,16 @@
 -- Records that a client's insurer was defaulted rather than chosen.
 --
--- Enpassent is a broker, so the insurer is a genuine choice and the field is
+-- Motions Microinsurance is the sole insurer on this system, so the field is
 -- optional at signup -- a registration must never be blocked because the
 -- question has not been answered. When it is left blank the client is
--- provisionally placed with the house insurer (Motions) so the record has
+-- provisionally placed with Motions Microinsurance so the record has
 -- somewhere to sit, and this column remembers that nobody actually picked.
 --
 -- Staff use it as a work queue: these are the clients still to be asked.
 -- It is deliberately NOT a policy column. Registering a client puts no cover
 -- in place, but the insurer on a policy is the party that pays the claim, so
--- that one is only ever set by an explicit choice. See
--- src/lib/insurerAssignment.ts for the rules this column exists to support.
+-- that one is only ever set by an explicit choice. See the Insurer notes in
+-- src/types/index.ts for the rules this column exists to support.
 
 ALTER TABLE public.clients
   ADD COLUMN IF NOT EXISTS insurer_provisional BOOLEAN NOT NULL DEFAULT FALSE;

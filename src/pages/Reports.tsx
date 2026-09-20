@@ -15,7 +15,7 @@ interface Props {
 
 export default function Reports({ showToast }: Props) {
   const [period, setPeriod] = useState<'month' | 'quarter' | 'year' | 'custom'>('month')
-  const [activeTab, setActiveTab] = useState<'overview' | 'claims' | 'financials' | 'ipec'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'claims' | 'financials'>('overview')
   const [policies, setPolicies] = useState<Policy[]>([])
   const [claims, setClaims] = useState<Claim[]>([])
   const [payments, setPayments] = useState<Payment[]>([])
@@ -111,27 +111,7 @@ export default function Reports({ showToast }: Props) {
 
   const dateStamp = toIsoDate(new Date())
 
-  const handleExport = async (format: 'PDF' | 'Excel' | 'CSV' | 'IPEC PDF') => {
-    if (format === 'IPEC PDF') {
-      await exportToPdf(
-        `ipec-return-${dateStamp}.pdf`, 'IPEC Quarterly Return', ['Field', 'Value'],
-        [
-          ['Intermediary Name', 'Motions Microinsurance'],
-          ['IPEC Reg. Number', 'IPEC/IB/2020/001'],
-          ['Total Policies Issued', totalPolicies],
-          ['Active Policies', activePolicies],
-          ['Gross Premiums Written', `$${totalPremiums.toFixed(2)}`],
-          ['Claims Incurred', `$${totalPaid.toFixed(2)}`],
-          ['Claims Ratio', `${claimsRatio}%`],
-          ['Lapse Rate', `${lapseRate}%`],
-          ['Total Clients', clients.length],
-        ],
-        `Generated ${formatDate(new Date())}`,
-      )
-      showToast('success', 'IPEC return downloaded.')
-      return
-    }
-
+  const handleExport = async (format: 'PDF' | 'Excel' | 'CSV') => {
     let headers: string[]
     let rows: (string | number)[][]
     let title: string
@@ -147,21 +127,6 @@ export default function Reports({ showToast }: Props) {
       baseName = 'financials-report'
       headers = ['Reference', 'Client', 'Amount', 'Method', 'Status', 'Date']
       rows = payments.map(p => [p.reference, p.clientName, `$${p.amount.toFixed(2)}`, p.method, p.status, p.date])
-    } else if (activeTab === 'ipec') {
-      title = 'IPEC Quarterly Return'
-      baseName = 'ipec-return'
-      headers = ['Field', 'Value']
-      rows = [
-        ['Intermediary Name', 'Motions Microinsurance'],
-        ['IPEC Reg. Number', 'IPEC/IB/2020/001'],
-        ['Total Policies Issued', totalPolicies],
-        ['Active Policies', activePolicies],
-        ['Gross Premiums Written', `$${totalPremiums.toFixed(2)}`],
-        ['Claims Incurred', `$${totalPaid.toFixed(2)}`],
-        ['Claims Ratio', `${claimsRatio}%`],
-        ['Lapse Rate', `${lapseRate}%`],
-        ['Total Clients', clients.length],
-      ]
     } else {
       title = 'Policy Report: Overview'
       baseName = 'policies-report'
@@ -185,7 +150,7 @@ export default function Reports({ showToast }: Props) {
     <div className="panel">
       <div className="panel-toolbar">
         <div className="tabs" style={{ marginBottom: 0 }}>
-          {([['overview', 'Overview'], ['claims', 'Claims Analysis'], ['financials', 'Financials'], ['ipec', 'IPEC Report']] as [typeof activeTab, string][]).map(([t, label]) => (
+          {([['overview', 'Overview'], ['claims', 'Claims Analysis'], ['financials', 'Financials']] as [typeof activeTab, string][]).map(([t, label]) => (
             <button key={t} className={`tab${activeTab === t ? ' active' : ''}`} onClick={() => setActiveTab(t)}>{label}</button>
           ))}
         </div>
@@ -475,32 +440,6 @@ export default function Reports({ showToast }: Props) {
             </table>
           </div>
         </>
-      )}
-
-      {activeTab === 'ipec' && (
-        <div className="card" style={{ maxWidth: 700 }}>
-          <div className="info-banner info-banner-info" style={{ marginBottom: '1.5rem' }}>
-            ℹ IPEC Quarterly Return: Submit before the 15th of the month following quarter end.
-          </div>
-          <h3 style={{ marginBottom: '1.5rem' }}>IPEC Quarterly Return: Q2 2026</h3>
-          <table className="table">
-            <tbody>
-              <tr><td><strong>Intermediary Name</strong></td><td>Motions Microinsurance</td></tr>
-              <tr><td><strong>IPEC Reg. Number</strong></td><td>IPEC/IB/2020/001</td></tr>
-              <tr><td><strong>Reporting Period</strong></td><td>01 April – 30 June 2026</td></tr>
-              <tr><td><strong>Total Policies Issued</strong></td><td>{totalPolicies}</td></tr>
-              <tr><td><strong>Active Policies</strong></td><td>{activePolicies}</td></tr>
-              <tr><td><strong>Gross Premiums Written</strong></td><td>${totalPremiums.toFixed(2)}</td></tr>
-              <tr><td><strong>Claims Incurred</strong></td><td>${totalPaid.toFixed(2)}</td></tr>
-              <tr><td><strong>Claims Ratio</strong></td><td>{claimsRatio}%</td></tr>
-              <tr><td><strong>Lapse Rate</strong></td><td>{lapseRate}%</td></tr>
-              <tr><td><strong>Total Clients</strong></td><td>{clients.length}</td></tr>
-            </tbody>
-          </table>
-          <div style={{ marginTop: '1.5rem' }}>
-            <button className="btn btn-primary" onClick={() => handleExport('IPEC PDF')}>↓ Download IPEC Return</button>
-          </div>
-        </div>
       )}
     </div>
   )

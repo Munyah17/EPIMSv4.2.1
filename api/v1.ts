@@ -383,7 +383,7 @@ async function createPolicy(admin: SupabaseClient, body: Json, dev: Record<strin
 async function getPolicy(admin: SupabaseClient, policyNumber: string, agentId: string) {
   const { data, error } = await admin
     .from('policies')
-    .select('id, policy_number, premium, cover_amount, status, start_date, end_date')
+    .select('id, policy_number, premium, cover_amount, status, start_date, end_date, dependants')
     .eq('policy_number', policyNumber)
     .eq('agent_id', agentId)
     .maybeSingle()
@@ -395,6 +395,7 @@ async function getPolicy(admin: SupabaseClient, policyNumber: string, agentId: s
       data: {
         id: data.id, policyNumber: data.policy_number, premium: data.premium, coverAmount: data.cover_amount,
         status: data.status, startDate: data.start_date, endDate: data.end_date,
+        dependants: data.dependants ?? [],
       },
     },
   }

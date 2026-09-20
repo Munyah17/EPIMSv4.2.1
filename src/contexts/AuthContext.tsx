@@ -193,7 +193,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!lockError && locked) {
           return {
             profile: null,
-            error: 'Too many failed sign-in attempts. This account has been locked for security — email admin@enpassent.co.zw to have it unlocked.',
+            error: 'Too many failed sign-in attempts. This account has been locked for security — email admin@motions.co.zw to have it unlocked.',
           }
         }
 

@@ -17,7 +17,7 @@
 -- Unlocking is not self-service and not time-limited on purpose -- 5 wrong
 -- attempts is treated as worth a human looking at it, not something that
 -- should quietly go away on its own after a countdown. AuthContext.tsx's
--- login() tells the user to email admin@enpassent.co.zw; an admin clears it
+-- login() tells the user to email admin@motions.co.zw; an admin clears it
 -- by deleting that email's rows from login_attempts (or waiting for
 -- trim_login_attempts' normal 7-day sweep, which clears it as a side
 -- effect once none of the failures are recent enough to remain).
