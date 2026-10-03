@@ -62,6 +62,16 @@ function isUuid(v: unknown): v is string {
 }
 
 /**
+ * One stored shape for national IDs: separators and case stripped, the same
+ * normalisation the public checkout applies before it ever writes a client.
+ * "63-1234567-A-89" and "631234567A89" are the same person — dedup and
+ * lookups only work if the row always carries the canonical form.
+ */
+function normalizeNationalId(raw: string): string {
+  return raw.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
+}
+
+/**
  * Records the request against the key that made it. Method, caller IP and
  * elapsed time are included because a bare endpoint-and-status pair cannot
  * answer who called, from where, or whether a key is being hammered, which
@@ -91,6 +101,10 @@ function scopeFor(resource: string, method: string): string | null {
   if (resource === 'products' && method === 'GET') return 'products:read'
   if (resource === 'quotes' && method === 'POST') return 'quotes:read'
   if (resource === 'clients' && method === 'POST') return 'clients:write'
+  // A client's row only ever surfaces through a policy this developer owns,
+  // so the read is covered by the policies:read scope every key already
+  // carries — no new scope, no need for existing partners to reissue keys.
+  if (resource === 'clients' && method === 'GET') return 'policies:read'
   if (resource === 'policies' && method === 'POST') return 'policies:write'
   if (resource === 'policies' && method === 'GET') return 'policies:read'
   if (resource === 'payments' && method === 'POST') return 'payments:write'
@@ -185,10 +199,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       result = await getQuote(admin, body)
     } else if (resource === 'clients' && method === 'POST') {
       result = await createClient_(admin, body, agentId)
+    } else if (resource === 'clients' && method === 'GET') {
+      const nidQuery = req.query.nationalId
+      result = await listClients(admin, agentId, Array.isArray(nidQuery) ? nidQuery[0] : nidQuery)
     } else if (resource === 'policies' && method === 'POST') {
       result = await createPolicy(admin, body, dev)
     } else if (resource === 'policies' && method === 'GET' && segments[1]) {
       result = await getPolicy(admin, segments[1], agentId)
+    } else if (resource === 'policies' && method === 'GET') {
+      result = await listPolicies(admin, agentId)
     } else if (resource === 'payments' && method === 'POST') {
       result = await recordPayment(admin, body, agentId)
     } else if (resource === 'tickets' && method === 'POST') {
@@ -257,7 +276,11 @@ async function getQuote(admin: SupabaseClient, body: Json) {
 async function createClient_(admin: SupabaseClient, body: Json, agentId: string) {
   const name = String(body.name ?? '').trim()
   const phone = String(body.phone ?? '').trim()
-  const nationalId = String(body.nationalId ?? '').trim()
+  // Partners type the ID however it appears on the card — dashes, spaces,
+  // lowercase check letter. Store the canonical form so the same person
+  // presented two ways still deduplicates to one client.
+  const rawNationalId = String(body.nationalId ?? '').trim()
+  const nationalId = normalizeNationalId(rawNationalId)
   if (!name || !phone || !nationalId) return { status: 400, body: { error: 'name, phone, and nationalId are required.' } }
 
   const { data, error } = await admin.from('clients').insert({
@@ -268,14 +291,17 @@ async function createClient_(admin: SupabaseClient, body: Json, agentId: string)
     occupation: body.occupation ? String(body.occupation) : null,
     status: 'active',
   }).select('id').single()
-  if (!error) return { status: 201, body: { data: { id: data.id, existing: false } } }
+  if (!error) return { status: 201, body: { data: { id: data.id, nationalId, existing: false } } }
   if (error.code !== '23505') return { status: 400, body: { error: error.message } }
 
   // Already exists — only hand back the id (and let the caller treat it as
   // "their" client) if this developer already has a policy against them.
   // Otherwise this lookup would let any key harvest another developer's
-  // client ids just by guessing national ID numbers.
-  const { data: existingClient } = await admin.from('clients').select('id').eq('national_id', nationalId).maybeSingle()
+  // client ids just by guessing national ID numbers. Rows written before
+  // normalisation may still carry separators, so match the raw text too.
+  const { data: existingClients } = await admin.from('clients').select('id')
+    .in('national_id', [...new Set([nationalId, rawNationalId])]).limit(1)
+  const existingClient = existingClients?.[0]
   if (existingClient) {
     const { data: ownPolicy } = await admin.from('policies').select('id').eq('client_id', existingClient.id).eq('agent_id', agentId).limit(1).maybeSingle()
     if (ownPolicy) return { status: 200, body: { data: { id: existingClient.id, existing: true } } }
@@ -288,14 +314,30 @@ async function createClient_(admin: SupabaseClient, body: Json, agentId: string)
 
 async function createPolicy(admin: SupabaseClient, body: Json, dev: Record<string, unknown>) {
   const agentId = dev.agent_profile_id as string
-  const clientId = body.clientId as string | undefined
+  // The client may be identified two ways: the UUID POST /clients returned
+  // (clientId), or the national ID itself (clientNationalId — or a national
+  // ID sent in clientId, which is accepted too, so a partner who skipped
+  // the client round-trip is not bounced on a format technicality).
+  const clientRef = String(body.clientId ?? body.clientNationalId ?? '').trim()
   const productId = body.productId as string | undefined
   const paymentMethod = String(body.paymentMethod ?? 'EcoCash')
-  if (!clientId || !productId) return { status: 400, body: { error: 'clientId and productId are required.' } }
-  if (!isUuid(clientId) || !isUuid(productId)) return { status: 400, body: { error: 'clientId and productId must be valid UUIDs.' } }
+  if (!clientRef || !productId) return { status: 400, body: { error: 'clientId (or clientNationalId) and productId are required.' } }
+  if (!isUuid(productId)) return { status: 400, body: { error: 'productId must be a valid UUID.' } }
 
-  const { data: client } = await admin.from('clients').select('id').eq('id', clientId).maybeSingle()
-  if (!client) return { status: 404, body: { error: 'Client not found.' } }
+  let clientId: string | null = null
+  if (isUuid(clientRef)) {
+    clientId = clientRef
+  } else {
+    const nid = normalizeNationalId(clientRef)
+    const { data: byNationalId } = await admin.from('clients').select('id')
+      .in('national_id', [...new Set([nid, clientRef])]).limit(1)
+    clientId = byNationalId?.[0]?.id ?? null
+  }
+
+  const { data: client } = clientId
+    ? await admin.from('clients').select('id').eq('id', clientId).maybeSingle()
+    : { data: null }
+  if (!client) return { status: 404, body: { error: 'Client not found. Register them first with POST /clients, then pass the returned id (or their national ID) as clientId.' } }
 
   // A client with no policies yet is fair game (this developer would be
   // the first); one with existing policies all belonging to other agents
@@ -397,6 +439,82 @@ async function getPolicy(admin: SupabaseClient, policyNumber: string, agentId: s
         status: data.status, startDate: data.start_date, endDate: data.end_date,
         dependants: data.dependants ?? [],
       },
+    },
+  }
+}
+
+/**
+ * Read-side mirror of POST /clients for the partner's own book: every
+ * client they hold a policy on, optionally narrowed to one national ID via
+ * ?nationalId=. Clients belonging to other agents never appear — the list
+ * is built from this developer's policy rows, the same boundary the write
+ * side enforces.
+ */
+async function listClients(admin: SupabaseClient, agentId: string, nationalId?: string) {
+  const { data: ownPolicies, error: polError } = await admin.from('policies').select('client_id').eq('agent_id', agentId)
+  if (polError) return { status: 500, body: { error: polError.message } }
+  const clientIds = [...new Set((ownPolicies ?? []).map(p => p.client_id as string).filter(Boolean))]
+  if (clientIds.length === 0) return { status: 200, body: { data: [] } }
+
+  let query = admin.from('clients')
+    .select('id, name, phone, national_id, email, dob, status')
+    .in('id', clientIds)
+  if (nationalId) {
+    const nid = normalizeNationalId(nationalId)
+    query = query.in('national_id', [...new Set([nid, nationalId.trim()])])
+  }
+  const { data, error } = await query
+  if (error) return { status: 500, body: { error: error.message } }
+  return {
+    status: 200,
+    body: {
+      data: (data ?? []).map(c => ({
+        id: c.id, name: c.name, phone: c.phone, nationalId: c.national_id,
+        email: c.email, dob: c.dob, status: c.status,
+      })),
+    },
+  }
+}
+
+/**
+ * The partner's whole book in one call — the same fields GET
+ * /policies/:policyNumber returns plus client and product names, so a
+ * partner can reconcile their records without having held onto every
+ * policy number they were ever issued. Newest first, capped rather than
+ * paged for now.
+ */
+async function listPolicies(admin: SupabaseClient, agentId: string) {
+  const { data, error } = await admin
+    .from('policies')
+    .select('id, policy_number, client_id, product_id, premium, cover_amount, status, start_date, end_date, dependants')
+    .eq('agent_id', agentId)
+    .order('created_at', { ascending: false })
+    .limit(500)
+  if (error) return { status: 500, body: { error: error.message } }
+
+  const rows = data ?? []
+  const clientIds = [...new Set(rows.map(r => r.client_id as string).filter(Boolean))]
+  const productIds = [...new Set(rows.map(r => r.product_id as string).filter(Boolean))]
+  const [clientsRes, productsRes] = await Promise.all([
+    clientIds.length ? admin.from('clients').select('id, name, national_id').in('id', clientIds) : Promise.resolve({ data: [] as { id: string; name: string; national_id: string }[] }),
+    productIds.length ? admin.from('products').select('id, name').in('id', productIds) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+  ])
+  const clientById = new Map((clientsRes.data ?? []).map(c => [c.id, c]))
+  const productById = new Map((productsRes.data ?? []).map(p => [p.id, p]))
+
+  return {
+    status: 200,
+    body: {
+      data: rows.map(p => ({
+        id: p.id, policyNumber: p.policy_number,
+        clientId: p.client_id,
+        clientName: clientById.get(p.client_id)?.name,
+        clientNationalId: clientById.get(p.client_id)?.national_id,
+        productId: p.product_id,
+        productName: productById.get(p.product_id)?.name,
+        premium: p.premium, coverAmount: p.cover_amount, status: p.status,
+        startDate: p.start_date, endDate: p.end_date, dependants: p.dependants ?? [],
+      })),
     },
   }
 }
