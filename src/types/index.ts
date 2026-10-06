@@ -123,6 +123,10 @@ export interface Client {
    *  there is nothing to be provisional about. Kept only because existing
    *  rows carry it. */
   insurerProvisional?: boolean
+  /** The agent (staff profile) who brought this client in, recorded at
+   *  registration. Optional — plenty of clients are direct walk-ins.
+   *  New policies created for the client prefill their agent from this. */
+  agentId?: string
   createdAt: string
   policyCount: number
   status: 'active' | 'inactive'
@@ -223,6 +227,10 @@ export interface Policy {
   gpsLng?: number
   agentId?: string
   agentName?: string
+  /** Where the policy was bought/issued — 'web_app' (staff in the IMS),
+   *  'motions_website', 'whatsapp_chatbot', 'ussd', 'api_partner', or any
+   *  future channel. See src/lib/policySources.ts. */
+  source?: string
   createdAt: string
   nextPaymentDate?: string
   lastPaymentDate?: string

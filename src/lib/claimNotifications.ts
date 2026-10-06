@@ -43,7 +43,7 @@ export async function notifyClaimCreated(claim: Claim): Promise<void> {
   const staffBody = `A new insurance claim has been submitted and requires review.
 ${claimSummaryBlock(claim)}
 
-Please log in to Tariqify IMS to review and process this claim.${signature(cfg.signature)}`
+Please log in to TariqifyIMS to review and process this claim.${signature(cfg.signature)}`
 
   const clientBody = `Dear ${claim.clientName},
 
@@ -84,7 +84,7 @@ export async function notifyClaimStatusChanged(claim: Claim, previousStatus: Cla
   const staffBody = `Claim ${claim.claimNumber} status has changed from "${previousStatus.replace('_', ' ')}" to "${statusLabel}".
 ${claimSummaryBlock(claim)}
 
-Log in to Tariqify IMS to take further action.${signature(cfg.signature)}`
+Log in to TariqifyIMS to take further action.${signature(cfg.signature)}`
 
   const clientBody = `Dear ${claim.clientName},
 
@@ -144,7 +144,7 @@ export async function notifyClaimIntakeAccepted(claim: Claim, processor: StaffCo
   if (processor.email) {
     void sendEmail({
       to: processor.email, subject: `[Assigned] Claim ${claim.claimNumber} needs assessment`, linkedTo: claim.id, folder: 'claims', from: MAILBOXES.claims,
-      body: `${claim.claimNumber} has been accepted at intake and assigned to you for assessment.${claimSummaryBlock(claim)}\n\nLog in to Tariqify IMS to review.${signature(cfg.signature)}`,
+      body: `${claim.claimNumber} has been accepted at intake and assigned to you for assessment.${claimSummaryBlock(claim)}\n\nLog in to TariqifyIMS to review.${signature(cfg.signature)}`,
     })
   }
   if (processor.phone) void sendSms(processor.phone, `${COMPANY_NAME}: Claim ${claim.claimNumber} assigned to you for assessment.`).catch(() => { /**/ })
@@ -181,7 +181,7 @@ export async function notifyClaimEscalated(claim: Claim, reviewer: StaffContact)
   if (reviewer.email) {
     void sendEmail({
       to: reviewer.email, subject: `[Decision Needed] Claim ${claim.claimNumber}`, linkedTo: claim.id, folder: 'claims', from: MAILBOXES.claims,
-      body: `${claim.claimNumber} has been assessed and escalated to you for a final decision.${claimSummaryBlock(claim)}${claim.assessmentNotes ? `\n\nAssessment notes:\n${claim.assessmentNotes}` : ''}\n\nLog in to Tariqify IMS to approve or decline.${signature(cfg.signature)}`,
+      body: `${claim.claimNumber} has been assessed and escalated to you for a final decision.${claimSummaryBlock(claim)}${claim.assessmentNotes ? `\n\nAssessment notes:\n${claim.assessmentNotes}` : ''}\n\nLog in to TariqifyIMS to approve or decline.${signature(cfg.signature)}`,
     })
   }
   if (reviewer.phone) void sendSms(reviewer.phone, `${COMPANY_NAME}: Claim ${claim.claimNumber} needs your final decision.`).catch(() => { /**/ })

@@ -20,6 +20,11 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
  *   R3  on the day            (+ SMS to the client)
  *   R4  5 days after          (+ caution flag, policy lapses)
  *
+ * Agriculture policies are skipped entirely: their premium is an annual
+ * stop order paid by the sponsoring association, not monthly by the
+ * farmer, so farmers get no billing reminders or lapse flags from this
+ * run (they only hear from us at registration and on claims).
+ *
  * Safe to run alongside the in-app checker: every send is guarded by a
  * dedup row in `reminders` keyed on policy + due date + stage, so whichever
  * runs first wins and the other stands down.
@@ -297,7 +302,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .in('status', ['active', 'waiting_period'])
   if (error) return res.status(500).json({ error: error.message })
 
-  const policies = (data ?? []) as unknown as PolicyRow[]
+  const policies = ((data ?? []) as unknown as PolicyRow[])
+    .filter(p => p.products?.category !== 'agriculture')
   const stats: RunStats = { considered: policies.length, emailed: 0, texted: 0, flagged: 0, skipped: 0 }
 
   for (const policy of policies) {

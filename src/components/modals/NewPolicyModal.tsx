@@ -8,7 +8,8 @@ import DateInput from '../ui/DateInput'
 import { premiumPeriodLabel } from '../../lib/productUtils'
 import { computeAssignedStartDate } from '../../lib/policyLifecycle'
 import { toIsoDate } from '../../lib/dateUtils'
-import { ORIGIN_TAG } from '../../lib/originTag'
+import { nextPolicyNumber } from '../../lib/policyNumbers'
+import { POLICY_SOURCES, DEFAULT_POLICY_SOURCE } from '../../lib/policySources'
 
 interface Props {
   onClose: () => void
@@ -51,6 +52,9 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   const [dependants, setDependants] = useState<Dependant[]>([])
   const [growerNumber, setGrowerNumber] = useState('')
   const [agentId, setAgentId] = useState('')
+  // The channel the sale actually came through — defaults to this web app
+  // since that's where the staff member is working.
+  const [source, setSource] = useState(DEFAULT_POLICY_SOURCE)
   const [products, setProducts] = useState<Product[]>([])
   const [productsLoading, setProductsLoading] = useState(true)
   const [staff, setStaff] = useState<AppUser[]>([])
@@ -72,7 +76,8 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
       setStaff(active)
       // Default to whoever is actually creating this policy — the person
       // serving the client — while still letting them reassign it below.
-      if (user && active.some(s => s.id === user.id)) setAgentId(user.id)
+      // A client-bound agent set by selectExistingClient wins over this.
+      setAgentId(prev => prev || (user && active.some(s => s.id === user.id) ? user.id : ''))
     })
     if (initialClient) selectExistingClient(initialClient)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -118,6 +123,9 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
     setClientDob(client.dob)
     setClientAddress(client.address)
     setClientOccupation(client.occupation ?? '')
+    // A client already bound to an agent (registered by one) keeps them
+    // as the policy's agent — override below if that's wrong for this sale.
+    if (client.agentId) setAgentId(client.agentId)
   }
 
   const addDependant = () => {
@@ -174,9 +182,15 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
     // one policy.
     let createdClient: Client | null
     if (customerMode === 'existing' && existingClientId) {
+      // Backfill only: a client who already has a referring agent keeps
+      // them — the Agent field above is the policy's attribution, not a
+      // reassignment of who brought the client in.
+      const clientRecord = existingClients.find(c => c.id === existingClientId)
+        ?? (initialClient?.id === existingClientId ? initialClient : undefined)
       const { data, error } = await db.clients.update(existingClientId, {
         name: clientName, email: clientEmail, phone: clientPhone,
         address: clientAddress, occupation: clientOccupation,
+        agentId: (!clientRecord?.agentId && agentId) ? agentId : undefined,
       })
       if (error || !data) { if (showToast) showToast('error', 'Failed to update client.'); return }
       createdClient = data
@@ -193,14 +207,20 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
         createdAt: toIsoDate(new Date()),
         policyCount: 0,
         status: 'active',
+        // Registering a fresh client through this modal is the same act as
+        // an agent bringing them in, so the chosen agent binds to the
+        // client record itself, not only to this one policy.
+        agentId: agentId || undefined,
       }
       const { data, error } = await db.clients.create(newClient)
       if (error || !data) { if (showToast) showToast('error', 'Failed to create client.'); return }
       createdClient = data
     }
 
-    // Create policy with the client
-    const policyNumber = `${ORIGIN_TAG}${new Date().getFullYear()}${String(Date.now()).slice(-3)}`
+    // Create policy with the client. The number is drawn from the
+    // product's sequence (FCP0001, HCP0042, ...) — short, and the prefix
+    // alone says which cover it belongs to.
+    const policyNumber = await nextPolicyNumber(product!)
     const endDate = new Date(startDate)
     endDate.setFullYear(endDate.getFullYear() + 1)
     const policy: Policy = {
@@ -225,6 +245,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
       nextPaymentDate: toIsoDate(new Date(new Date(startDate).setMonth(new Date(startDate).getMonth() + (product!.category === 'agriculture' ? 12 : 1)))),
       agentId: agentId || undefined,
       agentName: staff.find(s => s.id === agentId)?.name,
+      source,
     }
     onSave(policy)
   }
@@ -349,11 +370,19 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                 </select>
               </div>
               <div className="form-group">
-                <label>Agent</label>
+                <label>Agent (Referred By)</label>
                 <select className="form-control" value={agentId} onChange={e => setAgentId(e.target.value)}>
                   <option value="">Unassigned</option>
                   {staff.map(s => <option key={s.id} value={s.id}>{s.name} ({s.role.replace(/_/g, ' ')})</option>)}
                 </select>
+                <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>Optional — the agent who brought this client in. Defaults to you; a new client is bound to the same agent.</p>
+              </div>
+              <div className="form-group">
+                <label>Issued Via *</label>
+                <select className="form-control" value={source} onChange={e => setSource(e.target.value)}>
+                  {POLICY_SOURCES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                </select>
+                <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>Where this sale came through — recorded on the policy.</p>
               </div>
             </div>
           </div>

@@ -39,7 +39,7 @@ export const DEFAULT_GW_SETTINGS: GatewaySettings = {
   paynowReturnUrl: window.location.origin + '/payment/return',
   paynowResultUrl: window.location.origin + '/payment/result',
   zipitBankName: 'CABS',
-  zipitAccountName: 'Tariqify Insurance',
+  zipitAccountName: 'Motions Microinsurance',
   zipitAccountNumber: '1001234567',
   zipitBranchCode: '003',
   smtpHost: 'smtp.gmail.com',
@@ -47,7 +47,7 @@ export const DEFAULT_GW_SETTINGS: GatewaySettings = {
   smtpUser: '',
   smtpPass: '',
   smtpFrom: 'noreply@tariqify.com',
-  smtpFromName: 'Tariqify IMS',
+  smtpFromName: 'TariqifyIMS',
 }
 
 export function getGatewaySettings(): GatewaySettings {

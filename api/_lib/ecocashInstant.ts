@@ -13,7 +13,7 @@
  * merchant fields below), never in the browser -- a merchant PIN in
  * localStorage is a merchant PIN on every device that ever opened the app.
  *
- * Shared by api/ecocash-instant.ts (Vercel) and the Netlify mirror.
+ * Used by api/ecocash-instant.ts (Vercel serverless function).
  */
 
 export const EIP_BASE_URL = process.env.EIP_BASE_URL || 'https://developers.ecocash.co.zw/sandbox/payment/v1'

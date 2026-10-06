@@ -16,7 +16,7 @@ export interface LeadSearchResponse {
   error?: string
 }
 
-/** Calls netlify/functions/search-leads.ts. Never throws — a failure comes
+/** Calls the /api/search-leads endpoint (api/ai.ts). Never throws — a failure comes
  *  back as a normal response with `error` set, same as the rest of the
  *  app's AI-backed calls. */
 export async function searchForLeads(query: string, location?: string): Promise<LeadSearchResponse> {

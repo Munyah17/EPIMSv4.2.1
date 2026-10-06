@@ -178,7 +178,7 @@ export default function DeveloperApi({ showToast }: Props) {
     try {
       const { delivered, error } = await sendSystemEmail({
         from: MAILBOXES.admin,
-        fromName: 'Tariqify IMS: Developer API',
+        fromName: 'TariqifyIMS: Developer API',
         to: newKey.developer.contactEmail,
         subject: `Your API Credentials: ${newKey.environment === 'live' ? 'Live' : 'Sandbox'} Key`,
         body: `Hello,
@@ -266,24 +266,6 @@ Tariqify IMS`,
       detail: `+$${amount.toFixed(2)}, new balance $${data.walletBalance.toFixed(2)}${note.trim() ? `. ${note.trim()}` : ''}`, severity: 'notice',
     })
     showToast('success', `Wallet topped up. New balance: $${data.walletBalance.toFixed(2)}.`)
-  }
-
-  /** Super Admin only -- see the comment on ApiDeveloper.agricultureEnabled
-   *  for why this is gated tighter than the rest of this page. */
-  const handleToggleAgriculture = async (dev: ApiDeveloper) => {
-    const next = !dev.agricultureEnabled
-    if (next && !window.confirm(
-      `Enable agriculture cover for ${dev.companyName}?\n\nAgriculture is billed once a year via Stop Order, so this issues real cover on our name before any money is collected. Only do this for a partner you have verified directly.`,
-    )) return
-    const { data, error } = await db.developerApi.setAgricultureEnabled(dev.id, next)
-    if (error || !data) { showToast('error', error ?? 'Failed to update.'); return }
-    setDevelopers(prev => prev.map(d => d.id === dev.id ? data : d))
-    void recordActivity({
-      action: 'developer.agriculture_toggled', actor: actor(),
-      entityType: 'api_developer', entityId: dev.id, entityLabel: dev.companyName,
-      detail: next ? 'Agriculture cover ENABLED' : 'Agriculture cover disabled', severity: next ? 'warning' : 'notice',
-    })
-    showToast('success', `Agriculture cover ${next ? 'enabled' : 'disabled'} for ${dev.companyName}.`)
   }
 
   const handleCommission = async (dev: ApiDeveloper, value: string) => {
@@ -457,19 +439,9 @@ Tariqify IMS`,
                             <div>
                               <strong>Wallet balance: ${dev.walletBalance.toFixed(2)}</strong>
                               <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>
-                                A non-agriculture policy can only be issued through the API against this float.
+                                A policy can only be issued through the API against this float. Agriculture cover is never available to partner keys.
                               </div>
                             </div>
-                            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5 }}>
-                              <input
-                                type="checkbox"
-                                checked={dev.agricultureEnabled}
-                                disabled={user?.role !== 'super_admin'}
-                                onChange={() => handleToggleAgriculture(dev)}
-                              />
-                              Agriculture cover enabled
-                              {user?.role !== 'super_admin' && <span style={{ color: 'var(--muted)' }}>(Super Admin only)</span>}
-                            </label>
                           </div>
 
                           {usageByDeveloper[dev.id] && (

@@ -8,12 +8,18 @@
  *   R3: Last day of month (+ 1 SMS via smsService)
  *   R4: 5 days AFTER last day → caution flag applied
  *
+ * Agriculture is out of scope: its premium is a once-a-year stop order
+ * settled by the farmer's association, so a monthly "your premium is due"
+ * text to the farmer would be wrong twice over -- wrong cadence, wrong
+ * payer. Farmers are contacted only when a policy is registered for them
+ * and when a claim moves.
+ *
  * Runs client-side (hourly, from whichever staff member has the app open)
  * against real policies/clients. Dedup is tracked in the `reminders` table
  * itself (not localStorage) so it holds regardless of how many staff
  * browsers are open at once — otherwise each one would independently
  * re-send the same reminder. For guaranteed delivery even when no staff
- * are logged in, migrate this to a Netlify Scheduled Function (cron) that
+ * are logged in, migrate this to the Vercel Cron job (api/cron-reminders.ts) that
  * calls the same dispatch logic server-side.
  */
 import type { Policy, Client, Reminder } from '../types'
@@ -247,8 +253,11 @@ export async function runReminderCheck() {
   else if (daysToLast === -5) type = 'r4_post5'
   if (!type) { try { localStorage.setItem(CHECK_KEY, today.toISOString()) } catch { /**/ }; return }
 
-  const [{ data: allPolicies }, { data: allClients }] = await Promise.all([db.policies.list(), db.clients.list()])
-  const policies = (allPolicies ?? []).filter(p => p.status === 'active' || p.status === 'waiting_period')
+  const [{ data: allPolicies }, { data: allClients }, { data: allProducts }] = await Promise.all([db.policies.list(), db.clients.list(), db.products.list()])
+  const categoryByProductId = new Map((allProducts ?? []).map(p => [p.id, p.category]))
+  const policies = (allPolicies ?? []).filter(p =>
+    (p.status === 'active' || p.status === 'waiting_period')
+    && categoryByProductId.get(p.productId) !== 'agriculture')
   const clientById = new Map((allClients ?? []).map(c => [c.id, c]))
 
   for (const policy of policies) {

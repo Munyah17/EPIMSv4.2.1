@@ -153,11 +153,15 @@ ${policy.agentName ? `Registered by:  ${policy.agentName}` : 'Registered through
  * and telling the client or the office otherwise is exactly the kind of
  * mistake an insurer cannot afford to make by SMS.
  */
-export async function notifyPaymentReceived(payment: Payment, client: { phone?: string } | null | undefined): Promise<void> {
+export async function notifyPaymentReceived(payment: Payment, client: { phone?: string } | null | undefined, productCategory?: string): Promise<void> {
   const cfg = getNotifSettings()
   const amount = money(payment.amount)
 
-  if (client?.phone) {
+  // The farmer never hands over money -- the association settles the
+  // annual premium by stop order -- so a "we received your payment" text
+  // would announce a transaction the client was never part of. Office
+  // alerts below still go out; staff need the receipt regardless.
+  if (productCategory !== 'agriculture' && client?.phone) {
     void sendSms(
       client.phone,
       `${COMPANY_NAME}: Payment received. ${amount} via ${payment.method} for policy ${payment.policyNumber}. Reference ${payment.reference}. Thank you.`,

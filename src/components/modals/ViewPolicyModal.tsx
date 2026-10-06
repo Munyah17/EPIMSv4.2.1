@@ -5,6 +5,7 @@ import { premiumPeriodLabel } from '../../lib/productUtils'
 import { policyBillablePremium, billableHeadCount } from '../../lib/premium'
 import { holderMemberNumber, dependantMemberNumber } from '../../lib/memberNumbers'
 import { paymentCurrencyStatus, PAYMENT_CURRENCY_LABEL, PAYMENT_CURRENCY_CLASS } from '../../lib/policyLifecycle'
+import { policySourceLabel } from '../../lib/policySources'
 import { db } from '../../lib/db'
 import { useAuth } from '../../contexts/AuthContext'
 import PolicyAssessmentModal from './PolicyAssessmentModal'
@@ -49,6 +50,7 @@ export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint, show
             </div>
             <div className="detail-item"><span className="detail-label">Client</span><span>{policy.clientName} <span className="mono" style={{ color: 'var(--muted)', fontSize: 11 }}>{holderMemberNumber(policy.policyNumber)}</span></span></div>
             <div className="detail-item"><span className="detail-label">Product</span><span>{policy.productName}</span></div>
+            <div className="detail-item"><span className="detail-label">Issued Via</span><span>{policySourceLabel(policy.source)}</span></div>
             {/* Premiums are per head, so the amount billed is the holder's
                 own premium plus one for each dependant. Both are shown:
                 the total is what is collected, the per-person figure is

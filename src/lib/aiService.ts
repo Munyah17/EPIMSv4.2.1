@@ -1,4 +1,4 @@
-/** Groq-backed AI scoring, called via Netlify functions so the API key never reaches the browser. */
+/** Groq-backed AI scoring, called via server-side /api functions so the API key never reaches the browser. */
 
 export async function scoreLead(input: { name: string; source: string; productInterest: string; notes?: string }): Promise<{ score: number; reasoning: string }> {
   try {

@@ -52,6 +52,37 @@ function refNumber(prefix: string): string {
   return `${prefix}${new Date().getFullYear()}${Date.now().toString().slice(-6)}${Math.random().toString(36).slice(2, 5).toUpperCase()}`
 }
 
+// Mirrors src/lib/policyNumbers.ts — kept local because this function is a
+// standalone deployable. The prefixes name the cover (FCP Funeral Cash
+// Plan, HCP Hospital Cash Plan, MED Medical Aid, LEG Legal Insurance, TOB
+// Tobacco Field-to-Floor) and numbers run sequentially per prefix.
+function policyNumberPrefix(product: { name?: string; code?: string; category?: string }): string {
+  const name = (product.name ?? '').toLowerCase()
+  if (name.includes('tobacco') || name.includes('field to floor')) return 'TOB'
+  if (name.includes('funeral') || name.includes('burial')) return 'FCP'
+  if (name.includes('hospital')) return 'HCP'
+  if (name.includes('medical')) return 'MED'
+  if (name.includes('legal')) return 'LEG'
+  const codeLetters = (product.code ?? '').replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase()
+  if (codeLetters.length === 3) return codeLetters
+  switch (product.category) {
+    case 'funeral': return 'FCP'
+    case 'health': return 'MED'
+    case 'agriculture': return 'AGR'
+    default: return 'POL'
+  }
+}
+
+/** Draws the next number from the per-prefix sequence the IMS app, the
+ *  website and every other channel share; refNumber() is the stopgap only
+ *  for a database missing the sequence function. */
+async function nextPolicyNumber(admin: SupabaseClient, product: { name?: string; code?: string; category?: string }): Promise<string> {
+  const prefix = policyNumberPrefix(product)
+  const { data: seq, error } = await admin.rpc('next_policy_sequence', { p_prefix: prefix })
+  if (!error && typeof seq === 'number') return `${prefix}${String(seq).padStart(4, '0')}`
+  return refNumber(prefix)
+}
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /** Postgres rejects a malformed UUID with a raw 22P02 error before RLS/lookup
@@ -289,6 +320,10 @@ async function createClient_(admin: SupabaseClient, body: Json, agentId: string)
     dob: body.dob ? String(body.dob) : null,
     address: body.address ? String(body.address) : null,
     occupation: body.occupation ? String(body.occupation) : null,
+    // The developer's own agent profile is recorded as the referring
+    // agent: anyone this key registers was, by definition, brought in
+    // by that partner.
+    agent_id: agentId,
     status: 'active',
   }).select('id').single()
   if (!error) return { status: 201, body: { data: { id: data.id, nationalId, existing: false } } }
@@ -348,34 +383,30 @@ async function createPolicy(admin: SupabaseClient, body: Json, dev: Record<strin
     return { status: 403, body: { error: 'This client is already associated with a different agent. Submit a support ticket (POST /api/v1/tickets) to request access.' } }
   }
 
-  const { data: product } = await admin.from('products').select('id, premium, cover_amount, category').eq('id', productId).eq('active', true).maybeSingle()
+  const { data: product } = await admin.from('products').select('id, name, code, premium, cover_amount, category').eq('id', productId).eq('active', true).maybeSingle()
   if (!product) return { status: 404, body: { error: 'Product not found or inactive.' } }
+
+  // Agriculture is hard-blocked for every partner key, no exceptions: it
+  // is billed once a year via Stop Order through the grower's sponsoring
+  // association (paid once the crop sells), so there is no float to debit
+  // and real cover would go out on our name with no money in hand at all.
+  // That is exactly the fraud surface the wallet exists to close -- it is
+  // issued by staff inside the IMS only, never self-served through an API.
+  if (product.category === 'agriculture') {
+    return { status: 403, body: { error: 'Agriculture cover cannot be issued through the partner API. It is arranged through sponsoring associations — contact Motions Microinsurance directly.' } }
+  }
 
   // A Digital Agent collects its own money and settles with us separately,
   // so a policy is only ever issued against a float already on deposit --
   // never on the strength of a sale it merely claims to have made.
-  //
-  // Agriculture is the one exception, and deliberately not a shortcut: it
-  // is billed once a year via Stop Order (paid once the grower sells their
-  // crop), so real cover would go out on our name with no money in hand at
-  // all. That is exactly the fraud surface this wallet exists to close
-  // everywhere else, so it is off by default and only a Super Admin can
-  // switch it on, per developer.
   const dependantCount = Array.isArray(body.dependants) ? body.dependants.length : 0
-  const isAgriculture = product.category === 'agriculture'
-  const requiredAmount = isAgriculture ? Number(product.premium) : Number(product.premium) * (1 + dependantCount)
+  const requiredAmount = Number(product.premium) * (1 + dependantCount)
 
-  if (isAgriculture) {
-    if (!dev.agriculture_enabled) {
-      return { status: 403, body: { error: 'Agriculture cover is not enabled for this account. Submit a support ticket (POST /api/v1/tickets) to request activation.' } }
-    }
-  } else {
-    const walletBalance = Number(dev.wallet_balance ?? 0)
-    if (walletBalance < requiredAmount) {
-      return {
-        status: 402,
-        body: { error: `Insufficient wallet balance. This policy requires $${requiredAmount.toFixed(2)}; your account holds $${walletBalance.toFixed(2)}. Top up your float and try again.` },
-      }
+  const walletBalance = Number(dev.wallet_balance ?? 0)
+  if (walletBalance < requiredAmount) {
+    return {
+      status: 402,
+      body: { error: `Insufficient wallet balance. This policy requires $${requiredAmount.toFixed(2)}; your account holds $${walletBalance.toFixed(2)}. Top up your float and try again.` },
     }
   }
 
@@ -387,7 +418,7 @@ async function createPolicy(admin: SupabaseClient, body: Json, dev: Record<strin
   const dependants = Array.isArray(body.dependants) ? body.dependants : []
 
   const { data, error } = await admin.from('policies').insert({
-    policy_number: refNumber('API'),
+    policy_number: await nextPolicyNumber(admin, product),
     client_id: clientId,
     product_id: productId,
     premium: product.premium,
@@ -398,6 +429,7 @@ async function createPolicy(admin: SupabaseClient, body: Json, dev: Record<strin
     dependants,
     payment_method: paymentMethod,
     agent_id: agentId,
+    source: 'api_partner',
   }).select('id, policy_number').single()
   if (error) return { status: 400, body: { error: error.message } }
 
@@ -406,17 +438,15 @@ async function createPolicy(admin: SupabaseClient, body: Json, dev: Record<strin
   // reporting problem on an already-issued policy, not a business-rule
   // violation -- logged loudly rather than left to undo a policy that is
   // already real.
-  if (!isAgriculture) {
-    const newBalance = Math.round((Number(dev.wallet_balance ?? 0) - requiredAmount) * 100) / 100
-    const { error: walletError } = await admin.from('api_developers').update({ wallet_balance: newBalance }).eq('id', dev.id)
-    if (walletError) {
-      console.error('createPolicy: wallet debit failed', dev.id, data.id, walletError.message)
-    } else {
-      await admin.from('api_wallet_transactions').insert({
-        developer_id: dev.id, type: 'policy_debit', amount: -requiredAmount, balance_after: newBalance,
-        policy_id: data.id, note: `Policy ${data.policy_number}`,
-      })
-    }
+  const newBalance = Math.round((Number(dev.wallet_balance ?? 0) - requiredAmount) * 100) / 100
+  const { error: walletError } = await admin.from('api_developers').update({ wallet_balance: newBalance }).eq('id', dev.id)
+  if (walletError) {
+    console.error('createPolicy: wallet debit failed', dev.id, data.id, walletError.message)
+  } else {
+    await admin.from('api_wallet_transactions').insert({
+      developer_id: dev.id, type: 'policy_debit', amount: -requiredAmount, balance_after: newBalance,
+      policy_id: data.id, note: `Policy ${data.policy_number}`,
+    })
   }
 
   return { status: 201, body: { data: { id: data.id, policyNumber: data.policy_number, status: 'pending' } } }

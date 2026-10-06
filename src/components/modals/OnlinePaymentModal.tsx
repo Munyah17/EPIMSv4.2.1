@@ -216,7 +216,7 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
     // Confirmed by the gateway (or, for validatedManually, by staff looking
     // at proof of payment) either way -- the client and office both hear
     // about it now, the same as every other confirmed payment in the system.
-    if (recorded) void notifyPaymentReceived(recorded, client)
+    if (recorded) void notifyPaymentReceived(recorded, client, policy.productCategory)
 
     if (user) {
       void recordActivity({

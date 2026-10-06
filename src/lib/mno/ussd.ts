@@ -17,6 +17,7 @@ import { mnoStore } from './mnoStore'
 import { runGatewayAuth, okResponse, logApiRequest } from './gateway'
 import { emitEvent } from './webhooks'
 import { toIsoDate } from '../dateUtils'
+import { policyNumberPrefix } from '../policyNumbers'
 
 function uid() { return `loc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}` }
 function shortDate() { return toIsoDate(new Date()) }
@@ -25,7 +26,7 @@ function now() { return new Date().toISOString() }
 // ── Menu Text Templates ────────────────────────────────────────────────
 const MENUS = {
   MAIN: (name?: string) =>
-    `CON Welcome to Tariqify Insurance${name ? `, ${name}` : ''}\n1. Buy Insurance\n2. My Policies\n3. Pay Premium\n4. File a Claim\n5. Check Claim Status\n0. Exit`,
+    `CON Welcome to Motions Microinsurance${name ? `, ${name}` : ''}\n1. Buy Insurance\n2. My Policies\n3. Pay Premium\n4. File a Claim\n5. Check Claim Status\n0. Exit`,
 
   PRODUCTS: (products: Array<{ name: string; premium: number }>) => {
     const lines = products.slice(0, 5).map((p, i) => `${i + 1}. ${p.name} - $${p.premium}/mo`)
@@ -112,7 +113,7 @@ export async function handleUssdAction(
 
   // ── MAIN MENU ────────────────────────────────────────────────────────
   if (sctx.step === 'MAIN') {
-    if (input === '0') { responseText = 'END Thank you for using Tariqify Insurance. Goodbye!'; endSession(session, 'cancelled') }
+    if (input === '0') { responseText = 'END Thank you for using Motions Microinsurance. Goodbye!'; endSession(session, 'cancelled') }
     else if (input === '1') {
       sctx.step = 'PRODUCTS'
       const prods = localStore.products.list().filter(p => p.active)
@@ -198,18 +199,19 @@ export async function handleUssdAction(
         })
       }
       if (prod) {
-        const policyNumber = `POL${new Date().getFullYear()}${Math.floor(Math.random() * 900000 + 100000)}`
+        const policyNumber = `${policyNumberPrefix(prod)}${Math.floor(Math.random() * 9000 + 1000)}`
         const policy = localStore.policies.create({
           id: uid(), policyNumber, clientId: client.id, clientName: client.name,
           productId: prod.id, productName: prod.name, premium: prod.premium,
           coverAmount: prod.coverAmount, startDate: shortDate(),
           endDate: `${new Date().getFullYear() + 1}-${shortDate().slice(5)}`,
           status: 'active', dependants: [], paymentMethod: 'OneMoney',
+          source: 'ussd',
           createdAt: shortDate(),
         })
         mnoStore.ussdSessions.update(session.id, { policyId: policy.id, customerId: client.id, outcome: `Policy ${policyNumber} created` })
         await emitEvent('policy.created', ctx.partnerId, { policyNumber, msisdn: payload.msisdn, productName: prod.name, premium: prod.premium })
-        responseText = `END Registration Successful!\nPolicy: ${policyNumber}\nProduct: ${prod.name}\nPremium: $${prod.premium}/month\nStatus: ACTIVE\n\nWelcome to Tariqify Insurance!`
+        responseText = `END Registration Successful!\nPolicy: ${policyNumber}\nProduct: ${prod.name}\nPremium: $${prod.premium}/month\nStatus: ACTIVE\n\nWelcome to Motions Microinsurance!`
       } else {
         responseText = 'END Error: Product not found. Please try again.'
       }

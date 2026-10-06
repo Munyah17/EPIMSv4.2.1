@@ -101,8 +101,8 @@ export interface SendEmailResult {
 
 /**
  * Records the message (via the Supabase-backed db layer, so it shows up in
- * Sent/history) and attempts real delivery through the Netlify email proxy
- * (see netlify/functions/send-email.ts). If the proxy isn't deployed or
+ * Sent/history) and attempts real delivery through the server-side email
+ * proxy (/api/send-email — api/send-email.ts). If the endpoint fails or
  * RESEND_API_KEY isn't configured, the message is still recorded but
  * `delivered` comes back false with an explanatory `error`.
  */

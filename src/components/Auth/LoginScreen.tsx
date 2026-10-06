@@ -25,7 +25,7 @@ export default function LoginScreen() {
         <div className="login-logo">
           <div className="logo-mark">T</div>
           <div>
-            <div className="logo-name">TARIQIFY IMS</div>
+            <div className="logo-name">TARIQIFYIMS</div>
             <div className="logo-sub">Motions Microinsurance</div>
           </div>
         </div>

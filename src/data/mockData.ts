@@ -398,7 +398,7 @@ export const EMAILS: EmailMessage[] = [
     timestamp: '2026-05-08T14:30:00Z', read: false, folder: 'inbox', linkedTo: 'cl1',
   },
   {
-    id: 'em2', from: 'info@tariqify.com', fromName: 'Tariqify IMS',
+    id: 'em2', from: 'info@tariqify.com', fromName: 'TariqifyIMS',
     to: 'simba.dube@gmail.com', subject: 'Your policy EMA2024001 premium reminder',
     body: 'Dear Simba Dube,\n\nThis is a friendly reminder that your funeral cover premium of $5.00 is due on 15 May 2026.\n\nPlease ensure your EcoCash wallet has sufficient funds.\n\nRegards,\nMotions Microinsurance',
     timestamp: '2026-05-07T09:00:00Z', read: true, folder: 'sent', linkedTo: 'pol1',
@@ -410,8 +410,8 @@ export const EMAILS: EmailMessage[] = [
     timestamp: '2026-05-06T11:20:00Z', read: true, folder: 'inbox',
   },
   {
-    id: 'em4', from: 'info@tariqify.com', fromName: 'Tariqify IMS',
-    to: 'tafa.chirwa@gmail.com', subject: 'Welcome to Tariqify IMS - Policy EMA2024004',
+    id: 'em4', from: 'info@tariqify.com', fromName: 'TariqifyIMS',
+    to: 'tafa.chirwa@gmail.com', subject: 'Welcome to TariqifyIMS - Policy EMA2024004',
     body: 'Dear Tafadzwa Chirwa,\n\nWelcome to Motions Microinsurance! Your Life Cover Essential policy (EMA2024004) is now active.\n\nCover Amount: $10,000\nMonthly Premium: $10.00\nPayment Method: OneMoney\n\nFor any queries, reply to this email or call +263 77 123 4567.\n\nMotions Microinsurance',
     timestamp: '2026-03-01T12:00:00Z', read: true, folder: 'sent', linkedTo: 'pol4',
   },
@@ -448,5 +448,5 @@ export const REMINDERS: Reminder[] = [
   { id: 'r2', type: 'payment_due', clientId: 'c2', clientName: 'Nomsa Ndlovu', policyId: 'pol3', policyNumber: 'EMA2024003', dueDate: '2026-05-10', message: 'Your premium of $12.00 is due on 10 May.', sent: true, channel: 'sms' },
   { id: 'r3', type: 'policy_renewal', clientId: 'c5', clientName: 'Garikai Mhike', policyId: 'pol6', policyNumber: 'EMA2024006', dueDate: '2026-05-12', message: 'Your policy EMA2024006 has lapsed. Please contact us to reinstate.', sent: false, channel: 'whatsapp' },
   { id: 'r4', type: 'claim_followup', clientId: 'c2', clientName: 'Nomsa Ndlovu', policyId: 'pol3', policyNumber: 'EMA2024003', dueDate: '2026-05-10', message: 'Follow up on claim CLM2026001. Documents under review.', sent: false, channel: 'email' },
-  { id: 'r5', type: 'birthday', clientId: 'c3', clientName: 'Tafadzwa Chirwa', dueDate: '2026-05-08', message: 'Happy birthday Tafadzwa! Tariqify IMS wishes you well.', sent: true, channel: 'sms' },
+  { id: 'r5', type: 'birthday', clientId: 'c3', clientName: 'Tafadzwa Chirwa', dueDate: '2026-05-08', message: 'Happy birthday Tafadzwa! TariqifyIMS wishes you well.', sent: true, channel: 'sms' },
 ]

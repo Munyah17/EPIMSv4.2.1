@@ -10,6 +10,8 @@ import { getDocumentUrl } from './storage'
 import { reverseGeocode } from './geocode'
 import { policyBillablePremium, billableHeadCount } from './premium'
 import { holderMemberNumber, dependantMemberNumber } from './memberNumbers'
+import { policyTermsFor, type PolicyTerms } from './policyTerms'
+import { policySourceLabel } from './policySources'
 import { COMPANY_NAME } from './company'
 
 function triggerDownload(blob: Blob, filename: string) {
@@ -62,6 +64,97 @@ export async function exportToPdf(filename: string, title: string, headers: stri
   doc.save(filename)
 }
 
+/**
+ * Workbook with several sheets — used by the Reports page to ship a
+ * Summary sheet (the stat cards) alongside the data itself, so a board
+ * pack needs no second file.
+ */
+export async function exportToExcelMulti(
+  filename: string,
+  sheets: { name: string; headers: string[]; rows: (string | number)[][] }[],
+) {
+  const XLSX = await import('xlsx')
+  const workbook = XLSX.utils.book_new()
+  for (const s of sheets) {
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([s.headers, ...s.rows]), s.name.slice(0, 31) || 'Sheet')
+  }
+  const buffer = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' })
+  triggerDownload(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), filename)
+}
+
+/**
+ * Report-grade PDF: a branded heading block, the active filters spelled
+ * out (so a printed report can't be mistaken for a different cut of the
+ * data), the headline stats as a small table, then the data table.
+ */
+export async function exportReportToPdf(
+  filename: string,
+  title: string,
+  subtitle: string,
+  stats: { label: string; value: string }[],
+  headers: string[],
+  rows: (string | number)[][],
+) {
+  const [{ jsPDF }, { default: autoTable }] = await Promise.all([import('jspdf'), import('jspdf-autotable')])
+  const doc = new jsPDF()
+  doc.setFontSize(16)
+  doc.setFont('helvetica', 'bold')
+  doc.text(title, 14, 18)
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(9)
+  doc.setTextColor(120)
+  doc.text(subtitle, 14, 25)
+
+  let y = 30
+  if (stats.length > 0) {
+    autoTable(doc, {
+      head: [stats.map(s => s.label)],
+      body: [stats.map(s => s.value)],
+      startY: y,
+      styles: { fontSize: 8, halign: 'center' },
+      headStyles: { fillColor: [240, 243, 250], textColor: [70, 80, 110], fontStyle: 'bold' },
+      theme: 'grid',
+      margin: { left: 14, right: 14 },
+    })
+    y = ((doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY ?? y) + 6
+  }
+  autoTable(doc, {
+    head: [headers],
+    body: rows.map(r => r.map(String)),
+    startY: y,
+    styles: { fontSize: 8.5 },
+    headStyles: { fillColor: [65, 105, 225] },
+  })
+  doc.save(filename)
+}
+
+/**
+ * Word export without a docx dependency: a styled HTML document saved with
+ * a .doc extension. Word (and LibreOffice/Google Docs) open it natively —
+ * headings, a real table, everything — which is all a printed report needs.
+ */
+export function exportToWord(
+  filename: string,
+  title: string,
+  subtitle: string,
+  sections: { heading?: string; headers: string[]; rows: (string | number)[][] }[],
+) {
+  const esc = (v: unknown) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+  const table = (headers: string[], rows: (string | number)[][]) => `
+    <table border="1" cellspacing="0" cellpadding="5" style="border-collapse:collapse;width:100%;font-size:10pt;">
+      <thead><tr>${headers.map(h => `<th style="background:#4169e1;color:#fff;text-align:left;">${esc(h)}</th>`).join('')}</tr></thead>
+      <tbody>${rows.map(r => `<tr>${r.map(c => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table>`
+  const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word">
+<head><meta charset="utf-8"><title>${esc(title)}</title></head>
+<body style="font-family:Calibri,Arial,sans-serif;">
+  <h1 style="font-size:16pt;margin-bottom:2pt;">${esc(title)}</h1>
+  <p style="color:#666;font-size:9pt;margin-top:0;">${esc(subtitle)}</p>
+  ${sections.map(s => `${s.heading ? `<h2 style="font-size:12pt;margin:14pt 0 4pt;">${esc(s.heading)}</h2>` : ''}${table(s.headers, s.rows)}`).join('')}
+</body></html>`
+  triggerDownload(new Blob([html], { type: 'application/msword;charset=utf-8' }), filename)
+}
+
 const AGRICULTURE_COVER = ['Barn Fire', 'Hail Storm', 'Wind Storm']
 /** Standard excess applied unless a product has its own excess configured. */
 const DEFAULT_POLICY_EXCESS = '15% of loss'
@@ -111,6 +204,50 @@ function drawLetterhead(doc: jsPDF, pageWidth: number, logo: string | null, bran
   }
   if (cfg.companyEmail) doc.text(`Email: ${cfg.companyEmail}`, pageWidth - 14, ry, { align: 'right' })
 }
+/**
+ * The terms schedule is part of the contract, so it is always the last
+ * page(s) of a policy document — the download and the emailed copy alike.
+ * Exclusions flow across as many pages as the schedule needs.
+ */
+function drawTermsPages(doc: jsPDF, terms: PolicyTerms) {
+  const pageWidth = doc.internal.pageSize.getWidth()
+  const pageHeight = doc.internal.pageSize.getHeight()
+  const lineHeight = 4.2
+  const bottom = pageHeight - 16
+
+  doc.addPage()
+  let y = 20
+
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(13)
+  doc.setTextColor(...NAVY)
+  doc.text('TERMS AND CONDITIONS', pageWidth / 2, y, { align: 'center' })
+  y += 7
+  doc.setFontSize(10)
+  doc.text(terms.exclusionsHeading, pageWidth / 2, y, { align: 'center' })
+  y += 8
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(8.5)
+  doc.setTextColor(...TEXT)
+  const intro = doc.splitTextToSize(terms.exclusionsIntro, pageWidth - 28)
+  doc.text(intro, 14, y)
+  y += intro.length * lineHeight + 4
+
+  terms.exclusions.forEach((exclusion, i) => {
+    const lines = doc.splitTextToSize(`${i + 1}. ${exclusion}`, pageWidth - 34)
+    if (y + lines.length * lineHeight > bottom) { doc.addPage(); y = 20 }
+    doc.text(lines, 16, y)
+    y += lines.length * lineHeight + 1.5
+  })
+
+  if (y + 10 > bottom) { doc.addPage(); y = 20 }
+  y += 4
+  doc.setFontSize(7.5)
+  doc.setTextColor(...MUTED)
+  doc.text(`This is a summary of the major exclusions. The full Policy Terms and Conditions of ${COMPANY_NAME} are available on request and prevail over this document.`, 14, y)
+}
+
 const BRAND_BLUE: [number, number, number] = [65, 105, 225]
 const BRAND_RED: [number, number, number] = [200, 30, 40]
 const MUTED: [number, number, number] = [107, 126, 153]
@@ -197,10 +334,10 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   sectionBand('POLICY INFORMATION')
   autoTable(doc, {
     startY: y,
-    head: [['Member No.', 'Policy Package', premiumHeading, 'Cover', 'Currency', 'Status']],
+    head: [['Member No.', 'Policy Package', premiumHeading, 'Cover', 'Currency', 'Issued Via', 'Status']],
     body: [[
       holderMemberNumber(policy.policyNumber), policy.productName, money(policy.premium),
-      money(policy.coverAmount), 'USD', policy.status.toUpperCase(),
+      money(policy.coverAmount), 'USD', policySourceLabel(policy.source), policy.status.toUpperCase(),
     ]],
     styles: { fontSize: 8.5, lineColor: [220, 226, 240], lineWidth: 0.2 },
     headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold' },
@@ -313,6 +450,10 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   doc.text(terms, 14, y)
   y += terms.length * 4 + 4
   doc.text(`Copyright © ${COMPANY_NAME}. All rights reserved.`, 14, y)
+
+  // The exclusion schedule is part of the contract — always the last
+  // page(s), whatever the product.
+  drawTermsPages(doc, policyTermsFor({ name: policy.productName, category }))
 
   return doc
 }
@@ -489,7 +630,7 @@ export async function exportClaimAssessmentReport(
   const pageHeight = doc.internal.pageSize.getHeight()
   doc.setFontSize(7.5)
   doc.setTextColor(...MUTED)
-  doc.text(`Generated ${formatDate(new Date())} · Tariqify IMS`, 14, pageHeight - 10)
+  doc.text(`Generated ${formatDate(new Date())} · TariqifyIMS`, 14, pageHeight - 10)
 
   doc.save(`${claimNumber}-Assessment-Report.pdf`)
 }
@@ -649,7 +790,7 @@ export async function exportPolicyAssessmentReport(
   const pageHeight = doc.internal.pageSize.getHeight()
   doc.setFontSize(7.5)
   doc.setTextColor(...MUTED)
-  doc.text(`Generated ${formatDate(new Date())} · Tariqify IMS`, 14, pageHeight - 10)
+  doc.text(`Generated ${formatDate(new Date())} · TariqifyIMS`, 14, pageHeight - 10)
 
   doc.save(`${policyNumber}-PreLoss-Assessment-Report.pdf`)
 }

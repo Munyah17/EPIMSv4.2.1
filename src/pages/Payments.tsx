@@ -82,7 +82,7 @@ export default function Payments({ showToast }: Props) {
     try {
       const { data: policy } = await db.policies.get(payment.policyId)
       const client = policy ? (await db.clients.get(policy.clientId)).data ?? undefined : undefined
-      void notifyPaymentReceived(payment, client)
+      void notifyPaymentReceived(payment, client, policy?.productCategory)
     } catch { /* best-effort */ }
   }
 

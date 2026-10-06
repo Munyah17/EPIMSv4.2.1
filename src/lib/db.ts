@@ -119,6 +119,7 @@ function toClient(r: Record<string, unknown>): Client {
     occupation:  r.occupation as string | undefined,
     insurer:     (r.insurer as Client['insurer']) ?? undefined,
     insurerProvisional: (r.insurer_provisional as boolean) ?? false,
+    agentId:     (r.agent_id as string | null) ?? undefined,
     createdAt:   date(r.created_at as string),
     policyCount: (r.policy_count as number) ?? 0,
     status:      r.status as Client['status'],
@@ -178,6 +179,7 @@ function toPolicy(r: any): Policy {
     gpsLng:          r.gps_lng ?? undefined,
     agentId:         r.profiles?.id ?? r.agent_id,
     agentName:       r.profiles?.name,
+    source:          r.source ?? undefined,
     createdAt:       date(r.created_at),
     nextPaymentDate: r.next_payment_date ? date(r.next_payment_date) : undefined,
     lastPaymentDate: r.last_payment_date ? date(r.last_payment_date) : undefined,
@@ -346,6 +348,7 @@ const POLICY_SELECT = `
   id, policy_number, client_id, product_id, premium, cover_amount,
   start_date, end_date, status, dependants, payment_method, insurer,
   grower_number, gps_lat, gps_lng, agent_id, next_payment_date, last_payment_date, created_at,
+  source,
   clients!client_id(id, name),
   products!product_id(id, name, category, excess),
   profiles!agent_id(id, name)
@@ -435,6 +438,9 @@ export const policies = {
       insurer: policy.insurer ?? null, grower_number: policy.growerNumber ?? null,
       gps_lat: policy.gpsLat ?? null, gps_lng: policy.gpsLng ?? null,
       agent_id: policy.agentId ?? null, next_payment_date: policy.nextPaymentDate ?? null,
+      // Defaulting to 'web_app' is honest: any insert reaching this code
+      // path without a source set was issued by staff in the IMS itself.
+      source: policy.source ?? 'web_app',
     }
     // Inserted directly rather than through sb(), because a duplicate must
     // be reported as a refusal. Falling back to local storage on a unique
@@ -472,6 +478,7 @@ export const policies = {
     if (updates.coverAmount !== undefined)           row.cover_amount       = updates.coverAmount
     if (updates.endDate !== undefined)               row.end_date           = updates.endDate
     if (updates.agentId !== undefined)               row.agent_id           = updates.agentId ?? null
+    if (updates.source)                              row.source             = updates.source
     const { ok, data, error } = await sb('policies', 'write',
       () => supabase.from('policies').update(row).eq('id', id).select(POLICY_SELECT).single(),
     )
@@ -584,6 +591,7 @@ export const clients = {
       address: client.address, occupation: client.occupation ?? null,
       insurer: client.insurer ?? null, status: client.status,
       insurer_provisional: client.insurerProvisional ?? false,
+      agent_id: client.agentId ?? null,
     }
     const { ok, data, error } = await sb('clients', 'write',
       () => supabase.from('clients').insert(row).select().single(),
@@ -601,6 +609,7 @@ export const clients = {
     if (updates.occupation !== undefined) row.occupation = updates.occupation
     if (updates.insurer    !== undefined) row.insurer    = updates.insurer ?? null
     if (updates.insurerProvisional !== undefined) row.insurer_provisional = updates.insurerProvisional
+    if (updates.agentId    !== undefined) row.agent_id   = updates.agentId ?? null
     if (updates.status     !== undefined) row.status     = updates.status
     const { ok, data, error } = await sb('clients', 'write',
       () => supabase.from('clients').update(row).eq('id', id).select().single(),
@@ -1431,7 +1440,7 @@ export const staff = {
   },
 
   /**
-   * Creates a real Supabase Auth user + profiles row via a Netlify function
+   * Creates a real Supabase Auth user + profiles row via a server-side /api function
    * (api/create-account.ts), which alone holds the service-role
    * key needed for account creation. Unlike every other method in this
    * module, there is no local-storage fallback here — a "staff member"
@@ -1744,15 +1753,10 @@ export interface ApiDeveloper {
   terminatedAt?: string
   terminationReason?: string
   createdAt: string
-  /** Money this Digital Agent has on deposit with us. A non-agriculture
-   *  policy can only be issued through the API against this float —
-   *  enforced server-side in api/v1.ts, never trusted from the client. */
+  /** Money this Digital Agent has on deposit with us. A policy can only
+   *  be issued through the API against this float — enforced server-side
+   *  in api/v1.ts, never trusted from the client. */
   walletBalance: number
-  /** Off by default -- agriculture is billed once a year via Stop Order,
-   *  so it is never funded from the float, and enabling it means real
-   *  cover goes out on our name before any money is in hand. Only a Super
-   *  Admin may switch this on, per developer. */
-  agricultureEnabled: boolean
 }
 
 export interface ApiKeyRow {
@@ -1797,7 +1801,6 @@ function toApiDeveloper(r: any): ApiDeveloper {
     terminatedAt: r.terminated_at ?? undefined, terminationReason: r.termination_reason ?? undefined,
     createdAt: r.created_at,
     walletBalance: Number(r.wallet_balance) || 0,
-    agricultureEnabled: !!r.agriculture_enabled,
   }
 }
 
@@ -1841,15 +1844,6 @@ export const developerApi = {
     await supabase.from('api_wallet_transactions').insert({
       developer_id: developerId, type: 'topup', amount, balance_after: newBalance, note: note || null, created_by: createdBy ?? null,
     })
-    return { data: toApiDeveloper(data), error: null }
-  },
-
-  /** Super Admin only, enforced by RLS on api_developers as well as by the
-   *  page itself -- see the column comment on ApiDeveloper.agricultureEnabled
-   *  for why this is gated this tightly. */
-  async setAgricultureEnabled(developerId: string, enabled: boolean) {
-    const { data, error } = await supabase.from('api_developers').update({ agriculture_enabled: enabled }).eq('id', developerId).select('*').single()
-    if (error || !data) return { data: null, error: error?.message ?? 'Failed to update.' }
     return { data: toApiDeveloper(data), error: null }
   },
 

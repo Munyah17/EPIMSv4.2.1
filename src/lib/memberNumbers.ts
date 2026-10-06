@@ -8,9 +8,9 @@ import type { Dependant, Policy } from '../types'
  * line, a claim form, or a physical card. So every person on a policy gets
  * a member number: the policy number, a dash, and a two-digit position.
  *
- *   WEBFC12345678-00   the policyholder, always
- *   WEBFC12345678-01   first dependant
- *   WEBFC12345678-02   second dependant
+ *   FCP0001-00   the policyholder, always
+ *   FCP0001-01   first dependant
+ *   FCP0001-02   second dependant
  *
  * The suffix is the member's position on the policy, so it stays with them
  * for as long as they are on it. Removing a dependant renumbers the ones

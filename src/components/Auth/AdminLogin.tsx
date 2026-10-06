@@ -42,7 +42,7 @@ export default function AdminLogin() {
         <div className="login-logo">
           <div className="logo-mark">T</div>
           <div>
-            <div className="logo-name">TARIQIFY IMS</div>
+            <div className="logo-name">TARIQIFYIMS</div>
             <div className="logo-sub">Admin Portal</div>
           </div>
         </div>

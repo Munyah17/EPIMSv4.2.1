@@ -18,7 +18,7 @@ export interface PhotoAnalysisResult {
   simulated?: boolean
 }
 
-/** Sends a photo to netlify/functions/analyze-assessment-photo.ts for an AI
+/** Sends a photo to /api/analyze-assessment-photo (api/ai.ts) for an AI
  *  fraud-detection opinion. Best-effort — never throws; a failure just
  *  means no AI note, not a blocked assessment. */
 export async function analyzePhotoForFraud(

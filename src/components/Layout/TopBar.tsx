@@ -109,7 +109,7 @@ export default function TopBar({ activePanel, onMenuToggle, showToast }: TopBarP
               <h3>Sign Out</h3>
             </div>
             <div className="modal-body">
-              <p>Are you sure you want to sign out of Tariqify IMS?</p>
+              <p>Are you sure you want to sign out of TariqifyIMS?</p>
             </div>
             <div className="modal-footer">
               <button className="btn btn-ghost" onClick={() => setShowLogoutConfirm(false)}>Cancel</button>
