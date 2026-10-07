@@ -20,7 +20,6 @@ const DEPARTMENTS = ['Claims', 'Policy Administration', 'Finance', 'Client Relat
 
 export default function AddStaffModal({ staff, onClose, onSave, onResetPassword }: Props) {
   const [name, setName] = useState(staff?.name ?? '')
-  const [username, setUsername] = useState(staff?.username ?? '')
   const [email, setEmail] = useState(staff?.email ?? '')
   const [phone, setPhone] = useState(staff?.phone ?? '')
   const [role, setRole] = useState<UserRole>(staff?.role ?? 'client_relations')
@@ -38,7 +37,7 @@ export default function AddStaffModal({ staff, onClose, onSave, onResetPassword 
   // member can leave it blank (this modal doesn't change an existing
   // user's password; that's handled elsewhere).
   const passwordValid = staff ? true : password.length >= 8
-  const canSave = !!name && !!username.trim() && !!email && passwordValid
+  const canSave = !!name.trim() && !!email && passwordValid
 
   const handleSave = () => {
     if (!canSave) return
@@ -57,7 +56,7 @@ export default function AddStaffModal({ staff, onClose, onSave, onResetPassword 
     const defaultPermissions = !staff ? (role === 'admin' ? ['all_except_super'] : []) : (staff.permissions ?? [])
     const member: AppUser = {
       id: staff?.id ?? '',
-      name, username: username.trim(), email, phone, role, department,
+      name, email, phone, role, department,
       active: staff?.active ?? true,
       permissions: selectedRole ? selectedRole.permissions : defaultPermissions,
       customRoleId: customRoleId || undefined,
@@ -77,10 +76,6 @@ export default function AddStaffModal({ staff, onClose, onSave, onResetPassword 
             <div className="form-group">
               <label>Full Name *</label>
               <input className="form-control" value={name} onChange={e => setName(e.target.value)} placeholder="Full name" />
-            </div>
-            <div className="form-group">
-              <label>Username *</label>
-              <input className="form-control" value={username} onChange={e => setUsername(e.target.value)} placeholder="Nickname used to sign in" />
             </div>
           </div>
           <div className="form-row">

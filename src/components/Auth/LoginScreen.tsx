@@ -32,11 +32,11 @@ export default function LoginScreen() {
 
         <form onSubmit={handleSubmit} className="login-form">
           <div className="form-group">
-            <label htmlFor="email">Email or Username</label>
+            <label htmlFor="email">Email or Full Name</label>
             <input
               id="email"
               type="text"
-              placeholder="Enter your email or username"
+              placeholder="Enter your email or full name"
               value={email}
               onChange={e => setEmail(e.target.value)}
               required

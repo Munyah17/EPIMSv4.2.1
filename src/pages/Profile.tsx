@@ -32,7 +32,6 @@ export default function Profile({ showToast }: Props) {
   const { user, updateLocalUser, reauthenticate } = useAuth()
   const [activeTab, setActiveTab] = useState<'info' | 'password' | 'notifications' | 'audit'>('info')
   const [name, setName] = useState(user?.name ?? '')
-  const [username, setUsername] = useState(user?.username ?? '')
   const [phone, setPhone] = useState(user?.phone ?? '')
   const [savingInfo, setSavingInfo] = useState(false)
 
@@ -83,14 +82,15 @@ export default function Profile({ showToast }: Props) {
   const saveInfo = async () => {
     if (!user) return
     if (!name.trim()) { showToast('warning', 'Full name cannot be empty.'); return }
-    if (!username.trim()) { showToast('warning', 'Username cannot be empty.'); return }
     setSavingInfo(true)
     try {
-      // Only ever sends name/username/phone — role, department, active, and
+      // Only ever sends name/phone — role, department, active, and
       // permissions are never part of this payload, and the database itself
       // now rejects any attempt to change them on your own row (see
-      // database/fix_profiles_self_update_privilege_escalation.sql).
-      const { data, error } = await db.staff.update(user.id, { name: name.trim(), username: username.trim(), phone: phone.trim() })
+      // database/fix_profiles_self_update_privilege_escalation.sql). The
+      // name doubles as the sign-in identity — db.staff.update keeps
+      // username synced to it.
+      const { data, error } = await db.staff.update(user.id, { name: name.trim(), phone: phone.trim() })
       if (error || !data) { showToast('error', error ?? 'Failed to update profile.'); return }
       updateLocalUser({ name: data.name, username: data.username, phone: data.phone })
       showToast('success', 'Profile updated successfully.')
@@ -173,12 +173,8 @@ export default function Profile({ showToast }: Props) {
               <div className="card">
                 <div className="form-row">
                   <div className="form-group">
-                    <label>Full Name</label>
+                    <label>Full Name — also your sign-in name</label>
                     <input className="form-control" value={name} onChange={e => setName(e.target.value)} />
-                  </div>
-                  <div className="form-group">
-                    <label>Username</label>
-                    <input className="form-control" value={username} onChange={e => setUsername(e.target.value)} placeholder="Nickname used to sign in" />
                   </div>
                 </div>
                 <div className="form-group">

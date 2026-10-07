@@ -49,7 +49,7 @@ export default function SystemAccessRoles({ showToast }: Props) {
       showToast('success', `${data.name} updated.`)
     } else {
       const { data, error } = await db.staff.createSystemUser({
-        name: u.name, username: u.username, email: u.email, password, phone: u.phone, role: u.role, department: u.department,
+        name: u.name, email: u.email, password, phone: u.phone, role: u.role, department: u.department,
       })
       if (error || !data) { showToast('error', error ?? 'Failed to add account.'); return }
       setAccounts(prev => [...prev, data])
@@ -109,7 +109,6 @@ export default function SystemAccessRoles({ showToast }: Props) {
             <thead>
               <tr>
                 <th>Name</th>
-                <th>Username</th>
                 <th>Email</th>
                 <th>System Role</th>
                 <th>Department</th>
@@ -121,7 +120,7 @@ export default function SystemAccessRoles({ showToast }: Props) {
             </thead>
             <tbody>
               {accounts.length === 0 ? (
-                <tr><td colSpan={9} className="td-empty">No system access accounts found.</td></tr>
+                <tr><td colSpan={8} className="td-empty">No system access accounts found.</td></tr>
               ) : accounts.map(a => (
                 <tr key={a.id}>
                   <td>
@@ -130,7 +129,6 @@ export default function SystemAccessRoles({ showToast }: Props) {
                       <strong>{a.name}</strong>
                     </div>
                   </td>
-                  <td>{a.username ?? '—'}</td>
                   <td>{a.email}</td>
                   <td><span className={`pill ${ROLE_CLASS[a.role] ?? 'role-admin'}`}>{a.role.replace(/_/g, ' ')}</span></td>
                   <td>{a.department}</td>

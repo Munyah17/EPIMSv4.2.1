@@ -82,7 +82,8 @@ export interface FraudSignalRule {
 export interface AppUser {
   id: string
   name: string
-  /** Short, self-chosen nickname used for username login — distinct from `name`. */
+  /** Sign-in identity — always the person's full name (kept in sync with
+   *  `name`); nickname usernames were retired. resolve_login_email matches it. */
   username?: string
   email: string
   role: UserRole

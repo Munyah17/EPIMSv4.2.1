@@ -1489,6 +1489,9 @@ export const staff = {
     const row: Record<string, unknown> = {}
     if (updates.name        !== undefined) row.name        = updates.name
     if (updates.username    !== undefined) row.username    = updates.username?.trim() || null
+    // Sign-in identity is the full name: any edit that changes the name
+    // without an explicit username keeps the two identical.
+    else if (updates.name   !== undefined) row.username    = updates.name?.trim() || null
     if (updates.role        !== undefined) row.role        = updates.role
     if (updates.department  !== undefined) row.department  = updates.department
     if (updates.phone       !== undefined) row.phone       = updates.phone ?? null
@@ -1498,7 +1501,7 @@ export const staff = {
     const start = Date.now()
     const { data, error } = await supabase.from('profiles').update(row).eq('id', id).select('*, custom_roles!profiles_custom_role_id_fkey(name)').single()
     health.record({ ts: Date.now(), type: 'write', table: 'profiles', success: !error, duration: Date.now() - start, source: 'supabase', detail: error ? String(error.message) : undefined })
-    if (error) return { data: null, error: error.code === '23505' ? 'That username is already taken.' : error.message }
+    if (error) return { data: null, error: error.code === '23505' ? 'A user with that full name already exists — sign-in names must be unique.' : error.message }
     return { data: toProfile(data as Record<string,unknown>), error: null }
   },
 

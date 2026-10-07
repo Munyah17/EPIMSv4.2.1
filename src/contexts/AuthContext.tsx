@@ -5,7 +5,7 @@ import { supabase } from '../lib/supabase'
 interface AuthContextValue {
   user: AppUser | null
   loading: boolean
-  /** `identifier` may be an email address or a staff member's username —
+  /** `identifier` may be an email address or the account's full name —
    *  whichever the single login field was given. Returns the freshly
    *  fetched profile (the authoritative role source — profiles.role, not
    *  the JWT's user_metadata.role, which can be stale) so callers that
@@ -163,16 +163,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // password with no way to tell the two apart.
       let errorDetail: string | null = null
       const trimmed = identifier.trim()
-      // A bare email is used as-is; anything else (a username) is resolved
+      // A bare email is used as-is; anything else (a full name) is resolved
       // to its email server-side, since profiles isn't readable pre-auth.
       let email = trimmed
       try {
         if (!trimmed.includes('@')) {
           const { data: resolved, error: rpcError } = await supabase.rpc('resolve_login_email', { p_identifier: trimmed })
           if (rpcError) {
-            errorDetail = `Could not look up that username: ${rpcError.message}`
+            errorDetail = `Could not look up that name: ${rpcError.message}`
           } else if (!resolved) {
-            errorDetail = 'No account found with that username.'
+            errorDetail = 'No account found with that name.'
           }
           if (!resolved) {
             void supabase.from('login_attempts').insert({ email: trimmed.toLowerCase(), success: false }).then(() => {})

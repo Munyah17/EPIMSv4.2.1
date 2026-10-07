@@ -14,7 +14,6 @@ const DEPARTMENTS = ['Management', 'Administration', 'IT']
 
 export default function AddSystemUserModal({ user, onClose, onSave, onResetPassword }: Props) {
   const [name, setName] = useState(user?.name ?? '')
-  const [username, setUsername] = useState(user?.username ?? '')
   const [email, setEmail] = useState(user?.email ?? '')
   const [phone, setPhone] = useState(user?.phone ?? '')
   const [role, setRole] = useState<UserRole>(user?.role ?? 'admin')
@@ -24,13 +23,13 @@ export default function AddSystemUserModal({ user, onClose, onSave, onResetPassw
   const [resettingPwd, setResettingPwd] = useState(false)
 
   const passwordValid = user ? true : password.length >= 8
-  const canSave = !!name && !!username.trim() && !!email && passwordValid
+  const canSave = !!name.trim() && !!email && passwordValid
 
   const handleSave = () => {
     if (!canSave) return
     const member: AppUser = {
       id: user?.id ?? '',
-      name, username: username.trim(), email, phone, role, department,
+      name, email, phone, role, department,
       active: user?.active ?? true,
       permissions: user?.permissions ?? [],
     }
@@ -52,10 +51,6 @@ export default function AddSystemUserModal({ user, onClose, onSave, onResetPassw
             <div className="form-group">
               <label>Full Name *</label>
               <input className="form-control" value={name} onChange={e => setName(e.target.value)} placeholder="Full name" />
-            </div>
-            <div className="form-group">
-              <label>Username *</label>
-              <input className="form-control" value={username} onChange={e => setUsername(e.target.value)} placeholder="Nickname used to sign in" />
             </div>
           </div>
           <div className="form-row">

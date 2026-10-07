@@ -34,25 +34,9 @@ interface CreateAccountBody {
   permissions?: string[]
 }
 
-/** Next free "Agent N" / "Admin N" / "Tech N" default for a role's group, so
- *  a blank username field still gets something usable — matches the
- *  convention used to backfill existing accounts. */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function nextDefaultUsername(admin: any, role: string): Promise<string> {
-  const group = role === 'super_admin' || role === 'admin' ? 'Admin'
-    : role === 'tech_support' ? 'Tech'
-    : role === 'policyholder' ? 'User'
-    : 'Agent'
-  const { data } = await admin
-    .from('profiles')
-    .select('username')
-    .ilike('username', `${group} %`) as { data: { username: string }[] | null }
-  const maxN = (data ?? []).reduce((max, row) => {
-    const n = parseInt(String(row.username).slice(group.length + 1), 10)
-    return Number.isFinite(n) && n > max ? n : max
-  }, 0)
-  return `${group} ${maxN + 1}`
-}
+/** Sign-in identity is the person's full name or their email — nickname
+ *  usernames ("Munyah", "Admin 3") were retired; the `username` column now
+ *  stores the full name so resolve_login_email keeps working unchanged. */
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -122,7 +106,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     await admin.from('profiles').update({ phone: body.phone }).eq('id', created.user.id)
   }
 
-  const username = body.username?.trim() || await nextDefaultUsername(admin, body.role)
+  const username = body.username?.trim() || body.name.trim()
   const extra: Record<string, unknown> = { username }
   if (isSystemRole) {
     // super_admin/admin get blanket-access sentinels (matching every other
@@ -134,7 +118,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   const { error: usernameError } = await admin.from('profiles').update(extra).eq('id', created.user.id)
   if (usernameError) {
-    return res.status(400).json({ error: usernameError.code === '23505' ? 'That username is already taken.' : usernameError.message })
+    return res.status(400).json({ error: usernameError.code === '23505' ? 'A user with that full name already exists — sign-in names must be unique.' : usernameError.message })
   }
 
   const { data: profile } = await admin.from('profiles').select('*, custom_roles!profiles_custom_role_id_fkey(name)').eq('id', created.user.id).single()
