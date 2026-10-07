@@ -133,7 +133,7 @@ export default function Dashboard({ setActivePanel }: Props) {
           <div className="stat-body">
             <div className="stat-value">${stats.totalPremiums.toFixed(0)}</div>
             <div className="stat-label">Premiums Collected</div>
-            <div className="stat-delta positive">This month</div>
+            <div className="stat-delta positive">All time</div>
           </div>
         </div>
         <div className="stat-card stat-card-clickable" onClick={() => setActivePanel('leads')}>
@@ -141,7 +141,7 @@ export default function Dashboard({ setActivePanel }: Props) {
           <div className="stat-body">
             <div className="stat-value">{stats.newLeads}</div>
             <div className="stat-label">New Leads</div>
-            <div className="stat-delta positive">+{stats.newLeads} this week</div>
+            <div className="stat-delta positive">{stats.newLeads > 0 ? 'Awaiting follow-up' : 'All clear'}</div>
           </div>
         </div>
         <div className="stat-card stat-card-clickable" onClick={() => setActivePanel('fraud')}>

@@ -116,12 +116,12 @@ const TOBACCO: PolicyTerms = {
 }
 
 /** No exclusion schedule has been issued for this product yet — the page
- *  still prints, carrying the general conditions and a pointer to the full
- *  schedule, so no policy document ever ships without its terms. */
+ *  still prints, carrying the general conditions, so no policy document
+ *  ever ships without its terms. */
 const GENERAL: PolicyTerms = {
   productTitle: '',
   exclusionsHeading: 'General Conditions',
-  exclusionsIntro: 'This policy is subject to the full Policy Terms and Conditions of the Insurer, available on request. Without limiting those terms, cover under this policy is subject to the following:',
+  exclusionsIntro: 'This policy is subject to the Policy Terms and Conditions of the Insurer. Without limiting those terms, cover under this policy is subject to the following:',
   exclusions: [
     'Claims occurring within the waiting period stated in the policy schedule, calculated from the commencement or reinstatement of the policy.',
     'Claims arising from a lapsed policy or a closed policy.',

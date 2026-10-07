@@ -310,11 +310,13 @@ export default function Policies({ showToast, initialCategory }: Props) {
                   <td>{p.growerNumber ?? '—'}</td>
                   <td>{formatDate(p.startDate)}</td>
                   <td>
-                    <span className={`pill pill-${p.status}`}>{p.status.replace('_', ' ')}</span>
-                    <span className={`pill pill-inline ${PAYMENT_CURRENCY_CLASS[paymentCurrencyStatus(p)]}`}>{PAYMENT_CURRENCY_LABEL[paymentCurrencyStatus(p)]}</span>
-                    {cautionFlags.some(f => f.policyId === p.id) && (
-                      <span className="pill pill-caution" title="Payment overdue, caution flag active">⚠ OVERDUE</span>
-                    )}
+                    <div className="status-pills">
+                      <span className={`pill pill-${p.status}`}>{p.status.replace('_', ' ')}</span>
+                      <span className={`pill pill-inline ${PAYMENT_CURRENCY_CLASS[paymentCurrencyStatus(p)]}`}>{PAYMENT_CURRENCY_LABEL[paymentCurrencyStatus(p)]}</span>
+                      {cautionFlags.some(f => f.policyId === p.id) && (
+                        <span className="pill pill-caution" title="Payment overdue, caution flag active">⚠ OVERDUE</span>
+                      )}
+                    </div>
                   </td>
                   <td>
                     <div className="action-btns">

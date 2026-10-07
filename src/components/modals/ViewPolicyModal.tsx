@@ -43,7 +43,7 @@ export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint, show
             <div className="detail-item"><span className="detail-label">Policy Number</span><span className="mono">{policy.policyNumber}</span></div>
             <div className="detail-item">
               <span className="detail-label">Status</span>
-              <span>
+              <span className="status-pills">
                 <span className={`pill pill-${policy.status}`}>{policy.status.replace('_', ' ')}</span>
                 <span className={`pill pill-inline ${PAYMENT_CURRENCY_CLASS[paymentCurrencyStatus(policy)]}`}>{PAYMENT_CURRENCY_LABEL[paymentCurrencyStatus(policy)]}</span>
               </span>

@@ -245,7 +245,7 @@ function drawTermsPages(doc: jsPDF, terms: PolicyTerms) {
   y += 4
   doc.setFontSize(7.5)
   doc.setTextColor(...MUTED)
-  doc.text(`This is a summary of the major exclusions. The full Policy Terms and Conditions of ${COMPANY_NAME} are available on request and prevail over this document.`, 14, y)
+  doc.text(`The exclusion schedule above forms part of the Policy Terms and Conditions of ${COMPANY_NAME} and applies to this policy in full.`, 14, y)
 }
 
 const BRAND_BLUE: [number, number, number] = [65, 105, 225]
@@ -444,7 +444,7 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   doc.text('Disclaimer:', 14, y)
   y += 4
   const terms = doc.splitTextToSize(
-    `Terms and Conditions apply, and are subject to the full Policy Terms and Conditions of ${COMPANY_NAME}, available on request. Cover incepts on the start date above, subject to any applicable waiting period. Claims must be reported as soon as reasonably possible and are subject to verification. Premiums must be kept up to date for cover to remain in force; a lapsed policy may require reinstatement. This document is a summary and does not itself constitute the full policy contract.`,
+    `Terms and Conditions apply — the full exclusion schedule applicable to this cover is appended as the final page(s) of this document. Cover incepts on the start date above, subject to any applicable waiting period. Claims must be reported as soon as reasonably possible and are subject to verification. Premiums must be kept up to date for cover to remain in force; a lapsed policy may require reinstatement.`,
     pageWidth - 28,
   )
   doc.text(terms, 14, y)

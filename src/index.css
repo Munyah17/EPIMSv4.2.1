@@ -419,6 +419,10 @@ tbody tr:hover td{background:var(--surface)}
 .pill-pending{background:#FEF3C7;color:#92400e}
 .pill-waiting_period{background:#DBEAFE;color:#1e40af}
 .pill-inline{font-size:9px;font-weight:700;margin-left:5px;padding:1px 6px;border-radius:10px;vertical-align:middle}
+/* Status cell pill groups (status + payment-currency + caution flag) must
+   wrap cleanly on narrow/mobile cells instead of overlapping on one line. */
+.status-pills{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
+.status-pills .pill{margin-left:0}
 .pill-cancelled{background:var(--surface2);color:var(--muted)}
 .pill-expired{background:#FEE2E2;color:#7f1d1d}
 .pill-under-review,.pill-under-review,.pill-under-review{background:var(--purple-bg);color:#5b21b6}

@@ -34,7 +34,6 @@ const Email = lazyWithRecovery('Email', () => import('./pages/Email'))
 const Tickets = lazyWithRecovery('Tickets', () => import('./pages/Tickets'))
 const Fraud = lazyWithRecovery('Fraud', () => import('./pages/Fraud'))
 const Profile = lazyWithRecovery('Profile', () => import('./pages/Profile'))
-const MnoIntegration = lazyWithRecovery('MnoIntegration', () => import('./pages/MnoIntegration'))
 const SystemHealthPage = lazyWithRecovery('SystemHealthPage', () => import('./pages/SystemHealthPage'))
 const Settings = lazyWithRecovery('Settings', () => import('./pages/Settings'))
 const DeveloperApi = lazyWithRecovery('DeveloperApi', () => import('./pages/DeveloperApi'))
@@ -51,9 +50,28 @@ const LiveChat = lazyWithRecovery('LiveChat', () => import('./pages/LiveChat'))
 export type ActivePanel =
   | 'dashboard' | 'policies' | 'claims' | 'payments' | 'products'
   | 'clients' | 'staff' | 'system_access_roles' | 'reminders' | 'reports' | 'leads'
-  | 'email' | 'tickets' | 'fraud' | 'profile' | 'mno_integration'
+  | 'email' | 'tickets' | 'fraud' | 'profile'
   | 'system_health' | 'settings' | 'developer_api' | 'mass_messaging' | 'billing_reminders' | 'pre_loss_assessments' | 'agriculture_insurance' | 'member_cards'
   | 'my_policies' | 'my_claims' | 'my_payments' | 'live_chat'
+
+// Earlier demo builds seeded invented clients/policies/payments into
+// localStorage under tqfy_*, and the simulated NetOne page used tqfy_mno_*.
+// Nothing reads those keys anymore, but stale mock records have no business
+// sitting in a live user's browser — remove them once at startup. Real keys
+// (tqfy_cache_*, tqfy_offline_*, settings, payment/sms logs) are untouched.
+const LEGACY_MOCK_KEYS = [
+  'tqfy_policies', 'tqfy_clients', 'tqfy_products', 'tqfy_claims',
+  'tqfy_payments', 'tqfy_tickets', 'tqfy_emails', 'tqfy_leads',
+  'tqfy_staff', 'tqfy_fraudCases', 'tqfy_reminders',
+]
+function purgeLegacyMockStores() {
+  try {
+    for (const k of LEGACY_MOCK_KEYS) localStorage.removeItem(k)
+    Object.keys(localStorage)
+      .filter(k => k.startsWith('tqfy_mno_'))
+      .forEach(k => localStorage.removeItem(k))
+  } catch { /**/ }
+}
 
 function AppInner() {
   const { user, loading } = useAuth()
@@ -70,6 +88,7 @@ function AppInner() {
   }, [])
 
   useEffect(() => {
+    purgeLegacyMockStores()
     void initNotifSettings()
     const stopReminders = startReminderEngine()
     const stopOfflineSync = startOfflineSync()
@@ -135,7 +154,6 @@ function AppInner() {
       case 'email': return <Email {...panelProps} />
       case 'tickets': return <Tickets {...panelProps} />
       case 'fraud': return <Fraud {...panelProps} />
-      case 'mno_integration': return <MnoIntegration {...panelProps} />
       case 'system_health': return <SystemHealthPage {...panelProps} />
       case 'settings': return <Settings {...panelProps} />
       case 'developer_api': return <DeveloperApi {...panelProps} />
