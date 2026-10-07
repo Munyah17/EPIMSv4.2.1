@@ -1,10 +1,11 @@
 /**
  * Policy Terms & Conditions.
  *
- * The major exclusions for each product, printed as a dedicated page on
- * every policy document (exportUtils.ts) — the wording is contractual, so
- * it is kept verbatim as issued and matched to a product by the same
- * prefix rules as policy numbers (policyNumbers.ts).
+ * Every policy document (exportUtils.ts) appends the complete terms —
+ * ALL product exclusion schedules in full, not just the one matching the
+ * policy's own product. The wording is contractual, so it is kept
+ * verbatim as issued. policyTermsFor() still exists for anything that
+ * needs to know which schedule applies to a given product.
  */
 
 export interface PolicyTerms {
@@ -129,6 +130,15 @@ const GENERAL: PolicyTerms = {
     'The actions of any Insured Person(s) or the Insured Person(s)\u2019 personal representatives contrary to the law, criminal or other acts of the law.',
     'Epidemics or pandemics as defined and declared by the World Health Organisation or the Zimbabwean health ministry.',
   ],
+}
+
+/** The complete terms document, in printed order — every issued product
+ *  schedule in full. Products with no schedule of their own (e.g. Medical
+ *  Aid, Personal Accident Cover) also get the General Conditions appended
+ *  so their documents still carry terms that apply to them. */
+export function termsPagesFor(product: { name?: string; category?: string }): PolicyTerms[] {
+  const schedules = [FUNERAL, HOSPITAL, LEGAL, TOBACCO]
+  return policyTermsFor(product) === GENERAL ? [...schedules, GENERAL] : schedules
 }
 
 /** Picks the exclusion schedule for a product — the same keyword rules the

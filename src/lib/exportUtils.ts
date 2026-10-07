@@ -10,7 +10,7 @@ import { getDocumentUrl } from './storage'
 import { reverseGeocode } from './geocode'
 import { policyBillablePremium, billableHeadCount } from './premium'
 import { holderMemberNumber, dependantMemberNumber } from './memberNumbers'
-import { policyTermsFor, type PolicyTerms } from './policyTerms'
+import { termsPagesFor } from './policyTerms'
 import { policySourceLabel } from './policySources'
 import { COMPANY_NAME } from './company'
 
@@ -205,11 +205,11 @@ function drawLetterhead(doc: jsPDF, pageWidth: number, logo: string | null, bran
   if (cfg.companyEmail) doc.text(`Email: ${cfg.companyEmail}`, pageWidth - 14, ry, { align: 'right' })
 }
 /**
- * The terms schedule is part of the contract, so it is always the last
- * page(s) of a policy document — the download and the emailed copy alike.
- * Exclusions flow across as many pages as the schedule needs.
+ * The complete terms document is part of the contract, so every issued
+ * schedule prints in full at the end of a policy document — the download
+ * and the emailed copy alike — flowing across as many pages as it needs.
  */
-function drawTermsPages(doc: jsPDF, terms: PolicyTerms) {
+function drawTermsPages(doc: jsPDF, product: { name?: string; category?: string }) {
   const pageWidth = doc.internal.pageSize.getWidth()
   const pageHeight = doc.internal.pageSize.getHeight()
   const lineHeight = 4.2
@@ -222,30 +222,38 @@ function drawTermsPages(doc: jsPDF, terms: PolicyTerms) {
   doc.setFontSize(13)
   doc.setTextColor(...NAVY)
   doc.text('TERMS AND CONDITIONS', pageWidth / 2, y, { align: 'center' })
-  y += 7
-  doc.setFontSize(10)
-  doc.text(terms.exclusionsHeading, pageWidth / 2, y, { align: 'center' })
-  y += 8
+  y += 9
 
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(8.5)
-  doc.setTextColor(...TEXT)
-  const intro = doc.splitTextToSize(terms.exclusionsIntro, pageWidth - 28)
-  doc.text(intro, 14, y)
-  y += intro.length * lineHeight + 4
+  for (const terms of termsPagesFor(product)) {
+    if (y + 16 > bottom) { doc.addPage(); y = 20 }
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(10)
+    doc.setTextColor(...NAVY)
+    doc.text(terms.exclusionsHeading, pageWidth / 2, y, { align: 'center' })
+    y += 7
 
-  terms.exclusions.forEach((exclusion, i) => {
-    const lines = doc.splitTextToSize(`${i + 1}. ${exclusion}`, pageWidth - 34)
-    if (y + lines.length * lineHeight > bottom) { doc.addPage(); y = 20 }
-    doc.text(lines, 16, y)
-    y += lines.length * lineHeight + 1.5
-  })
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8.5)
+    doc.setTextColor(...TEXT)
+    const intro = doc.splitTextToSize(terms.exclusionsIntro, pageWidth - 28)
+    if (y + intro.length * lineHeight > bottom) { doc.addPage(); y = 20 }
+    doc.text(intro, 14, y)
+    y += intro.length * lineHeight + 4
+
+    terms.exclusions.forEach((exclusion, i) => {
+      const lines = doc.splitTextToSize(`${i + 1}. ${exclusion}`, pageWidth - 34)
+      if (y + lines.length * lineHeight > bottom) { doc.addPage(); y = 20 }
+      doc.text(lines, 16, y)
+      y += lines.length * lineHeight + 1.5
+    })
+    y += 6
+  }
 
   if (y + 10 > bottom) { doc.addPage(); y = 20 }
   y += 4
   doc.setFontSize(7.5)
   doc.setTextColor(...MUTED)
-  doc.text(`The exclusion schedule above forms part of the Policy Terms and Conditions of ${COMPANY_NAME} and applies to this policy in full.`, 14, y)
+  doc.text(`The exclusion schedules above form part of the Policy Terms and Conditions of ${COMPANY_NAME} and apply to this policy in full.`, 14, y)
 }
 
 const BRAND_BLUE: [number, number, number] = [65, 105, 225]
@@ -444,16 +452,16 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   doc.text('Disclaimer:', 14, y)
   y += 4
   const terms = doc.splitTextToSize(
-    `Terms and Conditions apply — the full exclusion schedule applicable to this cover is appended as the final page(s) of this document. Cover incepts on the start date above, subject to any applicable waiting period. Claims must be reported as soon as reasonably possible and are subject to verification. Premiums must be kept up to date for cover to remain in force; a lapsed policy may require reinstatement.`,
+    `Terms and Conditions apply — the complete Policy Terms and Conditions, including every product exclusion schedule, are appended as the final pages of this document. Cover incepts on the start date above, subject to any applicable waiting period. Claims must be reported as soon as reasonably possible and are subject to verification. Premiums must be kept up to date for cover to remain in force; a lapsed policy may require reinstatement.`,
     pageWidth - 28,
   )
   doc.text(terms, 14, y)
   y += terms.length * 4 + 4
   doc.text(`Copyright © ${COMPANY_NAME}. All rights reserved.`, 14, y)
 
-  // The exclusion schedule is part of the contract — always the last
-  // page(s), whatever the product.
-  drawTermsPages(doc, policyTermsFor({ name: policy.productName, category }))
+  // The complete terms document is part of the contract — always the last
+  // pages, whatever the product.
+  drawTermsPages(doc, { name: policy.productName, category })
 
   return doc
 }
