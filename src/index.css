@@ -1008,11 +1008,6 @@ textarea.form-control{resize:vertical;min-height:80px}
 .sidebar-logo-name{font-family:'DM Serif Display',serif;font-size:13px;color:white;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .sidebar-logo-sub{font-size:9px;color:rgba(255,255,255,0.5);letter-spacing:0.06em;text-transform:uppercase;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
-/* ── MNO HERO HEADER ── */
-.mno-hero{display:flex;align-items:center;justify-content:space-between;gap:16px;background:var(--white);border:1px solid var(--border);border-radius:14px;padding:18px 22px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.05);flex-wrap:wrap}
-.mno-hero-left{display:flex;align-items:center;gap:14px}
-.mno-hero-logo{width:52px;height:52px;border-radius:13px;background:linear-gradient(135deg,#4169E1,#5B7FE8);display:flex;align-items:center;justify-content:center;flex-shrink:0;box-shadow:0 2px 8px rgba(65,105,225,0.25)}
-
 /* ── CAUTION PILL ── */
 .pill-caution{background:#FEF3C7;color:#92400E;font-size:9px;font-weight:700;margin-left:5px;padding:1px 6px;border-radius:10px;vertical-align:middle}
 

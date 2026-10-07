@@ -125,7 +125,7 @@ export default function Tickets({ showToast }: Props) {
               onClick={() => setViewTicket(t)}
               role="button"
               tabIndex={0}
-              onKeyDown={e => e.key === 'Enter' && setViewTicket(t)}
+              onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setViewTicket(t) } }}
             >
               <div className="ticket-card-header">
                 <div>

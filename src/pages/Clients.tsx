@@ -172,6 +172,7 @@ export default function Clients({ showToast }: Props) {
         {loading ? (
           <div className="empty-state">Loading clients…</div>
         ) : (
+          <div className="tbl-scroll">
           <table className="table">
             <thead>
               <tr>
@@ -210,6 +211,7 @@ export default function Clients({ showToast }: Props) {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

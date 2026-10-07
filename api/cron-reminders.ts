@@ -303,7 +303,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .from('policies')
     .select('id, policy_number, client_id, product_id, premium, status, dependants, agent_id, clients!client_id(name, email, phone), products!product_id(name, category)')
     .in('status', ['active', 'waiting_period'])
-  if (error) return res.status(500).json({ error: error.message })
+  if (error) {
+    console.error('cron-reminders: policy query failed', error.message)
+    return res.status(500).json({ error: 'Could not load policies for the reminder run.' })
+  }
 
   const policies = ((data ?? []) as unknown as PolicyRow[])
     .filter(p => p.products?.category !== 'agriculture')

@@ -26,6 +26,7 @@ export default function ChatWidget({ prefill }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [queuePosition, setQueuePosition] = useState<number | null>(null)
   const [draft, setDraft] = useState('')
+  const [sendError, setSendError] = useState('')
   const listRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -104,7 +105,15 @@ export default function ChatWidget({ prefill }: Props) {
     if (!session || !draft.trim()) return
     const body = draft.trim()
     setDraft('')
-    await chat.sendMessage(session.id, 'visitor', session.visitorName, body)
+    setSendError('')
+    const { error } = await chat.sendMessage(session.id, 'visitor', session.visitorName, body)
+    if (error) {
+      // A failed insert used to look exactly like a sent message — the draft
+      // was already cleared and the error ignored. Put the text back and say
+      // it didn't go.
+      setDraft(body)
+      setSendError('Message failed to send. Check your connection and try again.')
+    }
   }, [session, draft])
 
   const reset = () => {
@@ -194,7 +203,11 @@ export default function ChatWidget({ prefill }: Props) {
                   />
                   <button className="btn btn-primary" onClick={send} disabled={!draft.trim()}>Send</button>
                 </div>
-              ) : (
+              ) : null}
+              {session.status !== 'closed' && sendError && (
+                <div className="chat-queue-note" role="alert">{sendError}</div>
+              )}
+              {session.status === 'closed' && (
                 <div className="chat-input-row">
                   <button className="btn btn-ghost btn-full" onClick={reset}>Start a new chat</button>
                 </div>

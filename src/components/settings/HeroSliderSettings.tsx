@@ -100,6 +100,7 @@ export default function HeroSliderSettings({ showToast }: Props) {
         {sorted.length === 0 ? (
           <div className="empty-state">No slides yet.</div>
         ) : (
+          <div className="tbl-scroll">
           <table className="table">
             <thead><tr><th style={{ width: 60 }}>Icon</th><th>Headline</th><th style={{ width: 90 }}>Status</th><th style={{ width: 200 }}></th></tr></thead>
             <tbody>
@@ -131,6 +132,7 @@ export default function HeroSliderSettings({ showToast }: Props) {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

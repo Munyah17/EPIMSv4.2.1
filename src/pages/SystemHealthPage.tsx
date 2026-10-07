@@ -181,6 +181,7 @@ export default function SystemHealthPage({ showToast }: Props) {
         {failedLogins.length === 0 ? (
           <div className="empty-state" style={{ padding: '20px 0' }}>No failed login attempts recorded in the last 15 minutes.</div>
         ) : (
+          <div className="tbl-scroll">
           <table className="table">
             <thead><tr><th>Email</th><th>Failed Attempts</th><th>Last Attempt</th><th>Status</th></tr></thead>
             <tbody>
@@ -198,6 +199,7 @@ export default function SystemHealthPage({ showToast }: Props) {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

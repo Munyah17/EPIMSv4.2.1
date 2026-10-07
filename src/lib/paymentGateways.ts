@@ -46,10 +46,14 @@ export const DEFAULT_GW_SETTINGS: GatewaySettings = {
   paynowIntegrationKey: '',
   paynowReturnUrl: window.location.origin + '/payment/return',
   paynowResultUrl: window.location.origin + '/payment/result',
-  zipitBankName: 'CABS',
-  zipitAccountName: 'Motions Microinsurance',
-  zipitAccountNumber: '1001234567',
-  zipitBranchCode: '003',
+  // No invented bank details — staff fill these under Billing & Reminders →
+  // Gateway & SMTP, or they come from VITE_ZIPIT_* env vars. Empty means the
+  // rail is unconfigured, which getZipitDetails reports as such instead of
+  // showing a placeholder account nobody owns.
+  zipitBankName: (import.meta.env.VITE_ZIPIT_BANK_NAME as string) ?? '',
+  zipitAccountName: (import.meta.env.VITE_ZIPIT_ACCOUNT_NAME as string) ?? '',
+  zipitAccountNumber: (import.meta.env.VITE_ZIPIT_ACCOUNT_NUMBER as string) ?? '',
+  zipitBranchCode: (import.meta.env.VITE_ZIPIT_BRANCH_CODE as string) ?? '',
   smtpHost: 'smtp.gmail.com',
   smtpPort: 587,
   smtpUser: '',
@@ -343,9 +347,37 @@ export async function pollPaynow(pollUrl: string, currency: PaymentCurrency = 'U
 
 // ── Zipit (ZimSwitch bank transfer) ────────────────────────────────
 
-export function getZipitDetails(req: PaymentRequest): PaymentResponse & { bankDetails: typeof _details } {
+export interface ZipitBankDetails {
+  bankName: string
+  accountName: string
+  accountNumber: string
+  branchCode: string
+  reference: string
+  amount: number
+}
+
+/** ZIPIT is display-only: it shows whichever account staff entered under
+ *  Billing & Reminders → Gateway & SMTP (or VITE_ZIPIT_* env vars). Until
+ *  one is set there is nothing honest to show. */
+export function isZipitConfigured(): boolean {
   const cfg = getGatewaySettings()
-  const _details = {
+  return !!(cfg.zipitBankName && cfg.zipitAccountName && cfg.zipitAccountNumber)
+}
+
+export function getZipitDetails(req: PaymentRequest): PaymentResponse & { bankDetails: ZipitBankDetails | null } {
+  const cfg = getGatewaySettings()
+  if (!isZipitConfigured()) {
+    // An unconfigured rail is a refusal, not a payment — and nothing is
+    // logged, since no transfer was ever instructed.
+    return {
+      success: false,
+      status: 'failed',
+      message: 'Bank transfer is not configured yet — set the account details under Billing & Reminders → Gateway & SMTP, or take the payment another way and record it on the Payments page.',
+      gateway: 'zipit',
+      bankDetails: null,
+    }
+  }
+  const bankDetails: ZipitBankDetails = {
     bankName: cfg.zipitBankName,
     accountName: cfg.zipitAccountName,
     accountNumber: cfg.zipitAccountNumber,
@@ -359,6 +391,6 @@ export function getZipitDetails(req: PaymentRequest): PaymentResponse & { bankDe
     status: 'pending',
     message: 'Transfer bank details below. Payment will be confirmed by staff within 1 business day.',
     gateway: 'zipit',
-    bankDetails: _details,
+    bankDetails,
   }
 }

@@ -177,6 +177,7 @@ export default function Dashboard({ setActivePanel }: Props) {
             <h3 className="card-title">Recent Policies</h3>
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => setActivePanel('policies')}>View All</button>
           </div>
+          <div className="tbl-scroll">
           <table className="table">
             <thead>
               <tr>
@@ -201,6 +202,7 @@ export default function Dashboard({ setActivePanel }: Props) {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
 
         <div className="card">

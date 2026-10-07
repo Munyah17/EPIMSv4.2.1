@@ -27,7 +27,7 @@ export interface SmsSettings {
 }
 
 const DEFAULTS: SmsSettings = {
-  apiKey: '72bb6de19ecf8df8',
+  apiKey: '',
   domain: 'sms.vas.co.zw',
   senderId: '',
 }
@@ -57,7 +57,6 @@ export interface SmsResult {
   success: boolean
   messageId?: string
   error?: string
-  simulated?: boolean
 }
 
 export interface BulkSmsResult {
@@ -159,7 +158,6 @@ async function callAfrosoft(
 
 /**
  * Send a single SMS via Afrosoft.
- * Falls back to simulation (console log + local record) if not configured.
  */
 export async function sendSms(to: string, message: string): Promise<SmsResult> {
   const bulk = await sendBulkSms([to], message)
@@ -238,7 +236,7 @@ export interface SmsLogEntry {
   id: string
   to: string
   message: string
-  status: 'sent' | 'failed' | 'simulated'
+  status: 'sent' | 'failed'
   /** Why it failed, straight from the gateway where it said so — a log
    *  that only says "failed" gives nobody anything to act on. */
   error?: string

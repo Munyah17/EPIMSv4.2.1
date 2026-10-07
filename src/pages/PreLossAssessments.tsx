@@ -144,6 +144,7 @@ export default function PreLossAssessments({ showToast }: Props) {
         ) : filtered.length === 0 ? (
           <div className="empty-state">No pre-loss assessments recorded yet.</div>
         ) : (
+          <div className="tbl-scroll">
           <table className="table">
             <thead>
               <tr>
@@ -179,6 +180,7 @@ export default function PreLossAssessments({ showToast }: Props) {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

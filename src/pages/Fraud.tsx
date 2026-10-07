@@ -154,6 +154,7 @@ export default function Fraud({ showToast }: Props) {
           {topSignals.length > 0 && (
             <div className="card" style={{ marginBottom: 18 }}>
               <div className="card-header"><h3 className="card-title">Most Common Fraud Signals</h3></div>
+              <div className="tbl-scroll">
               <table className="table">
                 <thead><tr><th>Signal</th><th>Cases</th></tr></thead>
                 <tbody>
@@ -165,6 +166,7 @@ export default function Fraud({ showToast }: Props) {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
 

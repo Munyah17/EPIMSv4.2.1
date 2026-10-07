@@ -253,6 +253,7 @@ export default function MassMessaging({ showToast }: Props) {
           {log.length === 0 ? (
             <div className="empty-state">No SMS records yet.</div>
           ) : (
+            <div className="tbl-scroll">
             <table className="table">
               <thead><tr><th>Time</th><th>To</th><th>Message</th><th>Status</th><th>Reason</th></tr></thead>
               <tbody>
@@ -269,6 +270,7 @@ export default function MassMessaging({ showToast }: Props) {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </div>
       )}

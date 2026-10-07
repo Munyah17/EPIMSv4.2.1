@@ -95,6 +95,7 @@ export default function CommissionSettings({ showToast }: Props) {
         {products.length === 0 ? (
           <div className="empty-state">No products yet; add products first to set per-product rates.</div>
         ) : (
+          <div className="tbl-scroll">
           <table className="table">
             <thead><tr><th>Product</th><th>Category</th><th style={{ width: 140 }}>Rate (%)</th></tr></thead>
             <tbody>
@@ -119,6 +120,7 @@ export default function CommissionSettings({ showToast }: Props) {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

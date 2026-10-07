@@ -116,6 +116,7 @@ export default function Leads({ showToast }: Props) {
         {loading ? (
           <div className="empty-state">Loading leads…</div>
         ) : (
+          <div className="tbl-scroll">
           <table className="table">
             <thead>
               <tr>
@@ -148,6 +149,7 @@ export default function Leads({ showToast }: Props) {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

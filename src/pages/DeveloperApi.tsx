@@ -379,6 +379,7 @@ Tariqify IMS`,
             <button className="btn btn-primary" onClick={() => setShowNew(true)} disabled={!canEdit}>+ Register First Developer</button>
           </div>
         ) : (
+          <div className="tbl-scroll">
           <table className="table">
             <thead>
               <tr><th>Company</th><th>Contact</th><th>Status</th><th>Commission Override</th><th>Keys</th><th></th></tr>
@@ -502,6 +503,7 @@ Tariqify IMS`,
                           {(keysByDeveloper[dev.id]?.length ?? 0) === 0 ? (
                             <div className="empty-state" style={{ padding: '12px 0' }}>No keys issued yet.</div>
                           ) : (
+                            <div className="tbl-scroll">
                             <table className="table">
                               <thead><tr><th>Environment</th><th>Publishable Key</th><th>Secret Prefix</th><th>Scopes</th><th>Rate Limit</th><th>Status</th><th>Last Used</th><th></th></tr></thead>
                               <tbody>
@@ -531,6 +533,7 @@ Tariqify IMS`,
                                 ))}
                               </tbody>
                             </table>
+                            </div>
                           )}
                         </div>
                       </td>
@@ -540,6 +543,7 @@ Tariqify IMS`,
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

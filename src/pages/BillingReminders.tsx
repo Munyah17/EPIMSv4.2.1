@@ -192,6 +192,7 @@ export default function BillingReminders({ showToast }: Props) {
           {cautions.length === 0 ? (
             <div className="empty-state">No active caution flags. All clients are in good standing.</div>
           ) : (
+            <div className="tbl-scroll">
             <table className="table">
               <thead>
                 <tr><th>Policy</th><th>Client</th><th>Days Overdue</th><th>Flagged On</th><th>Months</th><th>Actions</th></tr>
@@ -213,6 +214,7 @@ export default function BillingReminders({ showToast }: Props) {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
           {cautions.length > 0 && (
             <div className="info-banner info-banner-warning" style={{ marginTop: 14, borderRadius: 8, padding: '10px 13px', fontSize: 12 }}>
@@ -276,6 +278,7 @@ export default function BillingReminders({ showToast }: Props) {
           {payLog.length === 0 ? (
             <div className="empty-state">No online payment records yet.</div>
           ) : (
+            <div className="tbl-scroll">
             <table className="table">
               <thead><tr><th>Time</th><th>Policy</th><th>Gateway</th><th>Amount</th><th>Reference</th><th>Status</th></tr></thead>
               <tbody>
@@ -291,6 +294,7 @@ export default function BillingReminders({ showToast }: Props) {
                 ))}
               </tbody>
             </table>
+            </div>
           )}
         </div>
       )}

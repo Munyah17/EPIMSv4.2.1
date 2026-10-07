@@ -127,6 +127,7 @@ export default function Staff({ showToast }: Props) {
         {loading ? (
           <div className="empty-state">Loading staff…</div>
         ) : (
+          <div className="tbl-scroll">
           <table className="table">
             <thead>
               <tr>
@@ -178,6 +179,7 @@ export default function Staff({ showToast }: Props) {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

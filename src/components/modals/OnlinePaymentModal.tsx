@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import type { Policy } from '../../types'
 import {
-  initiateEcoCash, initiatePaynow, getZipitDetails, pollEcoCash, pollPaynow, CURRENCY_SYMBOL,
+  initiateEcoCash, initiatePaynow, getZipitDetails, isZipitConfigured, pollEcoCash, pollPaynow, CURRENCY_SYMBOL,
 } from '../../lib/paymentGateways'
 import { toIsoDate } from '../../lib/dateUtils'
 import type { PaymentResponse, PaymentCurrency } from '../../lib/paymentGateways'
@@ -84,6 +84,10 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
 
   // ZiG needs both a rate to price from and the currency switched on.
   const zigAvailable = isActive(currencySettings, 'ZWG') && zigRate !== null
+  // Bank transfer only exists if staff have entered the account — with no
+  // details configured the banner offers "Not configured" instead of an
+  // instruction to send money nowhere (defaults used to be placeholders).
+  const zipitConfigured = isZipitConfigured()
   useEffect(() => {
     if (currency === 'ZWG' && !zigAvailable) setCurrency('USD')
   }, [currency, zigAvailable])
@@ -260,6 +264,9 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
       const z = getZipitDetails(req)
       setZipitDetails(z)
       setResult(z)
+      // Unconfigured bank details come back as a refusal, same as the other
+      // rails — not a confirm screen showing account "none".
+      if (!z.success) { setStep('failed'); return }
       setStep('confirm')
       return
     }
@@ -325,17 +332,36 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
 
               <div className="form-group" style={{ marginBottom: 14 }}>
                 <label>Payment Method</label>
-                <div className="pay-method-banners">
-                  {METHODS.map(m => (
-                    <label key={m.id} className={`pay-method-banner${method === m.id ? ' active' : ''}`}>
-                      <input type="radio" name="method" checked={method === m.id} onChange={() => setMethod(m.id)} style={{ display: 'none' }} />
-                      <img src={m.badge} alt={m.alt} className="pay-method-banner-badge" />
-                      <span className="pay-method-banner-text">
-                        <span className="pay-method-banner-label">{m.label}</span>
-                        <span className="pay-method-banner-blurb">{m.blurb}</span>
-                      </span>
-                    </label>
-                  ))}
+                <div className="pay-method-banners" role="radiogroup" aria-label="Payment Method">
+                  {METHODS.map(m => {
+                    const unavailable = m.id === 'zipit' && !zipitConfigured
+                    return (
+                      // A label around a display:none radio is mouse-clickable
+                      // but unreachable by keyboard, so it carries the radio
+                      // semantics itself.
+                      <label
+                        key={m.id}
+                        className={`pay-method-banner${method === m.id ? ' active' : ''}`}
+                        role="radio"
+                        aria-checked={method === m.id}
+                        aria-disabled={unavailable || undefined}
+                        tabIndex={unavailable ? -1 : 0}
+                        title={unavailable ? 'Set the account details under Billing & Reminders → Gateway & SMTP.' : undefined}
+                        style={unavailable ? { opacity: 0.55, cursor: 'not-allowed' } : undefined}
+                        onKeyDown={e => {
+                          if (unavailable) return
+                          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setMethod(m.id) }
+                        }}
+                      >
+                        <input type="radio" name="method" checked={method === m.id} disabled={unavailable} onChange={() => setMethod(m.id)} style={{ display: 'none' }} />
+                        <img src={m.badge} alt={m.alt} className="pay-method-banner-badge" />
+                        <span className="pay-method-banner-text">
+                          <span className="pay-method-banner-label">{m.label}</span>
+                          <span className="pay-method-banner-blurb">{unavailable ? 'Not configured' : m.blurb}</span>
+                        </span>
+                      </label>
+                    )
+                  })}
                 </div>
                 {method === 'paynow' && (
                   currency === 'ZWG' ? (

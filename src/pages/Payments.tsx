@@ -173,6 +173,7 @@ export default function Payments({ showToast }: Props) {
         {loading ? (
           <div className="empty-state">Loading payments…</div>
         ) : (
+          <div className="tbl-scroll">
           <table className="table">
             <thead>
               <tr>
@@ -217,6 +218,7 @@ export default function Payments({ showToast }: Props) {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

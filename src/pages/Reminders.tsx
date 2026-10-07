@@ -216,6 +216,7 @@ export default function Reminders({ showToast }: Props) {
             }
           </div>
           <div className="card">
+            <div className="tbl-scroll">
             <table className="table">
               <thead>
                 <tr><th>Policy No.</th><th>Client</th><th>Product</th><th>End Date</th><th>Status</th><th>Action</th></tr>
@@ -240,10 +241,12 @@ export default function Reminders({ showToast }: Props) {
                 )}
               </tbody>
             </table>
+            </div>
           </div>
         </div>
       ) : activeTab === 'log' ? (
         <div className="card">
+          <div className="tbl-scroll">
           <table className="table">
             <thead>
               <tr><th>Client</th><th>Type</th><th>Message</th><th>Channel</th><th>Status</th></tr>
@@ -262,6 +265,7 @@ export default function Reminders({ showToast }: Props) {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       ) : (
         <div className="card settings-card">

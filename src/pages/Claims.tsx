@@ -231,6 +231,7 @@ export default function Claims({ showToast, initialCategory }: Props) {
         {loading ? (
           <div className="empty-state">Loading claims…</div>
         ) : (
+          <div className="tbl-scroll">
           <table className="table">
             <thead>
               <tr>
@@ -304,6 +305,7 @@ export default function Claims({ showToast, initialCategory }: Props) {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

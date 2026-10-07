@@ -194,7 +194,9 @@ function AppInner() {
         </div>
       </div>
       <Toast toasts={toasts} onDismiss={dismissToast} />
-      <SystemHealth />
+      {/* The chat FAB is also fixed bottom-right — only policyholders get
+          it, so only they need the health button lifted clear of it. */}
+      <SystemHealth aboveFab={user.role === 'policyholder'} />
       {user.role === 'policyholder' && (
         <ChatWidget prefill={{ name: user.name, phone: user.phone ?? '', email: user.email }} />
       )}

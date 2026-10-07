@@ -308,7 +308,7 @@ export default function Reports({ showToast }: Props) {
               <h3 className="card-title">{report.title}</h3>
               <span style={{ fontSize: 12, color: 'var(--muted)' }}>{sortedRows.length} row{sortedRows.length === 1 ? '' : 's'} — click a column to sort</span>
             </div>
-            <div style={{ overflowX: 'auto' }}>
+            <div className="tbl-scroll">
               <table className="table">
                 <thead>
                   <tr>

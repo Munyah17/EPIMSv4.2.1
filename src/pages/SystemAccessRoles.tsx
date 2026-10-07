@@ -104,6 +104,7 @@ export default function SystemAccessRoles({ showToast }: Props) {
         {loading ? (
           <div className="empty-state">Loading accounts…</div>
         ) : (
+          <div className="tbl-scroll">
           <table className="table">
             <thead>
               <tr>
@@ -158,6 +159,7 @@ export default function SystemAccessRoles({ showToast }: Props) {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </div>
 

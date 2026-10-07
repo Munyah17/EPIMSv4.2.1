@@ -72,6 +72,7 @@ export default function MyPayments({ showToast }: Props) {
         <div className="empty-state">No payments found for your account.</div>
       ) : (
         <div className="card">
+          <div className="tbl-scroll">
           <table className="table">
             <thead>
               <tr>
@@ -96,6 +97,7 @@ export default function MyPayments({ showToast }: Props) {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>

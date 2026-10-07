@@ -319,6 +319,7 @@ export default function Profile({ showToast }: Props) {
                 ) : loginHistory.length === 0 ? (
                   <div className="empty-state">No sign-in attempts recorded yet.</div>
                 ) : (
+                  <div className="tbl-scroll">
                   <table className="table">
                     <thead>
                       <tr><th>Result</th><th>Time</th></tr>
@@ -332,6 +333,7 @@ export default function Profile({ showToast }: Props) {
                       ))}
                     </tbody>
                   </table>
+                  </div>
                 )}
               </div>
             </>

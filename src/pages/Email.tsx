@@ -246,7 +246,7 @@ export default function Email({ showToast }: Props) {
                   onClick={() => openEmail(e)}
                   role="button"
                   tabIndex={0}
-                  onKeyDown={ev => ev.key === 'Enter' && openEmail(e)}
+                  onKeyDown={ev => { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); openEmail(e) } }}
                 >
                   <button
                     className="email3-star"

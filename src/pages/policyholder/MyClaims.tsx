@@ -46,6 +46,7 @@ export default function MyClaims({ showToast }: Props) {
         <div className="empty-state">No claims found for your account.</div>
       ) : (
         <div className="card">
+          <div className="tbl-scroll">
           <table className="table">
             <thead>
               <tr>
@@ -70,6 +71,7 @@ export default function MyClaims({ showToast }: Props) {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>

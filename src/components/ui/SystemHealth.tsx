@@ -40,7 +40,14 @@ const OP_COLOR: Record<string, string> = {
   delete: '#EF4444',
 }
 
-export default function SystemHealth() {
+interface Props {
+  /** The chat FAB parks at bottom:20/right:20 for policyholders — the same
+   *  spot as this button. Lifts this button (and its panel, which sits
+   *  42px above it) so both stay reachable. */
+  aboveFab?: boolean
+}
+
+export default function SystemHealth({ aboveFab }: Props) {
   const [open, setOpen] = useState(false)
   const [tab, setTab] = useState<'overview' | 'log'>('overview')
   const [stats, setStats] = useState<Stats>(() => health.stats as Stats)
@@ -66,6 +73,7 @@ export default function SystemHealth() {
       {/* Floating trigger */}
       <button
         className="syshealth-btn"
+        style={aboveFab ? { bottom: 88 } : undefined}
         onClick={() => setOpen(o => !o)}
         title="System Health"
         aria-label="System Health Monitor"
@@ -76,7 +84,7 @@ export default function SystemHealth() {
 
       {/* Panel */}
       {open && (
-        <div className="syshealth-panel">
+        <div className="syshealth-panel" style={aboveFab ? { bottom: 130 } : undefined}>
           <div className="syshealth-header">
             <div className="syshealth-title">
               <span className="syshealth-dot lg" style={{ background: dot }} />
