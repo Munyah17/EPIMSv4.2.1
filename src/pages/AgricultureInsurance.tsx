@@ -26,6 +26,9 @@ export default function AgricultureInsurance({ showToast, setActivePanel }: Prop
   const load = () => {
     Promise.all([db.policies.list(), db.products.list(), db.claims.list(), db.policyAssessments.listAll(), db.cropTypes.list()])
       .then(([polRes, prodRes, claimRes, assessRes, cropRes]) => {
+        if (polRes.error || prodRes.error || claimRes.error || assessRes.error || cropRes.error) {
+          showToast('error', 'Failed to load some agriculture data.')
+        }
         if (polRes.data) setPolicies(polRes.data)
         if (prodRes.data) setProducts(prodRes.data)
         if (claimRes.data) setClaims(claimRes.data)
@@ -33,9 +36,10 @@ export default function AgricultureInsurance({ showToast, setActivePanel }: Prop
         setCrops(cropRes.data)
         setLoading(false)
       })
+      .catch(() => { showToast('error', 'Failed to load agriculture data.'); setLoading(false) })
   }
 
-  useEffect(load, [])
+  useEffect(load, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const agricultureProductIds = new Set(products.filter(p => p.category === 'agriculture').map(p => p.id))
   const agriculturePolicies = policies.filter(p => agricultureProductIds.has(p.productId))

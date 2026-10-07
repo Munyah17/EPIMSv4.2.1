@@ -165,7 +165,7 @@ export default function Sidebar({ activePanel, setActivePanel, isOpen, onClose }
 
   useEffect(() => {
     if (!user || user.role === 'policyholder') return
-    const load = () => { db.sidebarCounts.load().then(setCounts) }
+    const load = () => { db.sidebarCounts.load().then(setCounts).catch(() => { /* badges simply stay hidden on failure */ }) }
     load()
     const interval = setInterval(load, 60000)
     return () => clearInterval(interval)

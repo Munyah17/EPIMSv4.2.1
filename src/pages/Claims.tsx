@@ -34,7 +34,7 @@ export default function Claims({ showToast, initialCategory }: Props) {
       if (error) showToast('error', 'Failed to load claims.')
       else if (data) setClaims(data)
       setLoading(false)
-    })
+    }).catch(() => { showToast('error', 'Failed to load claims.'); setLoading(false) })
   }, [showToast])
 
   const filtered = claims.filter(c => {

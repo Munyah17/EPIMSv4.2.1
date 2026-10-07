@@ -55,13 +55,15 @@ export default function MemberCards({ showToast }: Props) {
   const load = () => {
     Promise.all([db.policies.list(), db.clients.list(), db.policyCards.list()])
       .then(([polRes, cliRes, cardRes]) => {
+        if (polRes.error || cliRes.error || cardRes.error) showToast('error', 'Failed to load membership data.')
         if (polRes.data) setPolicies(polRes.data)
         if (cliRes.data) setClients(cliRes.data)
         setCards(cardRes.data)
         setLoading(false)
       })
+      .catch(() => { showToast('error', 'Failed to load membership data.'); setLoading(false) })
   }
-  useEffect(load, [])
+  useEffect(load, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const cardByMember = useMemo(
     () => new Map(cards.map(c => [c.memberNumber, c])),

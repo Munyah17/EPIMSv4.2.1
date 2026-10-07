@@ -52,12 +52,13 @@ export default function NewClaimModal({ onClose, onSave, showToast, claimKind, o
 
   useEffect(() => {
     Promise.all([db.policies.list(), db.claims.list(), db.products.list()]).then(([polRes, claimRes, prodRes]) => {
+      if (polRes.error) showToast?.('error', 'Failed to load policies — the policy number cannot be looked up right now.')
       if (polRes.data) setPolicies(polRes.data)
       if (claimRes.data) setAllClaims(claimRes.data)
       if (prodRes.data) setProducts(prodRes.data)
       setLoading(false)
-    })
-  }, [])
+    }).catch(() => { showToast?.('error', 'Failed to load claim form data.'); setLoading(false) })
+  }, [showToast])
 
   const categoryOf = (p: Policy) => products.find(pr => pr.id === p.productId)?.category ?? ''
   // Agriculture is deliberately absent here. Its claim is a physical loss

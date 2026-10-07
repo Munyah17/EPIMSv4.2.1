@@ -94,7 +94,7 @@ export default function DeveloperApi({ showToast }: Props) {
       })))
       setKeysByDeveloper(Object.fromEntries(results.map(r => [r.dev.id, r.keys])))
       setUsageByDeveloper(Object.fromEntries(results.map(r => [r.dev.id, r.usage])))
-    })
+    }).catch(() => { showToast('error', 'Failed to load developer data.'); setLoading(false) })
   }
 
   useEffect(load, [])
@@ -630,6 +630,7 @@ Tariqify IMS`,
                   Requests are rate-limited per key (default 60/min) and scoped to the calling developer's own clients and policies only.
                 </div>
               </div>
+              <div className="tbl-scroll">
               <table className="table">
                 <thead><tr><th>Method</th><th>Full URL</th><th>Scope</th><th>Description</th></tr></thead>
                 <tbody>
@@ -643,6 +644,7 @@ Tariqify IMS`,
                   ))}
                 </tbody>
               </table>
+              </div>
               <h4 style={{ margin: '16px 0 8px' }}>Security</h4>
               <ul style={{ fontSize: 12, color: 'var(--muted)', paddingLeft: 18, lineHeight: 1.7 }}>
                 <li>HTTPS only. Keys must never be exposed in client-side code.</li>

@@ -33,10 +33,13 @@ export default function Clients({ showToast }: Props) {
       if (error) showToast('error', 'Failed to load clients.')
       else if (data) setClients(data)
       setLoading(false)
-    })
+    }).catch(() => { showToast('error', 'Failed to load clients.'); setLoading(false) })
     // Dependants live on their policies, so searching for one means
     // searching policies — see the dependant results below.
-    db.policies.list().then(({ data }) => { if (data) setPolicies(data) })
+    db.policies.list().then(({ data, error }) => {
+      if (error) showToast('error', 'Failed to load policies — dependant search may be incomplete.')
+      else if (data) setPolicies(data)
+    }).catch(() => showToast('error', 'Failed to load policies — dependant search may be incomplete.'))
   }, [showToast])
 
   const filtered = clients.filter(c =>
@@ -143,6 +146,7 @@ export default function Clients({ showToast }: Props) {
             {dependantMatches.length} dependant{dependantMatches.length === 1 ? '' : 's'} matched — each one is covered
             through the policyholder named beside them, not as a client of their own.
           </div>
+          <div className="tbl-scroll">
           <table className="table">
             <thead>
               <tr><th>Member No.</th><th>Dependant</th><th>Relationship</th><th>Plan</th><th>Carried By (Policyholder)</th><th>Policy</th></tr>
@@ -160,6 +164,7 @@ export default function Clients({ showToast }: Props) {
               ))}
             </tbody>
           </table>
+          </div>
         </div>
       )}
 

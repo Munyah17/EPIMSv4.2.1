@@ -891,7 +891,12 @@ export const claims = {
     if (!Number.isFinite(claim.amount) || claim.amount <= 0) {
       return { data: null, error: 'Claim amount must be greater than zero.' }
     }
-    const claimNumber = `CLM${new Date().getFullYear()}${String(Date.now()).slice(-4)}`
+    // The last 4 digits of epoch-ms repeat every ~10 seconds, so two claims
+    // filed in the same window collided on the unique constraint and the
+    // second one failed as though the database were broken. The random tail
+    // keeps the number short while making collisions a lottery, not a
+    // certainty (same pattern as api/v1.ts's refNumber).
+    const claimNumber = `CLM${new Date().getFullYear()}${String(Date.now()).slice(-4)}${Math.random().toString(36).slice(2, 5).toUpperCase()}`
     const row = {
       claim_number: claimNumber, policy_id: claim.policyId,
       claim_type: claim.claimType, amount: claim.amount, status: claim.status,
@@ -1057,6 +1062,19 @@ export const payments = {
     if (updates.amount !== undefined && (!Number.isFinite(updates.amount) || updates.amount <= 0)) {
       return { data: null, error: 'Payment amount must be greater than zero.' }
     }
+    // Marking an already-completed payment completed again must not advance
+    // the policy a second time — applyCompletedPaymentToPolicy has no way
+    // to know this money was already counted (it extends the due date on
+    // every call). The previous status is read before the write so only a
+    // genuine transition into 'completed' is applied. Two staff validating
+    // concurrently can still both pass this check — a truly once-only
+    // transition needs a DB constraint; this closes the everyday case of
+    // the same record being re-saved.
+    let wasAlreadyCompleted = false
+    if (updates.status === 'completed') {
+      const { data: prev } = await supabase.from('payments').select('status').eq('id', id).maybeSingle()
+      wasAlreadyCompleted = prev?.status === 'completed'
+    }
     const row: Record<string, unknown> = {}
     if (updates.status !== undefined) row.status = updates.status
     if (updates.amount !== undefined) row.amount = updates.amount
@@ -1068,7 +1086,7 @@ export const payments = {
     )
     if (ok && data) {
       const result = toPayment(data)
-      if (updates.status === 'completed') void applyCompletedPaymentToPolicy(result.policyId, result.amount)
+      if (updates.status === 'completed' && !wasAlreadyCompleted) void applyCompletedPaymentToPolicy(result.policyId, result.amount)
       return { data: result, error: null }
     }
     return writeFailed('payments', error)

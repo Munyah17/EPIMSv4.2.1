@@ -3,6 +3,10 @@ import type { ToastMessage, Reminder, Policy } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
+import { sendSms } from '../lib/smsService'
+import { sendSystemEmail } from '../lib/mailService'
+import { MAILBOXES } from '../lib/mailboxes'
+import { COMPANY_NAME } from '../lib/company'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -17,18 +21,33 @@ const TYPE_ICON: Record<string, string> = {
   document_expiry: '📄',
 }
 
+interface ReminderSettings {
+  paymentDays: number
+  renewalDays: number
+  channel: Reminder['channel']
+  birthdayGreetings: boolean
+}
+const DEFAULT_SETTINGS: ReminderSettings = { paymentDays: 3, renewalDays: 30, channel: 'sms', birthdayGreetings: true }
+
 export default function Reminders({ showToast }: Props) {
   const [reminders, setReminders] = useState<Reminder[]>([])
   const [policies, setPolicies] = useState<Policy[]>([])
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'overdue' | 'renewals' | 'log' | 'settings'>('overdue')
+  const [settings, setSettings] = useState<ReminderSettings>(DEFAULT_SETTINGS)
+  const [savingSettings, setSavingSettings] = useState(false)
+  const [sending, setSending] = useState(false)
 
   useEffect(() => {
     Promise.all([db.reminders.list(), db.policies.list()]).then(([remRes, polRes]) => {
       if (remRes.error) showToast('error', 'Failed to load reminders.')
       else if (remRes.data) setReminders(remRes.data)
-      if (polRes.data) setPolicies(polRes.data)
+      if (polRes.error) showToast('error', 'Failed to load policies — the renewals tab may be incomplete.')
+      else if (polRes.data) setPolicies(polRes.data)
       setLoading(false)
+    }).catch(() => { showToast('error', 'Failed to load reminders.'); setLoading(false) })
+    db.settings.get<ReminderSettings>('reminder_settings').then(saved => {
+      if (saved) setSettings({ ...DEFAULT_SETTINGS, ...saved })
     })
   }, [showToast])
 
@@ -42,17 +61,100 @@ export default function Reminders({ showToast }: Props) {
     return diff <= 30 && diff > 0 && p.status === 'active'
   })
 
-  const sendReminder = async (id: string) => {
-    await db.reminders.markSent(id)
-    setReminders(prev => prev.map(r => r.id === id ? { ...r, sent: true } : r))
-    showToast('success', 'Reminder sent successfully.')
+  /** A "Send" here is a real dispatch — the reminder actually goes out over
+   *  SMS and/or email before the row is marked sent, and a delivery failure
+   *  is reported rather than toasted away. Returns the channel that reached
+   *  the client first, or null when nothing was delivered. */
+  const dispatchToClient = async (clientId: string, clientName: string, subject: string, body: string): Promise<'sms' | 'email' | null> => {
+    const { data: client } = await db.clients.get(clientId)
+    if (!client || (!client.phone && !client.email)) {
+      showToast('warning', `No phone or email on file for ${clientName} — reminder not sent.`)
+      return null
+    }
+    if (client.phone) {
+      try { if ((await sendSms(client.phone, `${COMPANY_NAME}: ${body}`)).success) return 'sms' } catch { /* fall through to email */ }
+    }
+    if (client.email) {
+      const { delivered } = await sendSystemEmail({ from: MAILBOXES.noreply, to: client.email, subject, body })
+      if (delivered) return 'email'
+    }
+    return null
+  }
+
+  /** system_payment_due messages already carry the real text (minus the
+   *  internal [Rn]/[FNL] stage tag used for dedup); compose the rest. */
+  const reminderMessage = (r: Reminder): string => {
+    const tagless = r.message.replace(/^\[[^\]]+\]\s*/, '')
+    switch (r.type) {
+      case 'birthday':       return `Dear ${r.clientName}, happy birthday from the ${COMPANY_NAME} team!`
+      case 'policy_renewal': return `Dear ${r.clientName}, your policy ${r.policyNumber ?? ''} renews on ${formatDate(r.dueDate)}. Please contact us to continue your cover.`
+      case 'payment_due':    return `Dear ${r.clientName}, your premium payment for ${r.policyNumber ?? 'your policy'} is due on ${formatDate(r.dueDate)}. Please pay to keep your cover active.`
+      default:               return `Dear ${r.clientName}, ${tagless}`
+    }
+  }
+
+  const dispatchReminder = async (r: Reminder): Promise<boolean> => {
+    const channel = await dispatchToClient(r.clientId, r.clientName, `${COMPANY_NAME} — policy reminder`, reminderMessage(r))
+    if (!channel) return false
+    await db.reminders.markSent(r.id)
+    return true
+  }
+
+  const sendReminder = async (r: Reminder) => {
+    if (sending) return
+    setSending(true)
+    try {
+      if (await dispatchReminder(r)) {
+        setReminders(prev => prev.map(x => x.id === r.id ? { ...x, sent: true } : x))
+        showToast('success', `Reminder sent to ${r.clientName}.`)
+      } else {
+        showToast('error', `Reminder to ${r.clientName} could not be delivered — nothing was sent. Check the SMS gateway and email settings.`)
+      }
+    } finally { setSending(false) }
   }
 
   const sendAll = async () => {
     const unsent = [...overdue, ...upcoming]
-    await db.reminders.markAllSent(unsent.map(r => r.id))
-    setReminders(prev => prev.map(r => unsent.find(u => u.id === r.id) ? { ...r, sent: true } : r))
-    showToast('success', `${unsent.length} reminders sent.`)
+    if (unsent.length === 0) { showToast('info', 'No pending reminders to send.'); return }
+    if (sending) return
+    setSending(true)
+    try {
+      const sentIds = new Set<string>()
+      for (const r of unsent) { if (await dispatchReminder(r)) sentIds.add(r.id) }
+      setReminders(prev => prev.map(x => sentIds.has(x.id) ? { ...x, sent: true } : x))
+      if (sentIds.size === unsent.length) showToast('success', `${sentIds.size} reminders sent.`)
+      else showToast('warning', `${sentIds.size} of ${unsent.length} reminders sent — the rest could not be delivered.`)
+    } finally { setSending(false) }
+  }
+
+  const sendRenewalReminder = async (p: Policy) => {
+    if (sending) return
+    setSending(true)
+    try {
+      const body = p.status === 'lapsed'
+        ? `Dear ${p.clientName}, your ${p.productName} policy ${p.policyNumber} has lapsed. Please contact us to reinstate your cover.`
+        : `Dear ${p.clientName}, your ${p.productName} policy ${p.policyNumber} renews on ${formatDate(p.endDate)}. Please contact us to continue your cover.`
+      const channel = await dispatchToClient(p.clientId, p.clientName, `${COMPANY_NAME} — renewal reminder`, body)
+      if (!channel) {
+        showToast('error', `Renewal reminder for ${p.clientName} could not be delivered — nothing was sent.`)
+        return
+      }
+      const { data } = await db.reminders.create({
+        type: 'policy_renewal', clientId: p.clientId, clientName: p.clientName, policyId: p.id, policyNumber: p.policyNumber,
+        dueDate: p.endDate, message: `[Manual] Renewal reminder sent to client: ${p.policyNumber} renews on ${formatDate(p.endDate)}`,
+        sent: true, channel,
+      })
+      if (data) setReminders(prev => [...prev, data])
+      showToast('success', `Renewal reminder sent to ${p.clientName} via ${channel === 'sms' ? 'SMS' : 'email'}.`)
+    } finally { setSending(false) }
+  }
+
+  const saveSettings = async () => {
+    setSavingSettings(true)
+    const { error } = await db.settings.set('reminder_settings', settings)
+    setSavingSettings(false)
+    if (error) showToast('error', `Could not save reminder settings: ${error}`)
+    else showToast('success', 'Reminder settings saved.')
   }
 
   const channelPill = (ch: string) => (
@@ -86,7 +188,7 @@ export default function Reminders({ showToast }: Props) {
             <>
               <div className="panel-toolbar">
                 <span className="text-muted">{overdue.length + upcoming.length} pending reminders</span>
-                <button type="button" className="btn btn-primary btn-sm" onClick={sendAll}>Send All</button>
+                <button type="button" className="btn btn-primary btn-sm" disabled={sending} onClick={sendAll}>{sending ? 'Sending…' : 'Send All'}</button>
               </div>
               {[...overdue, ...upcoming].map(r => (
                 <div key={r.id} className="reminder-card">
@@ -99,7 +201,7 @@ export default function Reminders({ showToast }: Props) {
                       {r.policyNumber && <span className="mono reminder-policy">{r.policyNumber}</span>}
                     </div>
                   </div>
-                  <button type="button" className="btn btn-primary btn-sm" onClick={() => sendReminder(r.id)}>Send</button>
+                  <button type="button" className="btn btn-primary btn-sm" disabled={sending} onClick={() => sendReminder(r)}>Send</button>
                 </div>
               ))}
             </>
@@ -127,7 +229,7 @@ export default function Reminders({ showToast }: Props) {
                     <td>{formatDate(p.endDate)}</td>
                     <td><span className={`pill pill-${p.status}`}>{p.status}</span></td>
                     <td>
-                      <button type="button" className="btn btn-ghost btn-sm" onClick={() => showToast('success', `Renewal reminder sent to ${p.clientName}.`)}>
+                      <button type="button" className="btn btn-ghost btn-sm" disabled={sending} onClick={() => sendRenewalReminder(p)}>
                         Send Reminder
                       </button>
                     </td>
@@ -166,29 +268,33 @@ export default function Reminders({ showToast }: Props) {
           <h3 className="settings-title">Reminder Settings</h3>
           <div className="form-group">
             <label htmlFor="remind-payment">Payment Due Reminder (days before)</label>
-            <input id="remind-payment" type="number" defaultValue={3} min={1} max={14} className="form-control" />
+            <input id="remind-payment" type="number" value={settings.paymentDays} min={1} max={14} className="form-control"
+              onChange={e => setSettings(s => ({ ...s, paymentDays: Math.max(1, Math.min(14, Number(e.target.value) || 1)) }))} />
           </div>
           <div className="form-group">
             <label htmlFor="remind-renewal">Policy Renewal Reminder (days before)</label>
-            <input id="remind-renewal" type="number" defaultValue={30} min={7} max={60} className="form-control" />
+            <input id="remind-renewal" type="number" value={settings.renewalDays} min={7} max={60} className="form-control"
+              onChange={e => setSettings(s => ({ ...s, renewalDays: Math.max(7, Math.min(60, Number(e.target.value) || 7)) }))} />
           </div>
           <div className="form-group">
             <label htmlFor="remind-channel">Default Reminder Channel</label>
-            <select id="remind-channel" className="form-control">
-              <option>WhatsApp</option>
-              <option>SMS</option>
-              <option>Email</option>
-              <option>USSD</option>
+            <select id="remind-channel" className="form-control" value={settings.channel}
+              onChange={e => setSettings(s => ({ ...s, channel: e.target.value as Reminder['channel'] }))}>
+              <option value="whatsapp">WhatsApp</option>
+              <option value="sms">SMS</option>
+              <option value="email">Email</option>
+              <option value="ussd">USSD</option>
             </select>
           </div>
           <div className="form-group">
             <label className="checkbox-label">
-              <input type="checkbox" defaultChecked />
+              <input type="checkbox" checked={settings.birthdayGreetings}
+                onChange={e => setSettings(s => ({ ...s, birthdayGreetings: e.target.checked }))} />
               Send birthday greetings to clients
             </label>
           </div>
-          <button type="button" className="btn btn-primary" onClick={() => showToast('success', 'Reminder settings saved.')}>
-            Save Settings
+          <button type="button" className="btn btn-primary" disabled={savingSettings} onClick={saveSettings}>
+            {savingSettings ? 'Saving…' : 'Save Settings'}
           </button>
         </div>
       )}

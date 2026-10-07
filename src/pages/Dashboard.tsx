@@ -51,12 +51,15 @@ const EMPTY_STATS: DashboardStats = {
 export default function Dashboard({ setActivePanel }: Props) {
   const [stats, setStats] = useState<DashboardStats>(EMPTY_STATS)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [chartPeriod, setChartPeriod] = useState<'week' | 'month' | 'quarter'>('month')
   const [rate, setRate] = useState<ExchangeRate | null>(null)
   const [rateLoaded, setRateLoaded] = useState(false)
 
   useEffect(() => {
-    db.dashboardStats.load().then(({ data }) => { setStats(data); setLoading(false) })
+    db.dashboardStats.load()
+      .then(({ data }) => { setStats(data); setLoading(false) })
+      .catch(() => { setLoadError(true); setLoading(false) })
   }, [])
 
   const { user } = useAuth()
@@ -64,7 +67,12 @@ export default function Dashboard({ setActivePanel }: Props) {
 
   useEffect(() => {
     if (!isSuperAdmin) return
-    db.exchangeRates.current().then(({ data }) => { setRate(data); setRateLoaded(true) })
+    // Only flag "no rate set" when the read actually succeeded — a failed
+    // read says nothing about whether a rate exists, so it must not raise
+    // the banner under a false claim.
+    db.exchangeRates.current()
+      .then(({ data, error }) => { if (!error) { setRate(data); setRateLoaded(true) } })
+      .catch(() => { /**/ })
   }, [isSuperAdmin])
 
   const recentPolicies: Policy[] = stats.recentPolicies
@@ -81,6 +89,7 @@ export default function Dashboard({ setActivePanel }: Props) {
     .sort((a, b) => new Date(b.at || 0).getTime() - new Date(a.at || 0).getTime())
 
   if (loading) return <div className="panel"><div className="empty-state">Loading dashboard…</div></div>
+  if (loadError) return <div className="panel"><div className="empty-state">Dashboard data could not be loaded. Check your connection and refresh.</div></div>
 
   const rateNeedsAttention = isSuperAdmin && rateLoaded && isStale(rate)
 

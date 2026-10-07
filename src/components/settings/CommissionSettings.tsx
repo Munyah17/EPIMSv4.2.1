@@ -33,10 +33,11 @@ export default function CommissionSettings({ showToast }: Props) {
   useEffect(() => {
     Promise.all([getCommissionRates(), db.products.list()]).then(([r, prodRes]) => {
       setRates(r)
+      if (prodRes.error) showToast('error', 'Failed to load products — per-product overrides may be incomplete.')
       if (prodRes.data) setProducts(prodRes.data)
       setLoading(false)
-    })
-  }, [])
+    }).catch(() => { showToast('error', 'Failed to load commission settings.'); setLoading(false) })
+  }, [showToast])
 
   const setOverride = (productId: string, value: string) => {
     if (!canEdit) return

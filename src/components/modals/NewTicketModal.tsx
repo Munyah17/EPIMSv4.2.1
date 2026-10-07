@@ -13,6 +13,7 @@ const CATEGORIES = ['Technical', 'Claims', 'Policy', 'Billing', 'Other']
 export default function NewTicketModal({ onClose, onSave }: Props) {
   const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
   const [clientId, setClientId] = useState('')
   const [subject, setSubject] = useState('')
   const [description, setDescription] = useState('')
@@ -20,10 +21,11 @@ export default function NewTicketModal({ onClose, onSave }: Props) {
   const [category, setCategory] = useState('Policy')
 
   useEffect(() => {
-    db.clients.list().then(({ data }) => {
-      if (data) setClients(data)
+    db.clients.list().then(({ data, error }) => {
+      if (error) setLoadError(true)
+      else if (data) setClients(data)
       setLoading(false)
-    })
+    }).catch(() => { setLoadError(true); setLoading(false) })
   }, [])
 
   const client = clients.find(c => c.id === clientId)
@@ -61,6 +63,10 @@ export default function NewTicketModal({ onClose, onSave }: Props) {
             {loading ? (
               <select className="form-control" disabled>
                 <option>Loading clients…</option>
+              </select>
+            ) : loadError ? (
+              <select className="form-control" disabled>
+                <option>Could not load clients — close and try again.</option>
               </select>
             ) : (
               <select className="form-control" value={clientId} onChange={e => setClientId(e.target.value)}>

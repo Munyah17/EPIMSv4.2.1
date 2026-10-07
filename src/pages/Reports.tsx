@@ -78,12 +78,18 @@ export default function Reports({ showToast }: Props) {
 
   const [data, setData] = useState<ReportData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState(false)
 
   useEffect(() => {
     Promise.all([
       db.policies.list(), db.claims.list(), db.payments.list(), db.clients.list(),
       db.staff.list(), db.products.list(), db.developerApi.listDevelopers(),
     ]).then(([policiesRes, claimsRes, paymentsRes, clientsRes, staffRes, productsRes, devsRes]) => {
+      // A failed dataset still builds a report off what did load, but the
+      // user must be told the figures are partial rather than complete.
+      if ([policiesRes, claimsRes, paymentsRes, clientsRes, staffRes, productsRes, devsRes].some(r => r.error)) {
+        showToast('error', 'Some report data could not be loaded — figures may be incomplete.')
+      }
       setData({
         policies: (policiesRes.data ?? []) as Policy[],
         claims: (claimsRes.data ?? []) as Claim[],
@@ -94,8 +100,8 @@ export default function Reports({ showToast }: Props) {
         developers: (devsRes.data ?? []) as ApiDeveloper[],
       })
       setLoading(false)
-    })
-  }, [])
+    }).catch(() => { setLoadError(true); setLoading(false) })
+  }, [showToast])
 
   const report = useMemo(() => {
     if (!data) return null
@@ -114,7 +120,8 @@ export default function Reports({ showToast }: Props) {
         : ((Number(a[sortCol]) || 0) - (Number(b[sortCol]) || 0)) * dir)
   }, [report, sortCol, sortAsc])
 
-  if (loading) return <div className="panel">Loading reports…</div>
+  if (loading) return <div className="panel"><div className="empty-state">Loading reports…</div></div>
+  if (loadError || !data) return <div className="panel"><div className="empty-state">Report data could not be loaded. Check your connection and refresh.</div></div>
 
   const activeFields = FILTER_FIELDS[dataset]
   const groupOptions = GROUP_OPTIONS[dataset] ?? []

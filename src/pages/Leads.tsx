@@ -36,7 +36,7 @@ export default function Leads({ showToast }: Props) {
       if (error) showToast('error', 'Failed to load leads.')
       else if (data) setLeads(data)
       setLoading(false)
-    })
+    }).catch(() => { showToast('error', 'Failed to load leads.'); setLoading(false) })
   }, [showToast])
 
   const filtered = leads.filter(l => {

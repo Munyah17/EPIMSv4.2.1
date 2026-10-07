@@ -69,16 +69,24 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
     : []
 
   useEffect(() => {
-    db.products.list().then(({ data }) => { if (data) setProducts(data); setProductsLoading(false) })
-    db.clients.list().then(({ data }) => { if (data) setExistingClients(data) })
-    db.staff.list().then(({ data }) => {
+    db.products.list().then(({ data, error }) => {
+      if (error) showToast?.('error', 'Failed to load products — the plan list may be empty.')
+      if (data) setProducts(data)
+      setProductsLoading(false)
+    }).catch(() => { showToast?.('error', 'Failed to load products.'); setProductsLoading(false) })
+    db.clients.list().then(({ data, error }) => {
+      if (error) showToast?.('error', 'Failed to load existing clients.')
+      if (data) setExistingClients(data)
+    }).catch(() => showToast?.('error', 'Failed to load existing clients.'))
+    db.staff.list().then(({ data, error }) => {
+      if (error) showToast?.('error', 'Failed to load agents.')
       const active = (data ?? []).filter(s => s.active)
       setStaff(active)
       // Default to whoever is actually creating this policy — the person
       // serving the client — while still letting them reassign it below.
       // A client-bound agent set by selectExistingClient wins over this.
       setAgentId(prev => prev || (user && active.some(s => s.id === user.id) ? user.id : ''))
-    })
+    }).catch(() => showToast?.('error', 'Failed to load agents.'))
     if (initialClient) selectExistingClient(initialClient)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user])

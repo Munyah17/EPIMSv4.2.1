@@ -1,16 +1,24 @@
 /** Groq-backed AI scoring, called via server-side /api functions so the API key never reaches the browser. */
 
-export async function scoreLead(input: { name: string; source: string; productInterest: string; notes?: string }): Promise<{ score: number; reasoning: string }> {
+import { supabase } from './supabase'
+
+/** /api/ai.ts requires a signed-in user — the endpoints spend paid quota. */
+async function authHeaders(): Promise<Record<string, string>> {
+  const { data: { session } } = await supabase.auth.getSession()
+  return session ? { Authorization: `Bearer ${session.access_token}` } : {}
+}
+
+export async function scoreLead(input: { name: string; source: string; productInterest: string; notes?: string }): Promise<{ score: number; reasoning: string; simulated?: boolean }> {
   try {
     const res = await fetch('/api/score-lead', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
       body: JSON.stringify(input),
     })
-    if (!res.ok) return { score: 50, reasoning: 'AI scoring unavailable, default score used.' }
+    if (!res.ok) return { score: 50, reasoning: 'AI scoring unavailable, default score used.', simulated: true }
     return await res.json()
   } catch {
-    return { score: 50, reasoning: 'AI scoring unavailable, default score used.' }
+    return { score: 50, reasoning: 'AI scoring unavailable, default score used.', simulated: true }
   }
 }
 
@@ -62,15 +70,15 @@ export async function scoreClaimFraud(input: {
   try {
     const res = await fetch('/api/score-claim-fraud', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
       body: JSON.stringify(input),
     })
     if (!res.ok) return UNAVAILABLE
     const body = await res.json()
-    // A response with no score is the service answering without having
-    // scored anything; treat it as unavailable rather than reading the
-    // absence as a low score.
-    if (typeof body.score !== 'number') return UNAVAILABLE
+    // A response with no score — or one the server flagged as simulated —
+    // is the service answering without having scored anything; treat it as
+    // unavailable rather than reading the absence as a low score.
+    if (body.simulated || typeof body.score !== 'number') return UNAVAILABLE
     return {
       unavailable: false,
       score: body.score,

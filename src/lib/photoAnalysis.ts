@@ -1,3 +1,5 @@
+import { supabase } from './supabase'
+
 export function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -25,9 +27,10 @@ export async function analyzePhotoForFraud(
   imageBase64: string, mediaType: string, label: string, claimDescription?: string,
 ): Promise<PhotoAnalysisResult> {
   try {
+    const { data: { session } } = await supabase.auth.getSession()
     const res = await fetch('/api/analyze-assessment-photo', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}) },
       body: JSON.stringify({ imageBase64, mediaType, label, claimDescription }),
     })
     if (!res.ok) return { simulated: true }

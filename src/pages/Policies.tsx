@@ -47,8 +47,17 @@ export default function Policies({ showToast, initialCategory }: Props) {
       else if (data) setPolicies(data)
       setLoading(false)
     })
-    db.cautionFlags.listActive().then(({ data }) => setCautionFlags(data))
-    db.clients.list().then(({ data }) => { if (data) setClients(data) })
+    // Secondary loads feed the caution-flag badges and the search's
+    // phone/ID matching — a silent failure would show a clean list that
+    // isn't clean, so errors are surfaced rather than swallowed.
+    db.cautionFlags.listActive().then(({ data, error }) => {
+      if (error) showToast('error', 'Failed to load caution flags — overdue badges may be missing.')
+      else setCautionFlags(data)
+    })
+    db.clients.list().then(({ data, error }) => {
+      if (error) showToast('error', 'Failed to load client contact details — searching by phone or ID will miss matches.')
+      else if (data) setClients(data)
+    })
   }, [showToast])
 
   const products = [...new Set(policies.map(p => p.productName))]
@@ -373,7 +382,7 @@ export default function Policies({ showToast, initialCategory }: Props) {
           onSuccess={() => {
             showToast('success', `Payment confirmed for ${payPolicy.policyNumber}.`)
             setPayPolicy(null)
-            db.cautionFlags.listActive().then(({ data }) => setCautionFlags(data))
+            db.cautionFlags.listActive().then(({ data, error }) => { if (!error) setCautionFlags(data) })
           }}
           showToast={showToast}
         />

@@ -22,7 +22,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const apiKey = process.env.GROQ_API_KEY
   if (!apiKey) {
-    return res.status(200).json({ score: 50, reasoning: 'AI scoring not configured (GROQ_API_KEY missing) — default score.' })
+    // `simulated` marks this as "not configured", never a real score — the
+    // same honesty flag the other AI endpoints carry.
+    return res.status(200).json({ score: 50, reasoning: 'AI scoring not configured (GROQ_API_KEY missing) — default score.', simulated: true })
   }
 
   const body: ScoreLeadBody = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body ?? {})

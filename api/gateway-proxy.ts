@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { serviceClient, requireSession } from './_lib/sessionAuth.js'
 
 /**
  * Generic server-side relay for the EcoCash, Paynow, and Afrosoft SMS APIs,
@@ -58,6 +59,15 @@ async function sendViaAfrosoft(mobiles: string, message: string) {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
+  }
+
+  // The 'sms' action sends on OUR Afrosoft key and the plain relay still
+  // originates traffic from our function — neither can be anonymous. The
+  // Afrosoft balance and our sender ID are both spent by a stranger's text.
+  const admin = serviceClient()
+  if (!admin) return res.status(500).json({ error: 'Server is not configured.' })
+  if (!(await requireSession(req, admin))) {
+    return res.status(401).json({ error: 'Sign-in required.' })
   }
 
   const proxyReq: ProxyRequestBody = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body ?? {})

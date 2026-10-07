@@ -26,10 +26,12 @@ export default function Fraud({ showToast }: Props) {
     Promise.all([db.fraudCases.list(), db.staff.list(), db.fraudSignalRules.list()]).then(([casesRes, staffRes, rulesRes]) => {
       if (casesRes.error) showToast('error', 'Failed to load fraud cases.')
       else if (casesRes.data) setCases(casesRes.data)
-      if (staffRes.data) setStaff(staffRes.data.filter(s => ['claims_officer', 'admin', 'super_admin'].includes(s.role)))
-      if (rulesRes.data) setRules(rulesRes.data)
+      if (staffRes.error) showToast('error', 'Failed to load staff — assignees may show as IDs.')
+      else if (staffRes.data) setStaff(staffRes.data.filter(s => ['claims_officer', 'admin', 'super_admin'].includes(s.role)))
+      if (rulesRes.error) showToast('error', 'Failed to load custom fraud signals.')
+      else if (rulesRes.data) setRules(rulesRes.data)
       setLoading(false)
-    })
+    }).catch(() => { showToast('error', 'Failed to load fraud cases.'); setLoading(false) })
   }, [showToast])
 
   const addRule = async () => {
@@ -262,6 +264,9 @@ export default function Fraud({ showToast }: Props) {
 
               <div className="fraud-signals">
                 <div className="fraud-signals-label">Detected Signals:</div>
+                {fc.signals.length === 0 && (
+                  <div className="text-muted" style={{ fontSize: 12 }}>None recorded — the case was opened without captured signals.</div>
+                )}
                 <ul className="fraud-signals-list">
                   {fc.signals.map((s, i) => (
                     <li key={i} className="fraud-signal-item">

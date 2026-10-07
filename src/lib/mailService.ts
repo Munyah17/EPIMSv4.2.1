@@ -1,5 +1,6 @@
 import type { EmailMessage } from '../types'
 import { db } from './db'
+import { supabase } from './supabase'
 
 export interface NotifSettings {
   insurerName: string
@@ -123,9 +124,12 @@ export async function sendEmail(opts: SendEmailOptions): Promise<SendEmailResult
   }
 
   try {
+    // /api/send-email only answers signed-in users (or the cron secret) —
+    // it sends on our own mail accounts, so anonymous calls are refused.
+    const { data: { session } } = await supabase.auth.getSession()
     const res = await fetch('/api/send-email', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}) },
       body: JSON.stringify({
         to: opts.to, cc: opts.cc, subject: opts.subject, text: opts.body, from, fromName, replyTo,
         attachmentBase64: opts.attachmentBase64, attachmentFilename: opts.attachmentFilename,

@@ -12,6 +12,22 @@ interface Props {
   setActivePanel: (panel: ActivePanel) => void
 }
 
+const DEFAULT_NOTIF_PREFS: Record<string, boolean> = {
+  email_new_policy: true,
+  email_claim: true,
+  email_payment: false,
+  whatsapp_fraud: true,
+  sms_overdue: true,
+}
+
+const NOTIF_PREF_LABELS: [keyof typeof DEFAULT_NOTIF_PREFS, string][] = [
+  ['email_new_policy', 'Email me on new policy'],
+  ['email_claim', 'Email me on claim submission'],
+  ['email_payment', 'Email me on payment received'],
+  ['whatsapp_fraud', 'WhatsApp alerts for fraud'],
+  ['sms_overdue', 'SMS on overdue premiums'],
+]
+
 export default function Profile({ showToast }: Props) {
   const { user, updateLocalUser, reauthenticate } = useAuth()
   const [activeTab, setActiveTab] = useState<'info' | 'password' | 'notifications' | 'audit'>('info')
@@ -29,6 +45,28 @@ export default function Profile({ showToast }: Props) {
   const [confirmPwd, setConfirmPwd] = useState('')
   const [savingPwd, setSavingPwd] = useState(false)
   const [signingOutOthers, setSigningOutOthers] = useState(false)
+
+  // Per-user notification preferences, persisted in the shared app_settings
+  // store — previously this form had hardcoded defaults and a Save button
+  // that toasted success without writing anything anywhere.
+  const [notifPrefs, setNotifPrefs] = useState<Record<string, boolean> | null>(null)
+  const [savingPrefs, setSavingPrefs] = useState(false)
+
+  useEffect(() => {
+    if (!user) return
+    db.settings.get<Record<string, boolean>>(`notif_prefs_${user.id}`).then(saved => {
+      setNotifPrefs({ ...DEFAULT_NOTIF_PREFS, ...(saved ?? {}) })
+    })
+  }, [user])
+
+  const savePrefs = async () => {
+    if (!user || !notifPrefs) return
+    setSavingPrefs(true)
+    const { error } = await db.settings.set(`notif_prefs_${user.id}`, notifPrefs)
+    setSavingPrefs(false)
+    if (error) { showToast('error', `Preferences not saved: ${error}`); return }
+    showToast('success', 'Notification preferences saved.')
+  }
 
   const signOutOtherSessions = async () => {
     if (!window.confirm('Sign this account out everywhere except this device? Anyone else currently signed in as you will be logged out immediately.')) return
@@ -96,11 +134,15 @@ export default function Profile({ showToast }: Props) {
   }
 
   const [loginHistory, setLoginHistory] = useState<{ success: boolean; ts: string }[] | null>(null)
+  const [loginHistoryError, setLoginHistoryError] = useState(false)
 
   useEffect(() => {
-    if (activeTab !== 'audit' || !user || loginHistory !== null) return
-    db.loginAttempts.historyFor(user.email).then(({ data }) => setLoginHistory(data))
-  }, [activeTab, user, loginHistory])
+    if (activeTab !== 'audit' || !user || loginHistory !== null || loginHistoryError) return
+    db.loginAttempts.historyFor(user.email).then(({ data, error }) => {
+      if (error) setLoginHistoryError(true)
+      else setLoginHistory(data)
+    })
+  }, [activeTab, user, loginHistory, loginHistoryError])
 
   const last24h = (loginHistory ?? []).filter(h => Date.now() - new Date(h.ts).getTime() < 86400000)
   const failedLast24h = last24h.filter(h => !h.success).length
@@ -216,21 +258,26 @@ export default function Profile({ showToast }: Props) {
           {activeTab === 'notifications' && (
             <div className="card" style={{ maxWidth: 480 }}>
               <h3>Notification Preferences</h3>
-              {[
-                ['Email me on new policy', true],
-                ['Email me on claim submission', true],
-                ['Email me on payment received', false],
-                ['WhatsApp alerts for fraud', true],
-                ['SMS on overdue premiums', true],
-              ].map(([label, def]) => (
-                <div key={label as string} className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <input type="checkbox" defaultChecked={def as boolean} id={label as string} />
-                  <label htmlFor={label as string} style={{ marginBottom: 0, cursor: 'pointer' }}>{label as string}</label>
-                </div>
-              ))}
-              <button className="btn btn-primary" style={{ alignSelf: 'flex-start' }} onClick={() => showToast('success', 'Notification preferences saved.')}>
-                Save Preferences
-              </button>
+              {notifPrefs === null ? (
+                <div className="empty-state">Loading preferences…</div>
+              ) : (
+                <>
+                  {NOTIF_PREF_LABELS.map(([key, label]) => (
+                    <div key={key} className="form-group" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      <input
+                        type="checkbox"
+                        id={`notif-pref-${key}`}
+                        checked={notifPrefs[key]}
+                        onChange={e => setNotifPrefs(p => p ? { ...p, [key]: e.target.checked } : p)}
+                      />
+                      <label htmlFor={`notif-pref-${key}`} style={{ marginBottom: 0, cursor: 'pointer' }}>{label}</label>
+                    </div>
+                  ))}
+                  <button className="btn btn-primary" style={{ alignSelf: 'flex-start' }} onClick={savePrefs} disabled={savingPrefs}>
+                    {savingPrefs ? 'Saving…' : 'Save Preferences'}
+                  </button>
+                </>
+              )}
             </div>
           )}
 
@@ -265,7 +312,9 @@ export default function Profile({ showToast }: Props) {
 
               <div className="card">
                 <h3>Sign-In History</h3>
-                {loginHistory === null ? (
+                {loginHistoryError ? (
+                  <div className="empty-state">Sign-in history could not be loaded. Check your connection and reopen this tab.</div>
+                ) : loginHistory === null ? (
                   <div className="empty-state">Loading…</div>
                 ) : loginHistory.length === 0 ? (
                   <div className="empty-state">No sign-in attempts recorded yet.</div>

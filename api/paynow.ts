@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { Paynow } from 'paynow'
-import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import { serviceClient, requireSession } from './_lib/sessionAuth.js'
 
 /**
  * Paynow, through Paynow's own SDK.
@@ -77,6 +78,16 @@ interface InitiateBody {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
+  // Both actions ride our own Paynow integrations: 'initiate' creates real
+  // payable transactions and 'poll' posts to Paynow from this function, so
+  // neither is open to the anonymous internet -- every caller is inside a
+  // login (staff on Billing, or a policyholder on the client portal).
+  const admin = serviceClient()
+  if (!admin) return res.status(500).json({ error: 'Server is not configured (missing Supabase service credentials).' })
+  if (!(await requireSession(req, admin))) {
+    return res.status(401).json({ error: 'Sign-in required.' })
+  }
+
   const body = (typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body ?? {})) as InitiateBody
   const origin = `https://${req.headers.host}`
 
@@ -89,6 +100,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     if (body.action === 'poll') {
       if (!body.pollUrl) return res.status(400).json({ error: 'pollUrl is required.' })
+      // pollTransaction POSTs to whatever URL it is handed -- locked to
+      // Paynow's own hosts so the endpoint can't be used to poke arbitrary
+      // addresses from inside our function.
+      let pollHost = ''
+      try { pollHost = new URL(body.pollUrl).hostname } catch { pollHost = '' }
+      if (pollHost !== 'paynow.co.zw' && !pollHost.endsWith('.paynow.co.zw')) {
+        return res.status(400).json({ error: 'pollUrl is not a Paynow address.' })
+      }
       // Same SDK call the public site uses: it POSTs (not GETs) as Paynow's
       // pollurl expects, and verifies the response hash before trusting it.
       const paynow = new Paynow('', integrationKey, '', '')
@@ -120,15 +139,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // record of what this reference was actually FOR, and can only ever
       // trust Paynow's own "paid" flag blindly -- exactly the gap that lets
       // an amount mismatch through unnoticed. See paynow_transactions.
-      if (!policyId) {
-        return res.status(400).json({ error: 'policyId is required.' })
+      // The UUID check fails fast: a malformed id makes the tracking-row
+      // insert die silently below, which leaves the webhook with nothing
+      // to reconcile a genuinely-paid transaction against.
+      if (!policyId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(policyId)) {
+        return res.status(400).json({ error: 'policyId is required and must be a valid UUID.' })
       }
-      const supabaseUrl = process.env.VITE_SUPABASE_URL
-      const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-      if (!supabaseUrl || !serviceKey) {
-        return res.status(500).json({ error: 'Server is not configured (missing Supabase service credentials).' })
-      }
-      const admin = createClient(supabaseUrl, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } })
 
       // Enforced here as well as in the UI: hiding an option in the browser
       // is a presentation choice, not a control.

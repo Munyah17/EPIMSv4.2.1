@@ -80,8 +80,15 @@ export async function listMessages(sessionId: string): Promise<ChatMessage[]> {
   return data.map(toMessage)
 }
 
-export async function sendMessage(sessionId: string, senderType: ChatMessage['senderType'], senderName: string, body: string) {
-  return supabase.from('chat_messages').insert({ session_id: sessionId, sender_type: senderType, sender_name: senderName, body })
+/** Inserts a message and returns the stored row, so callers can both
+ *  surface a failed send (previously the promise was awaited blind and a
+ *  rejected insert looked identical to a sent message) and append the real
+ *  row immediately instead of waiting on realtime or the polling backstop. */
+export async function sendMessage(sessionId: string, senderType: ChatMessage['senderType'], senderName: string, body: string): Promise<{ message: ChatMessage | null; error: string | null }> {
+  const { data, error } = await supabase.from('chat_messages')
+    .insert({ session_id: sessionId, sender_type: senderType, sender_name: senderName, body })
+    .select().single()
+  return { message: data ? toMessage(data) : null, error: error?.message ?? null }
 }
 
 export function subscribeToMessages(sessionId: string, onInsert: (msg: ChatMessage) => void) {
@@ -140,8 +147,16 @@ export function subscribeToAllSessions(onChange: () => void) {
   return () => { supabase.removeChannel(channel) }
 }
 
+/** Claims a queued chat. The `.eq('status', 'queued')` guard makes the
+ *  claim atomic: if another agent clicked Claim a moment earlier, this
+ *  update matches zero rows instead of silently stealing the session, and
+ *  the caller can tell from the empty `data` that it lost the race. */
 export async function claimSession(sessionId: string, agentId: string) {
-  return supabase.from('chat_sessions').update({ status: 'active', assigned_to: agentId, started_at: new Date().toISOString() }).eq('id', sessionId)
+  return supabase.from('chat_sessions')
+    .update({ status: 'active', assigned_to: agentId, started_at: new Date().toISOString() })
+    .eq('id', sessionId)
+    .eq('status', 'queued')
+    .select('id')
 }
 
 export async function closeSession(sessionId: string) {

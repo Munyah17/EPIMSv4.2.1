@@ -31,7 +31,7 @@ export default function MassMessaging({ showToast }: Props) {
       const all = (data ?? []).filter(c => c.status === 'active')
       setClients(all)
       setSelected(new Set(all.map(c => c.id)))
-    })
+    }).catch(() => showToast('error', 'Failed to load clients.'))
     setLog(getSmsLog())
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

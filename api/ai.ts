@@ -4,6 +4,7 @@ import scoreClaimFraud from './_lib/score-claim-fraud.js'
 import scoreLead from './_lib/score-lead.js'
 import searchLeads from './_lib/search-leads.js'
 import estimateExchangeRate from './_lib/estimate-exchange-rate.js'
+import { serviceClient, requireSession } from './_lib/sessionAuth.js'
 
 /**
  * One function for all four Groq-backed endpoints.
@@ -30,9 +31,24 @@ const ROUTES: Record<string, (req: VercelRequest, res: VercelResponse) => Promis
   'estimate-exchange-rate': estimateExchangeRate,
 }
 
+// Rate suggestions stay callable without a session: the only caller is a
+// settings screen that can't attach a token, and the route returns nothing
+// sensitive — the worst an anonymous caller can spend is a little Groq
+// quota. The rest (lead search/scoring, fraud scoring, photo analysis)
+// burn real quota AND take caller data, so they require a sign-in.
+const OPEN_ROUTES = new Set(['estimate-exchange-rate'])
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // The rewrite supplies ?action=; a direct call to /api/ai must name one.
   const action = String(req.query.action ?? '')
+
+  if (!OPEN_ROUTES.has(action)) {
+    const admin = serviceClient()
+    if (!admin) return res.status(500).json({ error: 'Server is not configured.' })
+    if (!(await requireSession(req, admin))) {
+      return res.status(401).json({ error: 'Sign-in required.' })
+    }
+  }
   const route = ROUTES[action]
   if (!route) {
     return res.status(404).json({

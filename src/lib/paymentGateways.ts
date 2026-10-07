@@ -20,6 +20,14 @@
  */
 
 import type { GatewaySettings } from '../types'
+import { supabase } from './supabase'
+
+/** Both payment endpoints now require a signed-in user — they ride our own
+ *  merchant credentials, so anonymous calls are refused. */
+async function authHeaders(): Promise<Record<string, string>> {
+  const { data: { session } } = await supabase.auth.getSession()
+  return session ? { Authorization: `Bearer ${session.access_token}` } : {}
+}
 
 // Neither rail is assembled in the browser any more, so the generic relay
 // that used to sign and post Paynow requests from here is gone. EcoCash
@@ -157,7 +165,7 @@ export async function initiateEcoCash(req: PaymentRequest): Promise<PaymentRespo
   try {
     const res = await fetch('/api/ecocash-instant', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
       body: JSON.stringify({
         action: 'charge',
         phone: req.clientPhone,
@@ -212,7 +220,7 @@ export async function pollEcoCash(lookupUrl: string): Promise<{ status: 'pending
   try {
     const res = await fetch('/api/ecocash-instant', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
       body: JSON.stringify({ action: 'lookup', lookupUrl }),
     })
     const data = await res.json().catch(() => ({})) as { outcome?: 'success' | 'failed' | 'pending'; message?: string; amount?: number }
@@ -254,7 +262,7 @@ export async function initiatePaynow(req: PaymentRequest): Promise<PaymentRespon
   try {
     const res = await fetch('/api/paynow', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
       body: JSON.stringify({
         action: 'initiate',
         reference: ref,
@@ -312,7 +320,7 @@ export async function pollPaynow(pollUrl: string, currency: PaymentCurrency = 'U
   try {
     const res = await fetch('/api/paynow', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
       // The status reply is signed with the integration that created the
       // transaction, so the currency has to travel with the poll.
       body: JSON.stringify({ action: 'poll', pollUrl, currency }),

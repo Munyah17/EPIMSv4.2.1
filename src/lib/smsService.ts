@@ -115,15 +115,19 @@ interface AfrosoftResponse {
  * up and a single blank save dropped sending into simulation mode without
  * anyone noticing messages had stopped going out.
  */
+import { supabase } from './supabase'
 async function callAfrosoft(
   numbers: string[], message: string,
 ): Promise<{ ok: true; data: AfrosoftResponse } | { ok: false; error: string }> {
   const mobiles = numbers.map(normalizeMsisdn).join(',')
 
   try {
+    // /api/gateway-proxy requires a signed-in user — the send goes out on
+    // our Afrosoft key, so it is never open to anonymous callers.
+    const { data: { session } } = await supabase.auth.getSession()
     const res = await fetch('/api/gateway-proxy', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}) },
       body: JSON.stringify({ action: 'sms', mobiles, message }),
     })
     if (!res.ok) {

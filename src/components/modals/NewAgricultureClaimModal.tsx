@@ -114,12 +114,13 @@ export default function NewAgricultureClaimModal({ onClose, onSave, showToast, c
 
   useEffect(() => {
     Promise.all([db.policies.list(), db.claims.list(), db.products.list()]).then(([polRes, claimRes, prodRes]) => {
+      if (polRes.error) showToast?.('error', 'Failed to load policies — the policy number cannot be looked up right now.')
       if (polRes.data) setPolicies(polRes.data)
       if (claimRes.data) setAllClaims(claimRes.data)
       if (prodRes.data) setProducts(prodRes.data)
       setLoading(false)
-    })
-  }, [])
+    }).catch(() => { showToast?.('error', 'Failed to load assessment form data.'); setLoading(false) })
+  }, [showToast])
 
   const agriculturePolicies = policies.filter(p => products.find(pr => pr.id === p.productId)?.category === 'agriculture')
   const policy = agriculturePolicies.find(p => p.policyNumber.toLowerCase() === policyNumberInput.trim().toLowerCase())

@@ -31,17 +31,23 @@ export default function BillingReminders({ showToast }: Props) {
   const overduePolicies = activePolicies.filter(p => overduePolicyIds.has(p.id))
 
   useEffect(() => {
-    db.policies.list().then(({ data }) => setActivePolicies((data ?? []).filter(p => p.status === 'active')))
-    db.cautionFlags.listActive().then(({ data }) => setCautions(data))
-  }, [])
+    db.policies.list().then(({ data, error }) => {
+      if (error) showToast('error', 'Failed to load policies.')
+      setActivePolicies((data ?? []).filter(p => p.status === 'active'))
+    })
+    db.cautionFlags.listActive().then(({ data, error }) => {
+      if (error) showToast('error', 'Failed to load caution flags.')
+      else setCautions(data)
+    })
+  }, [showToast])
 
   const handleForceCheck = async () => {
     setChecking(true)
     try {
       await runReminderCheck()
       setLastCheck(getLastCheckTime())
-      const { data } = await db.cautionFlags.listActive()
-      setCautions(data)
+      const { data, error } = await db.cautionFlags.listActive()
+      if (!error) setCautions(data)
       showToast('success', 'Reminder check completed. Check email and SMS logs for dispatches.')
     } finally {
       setChecking(false)
@@ -49,7 +55,8 @@ export default function BillingReminders({ showToast }: Props) {
   }
 
   const handleClearCaution = async (policyId: string) => {
-    await db.cautionFlags.clear(policyId)
+    const { error } = await db.cautionFlags.clear(policyId)
+    if (error) { showToast('error', `Caution flag not cleared: ${error}`); return }
     const { data } = await db.cautionFlags.listActive()
     setCautions(data)
     showToast('success', 'Caution flag cleared.')

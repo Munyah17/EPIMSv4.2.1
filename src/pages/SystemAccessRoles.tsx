@@ -38,7 +38,7 @@ export default function SystemAccessRoles({ showToast }: Props) {
       if (error) showToast('error', 'Failed to load system access accounts.')
       else if (data) setAccounts(data.filter(s => (SYSTEM_ROLES as string[]).includes(s.role)))
       setLoading(false)
-    })
+    }).catch(() => { showToast('error', 'Failed to load system access accounts.'); setLoading(false) })
   }, [showToast])
 
   const handleSave = async (u: AppUser, password: string) => {
@@ -119,7 +119,9 @@ export default function SystemAccessRoles({ showToast }: Props) {
               </tr>
             </thead>
             <tbody>
-              {accounts.map(a => (
+              {accounts.length === 0 ? (
+                <tr><td colSpan={9} className="td-empty">No system access accounts found.</td></tr>
+              ) : accounts.map(a => (
                 <tr key={a.id}>
                   <td>
                     <div className="staff-name-cell">

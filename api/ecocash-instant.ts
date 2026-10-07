@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { chargeEip, lookupEip, eipConfigured, eipIsSandbox } from './_lib/ecocashInstant.js'
+import { chargeEip, lookupEip, eipConfigured, eipIsSandbox, normalizeMsisdn } from './_lib/ecocashInstant.js'
+import { serviceClient, requireSession } from './_lib/sessionAuth.js'
 
 /**
  * EcoCash Instant Payment for staff-initiated premium collection.
@@ -21,6 +22,15 @@ import { chargeEip, lookupEip, eipConfigured, eipIsSandbox } from './_lib/ecocas
  */
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+
+  // 'charge' pushes a prompt to any phone on OUR merchant credentials --
+  // anonymous access would make us the sender of phishing payment requests
+  // to strangers' handsets. Signed-in users only.
+  const admin = serviceClient()
+  if (!admin) return res.status(500).json({ error: 'Server is not configured.' })
+  if (!(await requireSession(req, admin))) {
+    return res.status(401).json({ error: 'Sign-in required.' })
+  }
 
   const body = (typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body ?? {})) as Record<string, unknown>
   const action = String(body.action ?? '')
@@ -44,14 +54,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (action === 'charge') {
       const phone = String(body.phone ?? '')
       const amount = Number(body.amount)
-      const reference = String(body.reference ?? '')
+      const reference = String(body.reference ?? '').slice(0, 60)
       if (!phone || !reference || !Number.isFinite(amount) || amount <= 0) {
         return res.status(400).json({ error: 'phone, amount and reference are required.' })
+      }
+      // normalizeMsisdn happily turns any junk into a 263-prefixed string,
+      // so the shape is checked before a prompt is pushed to a number that
+      // cannot exist -- or billed to a malformed recipient.
+      if (!/^263[17]\d{8}$/.test(normalizeMsisdn(phone))) {
+        return res.status(400).json({ error: 'phone is not a valid Zimbabwe mobile number.' })
       }
 
       const { httpStatus, result, lookupUrl } = await chargeEip({
         phone, amount, reference,
-        description: String(body.description ?? 'Insurance Premium'),
+        description: String(body.description ?? 'Insurance Premium').slice(0, 100),
       })
 
       // Only a refusal EcoCash actually made is reported as failure. A 5xx

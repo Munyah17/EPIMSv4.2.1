@@ -36,15 +36,16 @@ export default function PreLossAssessments({ showToast }: Props) {
 
   const load = () => {
     Promise.all([db.policyAssessments.listAll(), db.policies.list(), db.products.list(), db.clients.list()]).then(([aRes, pRes, prodRes, cRes]) => {
+      if (aRes.error || pRes.error || prodRes.error || cRes.error) showToast('error', 'Failed to load some assessment data.')
       setAssessments(aRes.data)
       if (pRes.data) setPolicies(pRes.data)
       if (prodRes.data) setProducts(prodRes.data)
       if (cRes.data) setClients(cRes.data)
       setLoading(false)
-    })
+    }).catch(() => { showToast('error', 'Failed to load assessments.'); setLoading(false) })
   }
 
-  useEffect(load, [])
+  useEffect(load, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!detail || detail.photos.length === 0) { setPhotoUrls({}); return }

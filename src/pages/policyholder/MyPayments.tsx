@@ -3,27 +3,46 @@ import type { ToastMessage } from '../../types'
 import type { ActivePanel } from '../../App'
 import { db } from '../../lib/db'
 import { formatDate } from '../../lib/dateUtils'
-import type { Payment } from '../../types'
-import { useAuth } from '../../contexts/AuthContext'
+import type { Payment, PaymentStatus } from '../../types'
+import { usePolicyholderScope } from '../../components/policyholder/usePolicyholderScope'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
   setActivePanel: (panel: ActivePanel) => void
 }
 
-export default function MyPayments({ }: Props) {
-  const { user } = useAuth()
+// Payments used to style every non-completed status as amber "pending",
+// which told a policyholder a failed or reversed payment was still in
+// flight. Map each real status to an existing pill class.
+const STATUS_PILL: Record<PaymentStatus, string> = {
+  completed: 'pill-paid',
+  pending: 'pill-pending',
+  failed: 'pill-rejected',
+  reversed: 'pill-cancelled',
+}
+
+export default function MyPayments({ showToast }: Props) {
+  // Scoped by policy ID — payments carry policy_id, not client_id —
+  // see usePolicyholderScope for why this is not a name match.
+  const { policyIds, loading: scopeLoading, error: scopeError } = usePolicyholderScope()
   const [payments, setPayments] = useState<Payment[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    db.payments.list().then(({ data }) => {
+    db.payments.list().then(({ data, error }) => {
       if (data) setPayments(data)
+      if (error) setError(error)
       setLoading(false)
-    })
+    }).catch(() => { setError('Could not load payments.'); setLoading(false) })
   }, [])
 
-  const myPayments = payments.filter(p => p.clientName.toLowerCase() === (user?.name ?? '').toLowerCase())
+  const loadError = scopeError ?? error
+  useEffect(() => {
+    if (loadError) showToast('error', loadError)
+  }, [loadError, showToast])
+
+  const myPayments = payments.filter(p => policyIds.has(p.policyId))
   const total = myPayments.filter(p => p.status === 'completed').reduce((s, p) => s + p.amount, 0)
 
   return (
@@ -45,8 +64,10 @@ export default function MyPayments({ }: Props) {
         </div>
       </div>
 
-      {loading ? (
+      {loading || scopeLoading ? (
         <div className="empty-state">Loading payments…</div>
+      ) : loadError ? (
+        <div className="empty-state">{loadError}</div>
       ) : myPayments.length === 0 ? (
         <div className="empty-state">No payments found for your account.</div>
       ) : (
@@ -70,7 +91,7 @@ export default function MyPayments({ }: Props) {
                   <td><strong>${p.amount.toFixed(2)}</strong></td>
                   <td>{p.method}</td>
                   <td>{formatDate(p.date)}</td>
-                  <td><span className={`pill ${p.status === 'completed' ? 'pill-active' : 'pill-pending'}`}>{p.status}</span></td>
+                  <td><span className="status-pills"><span className={`pill ${STATUS_PILL[p.status]}`}>{p.status}</span></span></td>
                 </tr>
               ))}
             </tbody>

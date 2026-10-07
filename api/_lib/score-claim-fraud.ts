@@ -51,7 +51,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const apiKey = process.env.GROQ_API_KEY
   if (!apiKey) {
-    return res.status(200).json({ score: 20, signals: [] as string[], insights: [] as string[], reasoning: 'AI fraud scoring not configured (GROQ_API_KEY missing) — default low score.' })
+    // `simulated` must be present: aiService.scoreClaimFraud treats any
+    // response without it as a real score, and a real-looking 20% would sit
+    // under the claim like it was actually reviewed.
+    return res.status(200).json({ score: 20, signals: [] as string[], insights: [] as string[], reasoning: 'AI fraud scoring not configured (GROQ_API_KEY missing) — default low score.', simulated: true })
   }
 
   const body: ScoreClaimBody = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body ?? {})

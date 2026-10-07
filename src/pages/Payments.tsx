@@ -36,7 +36,7 @@ export default function Payments({ showToast }: Props) {
       if (error) showToast('error', 'Failed to load payments.')
       else if (data) setPayments(data)
       setLoading(false)
-    })
+    }).catch(() => { showToast('error', 'Failed to load payments.'); setLoading(false) })
   }, [showToast])
 
   const filtered = payments.filter(p => {

@@ -113,7 +113,11 @@ export default function PolicyAssessmentModal({ policyId, policyNumber, subjectT
   }
 
   useEffect(() => {
-    if (!isVehicle) db.cropTypes.list().then(({ data }) => setCropTypeOptions(data.filter(c => c.status === 'active')))
+    if (!isVehicle) db.cropTypes.list().then(({ data, error }) => {
+      if (error) showToast('error', 'Failed to load crop types — you can still type a crop name manually.')
+      setCropTypeOptions(data.filter(c => c.status === 'active'))
+    }).catch(() => showToast('error', 'Failed to load crop types.'))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isVehicle])
 
   const captureGps = async () => {

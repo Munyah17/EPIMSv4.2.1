@@ -2,7 +2,7 @@
 :root{
   --blue:#4169E1;--blue-light:#EAF0FE;--blue-mid:#5B7FE8;--blue-dark:#1B2A5C;--blue-soft:#DCE4FB;
   --white:#fff;--surface:#F7F9FC;--surface2:#EFF3F9;--border:#D1DCF0;
-  --text:#0F1C2E;--muted:#6B7E99;
+  --text:#0F1C2E;--muted:#5A6B85;
   --success:#059669;--success-bg:#D1FAE5;
   --warning:#D97706;--warning-bg:#FEF3C7;
   --danger:#DC2626;--danger-bg:#FEE2E2;
@@ -17,7 +17,7 @@ body{-webkit-tap-highlight-color:transparent}
 /* App-like, not a web page: no native image/icon drag-ghosting, no
    accidental text selection on UI chrome (buttons, nav, cards). Inputs,
    textareas, and anything explicitly opted in still select normally. */
-img,svg{-webkit-user-drag:none;user-drag:none;-webkit-user-select:none;user-select:none}
+img,svg{-webkit-user-drag:none;-webkit-user-select:none;user-select:none}
 button,.sidebar,.topbar,.nav-item,.card-header,.stat-card,.pill,.modal-header{-webkit-user-select:none;user-select:none}
 input,textarea,.mono,.select-text{-webkit-user-select:text;user-select:text}
 
@@ -31,12 +31,12 @@ input,textarea,.mono,.select-text{-webkit-user-select:text;user-select:text}
 .logo-icon{width:28px;height:28px;background:var(--blue-mid);border-radius:7px;display:flex;align-items:center;justify-content:center}
 .logo-icon svg{width:14px;height:14px;fill:white}
 .logo-name{font-family:'DM Serif Display',serif;font-size:15px;color:white}
-.logo-sub{font-size:9px;color:rgba(255,255,255,0.35);letter-spacing:0.08em;text-transform:uppercase;margin-top:1px}
+.logo-sub{font-size:9px;color:rgba(255,255,255,0.5);letter-spacing:0.08em;text-transform:uppercase;margin-top:1px}
 .sidebar-close-btn{display:none;margin-left:auto;background:rgba(255,255,255,0.1);border:none;border-radius:5px;padding:4px 9px;cursor:pointer;color:rgba(255,255,255,0.7);font-size:18px;line-height:1}
 .sidebar-close-btn:hover{background:rgba(255,255,255,0.2)}
 .sidebar-nav{flex:1;min-height:0;padding:7px 0;overflow-y:auto}
 .sidebar-nav::-webkit-scrollbar{width:0}
-.nav-sec{font-size:9px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.22);padding:12px 17px 3px}
+.nav-sec{font-size:9px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.4);padding:12px 17px 3px}
 .nav-item{appearance:none;background:transparent;border:none;border-left:2px solid transparent;outline:none;width:100%;text-align:left;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:9px;padding:8px 17px;cursor:pointer;color:#fff;font-size:12px;font-weight:400;transition:all 0.15s;-webkit-user-select:none;user-select:none}
 .nav-item:hover{background:rgba(255,255,255,0.06);color:#fff}
 .nav-item.active{background:rgba(91,127,232,0.18);color:white;border-left-color:var(--blue-mid);font-weight:500}
@@ -48,7 +48,7 @@ input,textarea,.mono,.select-text{-webkit-user-select:text;user-select:text}
 .user-chip{display:flex;align-items:center;gap:9px}
 .user-av{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#5B7FE8,#4169E1);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:white;flex-shrink:0}
 .user-nm{font-size:11px;font-weight:500;color:white;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:95px}
-.user-rl{font-size:9px;color:rgba(255,255,255,0.32)}
+.user-rl{font-size:9px;color:rgba(255,255,255,0.5)}
 .sb-logout{margin-left:auto;background:rgba(255,255,255,0.07);border:none;border-radius:5px;padding:4px 6px;cursor:pointer;color:rgba(255,255,255,0.42);transition:all 0.15s;flex-shrink:0}
 .sb-logout:hover{background:rgba(220,38,38,0.2);color:#FCA5A5}
 .sb-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:298}
@@ -119,7 +119,7 @@ tr:last-child td{border-bottom:none}
 tbody tr:hover td{background:var(--surface)}
 
 /* PILLS */
-.pill{display:inline-flex;align-items:center;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:500}
+.pill{display:inline-flex;align-items:center;gap:4px;padding:2px 9px;border-radius:20px;font-size:11px;font-weight:500;line-height:1.5;white-space:nowrap}
 .pill-success{background:var(--success-bg);color:#065f46}
 .pill-warning{background:var(--warning-bg);color:#92400e}
 .pill-danger{background:var(--danger-bg);color:#991b1b}
@@ -335,13 +335,13 @@ tbody tr:hover td{background:var(--surface)}
 .sidebar-logo{display:flex;align-items:center;gap:10px;padding:18px 14px 14px;border-bottom:1px solid rgba(255,255,255,0.08)}
 .sidebar-logo-mark{width:30px;height:30px;background:var(--blue-mid);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:white;flex-shrink:0}
 .sidebar-logo-name{font-family:'DM Serif Display',serif;font-size:14px;color:white;line-height:1.2}
-.sidebar-logo-sub{font-size:9px;color:rgba(255,255,255,0.32);letter-spacing:0.06em}
+.sidebar-logo-sub{font-size:9px;color:rgba(255,255,255,0.5);letter-spacing:0.06em}
 .sidebar-user{display:flex;align-items:center;gap:9px;padding:12px 14px;border-top:1px solid rgba(255,255,255,0.08);margin-top:auto}
 .sidebar-user-avatar{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#5B7FE8,#4169E1);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:white;flex-shrink:0}
 .sidebar-user-info{overflow:hidden;flex:1;min-width:0}
 .sidebar-user-name{font-size:11px;font-weight:500;color:white;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.sidebar-user-role{font-size:9px;color:rgba(255,255,255,0.35);text-transform:capitalize}
-.app-copyright{display:block;text-align:center;padding:8px 14px 12px;font-size:9px;color:rgba(255,255,255,0.3);text-decoration:none}
+.sidebar-user-role{font-size:9px;color:rgba(255,255,255,0.5);text-transform:capitalize}
+.app-copyright{display:block;text-align:center;padding:8px 14px 12px;font-size:9px;color:rgba(255,255,255,0.45);text-decoration:none}
 .app-copyright:hover{color:rgba(255,255,255,0.55);text-decoration:underline}
 @media(max-width:768px){
   .sidebar{position:fixed;inset:0 auto 0 0;width:260px;z-index:300;transform:translateX(-100%)}
@@ -407,7 +407,7 @@ tbody tr:hover td{background:var(--surface)}
 .action-menu{position:relative;display:inline-block}
 .action-menu-trigger{width:28px;height:28px;border-radius:6px;border:1px solid transparent;background:transparent;color:var(--muted);font-size:16px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center}
 .action-menu-trigger:hover{background:var(--surface);color:var(--text);border-color:var(--border)}
-.action-menu-dropdown{position:absolute;right:0;top:calc(100% + 4px);min-width:140px;background:var(--card);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.15);z-index:30;padding:4px;display:flex;flex-direction:column}
+.action-menu-dropdown{position:absolute;right:0;top:calc(100% + 4px);min-width:140px;background:var(--card,var(--white));border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.15);z-index:30;padding:4px;display:flex;flex-direction:column}
 .action-menu-item{display:block;width:100%;text-align:left;padding:7px 10px;font-size:12px;border-radius:5px;border:none;background:transparent;color:var(--text);cursor:pointer;white-space:nowrap}
 .action-menu-item:hover{background:var(--surface)}
 .action-menu-item.danger{color:var(--danger)}
@@ -422,10 +422,10 @@ tbody tr:hover td{background:var(--surface)}
 /* Status cell pill groups (status + payment-currency + caution flag) must
    wrap cleanly on narrow/mobile cells instead of overlapping on one line. */
 .status-pills{display:flex;flex-wrap:wrap;gap:4px;align-items:center}
-.status-pills .pill{margin-left:0}
+.status-pills>*{margin-left:0}
 .pill-cancelled{background:var(--surface2);color:var(--muted)}
 .pill-expired{background:#FEE2E2;color:#7f1d1d}
-.pill-under-review,.pill-under-review,.pill-under-review{background:var(--purple-bg);color:#5b21b6}
+.pill-under-review{background:var(--purple-bg);color:#5b21b6}
 .pill-approved{background:#D1FAE5;color:#065f46}
 .pill-rejected{background:#FEE2E2;color:#991b1b}
 .pill-paid{background:#D1FAE5;color:#047857}
@@ -839,7 +839,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 @media(max-width:680px){.role-manager-layout{grid-template-columns:1fr}.role-manager-list{max-height:160px;flex-direction:row;flex-wrap:wrap}}
 
 /* --- EMPTY STATE --- */
-.empty-state{text-align:center;padding:48px 20px;color:var(--muted);font-size:13px}
+.empty-state{text-align:center;padding:44px 20px;color:var(--muted);font-size:13px;line-height:1.6}
 .text-muted{color:var(--muted)}
 
 /* --- STATS RESPONSIVE --- */
@@ -858,7 +858,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 .lead-status-lost{background:rgba(148,163,184,0.12);color:var(--muted);border:none}
 
 /* --- EMPTY TABLE ROW --- */
-.td-empty{text-align:center;padding:2rem;color:var(--muted)}
+.td-empty{text-align:center;padding:36px 20px;color:var(--muted);font-size:13px;line-height:1.6}
 
 /* --- PAYMENTS PAGE --- */
 .stats-grid-3{grid-template-columns:repeat(3,1fr)!important;margin-bottom:1.5rem}
@@ -931,7 +931,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 .method-default{background:var(--surface2);color:var(--muted);padding:2px 7px;border-radius:5px;font-size:10px;font-weight:600}
 
 /* --- SIDEBAR NAV SECTION LABELS --- */
-.nav-section-label{font-size:9px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.22);padding:12px 17px 3px;display:block}
+.nav-section-label{font-size:9px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.4);padding:12px 17px 3px;display:block}
 
 /* --- ONLINE STATUS DOT --- */
 .online-dot{width:7px;height:7px;border-radius:50%;display:inline-block;flex-shrink:0}
@@ -981,12 +981,12 @@ textarea.form-control{resize:vertical;min-height:80px}
 .syshealth-bar-fill.teal{background:#10B981}
 .syshealth-bar-fill.gold{background:#F59E0B}
 
-.syshealth-recent-label{font-size:9px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.25);margin-bottom:-2px}
+.syshealth-recent-label{font-size:9px;font-weight:600;letter-spacing:0.1em;text-transform:uppercase;color:rgba(255,255,255,0.4);margin-bottom:-2px}
 .syshealth-mini-log{display:flex;flex-direction:column;gap:2px}
 .syshealth-mini-row{display:grid;grid-template-columns:36px 1fr 24px 42px 16px;align-items:center;gap:4px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:10px}
 .syshealth-op-type{font-weight:700;font-size:9px;letter-spacing:0.04em}
 .syshealth-op-table{color:rgba(255,255,255,0.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.syshealth-op-src{color:rgba(255,255,255,0.28);font-size:9px;font-weight:600}
+.syshealth-op-src{color:rgba(255,255,255,0.42);font-size:9px;font-weight:600}
 .syshealth-op-ms{color:rgba(255,255,255,0.35);font-variant-numeric:tabular-nums;text-align:right}
 .syshealth-op-ok{font-size:11px;text-align:center}
 .syshealth-op-ok.ok{color:#34D399}
@@ -995,18 +995,18 @@ textarea.form-control{resize:vertical;min-height:80px}
 .syshealth-log{display:flex;flex-direction:column;gap:1px}
 .syshealth-log-row{display:grid;grid-template-columns:68px 36px 1fr 36px 42px 16px;align-items:center;gap:4px;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:10px}
 .syshealth-log-row.fail{background:rgba(239,68,68,0.05)}
-.syshealth-log-time{color:rgba(255,255,255,0.28);font-variant-numeric:tabular-nums;font-size:9px}
+.syshealth-log-time{color:rgba(255,255,255,0.42);font-variant-numeric:tabular-nums;font-size:9px}
 .syshealth-log-table{color:rgba(255,255,255,0.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.syshealth-log-src{color:rgba(255,255,255,0.35);font-size:9px}
-.syshealth-log-ms{color:rgba(255,255,255,0.35);font-variant-numeric:tabular-nums;text-align:right;font-size:9px}
-.syshealth-log-detail{color:rgba(255,255,255,0.25);font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;grid-column:1/-1;padding-left:4px}
-.syshealth-empty{color:rgba(255,255,255,0.25);font-size:11px;text-align:center;padding:16px 0}
+.syshealth-log-src{color:rgba(255,255,255,0.45);font-size:9px}
+.syshealth-log-ms{color:rgba(255,255,255,0.45);font-variant-numeric:tabular-nums;text-align:right;font-size:9px}
+.syshealth-log-detail{color:rgba(255,255,255,0.4);font-size:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;grid-column:1/-1;padding-left:4px}
+.syshealth-empty{color:rgba(255,255,255,0.45);font-size:12px;text-align:center;padding:24px 16px;line-height:1.5}
 
 /* Sidebar-specific classes for the React Sidebar component */
 .sidebar-logo{display:flex;align-items:center;gap:10px;padding:16px 14px 14px;border-bottom:1px solid rgba(255,255,255,0.08);min-height:60px}
 .sidebar-logo-mark{width:28px;height:28px;background:var(--blue-mid);border-radius:7px;display:flex;align-items:center;justify-content:center;font-family:'DM Serif Display',serif;font-size:14px;color:white;font-weight:700;flex-shrink:0}
 .sidebar-logo-name{font-family:'DM Serif Display',serif;font-size:13px;color:white;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.sidebar-logo-sub{font-size:9px;color:rgba(255,255,255,0.3);letter-spacing:0.06em;text-transform:uppercase;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sidebar-logo-sub{font-size:9px;color:rgba(255,255,255,0.5);letter-spacing:0.06em;text-transform:uppercase;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 
 /* ── MNO HERO HEADER ── */
 .mno-hero{display:flex;align-items:center;justify-content:space-between;gap:16px;background:var(--white);border:1px solid var(--border);border-radius:14px;padding:18px 22px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,0.05);flex-wrap:wrap}
@@ -1108,7 +1108,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 .sidebar-user{display:flex;align-items:center;gap:9px;padding:11px 14px;border-top:1px solid rgba(255,255,255,0.08)}
 .sidebar-user-avatar{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#5B7FE8,#4169E1);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:white;flex-shrink:0}
 .sidebar-user-name{font-size:11px;font-weight:500;color:white;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px}
-.sidebar-user-role{font-size:9px;color:rgba(255,255,255,0.32);text-transform:capitalize}
+.sidebar-user-role{font-size:9px;color:rgba(255,255,255,0.5);text-transform:capitalize}
 
 /* ===== SYSTEM HEALTH PAGE ===== */
 .sh-page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px}
@@ -1286,3 +1286,96 @@ textarea.form-control{resize:vertical;min-height:80px}
 .phone-input-option-dial{color:var(--muted);font-size:12px}
 .phone-input-match{background:var(--gold-bg);color:var(--text);border-radius:2px;padding:0 1px}
 .phone-input-empty{padding:12px;text-align:center;font-size:12px;color:var(--muted)}
+
+
+/* ============================================================
+   POLISH PASS - focus visibility, scroll affordance, mobile UX
+   ============================================================ */
+
+/* -- KEYBOARD FOCUS --
+   Universal :focus-visible ring. Placed last so it wins equal-specificity
+   `outline:none` resets (e.g. .nav-item, .form-control, .tab-btn).
+   .phone-input-number keeps its own outline suppression (specificity 0,2,0)
+   because .phone-input:focus-within already shows the border indicator. */
+:focus-visible{outline:2px solid var(--blue-mid);outline-offset:2px}
+/* On the dark navy sidebar the ring is pulled inside the clipped edge and
+   brightened so it stays visible against --blue-dark. */
+.sidebar :focus-visible{outline-color:#93C5FD;outline-offset:-2px}
+.camera-overlay :focus-visible,.syshealth-btn:focus-visible,.syshealth-panel :focus-visible,
+.chat-panel-header :focus-visible,.ai-panel :focus-visible{outline-color:#93C5FD}
+
+/* -- TABLE SCROLL AFFORDANCE --
+   Tables live inside .card wrappers (overflow-x:auto on <=768px). A slim
+   visible scrollbar is the clearest "this scrolls" cue - it only appears
+   when the content actually overflows. */
+.card::-webkit-scrollbar,.table-card::-webkit-scrollbar,.tbl-scroll::-webkit-scrollbar{height:6px;width:6px}
+.card::-webkit-scrollbar-thumb,.table-card::-webkit-scrollbar-thumb,.tbl-scroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+.card::-webkit-scrollbar-thumb:hover,.table-card::-webkit-scrollbar-thumb:hover,.tbl-scroll::-webkit-scrollbar-thumb:hover{background:var(--muted)}
+.card,.table-card,.tbl-scroll{scrollbar-width:thin;scrollbar-color:var(--border) transparent}
+
+/* -- MOBILE (<=768px) -- */
+@media(max-width:768px){
+  /* Slightly tighter cell padding so more columns fit before scrolling */
+  .table th,.table td{padding-left:10px;padding-right:10px}
+
+  /* Sticky first column: keeps the row identity (name/ref) pinned while the
+     rest of the table scrolls underneath. background must be opaque or the
+     scrolled columns would bleed through. */
+  .table th:first-child,.table td:first-child{
+    position:sticky;left:0;z-index:2;
+    background:var(--white);
+    border-right:1px solid var(--border);
+  }
+  .table thead th:first-child{background:var(--surface)}
+  .table tbody tr:hover td:first-child{background:var(--surface)}
+  /* .td-empty is a full-width colspan cell - pinning it would freeze the
+     "No data" message over the scrollable header. Let it scroll. */
+  .table td.td-empty:first-child{position:static;border-right:none}
+
+  /* -- Touch targets ~40px in dense areas -- */
+  .action-btns .btn,.table .btn,.table-card .btn,
+  .modal .btn,.modal-foot .btn,.modal-footer .btn,
+  .form-actions .btn,.view-policy-footer .btn{min-height:40px;padding:9px 14px}
+  .table .btn-ghost,.table-card .btn-ghost{min-height:40px;padding:8px}
+  .action-menu-trigger{width:40px;height:40px;font-size:17px}
+  .action-menu-item{min-height:40px;padding:10px 12px;display:flex;align-items:center}
+  .dropdown-item{min-height:40px;padding:11px 14px}
+  .pdd-item{min-height:40px;padding:12px 14px}
+  .modal-close{min-width:40px;min-height:40px;display:inline-flex;align-items:center;justify-content:center}
+  .menu-toggle{min-width:40px;min-height:40px;padding:9px}
+  .ham-btn{min-width:40px;min-height:40px;justify-content:center}
+  .sidebar-close-btn{min-width:40px;min-height:40px;align-items:center;justify-content:center;padding:9px}
+  .prof-av-btn{width:40px;height:40px;font-size:13px}
+  .nav-item{padding:12px 17px}
+  .tab,.tab-item{padding:12px 15px}
+  .tab-btn{padding:10px 14px}
+  .cp-tab,.chart-tab{padding:9px 12px}
+  .login-tab{padding:12px 6px}
+  .email-folder,.email3-folder{min-height:40px}
+  .search-suggestion-item{min-height:40px;padding:11px 12px;display:flex;align-items:center}
+  .phone-input-option{min-height:40px;padding:9px 12px}
+  .role-manager-item-delete{min-width:36px;min-height:36px}
+  .email3-star{min-width:32px;min-height:32px}
+  .date-input-icon-btn{min-width:36px;min-height:36px;padding:9px}
+  .toast-close{min-width:36px;min-height:36px}
+  .perm-item,.permission-item{padding:8px 0}
+  .checkbox-label{padding:6px 0}
+  .member-card-row,.mass-sms-client-row,.livechat-item-clickable{min-height:44px}
+}
+
+/* -- VERY SMALL PHONES (<=480px) -- */
+@media(max-width:480px){
+  /* Toasts use the full width instead of a narrow 320px column */
+  .toast-container{left:12px;right:12px;bottom:12px;max-width:none}
+}
+
+/* -- VERY SMALL PHONES (<=400px): single-column stat cards can breathe -- */
+@media(max-width:400px){
+  .stat-value{font-size:21px!important}
+}
+
+/* Long values (reference numbers, big figures) wrap instead of overflowing */
+.stat-value{overflow-wrap:anywhere}
+
+/* Focus ring companion for the composite phone field */
+.phone-input:focus-within{box-shadow:0 0 0 2px rgba(91,127,232,0.18)}

@@ -16,7 +16,11 @@ export default function HeroSliderSettings({ showToast }: Props) {
   const [newHeadline, setNewHeadline] = useState('')
   const [adding, setAdding] = useState(false)
 
-  const load = () => { db.heroSlides.list().then(({ data }) => { setSlides(data); setLoading(false) }) }
+  const load = () => { db.heroSlides.list().then(({ data, error }) => {
+    if (error) showToast('error', 'Failed to load hero slides.')
+    else setSlides(data)
+    setLoading(false)
+  }).catch(() => { showToast('error', 'Failed to load hero slides.'); setLoading(false) }) }
   useEffect(load, [])
 
   const addSlide = async () => {

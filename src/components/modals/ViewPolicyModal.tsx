@@ -79,6 +79,7 @@ export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint, show
           {policy.dependants.length > 0 && (
             <div style={{ marginTop: '1.5rem' }}>
               <h4 style={{ marginBottom: '0.75rem' }}>Dependants</h4>
+              <div className="tbl-scroll">
               <table className="table">
                 <thead><tr><th>Member No.</th><th>Name</th><th>Relationship</th><th>Date of Birth</th><th>ID Number</th><th>Plan</th><th>Premium</th></tr></thead>
                 <tbody>
@@ -95,6 +96,7 @@ export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint, show
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
 

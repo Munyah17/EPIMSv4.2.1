@@ -33,9 +33,10 @@ export default function Tickets({ showToast }: Props) {
     Promise.all([db.tickets.list(), db.staff.list()]).then(([ticketsRes, staffRes]) => {
       if (ticketsRes.error) showToast('error', 'Failed to load tickets.')
       else if (ticketsRes.data) setTickets(ticketsRes.data)
-      if (staffRes.data) setStaff(staffRes.data)
+      if (staffRes.error) showToast('error', 'Failed to load staff — assignees may show as IDs.')
+      else if (staffRes.data) setStaff(staffRes.data)
       setLoading(false)
-    })
+    }).catch(() => { showToast('error', 'Failed to load tickets.'); setLoading(false) })
   }, [showToast])
 
   const filtered = tickets.filter(t => {
@@ -131,7 +132,7 @@ export default function Tickets({ showToast }: Props) {
                   <span className="ticket-number mono">{t.ticketNumber}</span>
                   <span className="ticket-subject">{t.subject}</span>
                 </div>
-                <div className="ticket-meta-right">
+                <div className="ticket-meta-right status-pills">
                   <span className={`pill ${PRIORITY_CLASS[t.priority]}`}>{t.priority}</span>
                   <span className={`pill pill-${t.status.replace('_', '-')}`}>{t.status.replace('_', ' ')}</span>
                 </div>

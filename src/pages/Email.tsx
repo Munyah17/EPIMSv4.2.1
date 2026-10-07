@@ -74,7 +74,7 @@ export default function Email({ showToast }: Props) {
       if (error) showToast('error', 'Failed to load emails.')
       else if (data) setEmails(data)
       setLoading(false)
-    })
+    }).catch(() => { showToast('error', 'Failed to load emails.'); setLoading(false) })
   }, [showToast])
 
   const displayed = emails.filter(e => {

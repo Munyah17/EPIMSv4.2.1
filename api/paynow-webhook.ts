@@ -238,7 +238,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // itself is never converted.
     const rateUsed = Number.isFinite(txnRate) && txnRate > 0 ? txnRate : 1
     const perPeriod = Math.round(billablePremium(policy) * rateUsed * 100) / 100
-    const periodsPaid = perPeriod > 0 ? Math.max(1, Math.round(confirmedAmount / perPeriod)) : 1
+    // Only whole periods extend cover — the Math.max(1, Math.round(...))
+    // this replaces bought a full month for ANY amount at all, including a
+    // token $0.01. The payment row above still records every cent received
+    // (the client is owed the credit); it just doesn't move the due date
+    // until it adds up to a full cycle. Same rule as
+    // applyCompletedPaymentToPolicy in src/lib/db.ts and recordPayment in
+    // api/v1.ts.
+    const periodsPaid = perPeriod > 0 ? Math.floor(confirmedAmount / perPeriod) : 0
     const monthsToAdvance = cycleMonths * periodsPaid
 
     const today = new Date()
@@ -246,9 +253,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const next = new Date(base)
     next.setMonth(next.getMonth() + monthsToAdvance)
 
+    // Reinstatement is worth a full period, same as cover: a token payment
+    // must not bring a lapsed policy back to life.
     let newStatus = policy.status
-    if (policy.status === 'lapsed') newStatus = category === 'agriculture' ? 'active' : 'waiting_period'
-    else if (category === 'agriculture' && policy.status === 'waiting_period') newStatus = 'active'
+    if (periodsPaid >= 1) {
+      if (policy.status === 'lapsed') newStatus = category === 'agriculture' ? 'active' : 'waiting_period'
+      else if (category === 'agriculture' && policy.status === 'waiting_period') newStatus = 'active'
+    }
 
     await admin.from('policies').update({
       status: newStatus,

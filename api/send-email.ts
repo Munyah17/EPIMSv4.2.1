@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import nodemailer from 'nodemailer'
 import { graphConfigured, sendViaGraph } from './_lib/graphMail.js'
+import { serviceClient, requireSession } from './_lib/sessionAuth.js'
 
 /**
  * Outgoing mail. Two routes, tried in this order:
@@ -86,6 +87,21 @@ function getTransporter() {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
+  }
+
+  // This sends real mail through our own Microsoft 365 / SMTP account, so
+  // it can never be anonymous — an open relay on a verified sender domain
+  // is a spam cannon pointed back at us. Two callers are legitimate: a
+  // signed-in user (any role — a policyholder's own actions can fire
+  // notifications too), and cron-reminders carrying the cron secret.
+  const cronSecret = process.env.CRON_SECRET
+  const isCron = !!cronSecret && req.headers.authorization === `Bearer ${cronSecret}`
+  if (!isCron) {
+    const admin = serviceClient()
+    if (!admin) return res.status(500).json({ error: 'Server is not configured.' })
+    if (!(await requireSession(req, admin))) {
+      return res.status(401).json({ error: 'Sign-in required.' })
+    }
   }
 
   const body: SendEmailBody = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body ?? {})

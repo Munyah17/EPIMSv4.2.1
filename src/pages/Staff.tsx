@@ -48,7 +48,7 @@ export default function Staff({ showToast }: Props) {
       if (error) showToast('error', 'Failed to load staff.')
       else if (data) setStaff(data.filter(s => !(SYSTEM_ROLES as string[]).includes(s.role)))
       setLoading(false)
-    })
+    }).catch(() => { showToast('error', 'Failed to load staff.'); setLoading(false) })
   }, [showToast])
 
   const filtered = staff.filter(s =>
@@ -142,7 +142,9 @@ export default function Staff({ showToast }: Props) {
               </tr>
             </thead>
             <tbody>
-              {filtered.map(s => (
+              {filtered.length === 0 ? (
+                <tr><td colSpan={9} className="td-empty">No staff members found.</td></tr>
+              ) : filtered.map(s => (
                 <tr key={s.id}>
                   <td>
                     <div className="staff-name-cell">
@@ -155,8 +157,10 @@ export default function Staff({ showToast }: Props) {
                   <td>{s.username ?? '—'}</td>
                   <td>{s.email}</td>
                   <td>
-                    <span className={`pill ${ROLE_CLASS[s.role] ?? 'role-admin'}`}>{s.role.replace(/_/g, ' ')}</span>
-                    {s.customRoleName && <span className="pill pill-active" style={{ marginLeft: 4 }}>{s.customRoleName}</span>}
+                    <div className="status-pills">
+                      <span className={`pill ${ROLE_CLASS[s.role] ?? 'role-admin'}`}>{s.role.replace(/_/g, ' ')}</span>
+                      {s.customRoleName && <span className="pill pill-active">{s.customRoleName}</span>}
+                    </div>
                   </td>
                   <td>{s.department}</td>
                   <td>{s.phone ?? '—'}</td>

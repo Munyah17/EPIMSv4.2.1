@@ -31,9 +31,22 @@ export default function LiveChat({ showToast }: Props) {
   const reload = useCallback(() => {
     Promise.all([chat.listQueue(), chat.listActiveSessions()]).then(([q, a]) => {
       setQueue(q); setActive(a); setLoading(false)
-      setSelected(prev => prev ? [...q, ...a, ...closed].find(s => s.id === prev.id) ?? prev : prev)
-    })
-  }, [closed])
+      setSelected(prev => {
+        if (!prev) return prev
+        const found = [...q, ...a, ...closed].find(s => s.id === prev.id)
+        if (found) return found
+        // The open chat left every visible list — most often because it was
+        // closed (manually or by the inactivity auto-close) while history is
+        // hidden, or it fell outside the 50-row history window. Fetch it
+        // directly so the window stops offering a live input and "End Chat"
+        // on a session that has actually ended.
+        void chat.getSession(prev.id).then(fresh => {
+          if (fresh) setSelected(cur => (cur?.id === fresh.id ? fresh : cur))
+        })
+        return prev
+      })
+    }).catch(() => { showToast('error', 'Failed to load chat sessions.'); setLoading(false) })
+  }, [closed, showToast])
 
   useEffect(() => {
     if (showHistory) chat.listClosedSessions().then(setClosed)
@@ -55,7 +68,8 @@ export default function LiveChat({ showToast }: Props) {
   useEffect(() => {
     if (!selected) return
     chat.listMessages(selected.id).then(setMessages)
-    const unsub = chat.subscribeToMessages(selected.id, msg => setMessages(prev => [...prev, msg]))
+    const unsub = chat.subscribeToMessages(selected.id, msg =>
+      setMessages(prev => prev.some(m => m.id === msg.id) ? prev : [...prev, msg]))
     // Polling backstop — see the matching note in ChatWidget.tsx.
     const interval = setInterval(() => {
       chat.listMessages(selected.id).then(fresh => {
@@ -75,10 +89,19 @@ export default function LiveChat({ showToast }: Props) {
 
   const claim = async (session: ChatSession) => {
     if (!user) return
-    const { error } = await chat.claimSession(session.id, user.id)
+    const { data, error } = await chat.claimSession(session.id, user.id)
     if (error) { showToast('error', 'Failed to claim chat.'); return }
+    // The status='queued' guard in claimSession means zero rows updated
+    // when someone else got there first.
+    if (!data || data.length === 0) {
+      showToast('info', 'That chat was already claimed by someone else.')
+      reload()
+      return
+    }
     showToast('success', `Chat with ${session.visitorName} claimed.`)
-    setSelected(session)
+    // Reflect the claim immediately — the queued object would otherwise sit
+    // on "Claim this chat" until the next realtime tick or poll.
+    setSelected({ ...session, status: 'active', assignedTo: user.id, assignedName: user.name, startedAt: new Date().toISOString() })
   }
 
   const close = async (session: ChatSession) => {
@@ -91,7 +114,16 @@ export default function LiveChat({ showToast }: Props) {
     if (!selected || !draft.trim() || !user) return
     const body = draft.trim()
     setDraft('')
-    await chat.sendMessage(selected.id, 'agent', user.name, body)
+    const { message, error } = await chat.sendMessage(selected.id, 'agent', user.name, body)
+    if (error) {
+      // Restore the draft so a failed send doesn't silently eat the message.
+      setDraft(body)
+      showToast('error', `Message failed to send: ${error}`)
+      return
+    }
+    // Append the stored row now rather than waiting on realtime or the poll;
+    // deduped by id so a realtime echo of the same row can't double it.
+    if (message) setMessages(prev => prev.some(m => m.id === message.id) ? prev : [...prev, message])
   }
 
   return (

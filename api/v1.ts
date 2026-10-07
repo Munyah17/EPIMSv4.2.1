@@ -93,6 +93,49 @@ function isUuid(v: unknown): v is string {
 }
 
 /**
+ * Postgres error text names tables, columns and constraints — free schema
+ * reconnaissance for an external caller. Known codes get a plain sentence;
+ * anything else gets a generic refusal. The real error still reaches
+ * Vercel's function logs where it is logged, never the HTTP response.
+ */
+function pgMessage(error: { code?: string } | null): string {
+  switch (error?.code) {
+    case '23505': return 'That would duplicate an existing record.'
+    case '23503': return 'A referenced record does not exist.'
+    case '23502': return 'A required field is missing.'
+    case '22P02': return 'A value has the wrong format.'
+    default: return 'The request was rejected.'
+  }
+}
+
+/**
+ * Takes `amount` from a developer's wallet, atomically.
+ *
+ * PostgREST cannot express `wallet_balance = wallet_balance - n`, so this
+ * is a compare-and-set loop: read the live balance, then write the
+ * decremented figure only if the row still shows what was just read.
+ * Postgres serialises concurrent updates on the row, so two sales racing
+ * each other cannot both pass the balance check and spend the same dollars
+ * twice — the loser sees a changed balance, retries, and either succeeds
+ * on the new figure or runs out of money honestly. Returns the balance
+ * actually written so the ledger row can record it truthfully, or null
+ * when the float could not cover the debit.
+ */
+async function debitWallet(admin: SupabaseClient, devId: string, amount: number): Promise<number | null> {
+  for (let attempt = 0; attempt < 6; attempt++) {
+    const { data: row } = await admin.from('api_developers').select('wallet_balance').eq('id', devId).single()
+    if (!row) return null
+    const balance = Number(row.wallet_balance) || 0
+    if (balance < amount) return null
+    const next = Math.round((balance - amount) * 100) / 100
+    const { data: updated } = await admin.from('api_developers')
+      .update({ wallet_balance: next }).eq('id', devId).eq('wallet_balance', balance).select('id')
+    if (updated && updated.length > 0) return next
+  }
+  return null
+}
+
+/**
  * One stored shape for national IDs: separators and case stripped, the same
  * normalisation the public checkout applies before it ever writes a client.
  * "63-1234567-A-89" and "631234567A89" are the same person — dedup and
@@ -100,6 +143,47 @@ function isUuid(v: unknown): v is string {
  */
 function normalizeNationalId(raw: string): string {
   return raw.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
+}
+
+/** A generous ceiling — funeral family plans top out well below this; a
+ *  bigger array is junk input, not a bigger family. */
+const MAX_DEPENDANTS = 10
+
+/**
+ * Shapes the caller's dependants into the only fields a policy row may
+ * carry. The API sells one product per policy, so a dependant's premium
+ * and cover are always THIS product's — never read from the request. A
+ * caller-supplied `premium` of a cent used to flow straight into the row,
+ * and every renewal after that priced the dependant at a cent too (see
+ * perPeriod in recordPayment and billablePremium in api/paynow-webhook.ts):
+ * the issuance debit charged full price per head while renewals billed
+ * pocket change.
+ */
+function sanitizeDependants(raw: unknown, product: { id: string; name: string; premium: number; cover_amount: number }):
+  { ok: true; dependants: Record<string, unknown>[] } | { ok: false } {
+  if (raw === undefined || raw === null) return { ok: true, dependants: [] }
+  if (!Array.isArray(raw) || raw.length > MAX_DEPENDANTS) return { ok: false }
+  const dependants: Record<string, unknown>[] = []
+  for (const entry of raw) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return { ok: false }
+    const d = entry as Record<string, unknown>
+    const name = String(d.name ?? '').trim()
+    if (!name) return { ok: false }
+    const dob = String(d.dob ?? '').trim()
+    const phone = String(d.phone ?? '').trim()
+    dependants.push({
+      name: name.slice(0, 120),
+      relationship: String(d.relationship ?? '').trim().slice(0, 40),
+      dob: /^\d{4}-\d{2}-\d{2}$/.test(dob) ? dob : '',
+      nationalId: normalizeNationalId(String(d.nationalId ?? '')),
+      productId: product.id,
+      productName: product.name,
+      premium: Number(product.premium),
+      coverAmount: Number(product.cover_amount),
+      ...(phone ? { phone: phone.slice(0, 40) } : {}),
+    })
+  }
+  return { ok: true, dependants }
 }
 
 /**
@@ -266,7 +350,10 @@ async function listProducts(admin: SupabaseClient) {
     .from('products')
     .select('id, name, category, premium, cover_amount, waiting_period_days, min_age, max_age, features, description')
     .eq('active', true)
-  if (error) return { status: 500, body: { error: error.message } }
+  if (error) {
+    console.error('v1 listProducts query failed', error)
+    return { status: 500, body: { error: 'Internal server error.' } }
+  }
   return {
     status: 200,
     body: {
@@ -286,7 +373,10 @@ async function getQuote(admin: SupabaseClient, body: Json) {
   const { data: product, error } = await admin
     .from('products').select('id, name, premium, cover_amount, waiting_period_days, min_age, max_age')
     .eq('id', productId).eq('active', true).maybeSingle()
-  if (error) return { status: 500, body: { error: error.message } }
+  if (error) {
+    console.error('v1 getQuote query failed', error)
+    return { status: 500, body: { error: 'Internal server error.' } }
+  }
   if (!product) return { status: 404, body: { error: 'Product not found or inactive.' } }
 
   const age = body.age !== undefined && body.age !== null && Number.isFinite(Number(body.age)) ? Number(body.age) : undefined
@@ -305,21 +395,28 @@ async function getQuote(admin: SupabaseClient, body: Json) {
 }
 
 async function createClient_(admin: SupabaseClient, body: Json, agentId: string) {
-  const name = String(body.name ?? '').trim()
-  const phone = String(body.phone ?? '').trim()
+  const name = String(body.name ?? '').trim().slice(0, 120)
+  const phone = String(body.phone ?? '').trim().slice(0, 40)
   // Partners type the ID however it appears on the card — dashes, spaces,
   // lowercase check letter. Store the canonical form so the same person
   // presented two ways still deduplicates to one client.
-  const rawNationalId = String(body.nationalId ?? '').trim()
+  const rawNationalId = String(body.nationalId ?? '').trim().slice(0, 60)
   const nationalId = normalizeNationalId(rawNationalId)
   if (!name || !phone || !nationalId) return { status: 400, body: { error: 'name, phone, and nationalId are required.' } }
 
+  const dob = body.dob ? String(body.dob).trim() : ''
+  // Checked here rather than letting Postgres reject the date column —
+  // same outcome, without the raw 22007 error text going to the caller.
+  if (dob && !/^\d{4}-\d{2}-\d{2}$/.test(dob)) {
+    return { status: 400, body: { error: 'dob must be YYYY-MM-DD.' } }
+  }
+
   const { data, error } = await admin.from('clients').insert({
     name, phone, national_id: nationalId,
-    email: body.email ? String(body.email) : null,
-    dob: body.dob ? String(body.dob) : null,
-    address: body.address ? String(body.address) : null,
-    occupation: body.occupation ? String(body.occupation) : null,
+    email: body.email ? String(body.email).slice(0, 120) : null,
+    dob: dob || null,
+    address: body.address ? String(body.address).slice(0, 300) : null,
+    occupation: body.occupation ? String(body.occupation).slice(0, 120) : null,
     // The developer's own agent profile is recorded as the referring
     // agent: anyone this key registers was, by definition, brought in
     // by that partner.
@@ -327,7 +424,7 @@ async function createClient_(admin: SupabaseClient, body: Json, agentId: string)
     status: 'active',
   }).select('id').single()
   if (!error) return { status: 201, body: { data: { id: data.id, nationalId, existing: false } } }
-  if (error.code !== '23505') return { status: 400, body: { error: error.message } }
+  if (error.code !== '23505') return { status: 400, body: { error: pgMessage(error) } }
 
   // Already exists — only hand back the id (and let the caller treat it as
   // "their" client) if this developer already has a policy against them.
@@ -355,7 +452,7 @@ async function createPolicy(admin: SupabaseClient, body: Json, dev: Record<strin
   // the client round-trip is not bounced on a format technicality).
   const clientRef = String(body.clientId ?? body.clientNationalId ?? '').trim()
   const productId = body.productId as string | undefined
-  const paymentMethod = String(body.paymentMethod ?? 'EcoCash')
+  const paymentMethod = String(body.paymentMethod ?? 'EcoCash').slice(0, 40)
   if (!clientRef || !productId) return { status: 400, body: { error: 'clientId (or clientNationalId) and productId are required.' } }
   if (!isUuid(productId)) return { status: 400, body: { error: 'productId must be a valid UUID.' } }
 
@@ -396,12 +493,20 @@ async function createPolicy(admin: SupabaseClient, body: Json, dev: Record<strin
     return { status: 403, body: { error: 'Agriculture cover cannot be issued through the partner API. It is arranged through sponsoring associations — contact Motions Microinsurance directly.' } }
   }
 
+  // A dependant's premium is always this product's (the API sells one
+  // product per policy), so a head count is exactly what the float is
+  // charged and what renewals will bill — caller-supplied premiums never
+  // reach the row (see sanitizeDependants).
+  const dep = sanitizeDependants(body.dependants, product as { id: string; name: string; premium: number; cover_amount: number })
+  if (!dep.ok) {
+    return { status: 400, body: { error: `dependants must be an array of at most ${MAX_DEPENDANTS} objects, each with at least a name.` } }
+  }
+  const dependants = dep.dependants
+  const requiredAmount = Number(product.premium) * (1 + dependants.length)
+
   // A Digital Agent collects its own money and settles with us separately,
   // so a policy is only ever issued against a float already on deposit --
   // never on the strength of a sale it merely claims to have made.
-  const dependantCount = Array.isArray(body.dependants) ? body.dependants.length : 0
-  const requiredAmount = Number(product.premium) * (1 + dependantCount)
-
   const walletBalance = Number(dev.wallet_balance ?? 0)
   if (walletBalance < requiredAmount) {
     return {
@@ -412,10 +517,17 @@ async function createPolicy(admin: SupabaseClient, body: Json, dev: Record<strin
 
   const startDate = body.startDate ? new Date(String(body.startDate)) : new Date()
   if (Number.isNaN(startDate.getTime())) return { status: 400, body: { error: 'startDate is not a valid date.' } }
+  // start_date feeds the 90-day waiting-period lift in cron-reminders, so a
+  // wildly backdated one is not a typo — it is free cover. Bounded to what
+  // a partner could legitimately mean: a recent issue date or a scheduled
+  // start coming up soon.
+  const DAY_MS = 86400000
+  const startMs = startDate.getTime()
+  if (startMs < Date.now() - 14 * DAY_MS || startMs > Date.now() + 60 * DAY_MS) {
+    return { status: 400, body: { error: 'startDate must be within the last 14 days or the next 60 days.' } }
+  }
   const endDate = new Date(startDate)
   endDate.setFullYear(endDate.getFullYear() + 1)
-
-  const dependants = Array.isArray(body.dependants) ? body.dependants : []
 
   const { data, error } = await admin.from('policies').insert({
     policy_number: await nextPolicyNumber(admin, product),
@@ -431,22 +543,29 @@ async function createPolicy(admin: SupabaseClient, body: Json, dev: Record<strin
     agent_id: agentId,
     source: 'api_partner',
   }).select('id, policy_number').single()
-  if (error) return { status: 400, body: { error: error.message } }
+  if (error) return { status: 400, body: { error: pgMessage(error) } }
 
-  // The float is only ever spent, never quietly not-spent: the check above
-  // already confirmed there was enough of it, so a failure here is a
-  // reporting problem on an already-issued policy, not a business-rule
-  // violation -- logged loudly rather than left to undo a policy that is
-  // already real.
-  const newBalance = Math.round((Number(dev.wallet_balance ?? 0) - requiredAmount) * 100) / 100
-  const { error: walletError } = await admin.from('api_developers').update({ wallet_balance: newBalance }).eq('id', dev.id)
-  if (walletError) {
-    console.error('createPolicy: wallet debit failed', dev.id, data.id, walletError.message)
-  } else {
-    await admin.from('api_wallet_transactions').insert({
-      developer_id: dev.id, type: 'policy_debit', amount: -requiredAmount, balance_after: newBalance,
-      policy_id: data.id, note: `Policy ${data.policy_number}`,
-    })
+  // The float is only ever spent, never quietly not-spent — and never
+  // double-spent: the earlier check read the balance once at request
+  // start, so the debit itself is an atomic compare-and-set (see
+  // debitWallet). If it cannot land, the just-inserted policy cannot stand
+  // either — cover issued for nothing is the exact fraud the wallet exists
+  // to close — so it is deleted rather than parked. The delete failing
+  // still leaves only a 'pending' policy a human must approve anyway.
+  const newBalance = await debitWallet(admin, dev.id as string, requiredAmount)
+  if (newBalance === null) {
+    await admin.from('policies').delete().eq('id', data.id)
+    console.error('createPolicy: wallet debit failed; policy rolled back', dev.id, data.id)
+    return { status: 402, body: { error: 'Insufficient wallet balance — the policy was not issued. Top up your float and try again.' } }
+  }
+  const { error: ledgerError } = await admin.from('api_wallet_transactions').insert({
+    developer_id: dev.id, type: 'policy_debit', amount: -requiredAmount, balance_after: newBalance,
+    policy_id: data.id, note: `Policy ${data.policy_number}`,
+  })
+  if (ledgerError) {
+    // The debit itself DID land — a missing ledger row is a reporting gap
+    // on a real transaction, never a reason to undo paid-for cover.
+    console.error('createPolicy: wallet ledger write failed after successful debit', dev.id, data.id, ledgerError.message)
   }
 
   return { status: 201, body: { data: { id: data.id, policyNumber: data.policy_number, status: 'pending' } } }
@@ -459,7 +578,10 @@ async function getPolicy(admin: SupabaseClient, policyNumber: string, agentId: s
     .eq('policy_number', policyNumber)
     .eq('agent_id', agentId)
     .maybeSingle()
-  if (error) return { status: 500, body: { error: error.message } }
+  if (error) {
+    console.error('v1 getPolicy query failed', error)
+    return { status: 500, body: { error: 'Internal server error.' } }
+  }
   if (!data) return { status: 404, body: { error: 'Policy not found.' } }
   return {
     status: 200,
@@ -482,7 +604,10 @@ async function getPolicy(admin: SupabaseClient, policyNumber: string, agentId: s
  */
 async function listClients(admin: SupabaseClient, agentId: string, nationalId?: string) {
   const { data: ownPolicies, error: polError } = await admin.from('policies').select('client_id').eq('agent_id', agentId)
-  if (polError) return { status: 500, body: { error: polError.message } }
+  if (polError) {
+    console.error('v1 listClients policies query failed', polError)
+    return { status: 500, body: { error: 'Internal server error.' } }
+  }
   const clientIds = [...new Set((ownPolicies ?? []).map(p => p.client_id as string).filter(Boolean))]
   if (clientIds.length === 0) return { status: 200, body: { data: [] } }
 
@@ -494,7 +619,10 @@ async function listClients(admin: SupabaseClient, agentId: string, nationalId?: 
     query = query.in('national_id', [...new Set([nid, nationalId.trim()])])
   }
   const { data, error } = await query
-  if (error) return { status: 500, body: { error: error.message } }
+  if (error) {
+    console.error('v1 listClients query failed', error)
+    return { status: 500, body: { error: 'Internal server error.' } }
+  }
   return {
     status: 200,
     body: {
@@ -520,7 +648,10 @@ async function listPolicies(admin: SupabaseClient, agentId: string) {
     .eq('agent_id', agentId)
     .order('created_at', { ascending: false })
     .limit(500)
-  if (error) return { status: 500, body: { error: error.message } }
+  if (error) {
+    console.error('v1 listPolicies query failed', error)
+    return { status: 500, body: { error: 'Internal server error.' } }
+  }
 
   const rows = data ?? []
   const clientIds = [...new Set(rows.map(r => r.client_id as string).filter(Boolean))]
@@ -576,10 +707,10 @@ async function recordPayment(admin: SupabaseClient, body: Json, agentId: string)
     reference: refNumber('PAY'),
     policy_id: policy.id,
     amount,
-    method: String(body.method ?? 'EcoCash'),
+    method: String(body.method ?? 'EcoCash').slice(0, 40),
     status: 'completed',
   }).select('id, reference').single()
-  if (error) return { status: 400, body: { error: error.message } }
+  if (error) return { status: 400, body: { error: pgMessage(error) } }
 
   // Mirrors applyCompletedPaymentToPolicy in src/lib/db.ts, the same rule
   // staff-recorded payments follow: agriculture jumps straight to active on
@@ -636,8 +767,8 @@ async function recordPayment(admin: SupabaseClient, body: Json, agentId: string)
  * must belong to the calling developer, same as every other endpoint.
  */
 async function submitApiTicket(admin: SupabaseClient, body: Json, agentId: string, companyName: string) {
-  const subject = String(body.subject ?? '').trim()
-  const description = String(body.description ?? '').trim()
+  const subject = String(body.subject ?? '').trim().slice(0, 150)
+  const description = String(body.description ?? '').trim().slice(0, 5000)
   const clientId = body.clientId ? String(body.clientId) : ''
   if (!subject || !description || !clientId) {
     return { status: 400, body: { error: 'subject, description, and clientId are required.' } }
@@ -656,7 +787,7 @@ async function submitApiTicket(admin: SupabaseClient, body: Json, agentId: strin
     priority: 'high',
     category: 'API Partner Request',
   }).select('id, ticket_number').single()
-  if (error) return { status: 400, body: { error: error.message } }
+  if (error) return { status: 400, body: { error: pgMessage(error) } }
 
   return { status: 201, body: { data: { id: data.id, ticketNumber: data.ticket_number, status: 'open' } } }
 }

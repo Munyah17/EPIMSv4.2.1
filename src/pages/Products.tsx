@@ -24,7 +24,7 @@ export default function Products({ showToast }: Props) {
       if (error) showToast('error', 'Failed to load products.')
       else if (data) setProducts(data)
       setLoading(false)
-    })
+    }).catch(() => { showToast('error', 'Failed to load products.'); setLoading(false) })
   }, [showToast])
 
   const handleSave = async (p: Product) => {
@@ -63,6 +63,8 @@ export default function Products({ showToast }: Props) {
 
       {loading ? (
         <div className="empty-state">Loading products…</div>
+      ) : products.length === 0 ? (
+        <div className="empty-state">No products configured yet.</div>
       ) : (
         <div className="products-grid">
           {products.map(p => (

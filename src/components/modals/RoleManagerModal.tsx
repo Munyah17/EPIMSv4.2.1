@@ -17,7 +17,11 @@ export default function RoleManagerModal({ onClose, showToast }: Props) {
   const [draft, setDraft] = useState(EMPTY_DRAFT)
   const [saving, setSaving] = useState(false)
 
-  const load = () => db.customRoles.list().then(({ data }) => { setRoles(data); setLoading(false) })
+  const load = () => db.customRoles.list().then(({ data, error }) => {
+    if (error) showToast('error', 'Failed to load custom roles.')
+    else setRoles(data)
+    setLoading(false)
+  }).catch(() => { showToast('error', 'Failed to load custom roles.'); setLoading(false) })
   useEffect(() => { load() }, [])
 
   const startNew = () => { setEditing(null); setDraft(EMPTY_DRAFT) }

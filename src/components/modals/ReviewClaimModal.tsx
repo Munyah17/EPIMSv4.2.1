@@ -50,11 +50,21 @@ export default function ReviewClaimModal({ claim, onClose, onSave, showToast }: 
   const [postLossPlaceLabel, setPostLossPlaceLabel] = useState<string | null>(null)
 
   useEffect(() => {
-    db.staff.list().then(({ data }) => { if (data) setStaff(data.filter(u => u.active)) })
+    db.staff.list().then(({ data, error }) => {
+      if (error) showToast('error', 'Failed to load staff for reassignment.')
+      if (data) setStaff(data.filter(u => u.active))
+    }).catch(() => showToast('error', 'Failed to load staff for reassignment.'))
     if (isAgriculture(claim)) {
-      db.claimAssessments.listForClaim(claim.id).then(({ data }) => setPhysicalAssessments(data))
+      db.claimAssessments.listForClaim(claim.id).then(({ data, error }) => {
+        if (error) showToast('error', 'Failed to load loss assessments for this claim.')
+        setPhysicalAssessments(data)
+      }).catch(() => showToast('error', 'Failed to load loss assessments for this claim.'))
     }
-    db.policyAssessments.listForPolicy(claim.policyId).then(({ data }) => setPreLossAssessments(data))
+    db.policyAssessments.listForPolicy(claim.policyId).then(({ data, error }) => {
+      if (error) showToast('error', 'Failed to load pre-loss assessments for this policy.')
+      setPreLossAssessments(data)
+    }).catch(() => showToast('error', 'Failed to load pre-loss assessments for this policy.'))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [claim])
 
   const hasCompletedAssessment = physicalAssessments.some(a => !!a.submittedAt)

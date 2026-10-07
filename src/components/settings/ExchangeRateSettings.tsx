@@ -48,11 +48,17 @@ export default function ExchangeRateSettings({ showToast }: Props) {
   const [suggesting, setSuggesting] = useState(false)
 
   const load = useCallback(async () => {
-    const [cur, hist] = await Promise.all([db.exchangeRates.current(), db.exchangeRates.history()])
-    setCurrent(cur.data)
-    setHistory(hist.data)
-    setLoading(false)
-  }, [])
+    try {
+      const [cur, hist] = await Promise.all([db.exchangeRates.current(), db.exchangeRates.history()])
+      if (cur.error || hist.error) showToast('error', cur.error ?? hist.error ?? 'Failed to load exchange rates.')
+      setCurrent(cur.data)
+      setHistory(hist.data)
+    } catch {
+      showToast('error', 'Failed to load exchange rates.')
+    } finally {
+      setLoading(false)
+    }
+  }, [showToast])
 
   useEffect(() => { void load() }, [load])
 

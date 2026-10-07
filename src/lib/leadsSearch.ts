@@ -16,14 +16,17 @@ export interface LeadSearchResponse {
   error?: string
 }
 
+import { supabase } from './supabase'
+
 /** Calls the /api/search-leads endpoint (api/ai.ts). Never throws — a failure comes
  *  back as a normal response with `error` set, same as the rest of the
  *  app's AI-backed calls. */
 export async function searchForLeads(query: string, location?: string): Promise<LeadSearchResponse> {
   try {
+    const { data: { session } } = await supabase.auth.getSession()
     const res = await fetch('/api/search-leads', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}) },
       body: JSON.stringify({ query, location }),
     })
     const body = await res.json().catch(() => ({}))

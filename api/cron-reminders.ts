@@ -110,7 +110,10 @@ async function sendMail(origin: string, input: { to: string; subject: string; te
   try {
     const res = await fetch(`${origin}/api/send-email`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      // send-email requires a signed-in user or the cron secret (see
+      // api/send-email.ts); this run carries the secret, which the handler
+      // above already verified is present before any dispatch can happen.
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.CRON_SECRET}` },
       body: JSON.stringify({ from: 'noreply@motions.co.zw', fromName: 'Motions Microinsurance', ...input }),
     })
     return res.ok
