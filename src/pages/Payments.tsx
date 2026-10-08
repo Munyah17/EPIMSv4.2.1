@@ -3,7 +3,7 @@ import type { ToastMessage, Payment, PaymentMethod, PaymentStatus } from '../typ
 import { PAYMENT_METHODS } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
-import { formatDate } from '../lib/dateUtils'
+import { formatDateTime } from '../lib/dateUtils'
 import { useAuth } from '../contexts/AuthContext'
 import { recordActivity } from '../lib/activityLog'
 import { notifyPaymentReceived } from '../lib/signupNotifications'
@@ -178,21 +178,23 @@ export default function Payments({ showToast }: Props) {
             <thead>
               <tr>
                 <th>Reference</th>
+                <th>Txn ID</th>
                 <th>Policy No.</th>
                 <th>Client</th>
                 <th>Amount</th>
                 <th>Method</th>
-                <th>Date</th>
+                <th>Date &amp; Time</th>
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={8} className="td-empty">No payments found.</td></tr>
+                <tr><td colSpan={9} className="td-empty">No payments found.</td></tr>
               ) : filtered.map(p => (
                 <tr key={p.id}>
                   <td><span className="mono">{p.reference}</span></td>
+                  <td><span className="mono" title={p.transactionId ? undefined : 'Not yet stamped — older record'}>{p.transactionId ?? '—'}</span></td>
                   <td><span className="mono">{p.policyNumber}</span></td>
                   <td>{p.clientName}</td>
                   <td><strong>${p.amount.toFixed(2)}</strong></td>
@@ -202,7 +204,7 @@ export default function Payments({ showToast }: Props) {
                       {p.splitPayments && <span className="payment-split-label">+split</span>}
                     </div>
                   </td>
-                  <td>{formatDate(p.date)}</td>
+                  <td>{formatDateTime(p.recordedAt ?? p.date)}</td>
                   <td><span className={`pill ${STATUS_CLASS[p.status]}`}>{p.status}</span></td>
                   <td>
                     <div className="action-btns">

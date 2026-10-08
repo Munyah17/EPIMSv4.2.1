@@ -409,6 +409,14 @@ export interface Payment {
   method: PaymentMethod
   status: PaymentStatus
   date: string
+  /** The gateway's own transaction ID when one was captured (EcoCash,
+   *  Paynow); otherwise a generated ID in the form
+   *  LAM-CSH081020261649 — payer initials, method abbreviation,
+   *  DDMMYYYY, HHmm. See lib/transactionId. */
+  transactionId?: string
+  /** Exact date-and-time the payment was recorded (payments.created_at),
+   *  for display alongside the plain `date`. */
+  recordedAt?: string
   splitPayments?: SplitPayment[]
 }
 

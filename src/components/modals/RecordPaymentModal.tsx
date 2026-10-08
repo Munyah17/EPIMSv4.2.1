@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { Payment, PaymentMethod, PaymentStatus, SplitPayment, Policy } from '../../types'
 import ValidationSummary, { MissingField, invalidClass, fieldId } from '../ui/ValidationSummary'
+import { generateTransactionId } from '../../lib/transactionId'
 import { MANUAL_PAYMENT_METHODS } from '../../types'
 import { db } from '../../lib/db'
 import { premiumPeriodLabel } from '../../lib/productUtils'
@@ -102,6 +103,14 @@ export default function RecordPaymentModal({ policyId: initialPolicyId, payment:
     const paymentRecord: Payment = {
       id: editing?.id ?? `pay${Date.now()}`,
       reference,
+      // Manual rails have no gateway transaction ID to capture, so one is
+      // minted from the payer initials + method + timestamp instead
+      // (LAM-CSH081020261649). Edits keep the original — re-saving must
+      // not look like a different transaction.
+      transactionId: editing?.transactionId ?? generateTransactionId({
+        clientName: policy!.clientName,
+        method: useSplit ? 'Split Payment' : method,
+      }),
       policyId,
       policyNumber: policy!.policyNumber,
       clientName: policy!.clientName,

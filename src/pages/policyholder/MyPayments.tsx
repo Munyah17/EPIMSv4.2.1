@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import type { ToastMessage } from '../../types'
 import type { ActivePanel } from '../../App'
 import { db } from '../../lib/db'
-import { formatDate } from '../../lib/dateUtils'
+import { formatDateTime } from '../../lib/dateUtils'
 import type { Payment, PaymentStatus } from '../../types'
 import { usePolicyholderScope } from '../../components/policyholder/usePolicyholderScope'
 
@@ -77,10 +77,11 @@ export default function MyPayments({ showToast }: Props) {
             <thead>
               <tr>
                 <th>Reference</th>
+                <th>Txn ID</th>
                 <th>Policy</th>
                 <th>Amount</th>
                 <th>Method</th>
-                <th>Date</th>
+                <th>Date &amp; Time</th>
                 <th>Status</th>
               </tr>
             </thead>
@@ -88,10 +89,11 @@ export default function MyPayments({ showToast }: Props) {
               {myPayments.map(p => (
                 <tr key={p.id}>
                   <td><span className="mono">{p.reference}</span></td>
+                  <td><span className="mono">{p.transactionId ?? '—'}</span></td>
                   <td><span className="mono">{p.policyNumber}</span></td>
                   <td><strong>${p.amount.toFixed(2)}</strong></td>
                   <td>{p.method}</td>
-                  <td>{formatDate(p.date)}</td>
+                  <td>{formatDateTime(p.recordedAt ?? p.date)}</td>
                   <td><span className="status-pills"><span className={`pill ${STATUS_PILL[p.status]}`}>{p.status}</span></span></td>
                 </tr>
               ))}

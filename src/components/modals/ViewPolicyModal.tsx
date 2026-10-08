@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import type { Policy } from '../../types'
-import { formatDate } from '../../lib/dateUtils'
+import type { Policy, Payment } from '../../types'
+import { formatDate, formatDateTime } from '../../lib/dateUtils'
 import { premiumPeriodLabel } from '../../lib/productUtils'
 import { policyBillablePremium, billableHeadCount } from '../../lib/premium'
 import { holderMemberNumber, dependantMemberNumber } from '../../lib/memberNumbers'
@@ -24,12 +24,18 @@ export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint, show
   const { hasPermission } = useAuth()
   const [category, setCategory] = useState('')
   const [showAssessment, setShowAssessment] = useState(false)
+  const [policyPayments, setPolicyPayments] = useState<Payment[]>([])
 
   useEffect(() => {
     db.products.list().then(({ data }) => {
       setCategory(data?.find(p => p.id === policy.productId)?.category ?? '')
     })
-  }, [policy.productId])
+    db.payments.list().then(({ data }) => {
+      setPolicyPayments((data ?? []).filter(p => p.policyId === policy.id))
+    })
+  }, [policy.productId, policy.id])
+
+  const latestPayment = policyPayments.find(p => p.status === 'completed') ?? policyPayments[0]
 
   return (
     <div className="modal-overlay">
@@ -78,9 +84,39 @@ export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint, show
               <div className="detail-item"><span className="detail-label">Grower Number</span><span>{policy.growerNumber}</span></div>
             )}
             <div className="detail-item"><span className="detail-label">Next Payment</span><span>{formatDate(policy.nextPaymentDate)}</span></div>
-            <div className="detail-item"><span className="detail-label">Last Payment</span><span>{formatDate(policy.lastPaymentDate)}</span></div>
+            <div className="detail-item">
+              <span className="detail-label">Last Payment</span>
+              {/* Exact time, not just the day: a disputed payment is matched
+                  to a gateway timestamp, not a date. */}
+              <span>{latestPayment ? formatDateTime(latestPayment.recordedAt ?? latestPayment.date) : formatDate(policy.lastPaymentDate)}</span>
+            </div>
+            {latestPayment?.transactionId && (
+              <div className="detail-item"><span className="detail-label">Transaction ID</span><span className="mono">{latestPayment.transactionId}</span></div>
+            )}
             <div className="detail-item"><span className="detail-label">Agent</span><span>{policy.agentName ?? '—'}</span></div>
           </div>
+
+          {policyPayments.length > 0 && (
+            <div style={{ marginTop: '1.5rem' }}>
+              <h4 style={{ marginBottom: '0.75rem' }}>Payment History</h4>
+              <div className="tbl-scroll">
+              <table className="table">
+                <thead><tr><th>Date &amp; Time</th><th>Transaction ID</th><th>Method</th><th>Amount</th><th>Status</th></tr></thead>
+                <tbody>
+                  {policyPayments.slice(0, 10).map(p => (
+                    <tr key={p.id}>
+                      <td>{formatDateTime(p.recordedAt ?? p.date)}</td>
+                      <td><span className="mono">{p.transactionId ?? p.reference}</span></td>
+                      <td>{p.method}</td>
+                      <td><strong>${p.amount.toFixed(2)}</strong></td>
+                      <td><span className={`pill ${{ completed: 'pill-active', pending: 'pill-pending', failed: 'pill-lapsed', reversed: 'pill-cancelled' }[p.status]}`}>{p.status}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              </div>
+            </div>
+          )}
 
           {policy.dependants.length > 0 && (
             <div style={{ marginTop: '1.5rem' }}>

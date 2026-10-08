@@ -18,6 +18,7 @@ import { ADMIN_ALERT_NUMBERS, notifyPaymentReceived } from '../../lib/signupNoti
 import { sendSms } from '../../lib/smsService'
 import { useAuth } from '../../contexts/AuthContext'
 import PhoneInput from '../ui/PhoneInput'
+import { generateTransactionId } from '../../lib/transactionId'
 
 interface Props {
   policy: Policy
@@ -96,6 +97,7 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
   const [result, setResult] = useState<PaymentResponse | null>(null)
   const [zipitDetails, setZipitDetails] = useState<ReturnType<typeof getZipitDetails> | null>(null)
   const [pollStatus, setPollStatus] = useState<string>('Awaiting payment…')
+  const [savedTxnId, setSavedTxnId] = useState('')
   const [hadCaution, setHadCaution] = useState(false)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -158,7 +160,7 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
         if (confirmedAmount !== undefined && Math.abs(confirmedAmount - expected) > 0.01) {
           void handleMismatch(res.gateway, confirmedAmount, expected, paidCurrency)
         } else {
-          handleConfirmed()
+          handleConfirmed(false, res.transactionId)
         }
       }
       if (status === 'failed') { stopPoll(); setStep('failed') }
@@ -207,9 +209,18 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
    * money is equally real — but only the second is a human judgement, so it
    * is attributed to whoever made it.
    */
-  async function handleConfirmed(validatedManually = false) {
+  async function handleConfirmed(validatedManually = false, capturedTxnId?: string) {
+    // Prefer the gateway's own transaction reference when one came back —
+    // but not when it is merely our own payment reference echoed (Paynow
+    // does that), which would be meaningless as a transaction ID. No real
+    // one → mint ours from payer initials + method + exact timestamp.
+    const transactionId = (capturedTxnId && capturedTxnId !== ref)
+      ? capturedTxnId
+      : generateTransactionId({ clientName: policy.clientName, method: METHOD_LABELS[method] })
+    setSavedTxnId(transactionId)
     const { data: recorded } = await db.payments.create({
       reference: ref,
+      transactionId,
       policyId: policy.id,
       policyNumber: policy.policyNumber,
       clientName: policy.clientName,
@@ -297,6 +308,8 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
     stopPoll()
     void handleConfirmed(true)
   }
+
+
 
   return (
     <div className="modal-overlay">
@@ -452,6 +465,9 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
               <div style={{ fontSize: 42, marginBottom: 12 }}>✅</div>
               <h4 style={{ marginBottom: 8 }}>Payment Confirmed</h4>
               <p style={{ color: 'var(--muted)', fontSize: 13 }}>${totalAmount.toFixed(2)} received for {policy.policyNumber}.</p>
+              <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 6 }}>
+                Transaction ID: <span className="mono">{savedTxnId}</span>
+              </p>
               {hadCaution && <p style={{ color: 'var(--success)', marginTop: 8, fontSize: 12 }}>✓ Caution flag cleared.</p>}
             </div>
           )}

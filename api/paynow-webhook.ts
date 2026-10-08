@@ -210,6 +210,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // path gets there first wins; nothing is credited twice.
   const { error: payError } = await admin.from('payments').insert({
     reference, policy_id: policy.id, amount: confirmedAmount, method: 'Paynow',
+    // Paynow's own reference is the captured transaction ID; a postback
+    // without one gets ours instead.
+    transaction_id: paynowReference ?? null,
     currency: txnCurrency,
     rate: Number.isFinite(txnRate) && txnRate > 0 ? txnRate : null,
     status: 'completed', payment_date: new Date().toISOString().split('T')[0],

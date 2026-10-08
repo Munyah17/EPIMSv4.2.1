@@ -264,6 +264,8 @@ function toPayment(r: any): Payment {
     method:        r.method as PaymentMethod,
     status:        r.status as PaymentStatus,
     date:          date(r.payment_date),
+    transactionId: r.transaction_id ?? undefined,
+    recordedAt:    r.created_at ?? undefined,
     splitPayments: r.split_payments ?? undefined,
   }
 }
@@ -403,7 +405,7 @@ const CLAIM_SELECT = `
   agent:profiles!agent_id(id, name)
 `
 const PAYMENT_SELECT = `
-  id, reference, policy_id, amount, method, status, payment_date, split_payments, created_at,
+  id, reference, policy_id, amount, method, status, payment_date, transaction_id, split_payments, created_at,
   policies!policy_id(
     policy_number,
     clients!client_id(name)
@@ -1081,7 +1083,8 @@ export const payments = {
     const row = {
       reference: payment.reference, policy_id: payment.policyId,
       amount: payment.amount, method: payment.method, status: payment.status,
-      payment_date: payment.date, split_payments: payment.splitPayments ?? null,
+      payment_date: payment.date, transaction_id: payment.transactionId ?? null,
+      split_payments: payment.splitPayments ?? null,
     }
     const { ok, data, error } = await sb('payments', 'write',
       () => supabase.from('payments').insert(row).select(PAYMENT_SELECT).single(),
@@ -1119,6 +1122,7 @@ export const payments = {
     if (updates.amount !== undefined) row.amount = updates.amount
     if (updates.method !== undefined) row.method = updates.method
     if (updates.date !== undefined) row.payment_date = updates.date
+    if (updates.transactionId !== undefined) row.transaction_id = updates.transactionId ?? null
     if (updates.splitPayments !== undefined) row.split_payments = updates.splitPayments ?? null
     const { ok, data, error } = await sb('payments', 'write',
       () => supabase.from('payments').update(row).eq('id', id).select(PAYMENT_SELECT).single(),

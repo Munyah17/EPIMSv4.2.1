@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
+import { generateTransactionId } from './_lib/transactionId'
 
 /**
  * Public Developer API (/api/v1/...). External developers integrate this
@@ -688,7 +689,7 @@ async function recordPayment(admin: SupabaseClient, body: Json, agentId: string)
   }
 
   const { data: policy } = await admin.from('policies')
-    .select('id, agent_id, status, product_id, premium, dependants, next_payment_date')
+    .select('id, agent_id, status, product_id, premium, dependants, next_payment_date, clients!client_id(name)')
     .eq('policy_number', policyNumber).maybeSingle()
   if (!policy || policy.agent_id !== agentId) return { status: 404, body: { error: 'Policy not found.' } }
 
@@ -703,11 +704,19 @@ async function recordPayment(admin: SupabaseClient, body: Json, agentId: string)
     return { status: 409, body: { error: `This policy is ${policy.status} and cannot accept payments.` } }
   }
 
+  const method = String(body.method ?? 'EcoCash').slice(0, 40)
   const { data: paymentRow, error } = await admin.from('payments').insert({
     reference: refNumber('PAY'),
     policy_id: policy.id,
     amount,
-    method: String(body.method ?? 'EcoCash').slice(0, 40),
+    method,
+    // A partner's own transaction reference wins; otherwise mint ours.
+    transaction_id: body.transactionId
+      ? String(body.transactionId).slice(0, 60)
+      : generateTransactionId({
+          clientName: (policy.clients as { name?: string } | null)?.name ?? policyNumber,
+          method,
+        }),
     status: 'completed',
   }).select('id, reference').single()
   if (error) return { status: 400, body: { error: pgMessage(error) } }
