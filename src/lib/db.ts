@@ -207,6 +207,7 @@ function toPolicy(r: any): Policy {
     groupId:         r.groups?.id ?? r.group_id ?? undefined,
     groupName:       r.groups?.name ?? undefined,
     coverScope:      (r.cover_scope as Policy['coverScope']) ?? 'individual',
+    teamActivity:    r.team_activity ?? undefined,
     source:          r.source ?? undefined,
     createdAt:       date(r.created_at),
     nextPaymentDate: r.next_payment_date ? date(r.next_payment_date) : undefined,
@@ -419,7 +420,7 @@ const POLICY_SELECT_BASE = `
   profiles!agent_id(id, name)
 `
 const POLICY_SELECT = POLICY_SELECT_BASE + `,
-  group_id, cover_scope,
+  group_id, cover_scope, team_activity,
   groups!group_id(id, name, group_type)
 `
 const CLAIM_SELECT = `
@@ -525,6 +526,7 @@ export const policies = {
       }
       ;(row as Record<string, unknown>).group_id = policy.groupId ?? null
       ;(row as Record<string, unknown>).cover_scope = policy.coverScope ?? 'individual'
+      ;(row as Record<string, unknown>).team_activity = policy.teamActivity ?? null
     } else if (groupColsReady) {
       ;(row as Record<string, unknown>).cover_scope = 'individual'
     }
@@ -570,6 +572,7 @@ export const policies = {
     if (schemaFlags.get('policies.group_id')?.ok) {
       if (updates.groupId !== undefined)             row.group_id           = updates.groupId ?? null
       if (updates.coverScope)                        row.cover_scope        = updates.coverScope
+      if (updates.teamActivity !== undefined)        row.team_activity      = updates.teamActivity ?? null
     }
     const { ok, data, error } = await sb('policies', 'write',
       () => supabase.from('policies').update(row).eq('id', id).select(policySelect_).single(),

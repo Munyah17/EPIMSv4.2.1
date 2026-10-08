@@ -14,7 +14,12 @@
 --   corporate   — policyholder is an organisation (policies.group_id),
 --                 roster members bill per head, documents say EMPLOYEES;
 --   group       — same billing as corporate with non-corporate wording
---                 (church/union/club member schemes).
+--                 (church/union/club member schemes);
+--   team        — activity/event-bound cover (sports teams, crews):
+--                 roster members carry a role, the policy names the
+--                 activity/season (policies.team_activity), and cover
+--                 activates immediately — event cover cannot sit in a
+--                 90-day waiting period.
 --
 -- Idempotent — safe to re-run.
 
@@ -47,8 +52,12 @@ CREATE TABLE IF NOT EXISTS public.group_members (
 
 ALTER TABLE public.policies
   ADD COLUMN IF NOT EXISTS group_id uuid REFERENCES public.groups(id),
-  ADD COLUMN IF NOT EXISTS cover_scope text NOT NULL DEFAULT 'individual'
-    CHECK (cover_scope IN ('individual','corporate','group'));
+  ADD COLUMN IF NOT EXISTS cover_scope text NOT NULL DEFAULT 'individual',
+  ADD COLUMN IF NOT EXISTS team_activity text;
+
+ALTER TABLE public.policies DROP CONSTRAINT IF EXISTS policies_cover_scope_check;
+ALTER TABLE public.policies ADD CONSTRAINT policies_cover_scope_check
+  CHECK (cover_scope IN ('individual','corporate','group','team'));
 
 CREATE INDEX IF NOT EXISTS idx_group_members_group ON public.group_members(group_id);
 CREATE INDEX IF NOT EXISTS idx_policies_group ON public.policies(group_id);

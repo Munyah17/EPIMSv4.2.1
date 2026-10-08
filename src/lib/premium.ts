@@ -44,7 +44,7 @@ export interface PremiumLine {
 export function premiumLines(policy: Policy, category?: string): PremiumLine[] {
   // Corporate/group scope: the organisation holds the policy but is not a
   // billed head — the invoice is exactly N members × their own premium.
-  if (policy.coverScope === 'corporate' || policy.coverScope === 'group') {
+  if (policy.coverScope === 'corporate' || policy.coverScope === 'group' || policy.coverScope === 'team') {
     return policy.dependants.map(d => ({
       name: d.name,
       role: 'member' as const,

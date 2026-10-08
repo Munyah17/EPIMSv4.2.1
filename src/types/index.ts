@@ -237,9 +237,13 @@ export interface Policy {
   groupId?: string
   groupName?: string
   /** 'individual' (default) — the client is the policyholder and a billed
-   *  head; 'corporate'/'group' — the organisation is the policyholder and
-   *  is NOT billed, only the roster members are. See premium.ts. */
+   *  head; 'corporate'/'group'/'team' — the organisation is the
+   *  policyholder and is NOT billed, only the roster members are. See
+   *  premium.ts. */
   coverScope?: CoverScope
+  /** Team scope only — the named activity, season or event the cover is
+   *  for (e.g. "2026 Soccer Season"). Printed on the policy document. */
+  teamActivity?: string
   createdAt: string
   nextPaymentDate?: string
   lastPaymentDate?: string
@@ -249,8 +253,10 @@ export interface Policy {
 export type GroupType = 'company' | 'church' | 'union' | 'sports' | 'club' | 'society' | 'other'
 
 /** What a policy covers: a person ('individual', the default) or an
- *  organisation's whole roster ('corporate'/'group'). */
-export type CoverScope = 'individual' | 'corporate' | 'group'
+ *  organisation's roster — 'corporate' (employees), 'group' (association
+ *  members) or 'team' (an activity/event-bound team: roles carried on
+ *  the roster, immediate activation, a named activity). */
+export type CoverScope = 'individual' | 'corporate' | 'group' | 'team'
 
 /** An organisation — company, church, union, club — registered once and
  *  issued a single policy covering its member roster. See

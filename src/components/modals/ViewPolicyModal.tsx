@@ -58,8 +58,11 @@ export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint, show
             {policy.groupName && (
               <div className="detail-item">
                 <span className="detail-label">Organisation</span>
-                <span>{policy.groupName} <span className={`pill ${policy.coverScope === 'corporate' ? 'pill-blue' : 'pill-purple'}`} style={{ marginLeft: 4 }}>{policy.coverScope === 'corporate' ? 'Corporate' : 'Group'}</span></span>
+                <span>{policy.groupName} <span className={`pill ${policy.coverScope === 'corporate' ? 'pill-blue' : policy.coverScope === 'team' ? 'pill-success' : 'pill-purple'}`} style={{ marginLeft: 4 }}>{policy.coverScope === 'corporate' ? 'Corporate' : policy.coverScope === 'team' ? 'Team' : 'Group'}</span></span>
               </div>
+            )}
+            {policy.teamActivity && (
+              <div className="detail-item"><span className="detail-label">Activity / Event</span><span>{policy.teamActivity}</span></div>
             )}
             <div className="detail-item"><span className="detail-label">Product</span><span>{policy.productName}</span></div>
             <div className="detail-item"><span className="detail-label">Issued Via</span><span>{policySourceLabel(policy.source)}</span></div>
@@ -120,7 +123,7 @@ export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint, show
 
           {policy.dependants.length > 0 && (
             <div style={{ marginTop: '1.5rem' }}>
-              <h4 style={{ marginBottom: '0.75rem' }}>{policy.coverScope === 'corporate' ? 'Employees Covered' : policy.coverScope === 'group' ? 'Members Covered' : 'Dependants'}</h4>
+              <h4 style={{ marginBottom: '0.75rem' }}>{policy.coverScope === 'corporate' ? 'Employees Covered' : policy.coverScope === 'team' ? 'Team Roster Covered' : policy.coverScope === 'group' ? 'Members Covered' : 'Dependants'}</h4>
               <div className="tbl-scroll">
               <table className="table">
                 <thead><tr><th>Member No.</th><th>Name</th><th>Relationship</th><th>Date of Birth</th><th>ID Number</th><th>Plan</th><th>Premium</th></tr></thead>

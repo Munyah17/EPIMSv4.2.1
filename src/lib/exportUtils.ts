@@ -391,12 +391,35 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   })
   y = (doc as any).lastAutoTable.finalY + 8
 
+  // Organisation policies name the insured organisation — and, for team
+  // cover, the activity/season the roster is insured for. PERSONAL
+  // INFORMATION above still shows the account-holder contact, not the
+  // insured party.
+  if (policy.groupName) {
+    sectionBand(policy.coverScope === 'corporate' ? 'ORGANISATION' : policy.coverScope === 'team' ? 'TEAM' : 'GROUP')
+    autoTable(doc, {
+      startY: y,
+      head: [[policy.coverScope === 'corporate' ? 'Company' : 'Organisation', ...(policy.coverScope === 'team' ? ['Activity / Season'] : []), 'Cover Type']],
+      body: [[
+        policy.groupName,
+        ...(policy.coverScope === 'team' ? [policy.teamActivity ?? '—'] : []),
+        policy.coverScope === 'corporate' ? 'Corporate — employees covered' : policy.coverScope === 'team' ? 'Team — activity cover, immediate' : 'Group — members covered',
+      ]],
+      styles: { fontSize: 8.5, lineColor: [220, 226, 240], lineWidth: 0.2 },
+      headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold' },
+      theme: 'grid',
+      margin: { left: 14, right: 14 },
+    })
+    y = (doc as any).lastAutoTable.finalY + 8
+  }
+
   // The covered-people band wears the scope's vocabulary: a corporate
   // policy covers employees, a group policy covers members, an individual
   // policy covers dependants. Roster members ride in the same dependants
   // array, so the per-person sub-tables below need no other changes —
   // their RELATIONSHIP already reads 'Employee'/'Member'.
   const coveredBand = policy.coverScope === 'corporate' ? 'EMPLOYEES COVERED'
+    : policy.coverScope === 'team' ? 'TEAM ROSTER COVERED'
     : policy.coverScope === 'group' ? 'MEMBERS COVERED'
     : 'DEPENDANTS'
   sectionBand(coveredBand)
@@ -405,7 +428,7 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
     doc.setTextColor(...MUTED)
     doc.text(
       policy.coverScope === 'corporate' ? 'No employees on this policy.'
-        : policy.coverScope === 'group' ? 'No members on this policy.'
+        : policy.coverScope === 'team' || policy.coverScope === 'group' ? 'No members on this policy.'
         : 'No dependants on this policy.',
       14, y,
     )

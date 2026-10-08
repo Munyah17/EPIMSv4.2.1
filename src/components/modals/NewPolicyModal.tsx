@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import type { Policy, Dependant, Client, Product, AppUser, Group, GroupMember, CoverScope } from '../../types'
+import type { Policy, Dependant, Client, Product, AppUser, Group, GroupMember, GroupType, CoverScope } from '../../types'
 import { MANUAL_PAYMENT_METHODS } from '../../types'
 import { db } from '../../lib/db'
 import { useAuth } from '../../contexts/AuthContext'
@@ -63,6 +63,27 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   const [coverScope, setCoverScope] = useState<CoverScope>('individual')
   const [groups, setGroups] = useState<Group[]>([])
   const [groupId, setGroupId] = useState('')
+  // Team scope: the named activity/season the cover is for (e.g. "2026
+  // Soccer Season") — team cover is bound to an activity the way
+  // corporate/group cover is bound to an organisation.
+  const [teamActivity, setTeamActivity] = useState('')
+  // Inline "Create New Organisation" — domain-checkout style: pick or
+  // register the org without leaving the form and losing context.
+  const [showNewOrg, setShowNewOrg] = useState(false)
+  const [orgName, setOrgName] = useState('')
+  const [orgType, setOrgType] = useState<GroupType>('company')
+  const [orgContactName, setOrgContactName] = useState('')
+  const [orgPhone, setOrgPhone] = useState('')
+  const [orgSaving, setOrgSaving] = useState(false)
+  // Inline member add — a freshly created org has an empty roster, so the
+  // flow only completes if members can be enrolled right here too.
+  const [showAddMember, setShowAddMember] = useState(false)
+  const [memberName, setMemberName] = useState('')
+  const [memberNatId, setMemberNatId] = useState('')
+  const [memberDob, setMemberDob] = useState('')
+  const [memberPhone, setMemberPhone] = useState('')
+  const [memberRole, setMemberRole] = useState('')
+  const [memberSaving, setMemberSaving] = useState(false)
   const [roster, setRoster] = useState<GroupMember[]>([])
   const [rosterLoading, setRosterLoading] = useState(false)
   const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(new Set())
@@ -143,6 +164,57 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   }
 
   const isGroupScope = coverScope !== 'individual'
+  const memberLabel = coverScope === 'corporate' ? 'employee' : coverScope === 'team' ? 'player/member' : 'member'
+  const membersCoveredLabel = coverScope === 'corporate' ? 'Employees Covered' : coverScope === 'team' ? 'Team Roster Covered' : 'Members Covered'
+
+  /** Same shape as the picker description — the org created inline lands
+   *  in the same list and is selected immediately, checkout-flow style. */
+  const createOrganisation = async () => {
+    const name = orgName.trim()
+    if (!name) { showToast?.('error', 'Give the organisation a name first.'); return }
+    setOrgSaving(true)
+    const { data, error } = await db.groups.create({
+      name,
+      groupType: orgType,
+      contactName: orgContactName.trim() || undefined,
+      contactPhone: orgPhone.trim() || undefined,
+    })
+    setOrgSaving(false)
+    if (error || !data) {
+      showToast?.('error', error ?? 'Could not register the organisation. If the Groups feature is new, run database/add_group_cover.sql in Supabase first.')
+      return
+    }
+    setGroups(prev => [...prev, { ...data, active: true }].sort((a, b) => a.name.localeCompare(b.name)))
+    setGroupId(data.id)
+    setShowNewOrg(false)
+    setOrgName(''); setOrgContactName(''); setOrgPhone('')
+    showToast?.('success', `${data.name} registered — add its ${coverScope === 'corporate' ? 'employees' : 'members'} below, then finish the policy.`)
+  }
+
+  const addRosterMember = async () => {
+    const name = memberName.trim()
+    if (!name) { showToast?.('error', 'Give the member a name first.'); return }
+    setMemberSaving(true)
+    const { data, error } = await db.groupMembers.add({
+      groupId,
+      fullName: name,
+      nationalId: memberNatId.trim() || undefined,
+      dob: memberDob || undefined,
+      phone: memberPhone.trim() || undefined,
+      position: memberRole.trim() || undefined,
+    })
+    setMemberSaving(false)
+    if (error || !data) { showToast?.('error', error ?? 'Could not add the member.'); return }
+    setRoster(prev => [...prev, data])
+    setSelectedMemberIds(prev => new Set(prev).add(data.id))
+    setMemberName(''); setMemberNatId(''); setMemberDob(''); setMemberPhone(''); setMemberRole('')
+  }
+
+  const switchScope = (scope: CoverScope) => {
+    setCoverScope(scope)
+    // Sensible org-type default for the inline registration form.
+    setOrgType(scope === 'corporate' ? 'company' : scope === 'team' ? 'sports' : 'other')
+  }
 
   const clearClientFields = () => {
     setClientName(''); setClientPhone(''); setClientEmail(''); setClientNationalId('')
@@ -211,8 +283,9 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   else if (clientAge !== null && clientAge < 18) missing.push({ key: 'clientDob', label: 'Date of Birth', hint: 'The policyholder must be at least 18' })
   if (!productId) missing.push({ key: 'productId', label: 'Product' })
   if (isGroupScope) {
-    if (!groupId) missing.push({ key: 'groupId', label: 'Organisation' })
-    else if (selectedMemberIds.size === 0) missing.push({ key: 'members', label: coverScope === 'corporate' ? 'Employees Covered' : 'Members Covered', hint: 'Tick at least one roster member' })
+    if (!groupId) missing.push({ key: 'groupId', label: 'Organisation', hint: 'Pick one, or register a new one with "+ Create New Organisation"' })
+    else if (selectedMemberIds.size === 0) missing.push({ key: 'members', label: membersCoveredLabel, hint: 'Tick at least one roster member' })
+    if (coverScope === 'team' && !teamActivity.trim()) missing.push({ key: 'teamActivity', label: 'Activity / Event', hint: 'Team cover is for a named activity or season' })
   } else if (dependants.some(d => d.name.trim() && (!d.dob || !d.nationalId.trim()))) {
     missing.push({ key: 'dependants', label: 'Dependant details', hint: 'Every dependant needs a name, date of birth and ID number' })
   }
@@ -271,12 +344,16 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
 
     // Group-scope policies carry the selected roster members in the
     // dependants array — relationship 'Employee'/'Member' marks them as
-    // organisational cover on documents and member statements.
+    // organisational cover on documents and member statements. Teams keep
+    // the member's role (Player, Coach, Captain…) — it's what makes a
+    // team document read like a squad sheet.
     const selectedGroup = groups.find(g => g.id === groupId)
     const memberDependants: Dependant[] = isGroupScope
       ? roster.filter(m => selectedMemberIds.has(m.id)).map(m => ({
           name: m.fullName,
-          relationship: coverScope === 'corporate' ? 'Employee' : 'Member',
+          relationship: coverScope === 'corporate' ? 'Employee'
+            : coverScope === 'team' ? (m.position?.trim() || 'Team Member')
+            : 'Member',
           dob: m.dob ?? '',
           nationalId: m.nationalId ?? '',
           phone: m.phone,
@@ -303,13 +380,16 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
       startDate,
       endDate: toIsoDate(endDate),
       // Every new policy starts in a waiting period, lifted to active after
-      // 90 days — except agriculture, which has NO waiting period at all
-      // and activates instantly on creation. See src/lib/reminderEngine.ts.
-      status: product!.category === 'agriculture' ? 'active' : 'waiting_period',
+      // 90 days — except agriculture, which has NO waiting period at all,
+      // and team cover, which is bound to a named activity/event and so
+      // can't sit in a waiting period — a team insured for a match on
+      // Saturday needs cover from the day it is issued.
+      status: product!.category === 'agriculture' || coverScope === 'team' ? 'active' : 'waiting_period',
       dependants: memberDependants,
       groupId: isGroupScope ? groupId : undefined,
       groupName: isGroupScope ? selectedGroup?.name : undefined,
       coverScope,
+      teamActivity: coverScope === 'team' ? teamActivity.trim() : undefined,
       paymentMethod,
       growerNumber: product!.category === 'agriculture' ? (growerNumber || undefined) : undefined,
       createdAt: toIsoDate(new Date()),
@@ -411,26 +491,81 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
               <div className="form-group">
                 <label>Cover Scope *</label>
                 <div className="bubble-toggle">
-                  <button type="button" className={`bubble-toggle-btn${coverScope === 'individual' ? ' active' : ''}`} onClick={() => setCoverScope('individual')}>Individual / Family</button>
-                  <button type="button" className={`bubble-toggle-btn${coverScope === 'corporate' ? ' active' : ''}`} onClick={() => setCoverScope('corporate')}>Corporate</button>
-                  <button type="button" className={`bubble-toggle-btn${coverScope === 'group' ? ' active' : ''}`} onClick={() => setCoverScope('group')}>Group</button>
+                  <button type="button" className={`bubble-toggle-btn${coverScope === 'individual' ? ' active' : ''}`} onClick={() => switchScope('individual')}>Individual / Family</button>
+                  <button type="button" className={`bubble-toggle-btn${coverScope === 'corporate' ? ' active' : ''}`} onClick={() => switchScope('corporate')}>Corporate</button>
+                  <button type="button" className={`bubble-toggle-btn${coverScope === 'group' ? ' active' : ''}`} onClick={() => switchScope('group')}>Group</button>
+                  <button type="button" className={`bubble-toggle-btn${coverScope === 'team' ? ' active' : ''}`} onClick={() => switchScope('team')}>Teams</button>
                 </div>
                 {isGroupScope && (
                   <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
                     {coverScope === 'corporate'
                       ? 'A company covering its employees under one policy. The client below is the account holder (e.g. HR contact); the company is the insured organisation.'
-                      : 'An association — church, union, sports club — covering its members under one policy. The client below is the account holder (e.g. secretary).'}
+                      : coverScope === 'team'
+                        ? 'A team — sports squad, work crew, tour group — covered for a named activity or season. Roster members carry a role (player, coach…), and cover activates immediately: a match this weekend can\'t wait out a 90-day waiting period.'
+                        : 'An association — church, union, sports club — covering its members under one policy. The client below is the account holder (e.g. secretary).'}
                   </p>
                 )}
               </div>
               {isGroupScope && (
                 <div className="form-group" id={fieldId('groupId')}>
                   <label>Organisation *</label>
-                  <select className={invalidClass(missing, attempted, 'groupId')} value={groupId} onChange={e => setGroupId(e.target.value)}>
-                    <option value="">{groups.length === 0 ? 'No groups registered — add one on the Groups page' : 'Select organisation…'}</option>
+                  <select className={invalidClass(missing, attempted, 'groupId')} value={groupId} onChange={e => setGroupId(e.target.value)} disabled={showNewOrg}>
+                    <option value="">{groups.length === 0 ? 'No organisations registered yet' : 'Select organisation…'}</option>
                     {groups.map(g => <option key={g.id} value={g.id}>{g.name} ({g.memberCount ?? 0} members)</option>)}
                   </select>
-                  <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>Register organisations and build their rosters on the Groups page.</p>
+                  {/* Domain-checkout pattern: registering the org happens
+                      right here at the point of need — no leaving to the
+                      Groups page and losing the half-filled form. */}
+                  {!showNewOrg ? (
+                    <button type="button" className="btn btn-ghost btn-sm" style={{ marginTop: 6 }} onClick={() => setShowNewOrg(true)}>
+                      + Create New Organisation
+                    </button>
+                  ) : (
+                    <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, marginTop: 6, background: 'var(--surface)' }}>
+                      <div className="form-row" style={{ marginBottom: 8 }}>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label style={{ fontSize: 11 }}>Organisation Name *</label>
+                          <input className="form-control" placeholder={coverScope === 'corporate' ? 'e.g. Acme Pvt Ltd' : coverScope === 'team' ? 'e.g. Dynamos FC — Senior Squad' : 'e.g. Glen View Church'} value={orgName} onChange={e => setOrgName(e.target.value)} />
+                        </div>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label style={{ fontSize: 11 }}>Type</label>
+                          <select className="form-control" value={orgType} onChange={e => setOrgType(e.target.value as GroupType)}>
+                            <option value="company">Company</option>
+                            <option value="church">Church</option>
+                            <option value="union">Union</option>
+                            <option value="sports">Sports Team/Club</option>
+                            <option value="club">Club</option>
+                            <option value="society">Society</option>
+                            <option value="other">Other</option>
+                          </select>
+                        </div>
+                      </div>
+                      <div className="form-row" style={{ marginBottom: 8 }}>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label style={{ fontSize: 11 }}>Contact Person</label>
+                          <input className="form-control" placeholder={coverScope === 'corporate' ? 'HR officer' : coverScope === 'team' ? 'Coach or manager' : 'Secretary, chairperson'} value={orgContactName} onChange={e => setOrgContactName(e.target.value)} />
+                        </div>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label style={{ fontSize: 11 }}>Contact Phone</label>
+                          <PhoneInput value={orgPhone} onChange={setOrgPhone} />
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button type="button" className="btn btn-primary btn-sm" disabled={orgSaving} onClick={() => void createOrganisation()}>
+                          {orgSaving ? 'Registering…' : 'Register & Select'}
+                        </button>
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowNewOrg(false)}>Cancel</button>
+                      </div>
+                    </div>
+                  )}
+                  <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>Full roster management lives on the Groups page — members can be added below after picking an organisation.</p>
+                </div>
+              )}
+              {coverScope === 'team' && (
+                <div className="form-group" id={fieldId('teamActivity')}>
+                  <label>Activity / Event / Season *</label>
+                  <input className={invalidClass(missing, attempted, 'teamActivity')} placeholder="e.g. 2026 Soccer Season, Easter Tournament, Project Chimanimani" value={teamActivity} onChange={e => setTeamActivity(e.target.value)} />
+                  <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>What the team is being covered for — printed on the policy document.</p>
                 </div>
               )}
               <div className="form-group" id={fieldId('productId')}>
@@ -486,20 +621,62 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
 
           {isGroupScope ? (
             <div id={fieldId('members')} className={isMissing(missing, attempted, 'members') ? 'field-invalid-block' : undefined} style={{ marginTop: '1rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <label>{coverScope === 'corporate' ? 'Employees Covered' : 'Members Covered'} ({selectedMemberIds.size} of {roster.length} selected)</label>
-                {roster.length > 0 && (
-                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSelectedMemberIds(prev => prev.size === roster.length ? new Set() : new Set(roster.map(m => m.id)))}>
-                    {selectedMemberIds.size === roster.length ? 'Deselect all' : 'Select all'}
-                  </button>
-                )}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, gap: 8, flexWrap: 'wrap' }}>
+                <label>{membersCoveredLabel} ({selectedMemberIds.size} of {roster.length} selected)</label>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  {groupId && (
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => setShowAddMember(o => !o)}>
+                      {showAddMember ? 'Close' : `+ Add ${coverScope === 'corporate' ? 'Employee' : coverScope === 'team' ? 'Player/Member' : 'Member'}`}
+                    </button>
+                  )}
+                  {roster.length > 0 && (
+                    <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSelectedMemberIds(prev => prev.size === roster.length ? new Set() : new Set(roster.map(m => m.id)))}>
+                      {selectedMemberIds.size === roster.length ? 'Deselect all' : 'Select all'}
+                    </button>
+                  )}
+                </div>
               </div>
+              {/* Checkout-flow member add: the org's roster can be built at
+                  the point of need — same place the members get selected. */}
+              {showAddMember && groupId && (
+                <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, marginBottom: 8, background: 'var(--surface)' }}>
+                  <div className="form-row" style={{ marginBottom: 8 }}>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: 11 }}>Full Name *</label>
+                      <input className="form-control" placeholder={`${coverScope === 'corporate' ? 'Employee' : 'Member'} name`} value={memberName} onChange={e => setMemberName(e.target.value)} />
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: 11 }}>{coverScope === 'team' ? 'Role' : coverScope === 'corporate' ? 'Job Title' : 'Role'}</label>
+                      <input className="form-control" placeholder={coverScope === 'team' ? 'Player, Coach, Captain…' : 'e.g. Cashier'} value={memberRole} onChange={e => setMemberRole(e.target.value)} />
+                    </div>
+                  </div>
+                  <div className="form-row" style={{ marginBottom: 8 }}>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: 11 }}>National ID</label>
+                      <input className="form-control" value={memberNatId} onChange={e => setMemberNatId(e.target.value.replace(/-/g, ''))} />
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: 11 }}>Date of Birth</label>
+                      <DateInput value={memberDob} onChange={setMemberDob} />
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: 11 }}>Phone</label>
+                      <PhoneInput value={memberPhone} onChange={setMemberPhone} />
+                    </div>
+                  </div>
+                  <button type="button" className="btn btn-primary btn-sm" disabled={memberSaving} onClick={() => void addRosterMember()}>
+                    {memberSaving ? 'Adding…' : `Add ${memberLabel}`}
+                  </button>
+                </div>
+              )}
               {!groupId ? (
                 <p style={{ fontSize: 12, color: 'var(--muted)' }}>Pick an organisation above to load its roster.</p>
               ) : rosterLoading ? (
                 <p style={{ fontSize: 12, color: 'var(--muted)' }}>Loading roster…</p>
               ) : roster.length === 0 ? (
-                <p style={{ fontSize: 12, color: 'var(--muted)' }}>This organisation has no active members yet — add them on the Groups page first.</p>
+                <p style={{ fontSize: 12, color: 'var(--muted)' }}>
+                  This organisation has no active {coverScope === 'corporate' ? 'employees' : 'members'} yet — use "+ Add {coverScope === 'corporate' ? 'Employee' : 'Member'}" above to enrol the first one.
+                </p>
               ) : (
                 <>
                   <div style={{ maxHeight: 260, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>

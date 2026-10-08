@@ -325,8 +325,8 @@ export default function Policies({ showToast, initialCategory }: Props) {
                     {p.clientName}
                     {p.groupName && (
                       <div style={{ fontSize: 11, marginTop: 2 }}>
-                        <span className={`pill ${p.coverScope === 'corporate' ? 'pill-blue' : 'pill-purple'}`}>
-                          {p.coverScope === 'corporate' ? 'Corporate' : 'Group'} · {p.groupName}
+                        <span className={`pill ${p.coverScope === 'corporate' ? 'pill-blue' : p.coverScope === 'team' ? 'pill-success' : 'pill-purple'}`}>
+                          {p.coverScope === 'corporate' ? 'Corporate' : p.coverScope === 'team' ? 'Team' : 'Group'} · {p.groupName}
                         </span>
                       </div>
                     )}
