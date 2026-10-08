@@ -221,6 +221,11 @@ function toGroup(r: Record<string, unknown>, memberCount?: number): Group {
     name:               r.name as string,
     groupType:          r.group_type as Group['groupType'],
     registrationNumber: (r.registration_number as string | null) ?? undefined,
+    customType:         (r.custom_type as string | null) ?? undefined,
+    expectedMembers:    (r.expected_members as number | null) ?? undefined,
+    description:        (r.description as string | null) ?? undefined,
+    orgPhone:           (r.org_phone as string | null) ?? undefined,
+    orgEmail:           (r.org_email as string | null) ?? undefined,
     contactName:        (r.contact_name as string | null) ?? undefined,
     contactEmail:       (r.contact_email as string | null) ?? undefined,
     contactPhone:       (r.contact_phone as string | null) ?? undefined,
@@ -2511,11 +2516,28 @@ export const groups = {
       name,
       group_type: input.groupType,
       registration_number: input.registrationNumber ?? null,
+      custom_type: input.groupType === 'other' ? (input.customType?.trim() || null) : null,
+      expected_members: input.expectedMembers ?? null,
+      description: input.description?.trim() || null,
+      org_phone: input.orgPhone ?? null,
+      org_email: input.orgEmail ?? null,
       contact_name: input.contactName ?? null,
       contact_email: input.contactEmail ?? null,
       contact_phone: input.contactPhone ?? null,
       address: input.address ?? null,
       active: true,
+    }
+    // Someone who ran add_group_cover.sql before the extended columns
+    // (custom_type, expected_members, description, org_*) existed has the
+    // table but not the columns — insert what the schema supports rather
+    // than erroring on unknown keys; the extended fields are null there
+    // until the migration is re-run.
+    if (!(await hasColumn('groups', 'custom_type'))) {
+      delete (row as Record<string, unknown>).custom_type
+      delete (row as Record<string, unknown>).expected_members
+      delete (row as Record<string, unknown>).description
+      delete (row as Record<string, unknown>).org_phone
+      delete (row as Record<string, unknown>).org_email
     }
     const { ok, data, error } = await sb('groups', 'write',
       () => supabase.from('groups').insert(row).select().single(),
@@ -2529,11 +2551,22 @@ export const groups = {
     if (updates.name !== undefined)                row.name                = updates.name
     if (updates.groupType !== undefined)           row.group_type          = updates.groupType
     if (updates.registrationNumber !== undefined)  row.registration_number = updates.registrationNumber ?? null
+    // 'other' carries the registrant's own label; switching to a named
+    // type must clear it or reports show a stale custom label.
+    if (updates.groupType !== undefined && updates.groupType !== 'other') row.custom_type = null
+    else if (updates.customType !== undefined)                          row.custom_type = updates.customType?.trim() || null
+    if (updates.expectedMembers !== undefined)     row.expected_members   = updates.expectedMembers ?? null
+    if (updates.description !== undefined)         row.description        = updates.description ?? null
+    if (updates.orgPhone !== undefined)            row.org_phone          = updates.orgPhone ?? null
+    if (updates.orgEmail !== undefined)            row.org_email          = updates.orgEmail ?? null
     if (updates.contactName !== undefined)         row.contact_name        = updates.contactName ?? null
     if (updates.contactEmail !== undefined)        row.contact_email       = updates.contactEmail ?? null
     if (updates.contactPhone !== undefined)        row.contact_phone       = updates.contactPhone ?? null
     if (updates.address !== undefined)             row.address             = updates.address ?? null
     if (updates.active !== undefined)              row.active              = updates.active
+    if (!(await hasColumn('groups', 'custom_type'))) {
+      for (const k of ['custom_type', 'expected_members', 'description', 'org_phone', 'org_email']) delete row[k]
+    }
     const { ok, data, error } = await sb('groups', 'write',
       () => supabase.from('groups').update(row).eq('id', id).select().single(),
     )

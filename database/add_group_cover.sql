@@ -28,6 +28,11 @@ CREATE TABLE IF NOT EXISTS public.groups (
   name                TEXT NOT NULL,
   group_type          TEXT NOT NULL CHECK (group_type IN ('company','church','union','sports','club','society','other')),
   registration_number TEXT,
+  custom_type         TEXT,           -- registrant's own label when group_type = 'other'
+  expected_members    INTEGER,        -- how many people they intend to cover
+  description         TEXT,           -- needs/wants brief: demography, ages, activity
+  org_phone           TEXT,           -- the organisation's own line
+  org_email           TEXT,           -- the organisation's own mailbox
   contact_name        TEXT,
   contact_email       TEXT,
   contact_phone       TEXT,
@@ -36,6 +41,15 @@ CREATE TABLE IF NOT EXISTS public.groups (
   created_by          UUID REFERENCES public.profiles(id),
   created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Column adds for anyone who ran this file before they existed —
+-- CREATE TABLE IF NOT EXISTS won't retrofit them.
+ALTER TABLE public.groups
+  ADD COLUMN IF NOT EXISTS custom_type TEXT,
+  ADD COLUMN IF NOT EXISTS expected_members INTEGER,
+  ADD COLUMN IF NOT EXISTS description TEXT,
+  ADD COLUMN IF NOT EXISTS org_phone TEXT,
+  ADD COLUMN IF NOT EXISTS org_email TEXT;
 
 CREATE TABLE IF NOT EXISTS public.group_members (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),

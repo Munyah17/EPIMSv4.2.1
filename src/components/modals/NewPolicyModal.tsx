@@ -72,8 +72,15 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   const [showNewOrg, setShowNewOrg] = useState(false)
   const [orgName, setOrgName] = useState('')
   const [orgType, setOrgType] = useState<GroupType>('company')
+  const [orgCustomType, setOrgCustomType] = useState('')
+  const [orgExpected, setOrgExpected] = useState('')
+  const [orgDesc, setOrgDesc] = useState('')
+  const [orgLinePhone, setOrgLinePhone] = useState('')
+  const [orgEmail, setOrgEmail] = useState('')
+  const [orgAddress, setOrgAddress] = useState('')
   const [orgContactName, setOrgContactName] = useState('')
   const [orgPhone, setOrgPhone] = useState('')
+  const [orgContactEmail, setOrgContactEmail] = useState('')
   const [orgSaving, setOrgSaving] = useState(false)
   // Inline member add — a freshly created org has an empty roster, so the
   // flow only completes if members can be enrolled right here too.
@@ -172,12 +179,23 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   const createOrganisation = async () => {
     const name = orgName.trim()
     if (!name) { showToast?.('error', 'Give the organisation a name first.'); return }
+    if (orgType === 'other' && !orgCustomType.trim()) { showToast?.('error', 'Type is “Other” — give the organisation type a name (e.g. School, NGO).'); return }
+    const expected = Number(orgExpected)
+    if (!Number.isFinite(expected) || expected < 1) { showToast?.('error', 'Enter the Number of Users the organisation expects to cover.'); return }
+    if (!orgContactName.trim()) { showToast?.('error', 'Name the representative / contact person.'); return }
     setOrgSaving(true)
     const { data, error } = await db.groups.create({
       name,
       groupType: orgType,
-      contactName: orgContactName.trim() || undefined,
+      customType: orgType === 'other' ? orgCustomType.trim() : undefined,
+      expectedMembers: expected,
+      description: orgDesc.trim() || undefined,
+      orgPhone: orgLinePhone.trim() || undefined,
+      orgEmail: orgEmail.trim() || undefined,
+      address: orgAddress.trim() || undefined,
+      contactName: orgContactName.trim(),
       contactPhone: orgPhone.trim() || undefined,
+      contactEmail: orgContactEmail.trim() || undefined,
     })
     setOrgSaving(false)
     if (error || !data) {
@@ -187,7 +205,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
     setGroups(prev => [...prev, { ...data, active: true }].sort((a, b) => a.name.localeCompare(b.name)))
     setGroupId(data.id)
     setShowNewOrg(false)
-    setOrgName(''); setOrgContactName(''); setOrgPhone('')
+    setOrgName(''); setOrgCustomType(''); setOrgExpected(''); setOrgDesc(''); setOrgLinePhone(''); setOrgEmail(''); setOrgAddress(''); setOrgContactName(''); setOrgPhone(''); setOrgContactEmail('')
     showToast?.('success', `${data.name} registered — add its ${coverScope === 'corporate' ? 'employees' : 'members'} below, then finish the policy.`)
   }
 
@@ -528,7 +546,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                           <input className="form-control" placeholder={coverScope === 'corporate' ? 'e.g. Acme Pvt Ltd' : coverScope === 'team' ? 'e.g. Dynamos FC — Senior Squad' : 'e.g. Glen View Church'} value={orgName} onChange={e => setOrgName(e.target.value)} />
                         </div>
                         <div className="form-group" style={{ marginBottom: 0 }}>
-                          <label style={{ fontSize: 11 }}>Type</label>
+                          <label style={{ fontSize: 11 }}>Type *</label>
                           <select className="form-control" value={orgType} onChange={e => setOrgType(e.target.value as GroupType)}>
                             <option value="company">Company</option>
                             <option value="church">Church</option>
@@ -539,15 +557,47 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                             <option value="other">Other</option>
                           </select>
                         </div>
+                        {orgType === 'other' && (
+                          <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label style={{ fontSize: 11 }}>Custom Type *</label>
+                            <input className="form-control" placeholder="School, NGO, SACCO…" value={orgCustomType} onChange={e => setOrgCustomType(e.target.value)} />
+                          </div>
+                        )}
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label style={{ fontSize: 11 }}>Number of Users *</label>
+                          <input type="number" min={1} className="form-control" placeholder="Expected heads to cover" value={orgExpected} onChange={e => setOrgExpected(e.target.value)} />
+                        </div>
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 8 }}>
+                        <label style={{ fontSize: 11 }}>Description / Needs</label>
+                        <textarea className="form-control" rows={2} placeholder="What they want covered — demography, age ranges, activity (e.g. travel cover for a school tour)…" value={orgDesc} onChange={e => setOrgDesc(e.target.value)} />
                       </div>
                       <div className="form-row" style={{ marginBottom: 8 }}>
                         <div className="form-group" style={{ marginBottom: 0 }}>
-                          <label style={{ fontSize: 11 }}>Contact Person</label>
+                          <label style={{ fontSize: 11 }}>Organisation Phone</label>
+                          <PhoneInput value={orgLinePhone} onChange={setOrgLinePhone} />
+                        </div>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label style={{ fontSize: 11 }}>Organisation Email</label>
+                          <input type="email" className="form-control" placeholder="info@org.co.zw" value={orgEmail} onChange={e => setOrgEmail(e.target.value)} />
+                        </div>
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 8 }}>
+                        <label style={{ fontSize: 11 }}>Address</label>
+                        <input className="form-control" placeholder="Physical / postal address" value={orgAddress} onChange={e => setOrgAddress(e.target.value)} />
+                      </div>
+                      <div className="form-row" style={{ marginBottom: 8 }}>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label style={{ fontSize: 11 }}>Representative Name *</label>
                           <input className="form-control" placeholder={coverScope === 'corporate' ? 'HR officer' : coverScope === 'team' ? 'Coach or manager' : 'Secretary, chairperson'} value={orgContactName} onChange={e => setOrgContactName(e.target.value)} />
                         </div>
                         <div className="form-group" style={{ marginBottom: 0 }}>
-                          <label style={{ fontSize: 11 }}>Contact Phone</label>
+                          <label style={{ fontSize: 11 }}>Representative Phone</label>
                           <PhoneInput value={orgPhone} onChange={setOrgPhone} />
+                        </div>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label style={{ fontSize: 11 }}>Representative Email</label>
+                          <input type="email" className="form-control" placeholder="person@org.co.zw" value={orgContactEmail} onChange={e => setOrgContactEmail(e.target.value)} />
                         </div>
                       </div>
                       <div style={{ display: 'flex', gap: 8 }}>

@@ -265,11 +265,26 @@ export interface Group {
   id: string
   name: string
   groupType: GroupType
+  /** Compulsory when groupType is 'other' — the registrant's own words
+   *  (e.g. "School", "NGO"), so reports can say what the org actually is
+   *  instead of a forced category. */
+  customType?: string
+  /** How many people the organisation expects to cover — required on
+   *  registration; drives premium/billing expectations before the roster
+   *  is even built. */
+  expectedMembers?: number
+  /** Free-text brief: what the organisation wants covered, demography,
+   *  age ranges, the activity (e.g. "travel cover for a school tour"). */
+  description?: string
   registrationNumber?: string
+  /** The organisation's own line/box details… */
+  orgPhone?: string
+  orgEmail?: string
+  address?: string
+  /** …and the representative/contact person's details. */
   contactName?: string
   contactEmail?: string
   contactPhone?: string
-  address?: string
   active: boolean
   /** Active roster size, filled in by db.groups.list(). */
   memberCount?: number

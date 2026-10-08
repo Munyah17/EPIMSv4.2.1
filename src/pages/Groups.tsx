@@ -4,7 +4,7 @@ import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
 import { useAuth } from '../contexts/AuthContext'
-import GroupModal, { GROUP_TYPE_LABEL, type GroupInput } from '../components/modals/GroupModal'
+import GroupModal, { groupTypeLabel, type GroupInput } from '../components/modals/GroupModal'
 import GroupMembersModal from '../components/modals/GroupMembersModal'
 import ActionMenu from '../components/ui/ActionMenu'
 
@@ -123,10 +123,13 @@ export default function Groups({ showToast }: Props) {
                       <div style={{ fontSize: 11, color: 'var(--muted)' }} className="mono">Reg. {g.registrationNumber}</div>
                     )}
                   </td>
-                  <td><span className={`pill ${g.groupType === 'company' ? 'pill-blue' : 'pill-purple'}`}>{GROUP_TYPE_LABEL[g.groupType] ?? g.groupType}</span></td>
+                  <td><span className={`pill ${g.groupType === 'company' ? 'pill-blue' : 'pill-purple'}`}>{groupTypeLabel(g)}</span></td>
                   <td>{g.contactName ?? '—'}</td>
                   <td>{g.contactPhone ?? '—'}</td>
-                  <td><span className="pill pill-active">{g.memberCount ?? 0}</span></td>
+                  <td>
+                    <span className="pill pill-active">{g.memberCount ?? 0}</span>
+                    {g.expectedMembers ? <span style={{ fontSize: 11, color: 'var(--muted)' }}> of {g.expectedMembers} expected</span> : null}
+                  </td>
                   <td>{formatDate(g.createdAt)}</td>
                   <td><span className={`pill ${g.active ? 'pill-active' : 'pill-inactive'}`}>{g.active ? 'Active' : 'Inactive'}</span></td>
                   <td>
