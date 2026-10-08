@@ -21,6 +21,7 @@ export default function MassMessaging({ showToast }: Props) {
   const [message, setMessage] = useState('')
   const [search, setSearch] = useState('')
   const [sending, setSending] = useState(false)
+  const [attempted, setAttempted] = useState(false)
   const [tab, setTab] = useState<'compose' | 'settings' | 'log'>('compose')
   const [smsConfig, setSmsConfig] = useState<SmsSettings>(() => getSmsSettings())
   const [log, setLog] = useState<SmsLogEntry[]>([])
@@ -61,8 +62,12 @@ export default function MassMessaging({ showToast }: Props) {
   const segments = Math.ceil(chars / MAX_SMS_CHARS) || 1
 
   const handleSend = async () => {
-    if (!message.trim()) { showToast('warning', 'Please enter a message.'); return }
-    if (selectedClients.length === 0) { showToast('warning', 'No recipients selected.'); return }
+    setAttempted(true)
+    const needs = [!message.trim() && 'a message', selectedClients.length === 0 && 'recipients'].filter(Boolean)
+    if (needs.length > 0) {
+      showToast('warning', `Can't send yet — missing ${needs.join(' and ')} (highlighted below).`)
+      return
+    }
     if (!window.confirm(`Send SMS to ${selectedClients.length} client(s)?`)) return
 
     setSending(true)
@@ -131,7 +136,7 @@ export default function MassMessaging({ showToast }: Props) {
                 value={search}
                 onChange={e => setSearch(e.target.value)}
               />
-              <div className="mass-sms-client-list">
+              <div className="mass-sms-client-list" style={attempted && selected.size === 0 ? { outline: '2px solid var(--danger)', borderRadius: 7, outlineOffset: 2 } : undefined}>
                 {visible.map(c => (
                   <label key={c.id} className="mass-sms-client-row">
                     <input
@@ -161,7 +166,7 @@ export default function MassMessaging({ showToast }: Props) {
               </div>
 
               <textarea
-                className="form-control"
+                className={`form-control${attempted && !message.trim() ? ' field-invalid' : ''}`}
                 rows={6}
                 placeholder="Type your message here…&#10;&#10;Tip: Keep under 160 characters for a single SMS segment."
                 value={message}
@@ -194,7 +199,7 @@ export default function MassMessaging({ showToast }: Props) {
                   className="btn btn-primary btn-full"
                   style={{ marginTop: 10 }}
                   onClick={handleSend}
-                  disabled={sending || selected.size === 0 || !message.trim() || !hasPermission('communications.send_sms')}
+                  disabled={sending || !hasPermission('communications.send_sms')}
                 >
                   {sending ? '📨 Sending…' : `📱 Send to ${selected.size} client${selected.size !== 1 ? 's' : ''}`}
                 </button>

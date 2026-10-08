@@ -27,7 +27,9 @@ export default function GroupMembersModal({ group, onClose, showToast, onMembers
   const [position, setPosition] = useState('')
   const [memberNo, setMemberNo] = useState('')
   const [adding, setAdding] = useState(false)
+  const [attempted, setAttempted] = useState(false)
   const memberWord = group.groupType === 'company' ? 'Employee' : 'Member'
+  const nameMissing = attempted && !fullName.trim()
 
   const load = useCallback(async () => {
     const { data, error } = await db.groupMembers.list(group.id)
@@ -44,7 +46,8 @@ export default function GroupMembersModal({ group, onClose, showToast, onMembers
   const removed = members.filter(m => m.status === 'removed')
 
   const handleAdd = async () => {
-    if (!fullName.trim()) return
+    setAttempted(true)
+    if (!fullName.trim()) { showToast('warning', `Enter the ${memberWord.toLowerCase()}'s full name.`); return }
     setAdding(true)
     const { data, error } = await db.groupMembers.add({
       groupId: group.id,
@@ -86,7 +89,7 @@ export default function GroupMembersModal({ group, onClose, showToast, onMembers
           <div className="form-row" style={{ alignItems: 'flex-end' }}>
             <div className="form-group">
               <label>Full Name *</label>
-              <input className="form-control" value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Full name" />
+              <input className={`form-control${nameMissing ? ' field-invalid' : ''}`} value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Full name" />
             </div>
             <div className="form-group">
               <label>National ID</label>
@@ -111,7 +114,7 @@ export default function GroupMembersModal({ group, onClose, showToast, onMembers
               <input className="form-control" value={memberNo} onChange={e => setMemberNo(e.target.value)} placeholder="Optional staff/member no." />
             </div>
             <div className="form-group">
-              <button type="button" className="btn btn-primary btn-sm" onClick={handleAdd} disabled={!fullName.trim() || adding}>
+              <button type="button" className="btn btn-primary btn-sm" onClick={handleAdd} disabled={adding}>
                 {adding ? 'Adding…' : `+ Add ${memberWord}`}
               </button>
             </div>

@@ -3,6 +3,7 @@ import type { Client, AppUser } from '../../types'
 import { db } from '../../lib/db'
 import PhoneInput from '../ui/PhoneInput'
 import DateInput from '../ui/DateInput'
+import ValidationSummary, { MissingField, invalidClass, fieldId } from '../ui/ValidationSummary'
 import { toIsoDate } from '../../lib/dateUtils'
 
 interface Props {
@@ -29,8 +30,16 @@ export default function RegisterClientModal({ onClose, onSave }: Props) {
     db.staff.list().then(({ data }) => setAgents((data ?? []).filter(s => s.active)))
   }, [])
 
+  const [attempted, setAttempted] = useState(false)
+
+  const missing: MissingField[] = []
+  if (!name.trim()) missing.push({ key: 'name', label: 'Full Name' })
+  if (!phone.trim()) missing.push({ key: 'phone', label: 'Phone Number' })
+  if (!nationalId.trim()) missing.push({ key: 'nationalId', label: 'National ID' })
+
   const handleSave = () => {
-    if (!name || !phone || !nationalId) return
+    setAttempted(true)
+    if (missing.length > 0) return
     const client: Client = {
       id: `c${Date.now()}`,
       name, email, phone, nationalId, dob, address, occupation,
@@ -50,10 +59,11 @@ export default function RegisterClientModal({ onClose, onSave }: Props) {
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
+          <ValidationSummary missing={missing} attempted={attempted} />
           <div className="form-row">
-            <div className="form-group">
+            <div className="form-group" id={fieldId('name')}>
               <label>Full Name *</label>
-              <input className="form-control" placeholder="e.g. John Doe" value={name} onChange={e => setName(e.target.value)} />
+              <input className={invalidClass(missing, attempted, 'name')} placeholder="e.g. John Doe" value={name} onChange={e => setName(e.target.value)} />
             </div>
             <div className="form-group">
               <label>Email Address</label>
@@ -61,13 +71,13 @@ export default function RegisterClientModal({ onClose, onSave }: Props) {
             </div>
           </div>
           <div className="form-row">
-            <div className="form-group">
+            <div className="form-group" id={fieldId('phone')} style={attempted && !phone.trim() ? { outline: '1px solid var(--danger)', borderRadius: 7, outlineOffset: 2 } : undefined}>
               <label>Phone Number *</label>
               <PhoneInput value={phone} onChange={setPhone} />
             </div>
-            <div className="form-group">
+            <div className="form-group" id={fieldId('nationalId')}>
               <label>National ID *</label>
-              <input className="form-control" placeholder="e.g. 632118532K12" value={nationalId} onChange={e => setNationalId(e.target.value.replace(/-/g, ''))} />
+              <input className={invalidClass(missing, attempted, 'nationalId')} placeholder="e.g. 632118532K12" value={nationalId} onChange={e => setNationalId(e.target.value.replace(/-/g, ''))} />
             </div>
           </div>
           <div className="form-row">
@@ -95,7 +105,7 @@ export default function RegisterClientModal({ onClose, onSave }: Props) {
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={!name || !phone || !nationalId}>
+          <button className="btn btn-primary" onClick={handleSave}>
             Register Client
           </button>
         </div>

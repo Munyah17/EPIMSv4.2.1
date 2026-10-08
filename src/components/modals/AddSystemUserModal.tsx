@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { AppUser, UserRole } from '../../types'
 import PhoneInput from '../ui/PhoneInput'
+import ValidationSummary, { MissingField, invalidClass, fieldId } from '../ui/ValidationSummary'
 
 interface Props {
   user: AppUser | null
@@ -22,11 +23,18 @@ export default function AddSystemUserModal({ user, onClose, onSave, onResetPassw
   const [resetPwd, setResetPwd] = useState('')
   const [resettingPwd, setResettingPwd] = useState(false)
 
+  const [attempted, setAttempted] = useState(false)
+
   const passwordValid = user ? true : password.length >= 8
-  const canSave = !!name.trim() && !!email && passwordValid
+  const missing: MissingField[] = []
+  if (!name.trim()) missing.push({ key: 'name', label: 'Full Name' })
+  if (!email.trim()) missing.push({ key: 'email', label: 'Email Address' })
+  else if (!/^\S+@\S+\.\S+$/.test(email.trim())) missing.push({ key: 'email', label: 'Email Address', hint: 'Not a valid email format' })
+  if (!passwordValid) missing.push({ key: 'password', label: 'Temporary Password', hint: 'Minimum 8 characters' })
 
   const handleSave = () => {
-    if (!canSave) return
+    setAttempted(true)
+    if (missing.length > 0) return
     const member: AppUser = {
       id: user?.id ?? '',
       name, email, phone, role, department,
@@ -47,16 +55,17 @@ export default function AddSystemUserModal({ user, onClose, onSave, onResetPassw
           <div className="info-banner info-banner-warning" style={{ marginBottom: '1rem' }}>
             System access roles (Super Admin, Admin, Tech Support) control platform-wide administrative access, separate from work roles managed under Staff Management.
           </div>
+          <ValidationSummary missing={missing} attempted={attempted} />
           <div className="form-row">
-            <div className="form-group">
+            <div className="form-group" id={fieldId('name')}>
               <label>Full Name *</label>
-              <input className="form-control" value={name} onChange={e => setName(e.target.value)} placeholder="Full name" />
+              <input className={invalidClass(missing, attempted, 'name')} value={name} onChange={e => setName(e.target.value)} placeholder="Full name — also the sign-in name" />
             </div>
           </div>
           <div className="form-row">
-            <div className="form-group">
+            <div className="form-group" id={fieldId('email')}>
               <label>Email Address *</label>
-              <input type="email" className="form-control" value={email} onChange={e => setEmail(e.target.value)} placeholder="name@tariqify.com" />
+              <input type="email" className={invalidClass(missing, attempted, 'email')} value={email} onChange={e => setEmail(e.target.value)} placeholder="name@tariqify.com" />
             </div>
             <div className="form-group">
               <label>Phone Number</label>
@@ -78,7 +87,7 @@ export default function AddSystemUserModal({ user, onClose, onSave, onResetPassw
             </div>
           </div>
           <div className="form-row">
-            <div className="form-group">
+            <div className="form-group" id={fieldId('password')}>
               <label>{user ? 'Reset Password' : 'Temporary Password *'}</label>
               {user ? (
                 <div style={{ display: 'flex', gap: 8 }}>
@@ -104,14 +113,14 @@ export default function AddSystemUserModal({ user, onClose, onSave, onResetPassw
                   </button>
                 </div>
               ) : (
-                <input type="password" className="form-control" value={password} onChange={e => setPassword(e.target.value)} placeholder="Min. 8 characters" />
+                <input type="password" className={invalidClass(missing, attempted, 'password')} value={password} onChange={e => setPassword(e.target.value)} placeholder="Min. 8 characters" />
               )}
             </div>
           </div>
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={!canSave}>
+          <button className="btn btn-primary" onClick={handleSave}>
             {user ? 'Save Changes' : 'Add Account'}
           </button>
         </div>

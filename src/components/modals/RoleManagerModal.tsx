@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import type { CustomRole } from '../../types'
 import { db } from '../../lib/db'
 import { PERMISSION_CATALOG } from '../../lib/permissions'
+import { invalidClass, fieldId } from '../ui/ValidationSummary'
 
 interface Props {
   onClose: () => void
@@ -16,6 +17,8 @@ export default function RoleManagerModal({ onClose, showToast }: Props) {
   const [editing, setEditing] = useState<CustomRole | null>(null)
   const [draft, setDraft] = useState(EMPTY_DRAFT)
   const [saving, setSaving] = useState(false)
+  const [attempted, setAttempted] = useState(false)
+  const missing = [{ key: 'name', label: 'Role Name' }].filter(() => !draft.name.trim())
 
   const load = () => db.customRoles.list().then(({ data, error }) => {
     if (error) showToast('error', 'Failed to load custom roles.')
@@ -42,6 +45,7 @@ export default function RoleManagerModal({ onClose, showToast }: Props) {
   }
 
   const handleSave = async () => {
+    setAttempted(true)
     if (!draft.name.trim()) { showToast('error', 'Give the role a name.'); return }
     setSaving(true)
     const payload = { name: draft.name.trim(), description: draft.description.trim() || undefined, permissions: draft.permissions }
@@ -92,9 +96,9 @@ export default function RoleManagerModal({ onClose, showToast }: Props) {
               ))}
             </div>
             <div className="role-manager-editor">
-              <div className="form-group">
+              <div className="form-group" id={fieldId('name')}>
                 <label>Role Name *</label>
-                <input className="form-control" placeholder="e.g. Claims Processor" value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))} />
+                <input className={invalidClass(missing, attempted, 'name')} placeholder="e.g. Claims Processor" value={draft.name} onChange={e => setDraft(d => ({ ...d, name: e.target.value }))} />
               </div>
               <div className="form-group">
                 <label>Description</label>
@@ -130,7 +134,7 @@ export default function RoleManagerModal({ onClose, showToast }: Props) {
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Close</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={saving || !draft.name.trim()}>
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
             {saving ? 'Saving…' : editing ? 'Update Role' : 'Create Role'}
           </button>
         </div>

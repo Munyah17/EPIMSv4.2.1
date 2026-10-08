@@ -92,6 +92,7 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
     if (currency === 'ZWG' && !zigAvailable) setCurrency('USD')
   }, [currency, zigAvailable])
   const [phone, setPhone] = useState('')
+  const [phoneAttempted, setPhoneAttempted] = useState(false)
   const [result, setResult] = useState<PaymentResponse | null>(null)
   const [zipitDetails, setZipitDetails] = useState<ReturnType<typeof getZipitDetails> | null>(null)
   const [pollStatus, setPollStatus] = useState<string>('Awaiting payment…')
@@ -249,6 +250,7 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
   async function handlePay() {
     // Only EcoCash Instant needs a number up front — it pushes the prompt to
     // that handset. Paynow collects whatever it needs on its own page.
+    setPhoneAttempted(true)
     if (!phone && method === 'ecocash') { showToast('warning', "Enter the client's phone number — the EcoCash prompt is sent to it."); return }
     setStep('processing')
 
@@ -390,8 +392,8 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
               </div>
 
               {method === 'ecocash' && (
-                <div className="form-group">
-                  <label>Client Phone Number</label>
+                <div className="form-group" style={phoneAttempted && !phone ? { outline: '1px solid var(--danger)', borderRadius: 7, outlineOffset: 2, padding: 4 } : undefined}>
+                  <label>Client Phone Number *</label>
                   <PhoneInput value={phone} onChange={setPhone} placeholder={client?.phone} />
                   <span style={{ fontSize: 11, color: 'var(--muted)' }}>The EcoCash prompt is sent to this number.</span>
                 </div>

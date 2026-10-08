@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { Product } from '../../types'
+import ValidationSummary, { MissingField, invalidClass, fieldId } from '../ui/ValidationSummary'
 
 interface Props {
   product: Product | null
@@ -20,9 +21,17 @@ export default function AddProductModal({ product, onClose, onSave }: Props) {
   const [excess, setExcess] = useState(product?.excess ?? '')
   const [description, setDescription] = useState(product?.description ?? '')
   const [featuresText, setFeaturesText] = useState(product?.features.join('\n') ?? '')
+  const [attempted, setAttempted] = useState(false)
+
+  const missing: MissingField[] = []
+  if (!name.trim()) missing.push({ key: 'name', label: 'Product Name' })
+  if (!code.trim()) missing.push({ key: 'code', label: 'Product Code' })
+  if (!premium.trim() || Number(premium) <= 0 || !Number.isFinite(Number(premium))) missing.push({ key: 'premium', label: category === 'agriculture' ? 'Annual Premium' : 'Monthly Premium', hint: 'Must be a number greater than 0' })
+  if (!coverAmount.trim() || Number(coverAmount) <= 0 || !Number.isFinite(Number(coverAmount))) missing.push({ key: 'coverAmount', label: 'Cover Amount', hint: 'Must be a number greater than 0' })
 
   const handleSave = () => {
-    if (!name || !code || !premium || !coverAmount) return
+    setAttempted(true)
+    if (missing.length > 0) return
     const p: Product = {
       id: product?.id ?? `prod${Date.now()}`,
       name, code, category,
@@ -52,14 +61,15 @@ export default function AddProductModal({ product, onClose, onSave }: Props) {
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
+          <ValidationSummary missing={missing} attempted={attempted} />
           <div className="form-row">
-            <div className="form-group">
+            <div className="form-group" id={fieldId('name')}>
               <label>Product Name *</label>
-              <input className="form-control" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Funeral Cover Basic" />
+              <input className={invalidClass(missing, attempted, 'name')} value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Funeral Cover Basic" />
             </div>
-            <div className="form-group">
+            <div className="form-group" id={fieldId('code')}>
               <label>Product Code *</label>
-              <input className="form-control" value={code} onChange={e => setCode(e.target.value)} placeholder="FUN001" />
+              <input className={invalidClass(missing, attempted, 'code')} value={code} onChange={e => setCode(e.target.value)} placeholder="FUN001" />
             </div>
           </div>
           <div className="form-row">
@@ -75,15 +85,15 @@ export default function AddProductModal({ product, onClose, onSave }: Props) {
                 <option value="agriculture">Agriculture (Annual)</option>
               </select>
             </div>
-            <div className="form-group">
+            <div className="form-group" id={fieldId('premium')}>
               <label>{category === 'agriculture' ? 'Annual Premium ($) *' : 'Monthly Premium ($) *'}</label>
-              <input type="number" className="form-control" min={0} value={premium} onChange={e => setPremium(e.target.value)} />
+              <input type="number" className={invalidClass(missing, attempted, 'premium')} min={0} value={premium} onChange={e => setPremium(e.target.value)} />
             </div>
           </div>
           <div className="form-row">
-            <div className="form-group">
+            <div className="form-group" id={fieldId('coverAmount')}>
               <label>Cover Amount ($) *</label>
-              <input type="number" className="form-control" min={0} value={coverAmount} onChange={e => setCoverAmount(e.target.value)} />
+              <input type="number" className={invalidClass(missing, attempted, 'coverAmount')} min={0} value={coverAmount} onChange={e => setCoverAmount(e.target.value)} />
             </div>
             <div className="form-group">
               <label>Waiting Period (days)</label>
@@ -127,7 +137,7 @@ export default function AddProductModal({ product, onClose, onSave }: Props) {
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={!name || !code || !premium || !coverAmount}>
+          <button className="btn btn-primary" onClick={handleSave}>
             {product ? 'Save Changes' : 'Add Product'}
           </button>
         </div>

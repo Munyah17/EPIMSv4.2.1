@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { Lead } from '../../types'
 import { scoreLead } from '../../lib/aiService'
 import PhoneInput from '../ui/PhoneInput'
+import ValidationSummary, { MissingField, invalidClass, fieldId } from '../ui/ValidationSummary'
 
 interface Props {
   onClose: () => void
@@ -18,9 +19,16 @@ export default function NewLeadModal({ onClose, onSave }: Props) {
   const [productInterest, setProductInterest] = useState('')
   const [notes, setNotes] = useState('')
   const [saving, setSaving] = useState(false)
+  const [attempted, setAttempted] = useState(false)
+
+  const missing: MissingField[] = []
+  if (!name.trim()) missing.push({ key: 'name', label: 'Full Name' })
+  if (!phone.trim()) missing.push({ key: 'phone', label: 'Phone Number' })
+  if (!productInterest.trim()) missing.push({ key: 'productInterest', label: 'Product Interest' })
 
   const handleSave = async () => {
-    if (!name.trim() || !phone.trim() || !productInterest.trim()) return
+    setAttempted(true)
+    if (missing.length > 0) return
     setSaving(true)
     try {
       const { score } = await scoreLead({ name: name.trim(), source, productInterest: productInterest.trim(), notes: notes.trim() || undefined })
@@ -42,12 +50,13 @@ export default function NewLeadModal({ onClose, onSave }: Props) {
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
-          <div className="form-group">
+          <ValidationSummary missing={missing} attempted={attempted} />
+          <div className="form-group" id={fieldId('name')}>
             <label>Full Name *</label>
-            <input className="form-control" value={name} onChange={e => setName(e.target.value)} placeholder="Prospect's name" />
+            <input className={invalidClass(missing, attempted, 'name')} value={name} onChange={e => setName(e.target.value)} placeholder="Prospect's name" />
           </div>
           <div className="form-row">
-            <div className="form-group">
+            <div className="form-group" id={fieldId('phone')} style={attempted && !phone.trim() ? { outline: '1px solid var(--danger)', borderRadius: 7, outlineOffset: 2 } : undefined}>
               <label>Phone Number *</label>
               <PhoneInput value={phone} onChange={setPhone} />
             </div>
@@ -63,9 +72,9 @@ export default function NewLeadModal({ onClose, onSave }: Props) {
                 {SOURCES.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
-            <div className="form-group">
+            <div className="form-group" id={fieldId('productInterest')}>
               <label>Product Interest *</label>
-              <input className="form-control" value={productInterest} onChange={e => setProductInterest(e.target.value)} placeholder="e.g. Funeral Cover Basic" />
+              <input className={invalidClass(missing, attempted, 'productInterest')} value={productInterest} onChange={e => setProductInterest(e.target.value)} placeholder="e.g. Funeral Cover Basic" />
             </div>
           </div>
           <div className="form-group">
@@ -75,7 +84,7 @@ export default function NewLeadModal({ onClose, onSave }: Props) {
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={saving || !name.trim() || !phone.trim() || !productInterest.trim()}>
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
             {saving ? 'Scoring with AI…' : 'Add Lead'}
           </button>
         </div>

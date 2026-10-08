@@ -10,8 +10,11 @@ export default function ChangePasswordModal({ staffName, onClose, onSave }: Prop
   const [newPwd, setNewPwd] = useState('')
   const [confirmPwd, setConfirmPwd] = useState('')
   const [error, setError] = useState('')
+  const [attempted, setAttempted] = useState(false)
 
   const handleSave = () => {
+    setAttempted(true)
+    if (!newPwd) { setError('Enter the new password.'); return }
     if (newPwd.length < 8) { setError('Password must be at least 8 characters.'); return }
     if (newPwd !== confirmPwd) { setError('Passwords do not match.'); return }
     onSave()
@@ -26,18 +29,18 @@ export default function ChangePasswordModal({ staffName, onClose, onSave }: Prop
         </div>
         <div className="modal-body">
           <div className="form-group">
-            <label>New Password</label>
-            <input type="password" className="form-control" value={newPwd} onChange={e => { setNewPwd(e.target.value); setError('') }} placeholder="Min. 8 characters" />
+            <label>New Password *</label>
+            <input type="password" className={`form-control${attempted && (!newPwd || newPwd.length < 8) ? ' field-invalid' : ''}`} value={newPwd} onChange={e => { setNewPwd(e.target.value); setError('') }} placeholder="Min. 8 characters" />
           </div>
           <div className="form-group">
-            <label>Confirm New Password</label>
-            <input type="password" className="form-control" value={confirmPwd} onChange={e => { setConfirmPwd(e.target.value); setError('') }} />
+            <label>Confirm New Password *</label>
+            <input type="password" className={`form-control${attempted && (!confirmPwd || (newPwd && newPwd !== confirmPwd)) ? ' field-invalid' : ''}`} value={confirmPwd} onChange={e => { setConfirmPwd(e.target.value); setError('') }} />
           </div>
           {error && <div className="login-error">{error}</div>}
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={!newPwd || !confirmPwd}>
+          <button className="btn btn-primary" onClick={handleSave}>
             Update Password
           </button>
         </div>

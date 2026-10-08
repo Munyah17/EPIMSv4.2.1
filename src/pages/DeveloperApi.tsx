@@ -9,6 +9,7 @@ import { sendSystemEmail } from '../lib/mailService'
 import { MAILBOXES } from '../lib/mailboxes'
 import { recordActivity, listActivity, subscribeToActivity, ACTION_LABELS, type ActivityRow } from '../lib/activityLog'
 import { formatDate, formatDateTime } from '../lib/dateUtils'
+import ValidationSummary, { MissingField, invalidClass, fieldId } from '../components/ui/ValidationSummary'
 
 const ALL_SCOPES = ['products:read', 'quotes:read', 'clients:write', 'policies:write', 'policies:read', 'payments:write']
 
@@ -710,11 +711,16 @@ function NewDeveloperModal({ onClose, onSave }: { onClose: () => void; onSave: (
   const [termsOpen, setTermsOpen] = useState(false)
   const [termsAccepted, setTermsAccepted] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [attempted, setAttempted] = useState(false)
 
-  const canSave = companyName.trim() && contactEmail.trim() && termsAccepted
+  const missing: MissingField[] = []
+  if (!companyName.trim()) missing.push({ key: 'companyName', label: 'Company / App Name' })
+  if (!contactEmail.trim()) missing.push({ key: 'contactEmail', label: 'Contact Email' })
+  if (!termsAccepted) missing.push({ key: 'termsAccepted', label: 'Developer API Terms of Use', hint: 'Tick the agreement box' })
 
   const handleSave = async () => {
-    if (!canSave) return
+    setAttempted(true)
+    if (missing.length > 0) return
     setSaving(true)
     try {
       await onSave({ companyName: companyName.trim(), contactEmail: contactEmail.trim(), contactPhone: contactPhone.trim() || undefined })
@@ -731,13 +737,14 @@ function NewDeveloperModal({ onClose, onSave }: { onClose: () => void; onSave: (
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
-          <div className="form-group">
+          <ValidationSummary missing={missing} attempted={attempted} />
+          <div className="form-group" id={fieldId('companyName')}>
             <label>Company / App Name *</label>
-            <input className="form-control" value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="e.g. QuickCover App" />
+            <input className={invalidClass(missing, attempted, 'companyName')} value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder="e.g. QuickCover App" />
           </div>
-          <div className="form-group">
+          <div className="form-group" id={fieldId('contactEmail')}>
             <label>Contact Email *</label>
-            <input className="form-control" type="email" value={contactEmail} onChange={e => setContactEmail(e.target.value)} placeholder="dev@company.com" />
+            <input className={invalidClass(missing, attempted, 'contactEmail')} type="email" value={contactEmail} onChange={e => setContactEmail(e.target.value)} placeholder="dev@company.com" />
           </div>
           <div className="form-group">
             <label>Contact Phone</label>
@@ -750,7 +757,7 @@ function NewDeveloperModal({ onClose, onSave }: { onClose: () => void; onSave: (
               </div>
             </div>
           )}
-          <div className="form-group" style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+          <div className="form-group" id={fieldId('termsAccepted')} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, ...(attempted && !termsAccepted ? { outline: '1px solid var(--danger)', borderRadius: 7, outlineOffset: 2, padding: 4 } : {}) }}>
             <input type="checkbox" id="terms-accept" checked={termsAccepted} onChange={e => setTermsAccepted(e.target.checked)} style={{ marginTop: 3 }} />
             <label htmlFor="terms-accept" style={{ textTransform: 'none', fontSize: 12, fontWeight: 400, letterSpacing: 'normal' }}>
               This developer has read and agrees to the{' '}
@@ -762,7 +769,7 @@ function NewDeveloperModal({ onClose, onSave }: { onClose: () => void; onSave: (
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={saving || !canSave}>
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
             {saving ? 'Registering…' : 'Register Developer'}
           </button>
         </div>
@@ -785,7 +792,10 @@ function IssueKeyModal({ developer, onClose, onIssue }: {
     setScopes(prev => prev.includes(scope) ? prev.filter(s => s !== scope) : [...prev, scope])
   }
 
+  const [attempted, setAttempted] = useState(false)
+
   const handleIssue = async () => {
+    setAttempted(true)
     if (scopes.length === 0) return
     setIssuing(true)
     try {
@@ -810,8 +820,8 @@ function IssueKeyModal({ developer, onClose, onIssue }: {
               <button type="button" className={`bubble-toggle-btn${environment === 'sandbox' ? ' active' : ''}`} onClick={() => setEnvironment('sandbox')}>Sandbox</button>
             </div>
           </div>
-          <div className="form-group">
-            <label>Scopes (rights granted to this key)</label>
+          <div className="form-group" id={fieldId('scopes')} style={attempted && scopes.length === 0 ? { outline: '1px solid var(--danger)', borderRadius: 7, outlineOffset: 2, padding: 4 } : undefined}>
+            <label>Scopes (rights granted to this key) *</label>
             {ALL_SCOPES.map(scope => (
               <div key={scope} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0' }}>
                 <input type="checkbox" id={`scope-${scope}`} checked={scopes.includes(scope)} onChange={() => toggleScope(scope)} />
@@ -826,7 +836,7 @@ function IssueKeyModal({ developer, onClose, onIssue }: {
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleIssue} disabled={issuing || scopes.length === 0}>
+          <button className="btn btn-primary" onClick={handleIssue} disabled={issuing}>
             {issuing ? 'Issuing…' : 'Issue Key'}
           </button>
         </div>

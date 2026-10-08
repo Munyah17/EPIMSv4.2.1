@@ -7,6 +7,7 @@ import { MAILBOXES } from '../lib/mailboxes'
 import { useAuth } from '../contexts/AuthContext'
 import { ACCEPTED_DOCUMENT_TYPES } from '../lib/storage'
 import { formatDateTime } from '../lib/dateUtils'
+import ValidationSummary, { MissingField, invalidClass, fieldId } from '../components/ui/ValidationSummary'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -114,9 +115,17 @@ export default function Email({ showToast }: Props) {
     if (selected?.id === email.id) setSelected(updated)
   }
 
+  const [composeAttempted, setComposeAttempted] = useState(false)
+
+  const composeMissing: MissingField[] = []
+  if (!compose.to.trim()) composeMissing.push({ key: 'to', label: 'To' })
+  if (!compose.subject.trim()) composeMissing.push({ key: 'subject', label: 'Subject' })
+  if (!compose.body.trim()) composeMissing.push({ key: 'body', label: 'Body' })
+
   const handleSend = async () => {
-    if (!compose.to.trim() || !compose.subject.trim() || !compose.body.trim()) {
-      showToast('warning', 'Please fill in To, Subject, and Body.')
+    setComposeAttempted(true)
+    if (composeMissing.length > 0) {
+      showToast('warning', `Missing: ${composeMissing.map(m => m.label).join(', ')} — highlighted below.`)
       return
     }
     setSending(true)
@@ -340,6 +349,7 @@ export default function Email({ showToast }: Props) {
               <button className="modal-close" onClick={() => setShowCompose(false)}>✕</button>
             </div>
             <div className="modal-body">
+              <ValidationSummary missing={composeMissing} attempted={composeAttempted} action="send" />
               {canChooseSender && (
                 <div className="form-group">
                   <label>From</label>
@@ -349,10 +359,10 @@ export default function Email({ showToast }: Props) {
                   </select>
                 </div>
               )}
-              <div className="form-group">
+              <div className="form-group" id={fieldId('to')}>
                 <label>To *</label>
                 <input
-                  className="form-control"
+                  className={invalidClass(composeMissing, composeAttempted, 'to')}
                   placeholder="recipient@example.com"
                   value={compose.to}
                   onChange={e => setCompose(p => ({ ...p, to: e.target.value }))}
@@ -367,19 +377,19 @@ export default function Email({ showToast }: Props) {
                   onChange={e => setCompose(p => ({ ...p, cc: e.target.value }))}
                 />
               </div>
-              <div className="form-group">
+              <div className="form-group" id={fieldId('subject')}>
                 <label>Subject *</label>
                 <input
-                  className="form-control"
+                  className={invalidClass(composeMissing, composeAttempted, 'subject')}
                   placeholder="Email subject"
                   value={compose.subject}
                   onChange={e => setCompose(p => ({ ...p, subject: e.target.value }))}
                 />
               </div>
-              <div className="form-group">
+              <div className="form-group" id={fieldId('body')}>
                 <label>Body *</label>
                 <textarea
-                  className="form-control"
+                  className={invalidClass(composeMissing, composeAttempted, 'body')}
                   rows={10}
                   placeholder="Write your message…"
                   value={compose.body}

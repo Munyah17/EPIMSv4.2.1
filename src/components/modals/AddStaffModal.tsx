@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import type { AppUser, UserRole, CustomRole } from '../../types'
 import { db } from '../../lib/db'
 import PhoneInput from '../ui/PhoneInput'
+import ValidationSummary, { MissingField, invalidClass, fieldId } from '../ui/ValidationSummary'
 
 interface Props {
   staff: AppUser | null
@@ -36,11 +37,18 @@ export default function AddStaffModal({ staff, onClose, onSave, onResetPassword 
   // required — no more silent 'staff1234' default. Editing an existing
   // member can leave it blank (this modal doesn't change an existing
   // user's password; that's handled elsewhere).
+  const [attempted, setAttempted] = useState(false)
+
   const passwordValid = staff ? true : password.length >= 8
-  const canSave = !!name.trim() && !!email && passwordValid
+  const missing: MissingField[] = []
+  if (!name.trim()) missing.push({ key: 'name', label: 'Full Name' })
+  if (!email.trim()) missing.push({ key: 'email', label: 'Email Address' })
+  else if (!/^\S+@\S+\.\S+$/.test(email.trim())) missing.push({ key: 'email', label: 'Email Address', hint: 'Not a valid email format' })
+  if (!passwordValid) missing.push({ key: 'password', label: 'Temporary Password', hint: 'Minimum 8 characters' })
 
   const handleSave = () => {
-    if (!canSave) return
+    setAttempted(true)
+    if (missing.length > 0) return
     // Only snapshot the role's permissions in when the custom role selection
     // actually changed — otherwise re-saving this form for an unrelated edit
     // (e.g. phone number) would silently wipe out any manual permission
@@ -72,16 +80,17 @@ export default function AddStaffModal({ staff, onClose, onSave, onResetPassword 
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
+          <ValidationSummary missing={missing} attempted={attempted} />
           <div className="form-row">
-            <div className="form-group">
+            <div className="form-group" id={fieldId('name')}>
               <label>Full Name *</label>
-              <input className="form-control" value={name} onChange={e => setName(e.target.value)} placeholder="Full name" />
+              <input className={invalidClass(missing, attempted, 'name')} value={name} onChange={e => setName(e.target.value)} placeholder="Full name — also the sign-in name" />
             </div>
           </div>
           <div className="form-row">
-            <div className="form-group">
+            <div className="form-group" id={fieldId('email')}>
               <label>Email Address *</label>
-              <input type="email" className="form-control" value={email} onChange={e => setEmail(e.target.value)} placeholder="staff@tariqify.com" />
+              <input type="email" className={invalidClass(missing, attempted, 'email')} value={email} onChange={e => setEmail(e.target.value)} placeholder="staff@tariqify.com" />
             </div>
             <div className="form-group">
               <label>Phone Number</label>
@@ -110,7 +119,7 @@ export default function AddStaffModal({ staff, onClose, onSave, onResetPassword 
             </select>
           </div>
           <div className="form-row">
-            <div className="form-group">
+            <div className="form-group" id={fieldId('password')}>
               <label>{staff ? 'Reset Password' : 'Temporary Password *'}</label>
               {staff ? (
                 <div style={{ display: 'flex', gap: 8 }}>
@@ -136,14 +145,14 @@ export default function AddStaffModal({ staff, onClose, onSave, onResetPassword 
                   </button>
                 </div>
               ) : (
-                <input type="password" className="form-control" value={password} onChange={e => setPassword(e.target.value)} placeholder="Min. 8 characters" />
+                <input type="password" className={invalidClass(missing, attempted, 'password')} value={password} onChange={e => setPassword(e.target.value)} placeholder="Min. 8 characters" />
               )}
             </div>
           </div>
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={!canSave}>
+          <button className="btn btn-primary" onClick={handleSave}>
             {staff ? 'Save Changes' : 'Add Staff Member'}
           </button>
         </div>

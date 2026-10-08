@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { Ticket, Client, TicketPriority } from '../../types'
 import { db } from '../../lib/db'
+import ValidationSummary, { MissingField, invalidClass, fieldId } from '../ui/ValidationSummary'
 
 interface Props {
   onClose: () => void
@@ -30,8 +31,16 @@ export default function NewTicketModal({ onClose, onSave }: Props) {
 
   const client = clients.find(c => c.id === clientId)
 
+  const [attempted, setAttempted] = useState(false)
+
+  const missing: MissingField[] = []
+  if (!clientId) missing.push({ key: 'clientId', label: 'Client', hint: 'Pick the client this ticket is for' })
+  if (!subject.trim()) missing.push({ key: 'subject', label: 'Subject' })
+  if (!description.trim()) missing.push({ key: 'description', label: 'Description' })
+
   const handleSave = () => {
-    if (!clientId || !subject || !description) return
+    setAttempted(true)
+    if (missing.length > 0) return
     const ticketNumber = `TKT${new Date().getFullYear()}${String(Date.now()).slice(-3)}`
     const ticket: Ticket = {
       id: `t${Date.now()}`,
@@ -58,8 +67,9 @@ export default function NewTicketModal({ onClose, onSave }: Props) {
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
-          <div className="form-group">
-            <label>Client</label>
+          <ValidationSummary missing={missing} attempted={attempted} />
+          <div className="form-group" id={fieldId('clientId')}>
+            <label>Client *</label>
             {loading ? (
               <select className="form-control" disabled>
                 <option>Loading clients…</option>
@@ -69,7 +79,7 @@ export default function NewTicketModal({ onClose, onSave }: Props) {
                 <option>Could not load clients — close and try again.</option>
               </select>
             ) : (
-              <select className="form-control" value={clientId} onChange={e => setClientId(e.target.value)}>
+              <select className={invalidClass(missing, attempted, 'clientId')} value={clientId} onChange={e => setClientId(e.target.value)}>
                 <option value="">Select client…</option>
                 {clients.map(c => (
                   <option key={c.id} value={c.id}>{c.name} ({c.phone})</option>
@@ -91,18 +101,18 @@ export default function NewTicketModal({ onClose, onSave }: Props) {
               </select>
             </div>
           </div>
-          <div className="form-group">
+          <div className="form-group" id={fieldId('subject')}>
             <label>Subject *</label>
-            <input className="form-control" value={subject} onChange={e => setSubject(e.target.value)} placeholder="Brief description of the issue" />
+            <input className={invalidClass(missing, attempted, 'subject')} value={subject} onChange={e => setSubject(e.target.value)} placeholder="Brief description of the issue" />
           </div>
-          <div className="form-group">
+          <div className="form-group" id={fieldId('description')}>
             <label>Description *</label>
-            <textarea className="form-control" rows={4} value={description} onChange={e => setDescription(e.target.value)} placeholder="Describe the issue in detail…" />
+            <textarea className={invalidClass(missing, attempted, 'description')} rows={4} value={description} onChange={e => setDescription(e.target.value)} placeholder="Describe the issue in detail…" />
           </div>
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={!clientId || !subject || !description}>
+          <button className="btn btn-primary" onClick={handleSave}>
             Create Ticket
           </button>
         </div>

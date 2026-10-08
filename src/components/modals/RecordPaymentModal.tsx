@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import type { Payment, PaymentMethod, PaymentStatus, SplitPayment, Policy } from '../../types'
+import ValidationSummary, { MissingField, invalidClass, fieldId } from '../ui/ValidationSummary'
 import { MANUAL_PAYMENT_METHODS } from '../../types'
 import { db } from '../../lib/db'
 import { premiumPeriodLabel } from '../../lib/productUtils'
@@ -78,6 +79,11 @@ export default function RecordPaymentModal({ policyId: initialPolicyId, payment:
   const amountValue = Number(amount)
   const amountInvalid = !amount.trim() || !Number.isFinite(amountValue) || amountValue <= 0
   const negativeSplit = useSplit && splits.some(s => s.amount < 0)
+  const [attempted, setAttempted] = useState(false)
+
+  const missing: MissingField[] = []
+  if (!initialPolicyId && !editing && !policyId) missing.push({ key: 'policyId', label: 'Policy' })
+  if (amountInvalid) missing.push({ key: 'amount', label: 'Amount', hint: 'Must be greater than zero' })
 
   const blockedReason = !policyId ? 'Select the policy this payment is for.'
     : amountInvalid ? 'Enter an amount greater than zero.'
@@ -90,6 +96,7 @@ export default function RecordPaymentModal({ policyId: initialPolicyId, payment:
     // Never a silent return: the button stays live and says what is wrong,
     // including the policy-still-loading case, which used to make the
     // button do nothing at all with no explanation.
+    setAttempted(true)
     if (blockedReason) return
     const reference = editing?.reference ?? `PAY${new Date().toISOString().slice(0, 10).replace(/-/g, '')}${String(Date.now()).slice(-3)}`
     const paymentRecord: Payment = {
@@ -115,10 +122,11 @@ export default function RecordPaymentModal({ policyId: initialPolicyId, payment:
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
+          <ValidationSummary missing={missing} attempted={attempted} />
           {!initialPolicyId && !editing && (
-            <div className="form-group">
+            <div className="form-group" id={fieldId('policyId')}>
               <label>Policy *</label>
-              <select className="form-control" value={policyId} onChange={e => setPolicyId(e.target.value)} disabled={!allPolicies}>
+              <select className={invalidClass(missing, attempted, 'policyId')} value={policyId} onChange={e => setPolicyId(e.target.value)} disabled={!allPolicies}>
                 <option value="">{allPolicies ? 'Select policy…' : 'Loading policies…'}</option>
                 {allPolicies?.map(p => (
                   <option key={p.id} value={p.id}>{p.policyNumber} ({p.clientName})</option>
@@ -142,9 +150,9 @@ export default function RecordPaymentModal({ policyId: initialPolicyId, payment:
             </div>
           )}
           <div className="form-row">
-            <div className="form-group">
+            <div className="form-group" id={fieldId('amount')}>
               <label>Amount ($) *</label>
-              <input type="number" className="form-control" min={0} step="0.01" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" />
+              <input type="number" className={invalidClass(missing, attempted, 'amount')} min={0} step="0.01" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" />
             </div>
             <div className="form-group">
               <label>Payment Method *</label>
@@ -190,13 +198,13 @@ export default function RecordPaymentModal({ policyId: initialPolicyId, payment:
               </p>
             </div>
           )}
-          {blockedReason && (amount.trim() || policyId) && (
+          {blockedReason && (attempted || amount.trim() || policyId) && (
             <p style={{ fontSize: 12, color: 'var(--danger)', margin: '10px 0 0' }}>{blockedReason}</p>
           )}
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={!!blockedReason}>
+          <button className="btn btn-primary" onClick={handleSave}>
             {editing ? 'Save Changes' : 'Record Payment'}
           </button>
         </div>

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Group, GroupType } from '../../types'
 import PhoneInput from '../ui/PhoneInput'
+import ValidationSummary, { MissingField, invalidClass, fieldId } from '../ui/ValidationSummary'
 
 /** Display labels for the group's organisation type. */
 export const GROUP_TYPE_LABEL: Record<GroupType, string> = {
@@ -32,10 +33,14 @@ export default function GroupModal({ group, onClose, onSave }: Props) {
   const [contactPhone, setContactPhone] = useState(group?.contactPhone ?? '')
   const [address, setAddress] = useState(group?.address ?? '')
 
-  const canSave = !!name.trim()
+  const [attempted, setAttempted] = useState(false)
+
+  const missing: MissingField[] = []
+  if (!name.trim()) missing.push({ key: 'name', label: 'Organisation Name' })
 
   const handleSave = () => {
-    if (!canSave) return
+    setAttempted(true)
+    if (missing.length > 0) return
     onSave({
       name: name.trim(),
       groupType,
@@ -58,10 +63,11 @@ export default function GroupModal({ group, onClose, onSave }: Props) {
           <div className="info-banner info-banner-info" style={{ marginBottom: '1rem' }}>
             A company covers its employees; a church, union or club covers its members. Once registered, build the roster via Manage Members, then issue the organisation a Corporate or Group policy.
           </div>
+          <ValidationSummary missing={missing} attempted={attempted} />
           <div className="form-row">
-            <div className="form-group">
+            <div className="form-group" id={fieldId('name')}>
               <label>Organisation Name *</label>
-              <input className="form-control" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Acme Pvt Ltd, Glen View Church" />
+              <input className={invalidClass(missing, attempted, 'name')} value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Acme Pvt Ltd, Glen View Church" />
             </div>
             <div className="form-group">
               <label>Type *</label>
@@ -99,7 +105,7 @@ export default function GroupModal({ group, onClose, onSave }: Props) {
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSave} disabled={!canSave}>
+          <button className="btn btn-primary" onClick={handleSave}>
             {group ? 'Save Changes' : 'Register Organisation'}
           </button>
         </div>

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Client } from '../../types'
 import PhoneInput from '../ui/PhoneInput'
+import ValidationSummary, { MissingField, invalidClass, fieldId } from '../ui/ValidationSummary'
 
 interface Props {
   client: Client
@@ -18,8 +19,16 @@ export default function EditClientModal({ client, onClose, onSave, onAssignPolic
   const [status, setStatus] = useState(client.status)
 
 
+  const [attempted, setAttempted] = useState(false)
+
+  const missing: MissingField[] = []
+  if (!name.trim()) missing.push({ key: 'name', label: 'Full Name' })
+  if (!phone.trim()) missing.push({ key: 'phone', label: 'Phone' })
+
   const handleSave = () => {
-    onSave({ ...client, name, email, phone, address, occupation, status })
+    setAttempted(true)
+    if (missing.length > 0) return
+    onSave({ ...client, name: name.trim(), email, phone, address, occupation, status })
   }
 
   return (
@@ -30,10 +39,11 @@ export default function EditClientModal({ client, onClose, onSave, onAssignPolic
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
+          <ValidationSummary missing={missing} attempted={attempted} />
           <div className="form-row">
-            <div className="form-group">
-              <label>Full Name</label>
-              <input className="form-control" value={name} onChange={e => setName(e.target.value)} />
+            <div className="form-group" id={fieldId('name')}>
+              <label>Full Name *</label>
+              <input className={invalidClass(missing, attempted, 'name')} value={name} onChange={e => setName(e.target.value)} />
             </div>
             <div className="form-group">
               <label>Email</label>
@@ -41,8 +51,8 @@ export default function EditClientModal({ client, onClose, onSave, onAssignPolic
             </div>
           </div>
           <div className="form-row">
-            <div className="form-group">
-              <label>Phone</label>
+            <div className="form-group" id={fieldId('phone')} style={attempted && !phone.trim() ? { outline: '1px solid var(--danger)', borderRadius: 7, outlineOffset: 2 } : undefined}>
+              <label>Phone *</label>
               <PhoneInput value={phone} onChange={setPhone} />
             </div>
             <div className="form-group">

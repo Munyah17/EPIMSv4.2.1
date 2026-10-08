@@ -10,6 +10,7 @@ import { computeAssignedStartDate } from '../../lib/policyLifecycle'
 import { toIsoDate } from '../../lib/dateUtils'
 import { nextPolicyNumber } from '../../lib/policyNumbers'
 import { POLICY_SOURCES, DEFAULT_POLICY_SOURCE } from '../../lib/policySources'
+import ValidationSummary, { MissingField, invalidClass, fieldId, isMissing } from '../ui/ValidationSummary'
 
 interface Props {
   onClose: () => void
@@ -199,34 +200,32 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   }
 
   const clientAge = clientDob ? Math.floor((Date.now() - new Date(clientDob).getTime()) / (365.25 * 24 * 3600 * 1000)) : null
+  const [attempted, setAttempted] = useState(false)
+
+  const missing: MissingField[] = []
+  if (customerMode === 'existing' && !existingClientId) missing.push({ key: 'existingClient', label: 'Customer search', hint: 'Search and pick the customer from the list' })
+  if (!clientName.trim()) missing.push({ key: 'clientName', label: 'Full Name' })
+  if (!clientPhone.trim()) missing.push({ key: 'clientPhone', label: 'Phone Number' })
+  if (!clientNationalId.trim()) missing.push({ key: 'clientNationalId', label: 'National ID' })
+  if (!clientDob) missing.push({ key: 'clientDob', label: 'Date of Birth' })
+  else if (clientAge !== null && clientAge < 18) missing.push({ key: 'clientDob', label: 'Date of Birth', hint: 'The policyholder must be at least 18' })
+  if (!productId) missing.push({ key: 'productId', label: 'Product' })
+  if (isGroupScope) {
+    if (!groupId) missing.push({ key: 'groupId', label: 'Organisation' })
+    else if (selectedMemberIds.size === 0) missing.push({ key: 'members', label: coverScope === 'corporate' ? 'Employees Covered' : 'Members Covered', hint: 'Tick at least one roster member' })
+  } else if (dependants.some(d => d.name.trim() && (!d.dob || !d.nationalId.trim()))) {
+    missing.push({ key: 'dependants', label: 'Dependant details', hint: 'Every dependant needs a name, date of birth and ID number' })
+  }
 
   const handleSave = async () => {
-    if (customerMode === 'existing' && !existingClientId) {
-      if (showToast) showToast('error', 'Search for and select an existing customer first.')
-      return
-    }
-    if (!clientName || !clientPhone || !clientNationalId || !clientDob || !productId) {
-      if (showToast) showToast('error', 'Please fill in all required fields, including date of birth.')
-      return
-    }
-    if (clientAge !== null && clientAge < 18) {
-      if (showToast) showToast('error', 'The policyholder must be at least 18 years old.')
-      return
-    }
-    if (isGroupScope) {
-      if (!groupId) { if (showToast) showToast('error', 'Pick the organisation this policy covers.'); return }
-      if (selectedMemberIds.size === 0) { if (showToast) showToast('error', 'Select at least one member to cover.'); return }
-    } else {
-      const incompleteDependant = dependants.find(d => d.name.trim() && (!d.dob || !d.nationalId.trim()))
-      if (incompleteDependant) {
-        if (showToast) showToast('error', 'Enter date of birth and ID number for every dependant.')
+    setAttempted(true)
+    if (missing.length > 0) return
+    if (!isGroupScope) {
+      const overValue = dependants.find(d => (d.premium ?? 0) > product!.premium || (d.coverAmount ?? 0) > product!.coverAmount)
+      if (overValue) {
+        if (showToast) showToast('error', `${overValue.name || 'A dependant'}'s plan premium and cover cannot exceed the policyholder's.`)
         return
       }
-    }
-    const overValue = dependants.find(d => (d.premium ?? 0) > product!.premium || (d.coverAmount ?? 0) > product!.coverAmount)
-    if (overValue) {
-      if (showToast) showToast('error', `${overValue.name || 'A dependant'}'s plan premium and cover cannot exceed the policyholder's.`)
-      return
     }
 
     // Existing customer: update their record in place (details may have
@@ -330,6 +329,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
+          <ValidationSummary missing={missing} attempted={attempted} />
           {!initialClient && (
             <div className="bubble-toggle" style={{ marginBottom: '1rem' }}>
               <button
@@ -350,10 +350,10 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
           )}
 
           {customerMode === 'existing' && !initialClient && (
-            <div className="form-group" style={{ position: 'relative', marginBottom: '1rem' }}>
+            <div className="form-group" id={fieldId('existingClient')} style={{ position: 'relative', marginBottom: '1rem' }}>
               <label>Search Customer * (name, phone, or ID number)</label>
               <input
-                className="form-control"
+                className={invalidClass(missing, attempted, 'existingClient')}
                 placeholder="Start typing to search…"
                 value={clientSearch}
                 onChange={e => { setClientSearch(e.target.value); setExistingClientId('') }}
@@ -376,11 +376,11 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
           <div className="new-policy-cols">
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <h4 style={{ margin: 0 }}>Customer Information{existingClientId && <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--muted)' }}> (on file, read only)</span>}</h4>
-              <div className="form-group">
+              <div className="form-group" id={fieldId('clientName')}>
                 <label>Full Name *</label>
-                <input className="form-control" placeholder="Enter full name" value={clientName} onChange={e => setClientName(e.target.value)} disabled={!!existingClientId} style={existingClientId ? { opacity: 0.6 } : undefined} />
+                <input className={invalidClass(missing, attempted, 'clientName')} placeholder="Enter full name" value={clientName} onChange={e => setClientName(e.target.value)} disabled={!!existingClientId} style={existingClientId ? { opacity: 0.6 } : undefined} />
               </div>
-              <div className="form-group">
+              <div className="form-group" id={fieldId('clientPhone')} style={isMissing(missing, attempted, 'clientPhone') ? { outline: '1px solid var(--danger)', borderRadius: 7, outlineOffset: 2 } : undefined}>
                 <label>Phone Number *</label>
                 <PhoneInput value={clientPhone} onChange={setClientPhone} disabled={!!existingClientId} />
               </div>
@@ -388,11 +388,11 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                 <label>Email</label>
                 <input type="email" className="form-control" placeholder="email@example.com" value={clientEmail} onChange={e => setClientEmail(e.target.value)} disabled={!!existingClientId} style={existingClientId ? { opacity: 0.6 } : undefined} />
               </div>
-              <div className="form-group">
+              <div className="form-group" id={fieldId('clientNationalId')}>
                 <label>National ID *</label>
-                <input className="form-control" placeholder="e.g. 632118532K12" value={clientNationalId} onChange={e => setClientNationalId(e.target.value.replace(/-/g, ''))} disabled={!!existingClientId} style={existingClientId ? { opacity: 0.6 } : undefined} />
+                <input className={invalidClass(missing, attempted, 'clientNationalId')} placeholder="e.g. 632118532K12" value={clientNationalId} onChange={e => setClientNationalId(e.target.value.replace(/-/g, ''))} disabled={!!existingClientId} style={existingClientId ? { opacity: 0.6 } : undefined} />
               </div>
-              <div className="form-group">
+              <div className="form-group" id={fieldId('clientDob')} style={isMissing(missing, attempted, 'clientDob') ? { outline: '1px solid var(--danger)', borderRadius: 7, outlineOffset: 2 } : undefined}>
                 <label>Date of Birth * (18+)</label>
                 <DateInput value={clientDob} onChange={setClientDob} disabled={!!existingClientId} className={existingClientId ? 'date-input-disabled' : undefined} />
               </div>
@@ -424,18 +424,18 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                 )}
               </div>
               {isGroupScope && (
-                <div className="form-group">
+                <div className="form-group" id={fieldId('groupId')}>
                   <label>Organisation *</label>
-                  <select className="form-control" value={groupId} onChange={e => setGroupId(e.target.value)}>
+                  <select className={invalidClass(missing, attempted, 'groupId')} value={groupId} onChange={e => setGroupId(e.target.value)}>
                     <option value="">{groups.length === 0 ? 'No groups registered — add one on the Groups page' : 'Select organisation…'}</option>
                     {groups.map(g => <option key={g.id} value={g.id}>{g.name} ({g.memberCount ?? 0} members)</option>)}
                   </select>
                   <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>Register organisations and build their rosters on the Groups page.</p>
                 </div>
               )}
-              <div className="form-group">
+              <div className="form-group" id={fieldId('productId')}>
                 <label>Product *</label>
-                <select className="form-control" value={productId} onChange={e => setProductId(e.target.value)} disabled={productsLoading}>
+                <select className={invalidClass(missing, attempted, 'productId')} value={productId} onChange={e => setProductId(e.target.value)} disabled={productsLoading}>
                   <option value="">{productsLoading ? 'Loading products…' : 'Select product…'}</option>
                   {products.filter(p => p.active).map(p => <option key={p.id} value={p.id}>{p.name} (${p.premium}{premiumPeriodLabel(p.category)})</option>)}
                 </select>
@@ -485,7 +485,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
           </div>
 
           {isGroupScope ? (
-            <div style={{ marginTop: '1rem' }}>
+            <div id={fieldId('members')} className={isMissing(missing, attempted, 'members') ? 'field-invalid-block' : undefined} style={{ marginTop: '1rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                 <label>{coverScope === 'corporate' ? 'Employees Covered' : 'Members Covered'} ({selectedMemberIds.size} of {roster.length} selected)</label>
                 {roster.length > 0 && (
@@ -525,7 +525,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
               )}
             </div>
           ) : (
-          <div style={{ marginTop: '1rem' }}>
+          <div id={fieldId('dependants')} className={isMissing(missing, attempted, 'dependants') ? 'field-invalid-block' : undefined} style={{ marginTop: '1rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <label>Dependants</label>
               <button type="button" className="btn btn-ghost btn-sm" onClick={addDependant}>+ Add Dependant</button>
@@ -565,7 +565,6 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
           <button
             className="btn btn-primary"
             onClick={handleSave}
-            disabled={!clientName || !clientPhone || !clientNationalId || !productId || (customerMode === 'existing' && !existingClientId) || (isGroupScope && (!groupId || selectedMemberIds.size === 0))}
           >
             {customerMode === 'existing' ? 'Create Policy' : 'Create Policy & Register Client'}
           </button>
