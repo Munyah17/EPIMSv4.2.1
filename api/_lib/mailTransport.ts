@@ -94,7 +94,12 @@ export async function sendMailDirect(mail: MailPayload): Promise<MailResult> {
   const requestedFrom = mail.from || `noreply@${host.replace(/^(mail|smtp)\./, '')}`
   const fromAddress = verifiedSender || requestedFrom
   const fromHeader = mail.fromName ? `${mail.fromName} <${fromAddress}>` : fromAddress
+  // Every mailbox answer lands in one place: replies on mail sent "from"
+  // any address must go to the monitored inbox, not the role alias the
+  // template happened to name — SMTP_REPLY_TO forces that when the caller
+  // didn't set one itself.
   const replyTo = mail.replyTo
+    || process.env.SMTP_REPLY_TO
     || (verifiedSender && requestedFrom !== verifiedSender ? requestedFrom : undefined)
 
   try {
