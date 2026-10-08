@@ -308,9 +308,26 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
     missing.push({ key: 'dependants', label: 'Dependant details', hint: 'Every dependant needs a name, date of birth and ID number' })
   }
 
+  const [saving, setSaving] = useState(false)
+
   const handleSave = async () => {
+    // No silent nothing: any throw — network drop, a DB rejection that
+    // escaped a {error} return, a missing product row — lands in a toast
+    // and leaves the modal open, and the button locks for the duration so
+    // a double-click can't create the client twice.
     setAttempted(true)
-    if (missing.length > 0) return
+    if (missing.length > 0 || saving) return
+    setSaving(true)
+    try {
+      await doSave()
+    } catch (e) {
+      showToast?.('error', `Policy was not created: ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const doSave = async () => {
     if (!isGroupScope) {
       const overValue = dependants.find(d => (d.premium ?? 0) > product!.premium || (d.coverAmount ?? 0) > product!.coverAmount)
       if (overValue) {
@@ -416,7 +433,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
       agentName: staff.find(s => s.id === agentId)?.name,
       source,
     }
-    onSave(policy)
+    await Promise.resolve(onSave(policy))
   }
 
   return (
@@ -792,8 +809,9 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
           <button
             className="btn btn-primary"
             onClick={handleSave}
+            disabled={saving}
           >
-            {customerMode === 'existing' ? 'Create Policy' : 'Create Policy & Register Client'}
+            {saving ? 'Creating…' : customerMode === 'existing' ? 'Create Policy' : 'Create Policy & Register Client'}
           </button>
         </div>
       </div>

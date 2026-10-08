@@ -53,11 +53,7 @@ function isValidMsisdn(raw: string): boolean {
 
 // ── Channel senders ─────────────────────────────────────────────────
 
-export async function sendSmsAfrosoft(to: string, message: string): Promise<Delivery> {
-  const msisdn = normalizeMsisdn(to)
-  if (!isValidMsisdn(to)) {
-    return { channel: 'sms', recipient: to, status: 'failed', detail: `Not a valid ZW mobile: ${to}` }
-  }
+async function afrosoftOnce(msisdn: string, message: string): Promise<Delivery> {
   const apiKey = process.env.AFROSOFT_SMS_API_KEY
   if (!apiKey) {
     return { channel: 'sms', recipient: msisdn, status: 'failed', detail: 'AFROSOFT_SMS_API_KEY is not configured on the server.' }
@@ -79,6 +75,28 @@ export async function sendSmsAfrosoft(to: string, message: string): Promise<Deli
   } catch (e) {
     return { channel: 'sms', recipient: msisdn, status: 'failed', detail: `Gateway unreachable: ${e}` }
   }
+}
+
+export async function sendSmsAfrosoft(to: string, message: string): Promise<Delivery> {
+  const msisdn = normalizeMsisdn(to)
+  if (!isValidMsisdn(to)) {
+    return { channel: 'sms', recipient: to, status: 'failed', detail: `Not a valid ZW mobile: ${to}` }
+  }
+  const first = await afrosoftOnce(msisdn, message)
+  if (first.status === 'sent') return first
+  // A definitive Afrosoft refusal (200 with an error-code, or a named
+  // rejection like "Blacklisted") is not retried — retrying a refused
+  // number just burns credit. But transport failures — unreachable host,
+  // 5xx, a truncated body with no error-code — get one more shot after a
+  // pause, because a gateway hiccup must not be the difference between
+  // "client got the text" and "nobody knows it never sent".
+  const definitive = /error-code|error-description|Afrosoft HTTP 4\d\d/i.test(first.detail ?? '')
+  if (definitive) return first
+  await new Promise(r => setTimeout(r, 1500))
+  const second = await afrosoftOnce(msisdn, message)
+  return second.status === 'sent'
+    ? { ...second, detail: `sent on retry — first attempt: ${first.detail ?? 'unknown'}` }
+    : { ...second, detail: `failed twice — ${first.detail ?? '?'}; then ${second.detail ?? '?'}` }
 }
 
 export async function sendEmailDirect(to: string, subject: string, text: string): Promise<Delivery> {

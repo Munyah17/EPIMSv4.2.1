@@ -157,6 +157,28 @@ async function callAfrosoft(
 }
 
 /**
+ * Fallback sender: asks /api/notify to send one SMS server-side. Used when
+ * the gateway-proxy route fails — different function, same Afrosoft key.
+ * The server retries transient failures once and logs the attempt to
+ * notification_log, so a failed message leaves a trace an admin can see.
+ */
+async function sendViaNotify(to: string, message: string): Promise<SmsResult> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession()
+    const res = await fetch('/api/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+      body: JSON.stringify({ channel: 'sms', recipient: to, text: message, event: 'system' }),
+    })
+    const body = await res.json().catch(() => ({})) as { ok?: boolean; delivery?: { status?: string; detail?: string } }
+    if (body.ok && body.delivery?.status === 'sent') return { success: true }
+    return { success: false, error: body.delivery?.detail ?? `notify fallback failed (HTTP ${res.status})` }
+  } catch (e) {
+    return { success: false, error: `notify fallback unreachable: ${e}` }
+  }
+}
+
+/**
  * Send a single SMS via Afrosoft.
  */
 export async function sendSms(to: string, message: string): Promise<SmsResult> {
@@ -186,9 +208,21 @@ export async function sendBulkSms(numbers: string[], message: string): Promise<B
   const result = await callAfrosoft(valid, message)
 
   if (!result.ok) {
-    valid.forEach(n => logSmsLocally(n, message, 'failed', result.error))
-    const failedResults = valid.map(phone => ({ phone, result: { success: false, error: result.error } }))
-    return { sent: 0, failed: failedResults.length + invalidResults.length, results: [...failedResults, ...invalidResults] }
+    // Second route before calling it dead: /api/notify's single-channel
+    // sender hits Afrosoft through a different function, so a proxy
+    // outage (expired session, cold-start 5xx, dev server) doesn't stop
+    // the message from going out. Only transport-level failures retry —
+    // a number Afrosoft refused is refused for good.
+    const fallback = await Promise.all(valid.map(async phone => {
+      const d = await sendViaNotify(phone, message)
+      logSmsLocally(phone, message, d.success ? 'sent' : 'failed', d.error)
+      return { phone, result: d }
+    }))
+    return {
+      sent: fallback.filter(r => r.result.success).length,
+      failed: fallback.filter(r => !r.result.success).length + invalidResults.length,
+      results: [...fallback, ...invalidResults],
+    }
   }
 
   const errorCode = result.data.status?.['error-code']

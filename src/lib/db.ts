@@ -490,7 +490,7 @@ export const policies = {
       return { data: mapped, error: null }
     }
     const cached = cacheGet<Policy>('policies')
-    if (cached) return { data: cached.data, error: null }
+    if (cached) { local('policies', 'read'); return { data: cached.data, error: null } }
     local('policies', 'read')
     return { data: [], error: 'Could not load policies — connect to the internet at least once to cache them for offline use.' }
   },
@@ -666,7 +666,7 @@ export const clients = {
       return { data: mapped, error: null }
     }
     const cached = cacheGet<Client>('clients')
-    if (cached) return { data: cached.data, error: null }
+    if (cached) { local('clients', 'read'); return { data: cached.data, error: null } }
     local('clients', 'read')
     return { data: [], error: 'Could not load clients — connect to the internet at least once to cache them for offline use.' }
   },
@@ -752,7 +752,7 @@ export const products = {
       return { data: mapped, error: null }
     }
     const cached = cacheGet<Product>('products')
-    if (cached) return { data: cached.data, error: null }
+    if (cached) { local('products', 'read'); return { data: cached.data, error: null } }
     local('products', 'read')
     return { data: [], error: 'Could not load products — connect to the internet at least once to cache them for offline use.' }
   },
@@ -778,7 +778,7 @@ export const products = {
       return { data: mapped, error: null }
     }
     const cached = cacheGet<ClientSafeProduct>('products_client_safe')
-    if (cached) return { data: cached.data, error: null }
+    if (cached) { local('products_client_safe', 'read'); return { data: cached.data, error: null } }
     local('products_client_safe', 'read')
     return { data: [], error: 'Could not load products — connect to the internet at least once to cache them for offline use.' }
   },
@@ -983,7 +983,7 @@ export const claims = {
       return { data: mapped, error: null }
     }
     const cached = cacheGet<Claim>('claims')
-    if (cached) return { data: cached.data, error: null }
+    if (cached) { local('claims', 'read'); return { data: cached.data, error: null } }
     return { data: [] as Claim[], error: 'Could not load claims — connect to the internet at least once to cache them for offline use.' }
   },
 
@@ -1127,7 +1127,7 @@ export const payments = {
       return { data: mapped, error: null }
     }
     const cached = cacheGet<Payment>('payments')
-    if (cached) return { data: cached.data, error: null }
+    if (cached) { local('payments', 'read'); return { data: cached.data, error: null } }
     return { data: [] as Payment[], error: 'Could not load payments — connect to the internet at least once to cache them for offline use.' }
   },
 
@@ -1420,7 +1420,7 @@ export const tickets = {
       return { data: mapped, error: null }
     }
     const cached = cacheGet<Ticket>('tickets')
-    if (cached) return { data: cached.data, error: null }
+    if (cached) { local('tickets', 'read'); return { data: cached.data, error: null } }
     return { data: [] as Ticket[], error: 'Could not load tickets.' }
   },
 
@@ -1514,7 +1514,7 @@ export const leads = {
       return { data: mapped, error: null }
     }
     const cached = cacheGet<Lead>('leads')
-    if (cached) return { data: cached.data, error: null }
+    if (cached) { local('leads', 'read'); return { data: cached.data, error: null } }
     return { data: [] as Lead[], error: 'Could not load leads.' }
   },
 
@@ -1703,7 +1703,7 @@ export const fraudCases = {
       return { data: mapped, error: null }
     }
     const cached = cacheGet<FraudCase>('fraud_cases')
-    if (cached) return { data: cached.data, error: null }
+    if (cached) { local('fraud_cases', 'read'); return { data: cached.data, error: null } }
     return { data: [] as FraudCase[], error: 'Could not load fraud cases.' }
   },
 
@@ -2556,7 +2556,7 @@ export const groups = {
       return { data: mapped, error: null }
     }
     const cached = cacheGet<Group>('groups')
-    if (cached) return { data: cached.data, error: null }
+    if (cached) { local('groups', 'read'); return { data: cached.data, error: null } }
     local('groups', 'read')
     return { data: [], error: 'Could not load groups — connect to the internet at least once to cache them for offline use.' }
   },
