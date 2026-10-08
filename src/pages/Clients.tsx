@@ -4,7 +4,10 @@ import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
 import { useAuth } from '../contexts/AuthContext'
-import { notifyClientRegistered, notifyRegistrationFailed } from '../lib/signupNotifications'
+import { notifyClientRegistered, notifyRegistrationFailed, ADMIN_ALERT_NUMBERS } from '../lib/signupNotifications'
+import { notifyPhone } from '../lib/notify'
+import { recordActivity } from '../lib/activityLog'
+import { COMPANY_NAME } from '../lib/company'
 import { searchMembers } from '../lib/memberNumbers'
 import RegisterClientModal from '../components/modals/RegisterClientModal'
 import EditClientModal from '../components/modals/EditClientModal'
@@ -17,7 +20,7 @@ interface Props {
 }
 
 export default function Clients({ showToast }: Props) {
-  const { user } = useAuth()
+  const { user, hasPermission } = useAuth()
   const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -108,12 +111,95 @@ export default function Clients({ showToast }: Props) {
     setAssignPolicyClient(null)
   }
 
+  // When a client delete is refused because policies still reference them,
+  // open the blocker modal instead of sending the user away to Policies.
+  const [blockedClient, setBlockedClient] = useState<Client | null>(null)
+  const [blockedPolicies, setBlockedPolicies] = useState<Policy[]>([])
+  const [blockedLoading, setBlockedLoading] = useState(false)
+  const [deletingPolicyId, setDeletingPolicyId] = useState<string | null>(null)
+
   const handleDelete = async (client: Client) => {
     if (!window.confirm(`Permanently delete ${client.name}? This cannot be undone.`)) return
     const { error } = await db.clients.remove(client.id)
-    if (error) { showToast('error', error); return }
+    if (error) {
+      if (error.includes('existing policies')) {
+        setBlockedClient(client)
+        setBlockedLoading(true)
+        const { data } = await db.policies.list()
+        setBlockedPolicies((data ?? []).filter(p => p.clientId === client.id))
+        setBlockedLoading(false)
+        return
+      }
+      showToast('error', error)
+      return
+    }
     setClients(prev => prev.filter(c => c.id !== client.id))
     showToast('success', `${client.name} was deleted.`)
+  }
+
+  /** Same rules as the Policies page delete — blockers are named, attached
+   *  claims/payments need a reason, everything is activity-logged and the
+   *  office is SMS'd. Deleting the LAST blocking policy unlocks the client
+   *  delete button inside the modal. */
+  const quickDeletePolicy = async (policy: Policy) => {
+    setDeletingPolicyId(policy.id)
+    const { claims, payments, checkouts } = await db.policies.deletionBlockers(policy.id)
+    const attached = [
+      claims > 0 && `${claims} claim${claims === 1 ? '' : 's'}`,
+      payments > 0 && `${payments} payment${payments === 1 ? '' : 's'}`,
+      checkouts > 0 && `${checkouts} online checkout record${checkouts === 1 ? '' : 's'}`,
+    ].filter(Boolean).join(', ')
+
+    if (!attached) {
+      if (!window.confirm(`Permanently delete policy ${policy.policyNumber}? This cannot be undone.`)) { setDeletingPolicyId(null); return }
+      const { error } = await db.policies.remove(policy.id)
+      setDeletingPolicyId(null)
+      if (error) { showToast('error', error); return }
+      setBlockedPolicies(prev => prev.filter(p => p.id !== policy.id))
+      void recordActivity({
+        action: 'policy.deleted', actor: { id: user?.id, name: user?.name ?? 'Unknown', role: user?.role ?? 'unknown' },
+        entityType: 'policy', entityId: policy.id, entityLabel: policy.policyNumber,
+        detail: `${policy.clientName}, ${policy.productName}`, severity: 'warning',
+      })
+      showToast('success', `Policy ${policy.policyNumber} deleted.`)
+      for (const number of ADMIN_ALERT_NUMBERS) {
+        notifyPhone(number, `${COMPANY_NAME}: Policy ${policy.policyNumber} (${policy.clientName}) was DELETED by ${user?.name ?? 'a staff member'}.`, 'system', policy.policyNumber)
+      }
+      return
+    }
+
+    const reason = window.prompt(
+      `Policy ${policy.policyNumber} has ${attached} recorded against it.\n\n`
+      + `Deleting it will also permanently remove ${attached}. Financial records are not recoverable once removed.\n\n`
+      + 'If you are sure, enter a reason for the record:',
+    )
+    if (reason === null) { setDeletingPolicyId(null); return }
+    if (!reason.trim()) { setDeletingPolicyId(null); showToast('warning', 'A reason is required to delete a policy with attached records.'); return }
+
+    await recordActivity({
+      action: 'policy.deleted', actor: { id: user?.id, name: user?.name ?? 'Unknown', role: user?.role ?? 'unknown' },
+      entityType: 'policy', entityId: policy.id, entityLabel: policy.policyNumber,
+      detail: `${policy.clientName}, ${policy.productName}. Also removed ${attached}. Reason: ${reason.trim()}`,
+      severity: 'warning',
+    })
+    const { error } = await db.policies.remove(policy.id, { force: true })
+    setDeletingPolicyId(null)
+    if (error) { showToast('error', error); return }
+    setBlockedPolicies(prev => prev.filter(p => p.id !== policy.id))
+    showToast('success', `Policy ${policy.policyNumber} and its ${attached} deleted.`)
+    for (const number of ADMIN_ALERT_NUMBERS) {
+      notifyPhone(number, `${COMPANY_NAME}: Policy ${policy.policyNumber} (${policy.clientName}) was DELETED by ${user?.name ?? 'a staff member'}, along with ${attached}.`, 'system', policy.policyNumber)
+    }
+  }
+
+  const retryDeleteClient = async () => {
+    if (!blockedClient) return
+    const { error } = await db.clients.remove(blockedClient.id)
+    if (error) { showToast('error', error); return }
+    setClients(prev => prev.filter(c => c.id !== blockedClient.id))
+    showToast('success', `${blockedClient.name} was deleted.`)
+    setBlockedClient(null)
+    setBlockedPolicies([])
   }
 
   const bulkSMS = () => {
@@ -241,6 +327,69 @@ export default function Clients({ showToast }: Props) {
           onSave={handleAssignPolicy}
           showToast={showToast}
         />
+      )}
+      {blockedClient && (
+        <div className="modal-overlay">
+          <div className="modal" style={{ maxWidth: 560 }}>
+            <div className="modal-header">
+              <h3>Cannot Delete {blockedClient.name}</h3>
+              <button className="modal-close" onClick={() => { setBlockedClient(null); setBlockedPolicies([]) }}>✕</button>
+            </div>
+            <div className="modal-body">
+              <div className="info-banner info-banner-warning" style={{ marginBottom: 14 }}>
+                A client cannot be deleted while policies exist against them — an
+                active policy is a live contract. Remove the policies below, or
+                close this window to leave {blockedClient.name} in place.
+              </div>
+              {blockedLoading ? (
+                <div className="empty-state">Loading this client's policies…</div>
+              ) : blockedPolicies.length > 0 ? (
+                <table className="table">
+                  <thead><tr><th>Policy No.</th><th>Product</th><th>Status</th><th></th></tr></thead>
+                  <tbody>
+                    {blockedPolicies.map(p => (
+                      <tr key={p.id}>
+                        <td><span className="mono">{p.policyNumber}</span></td>
+                        <td>{p.productName}</td>
+                        <td><span className={`pill pill-${p.status}`}>{p.status}</span></td>
+                        <td>
+                          {hasPermission('policies.delete') && (
+                            <button
+                              type="button"
+                              className="btn btn-danger btn-sm"
+                              disabled={deletingPolicyId === p.id}
+                              onClick={() => quickDeletePolicy(p)}
+                            >
+                              {deletingPolicyId === p.id ? 'Deleting…' : 'Delete Policy'}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="empty-state">All policies removed — the client can now be deleted.</div>
+              )}
+              {!hasPermission('policies.delete') && blockedPolicies.length > 0 && (
+                <div className="info-banner" style={{ marginTop: 10 }}>
+                  You do not have the policies.delete permission — ask an Admin or Super Admin to remove these policies.
+                </div>
+              )}
+            </div>
+            <div className="modal-footer" style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button type="button" className="btn btn-ghost" onClick={() => { setBlockedClient(null); setBlockedPolicies([]) }}>Close</button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                disabled={blockedPolicies.length > 0 || blockedLoading}
+                onClick={retryDeleteClient}
+              >
+                Delete Client
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
