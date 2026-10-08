@@ -48,6 +48,12 @@ export default function Policies({ showToast, initialCategory }: Props) {
   const [clients, setClients] = useState<Client[]>([])
   const [suggestOpen, setSuggestOpen] = useState(false)
 
+  // Sidebar "Add New Policy" arrives as initialCategory '__new' — open the
+  // modal straight onto the page instead of just navigating to the list.
+  useEffect(() => {
+    if (initialCategory === '__new') setShowNew(true)
+  }, [initialCategory])
+
   useEffect(() => {
     db.policies.list().then(({ data, error }) => {
       if (error) showToast('error', 'Failed to load policies.')

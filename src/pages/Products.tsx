@@ -9,15 +9,21 @@ import AddProductModal from '../components/modals/AddProductModal'
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
   setActivePanel: (panel: ActivePanel) => void
+  initialCategory?: string
 }
 
 
-export default function Products({ showToast }: Props) {
+export default function Products({ showToast, initialCategory }: Props) {
   const { hasPermission } = useAuth()
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [editProduct, setEditProduct] = useState<Product | null>(null)
+
+  // Sidebar "Add New Products" arrives as initialCategory '__new'.
+  useEffect(() => {
+    if (initialCategory === '__new') setShowAdd(true)
+  }, [initialCategory])
 
   useEffect(() => {
     db.products.list().then(({ data, error }) => {

@@ -169,7 +169,7 @@ function AppInner() {
       case 'policies': return <Policies {...panelProps} initialCategory={panelCategory} />
       case 'claims': return <Claims {...panelProps} initialCategory={panelCategory} />
       case 'payments': return <Payments {...panelProps} />
-      case 'products': return <Products {...panelProps} />
+      case 'products': return <Products {...panelProps} initialCategory={panelCategory} />
       case 'clients': return <Clients {...panelProps} />
       case 'groups': return <Groups {...panelProps} />
       case 'staff': return <Staff {...panelProps} />

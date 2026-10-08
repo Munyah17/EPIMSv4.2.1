@@ -7,7 +7,7 @@ import Copyright from './Copyright'
 
 interface SidebarProps {
   activePanel: ActivePanel
-  setActivePanel: (panel: ActivePanel) => void
+  setActivePanel: (panel: ActivePanel, category?: string) => void
   isOpen: boolean
   onClose: () => void
 }
@@ -18,6 +18,12 @@ interface NavItem {
   icon: string
   badge?: number | string
   roles?: string[]
+  /** Passed to the page as its initialCategory — lets a nav item drive a
+   *  page FUNCTION (open the Add modal, pre-filter) not just a page. */
+  withCategory?: string
+  /** Suppress the live count badge — an "Add New …" action shouldn't carry
+   *  the page's row count. */
+  hideBadge?: boolean
 }
 
 /** A collapsible bundle of related nav items — same pattern as the old
@@ -49,15 +55,31 @@ const STAFF_SECTIONS: NavSection[] = [
       { id: 'dashboard', label: 'Dashboard', icon: '⊞' },
       { id: 'claims', label: 'Claims', icon: '📋' },
       { id: 'payments', label: 'Payments', icon: '💳' },
-      { id: 'agriculture_insurance', label: 'Agriculture Insurance', icon: '🌾', roles: ['super_admin', 'admin', 'policy_admin', 'claims_officer'] },
       {
-        groupId: 'policies_products',
-        label: 'Policies & Products',
+        groupId: 'policies',
+        label: 'Policies',
         icon: '🛡',
         items: [
-          { id: 'policies', label: 'Policies', icon: '🛡' },
-          { id: 'products', label: 'Products', icon: '📦', roles: ['super_admin', 'admin', 'policy_admin'] },
-          { id: 'pre_loss_assessments', label: 'Pre-Loss Assessments', icon: '🌾', roles: ['super_admin', 'admin', 'policy_admin', 'claims_officer'] },
+          { id: 'policies', label: 'Add New Policy', icon: '＋', withCategory: '__new', hideBadge: true, roles: ['super_admin', 'admin', 'policy_admin', 'agent'] },
+          { id: 'policies', label: 'View Policies', icon: '🛡' },
+        ],
+      },
+      {
+        groupId: 'products',
+        label: 'Products',
+        icon: '�',
+        items: [
+          { id: 'products', label: 'Add New Products', icon: '＋', withCategory: '__new', hideBadge: true, roles: ['super_admin', 'admin', 'policy_admin'] },
+          { id: 'products', label: 'View Products', icon: '📦', roles: ['super_admin', 'admin', 'policy_admin'] },
+        ],
+      },
+      {
+        groupId: 'agriculture',
+        label: 'Agriculture Insurance',
+        icon: '🌾',
+        items: [
+          { id: 'agriculture_insurance', label: 'Tobacco Farmers', icon: '🌾', roles: ['super_admin', 'admin', 'policy_admin', 'claims_officer'] },
+          { id: 'pre_loss_assessments', label: 'Pre-Loss Assessments', icon: '📐', roles: ['super_admin', 'admin', 'policy_admin', 'claims_officer'] },
         ],
       },
     ],
@@ -181,6 +203,7 @@ export default function Sidebar({ activePanel, setActivePanel, isOpen, onClose }
   }
 
   const badgeFor = (item: NavItem) => {
+    if (item.hideBadge) return undefined
     const countKey = BADGE_COUNT_KEYS[item.id]
     const liveBadge = countKey && counts ? counts[countKey] : undefined
     return liveBadge !== undefined ? (liveBadge > 0 ? liveBadge : undefined) : item.badge
@@ -223,8 +246,8 @@ export default function Sidebar({ activePanel, setActivePanel, isOpen, onClose }
                         <span style={{ fontSize: 10, opacity: 0.6 }}>{open ? '▾' : '▸'}</span>
                       </button>
                       {open && entry.items.map(item => (
-                        <div key={item.id} style={{ paddingLeft: 16 }}>
-                          <NavBtn item={{ ...item, badge: badgeFor(item) }} active={activePanel === item.id} onClick={() => setActivePanel(item.id)} />
+                        <div key={item.label} style={{ paddingLeft: 16 }}>
+                          <NavBtn item={{ ...item, badge: badgeFor(item) }} active={activePanel === item.id && !item.withCategory} onClick={() => setActivePanel(item.id, item.withCategory)} />
                         </div>
                       ))}
                     </div>
