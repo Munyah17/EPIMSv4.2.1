@@ -6,6 +6,7 @@ import { formatPremium } from '../lib/productUtils'
 import { formatDate } from '../lib/dateUtils'
 import { useAuth } from '../contexts/AuthContext'
 import { isStale, rateAgeLabel, type ExchangeRate } from '../lib/exchangeRate'
+import { health } from '../lib/health'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -64,6 +65,14 @@ export default function Dashboard({ setActivePanel }: Props) {
 
   const { user } = useAuth()
   const isSuperAdmin = user?.role === 'super_admin'
+  // Admin-level at-a-glance system status — the same health tracker the
+  // full System Health page reads, condensed to a dashboard strip.
+  const canSeeHealth = user?.role === 'super_admin' || user?.role === 'admin'
+  const [healthSnap, setHealthSnap] = useState(() => health.stats)
+  useEffect(() => {
+    if (!canSeeHealth) return
+    return health.subscribe(() => setHealthSnap(health.stats))
+  }, [canSeeHealth])
 
   useEffect(() => {
     if (!isSuperAdmin) return
@@ -170,6 +179,28 @@ export default function Dashboard({ setActivePanel }: Props) {
           </div>
         </div>
       </div>
+
+      {canSeeHealth && (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <div className="card-header">
+            <h3 className="card-title">🖥 System Health</h3>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setActivePanel('system_health')}>Open System Health →</button>
+          </div>
+          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center', fontSize: 13 }}>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
+              <span className="syshealth-dot" style={{
+                background: healthSnap.overall === 'healthy' ? '#10B981' : healthSnap.overall === 'degraded' ? '#F59E0B' : '#EF4444',
+              }} />
+              <strong>{healthSnap.overall.toUpperCase()}</strong>
+            </span>
+            <span style={{ color: 'var(--muted)' }}>Database: <strong style={{ color: 'var(--text)' }}>{healthSnap.sbConnected ? 'Connected' : 'Not connected'}</strong></span>
+            <span style={{ color: 'var(--muted)' }}>Ops this session: <strong style={{ color: 'var(--text)' }}>{healthSnap.totalOps}</strong></span>
+            <span style={{ color: 'var(--muted)' }}>Avg latency: <strong style={{ color: 'var(--text)' }}>{healthSnap.avgMs}ms</strong></span>
+            <span style={{ color: 'var(--muted)' }}>Success: <strong style={{ color: 'var(--text)' }}>{healthSnap.sbSuccessPct}%</strong></span>
+            {healthSnap.localMode && <span className="pill pill-warning pill-xs">Using cached data</span>}
+          </div>
+        </div>
+      )}
 
       <div className="dashboard-grid">
         <div className="card dashboard-card-wide">

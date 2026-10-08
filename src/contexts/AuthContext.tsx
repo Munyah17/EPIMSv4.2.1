@@ -44,6 +44,8 @@ const PANEL_ACCESS: Record<string, UserRole[]> = {
   tickets: ['super_admin', 'admin', 'client_relations'],
   live_chat: ['super_admin', 'admin', 'client_relations'],
   fraud: ['super_admin', 'admin', 'claims_officer'],
+  integrations: ['super_admin', 'admin'],
+  developer_api: ['super_admin', 'admin'],
   profile: ['super_admin', 'admin', 'claims_officer', 'policy_admin', 'finance', 'client_relations', 'agent', 'policyholder'],
   my_policies: ['policyholder'],
   my_claims: ['policyholder'],

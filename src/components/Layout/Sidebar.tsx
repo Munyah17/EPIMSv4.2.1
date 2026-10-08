@@ -65,7 +65,7 @@ const STAFF_SECTIONS: NavSection[] = [
   {
     label: 'CLIENT MANAGEMENT',
     items: [
-      { id: 'clients', label: 'Clients', icon: '👥' },
+      { id: 'clients', label: 'Clients Management', icon: '👥' },
       { id: 'groups', label: 'Group Teams Insurance', icon: '🏢' },
       { id: 'member_cards', label: 'Membership IDs', icon: '🪪', roles: ['super_admin', 'admin', 'policy_admin', 'claims_officer', 'finance'] },
       { id: 'leads', label: 'Leads & Marketing', icon: '🎯', badge: 'AI' },
@@ -76,6 +76,8 @@ const STAFF_SECTIONS: NavSection[] = [
     items: [
       { id: 'staff', label: 'Staff Management', icon: '✅', roles: ['super_admin', 'admin'] },
       { id: 'reports', label: 'Reports', icon: '📊', roles: ['super_admin', 'admin', 'finance'] },
+      { id: 'fraud', label: 'Fraud Alert', icon: '⚠', roles: ['super_admin', 'admin', 'claims_officer'] },
+      { id: 'system_access_roles', label: 'System Access Roles', icon: '🔐', roles: ['super_admin'] },
       {
         groupId: 'communications',
         label: 'Communications',
@@ -99,26 +101,13 @@ const STAFF_SECTIONS: NavSection[] = [
     ],
   },
   {
-    label: 'INTEGRATIONS',
-    items: [
-      { id: 'fraud', label: 'Fraud Detection', icon: '⚠', roles: ['super_admin', 'admin', 'claims_officer'] },
-      { id: 'developer_api', label: 'Developers and API', icon: '🔌', roles: ['super_admin', 'admin'] },
-    ],
-  },
-  {
-    label: 'SYSTEM',
+    label: 'SYSTEM & CONFIGURATIONS',
     items: [
       { id: 'profile', label: 'My Profile', icon: '👤' },
-      {
-        groupId: 'administration',
-        label: 'Administration',
-        icon: '⚙',
-        items: [
-          { id: 'system_access_roles', label: 'System Access Roles', icon: '🔐', roles: ['super_admin'] },
-          { id: 'system_health', label: 'System Health', icon: '🖥', roles: ['super_admin', 'admin'] },
-          { id: 'settings', label: 'Settings', icon: '⚙', roles: ['super_admin', 'admin'] },
-        ],
-      },
+      { id: 'integrations', label: 'Integrations', icon: '�', roles: ['super_admin', 'admin'] },
+      { id: 'developer_api', label: 'Developers and API', icon: '�', roles: ['super_admin', 'admin'] },
+      { id: 'system_health', label: 'System Health', icon: '🖥', roles: ['super_admin', 'admin'] },
+      { id: 'settings', label: 'Settings', icon: '⚙', roles: ['super_admin', 'admin'] },
     ],
   },
 ]
