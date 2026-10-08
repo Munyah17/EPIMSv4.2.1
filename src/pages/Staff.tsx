@@ -167,7 +167,7 @@ export default function Staff({ showToast }: Props) {
                   <td>
                     <ActionMenu items={[
                       { label: 'Edit', onClick: () => { setEditStaff(s); setShowAdd(true) } },
-                      { label: 'Perms', onClick: () => setPermStaff(s) },
+                      { label: 'Permissions', onClick: () => setPermStaff(s) },
                       { label: s.active ? 'Disable' : 'Enable', onClick: () => toggleActive(s.id) },
                       { label: 'Delete', onClick: () => handleDelete(s), danger: true, hidden: !(user?.role === 'super_admin' && s.role !== 'super_admin' && s.id !== user.id) },
                     ]} />

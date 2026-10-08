@@ -139,7 +139,7 @@ export default function SystemAccessRoles({ showToast }: Props) {
                     <div className="action-btns">
                       <button type="button" className="btn btn-ghost btn-sm" onClick={() => { setEditUser(a); setShowAdd(true) }}>Edit</button>
                       {a.role === 'tech_support' && (
-                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPermUser(a)}>Perms</button>
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setPermUser(a)}>Permissions</button>
                       )}
                       {a.id !== user?.id && (
                         <button type="button" className="btn btn-ghost btn-sm" onClick={() => toggleActive(a.id)}>
