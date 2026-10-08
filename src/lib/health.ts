@@ -1,5 +1,5 @@
-export type OpType = 'read' | 'write' | 'delete'
-export type DataSource = 'supabase' | 'local'
+export type OpType = 'read' | 'write' | 'delete' | 'notify'
+export type DataSource = 'supabase' | 'local' | 'api'
 
 export interface DbOp {
   id: string
@@ -48,12 +48,22 @@ class HealthTracker {
       ? Math.round(recent50.reduce((s, o) => s + o.duration, 0) / recent50.length)
       : 0
 
+    // Gateway sends are tracked as their own integration op — an Afrosoft
+    // outage shows up in the log and its own metric, but must NOT drag the
+    // Supabase numbers down with it: the database being fine while SMS is
+    // dead is exactly what this page exists to distinguish.
+    const smsOps = recent50.filter(o => o.table === 'sms-gateway')
+    const lastSms = smsOps.length ? smsOps[smsOps.length - 1] : null
+    // An SMS gateway failure degrades the whole picture the same way a DB
+    // failure does — the office cannot operate blind while texts fail.
+    const smsPct = pct(smsOps)
+
     const writeOk = pct(writes)
     const readOk = pct(reads)
     const overall: 'healthy' | 'degraded' | 'offline' =
       !sbConnected ? 'degraded'
-      : writeOk < 50 || readOk < 50 ? 'offline'
-      : writeOk < 90 || readOk < 90 ? 'degraded'
+      : writeOk < 50 || readOk < 50 || (smsOps.length > 0 && smsPct < 50) ? 'offline'
+      : writeOk < 90 || readOk < 90 || (smsOps.length > 0 && smsPct < 90) ? 'degraded'
       : 'healthy'
 
     return {
@@ -66,6 +76,10 @@ class HealthTracker {
       avgMs,
       overall,
       localMode: !sbConnected,
+      smsOpsCount: smsOps.length,
+      smsSuccessPct: smsPct,
+      smsLastOk: lastSms ? lastSms.success : null,
+      smsLastDetail: lastSms?.detail ?? null,
       recent: [...all].reverse().slice(0, 25),
     }
   }

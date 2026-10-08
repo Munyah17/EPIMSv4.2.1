@@ -12,6 +12,10 @@ interface Stats {
   avgMs: number
   overall: 'healthy' | 'degraded' | 'offline'
   localMode: boolean
+  smsOpsCount: number
+  smsSuccessPct: number
+  smsLastOk: boolean | null
+  smsLastDetail: string | null
   recent: DbOp[]
 }
 
@@ -38,6 +42,7 @@ const OP_COLOR: Record<string, string> = {
   read: '#5B7FE8',
   write: '#10B981',
   delete: '#EF4444',
+  notify: '#A855F7',
 }
 
 interface Props {
@@ -134,6 +139,25 @@ export default function SystemHealth({ aboveFab }: Props) {
                 <span className="syshealth-val">{stats.avgMs}ms</span>
               </div>
 
+              {/* SMS gateway — Afrosoft. Hidden only until the first send
+                  attempt so a session that never texts doesn't claim the
+                  gateway is fine or broken. */}
+              <div className="syshealth-row">
+                <span className="syshealth-row-label">SMS gateway</span>
+                <span className="syshealth-chip" style={{
+                  background: stats.smsOpsCount === 0 ? '#EEF2FB' : stats.smsLastOk ? '#D1FAE5' : '#FEE2E2',
+                  color: stats.smsOpsCount === 0 ? '#6B7280' : stats.smsLastOk ? '#065F46' : '#991B1B',
+                }}>
+                  {stats.smsOpsCount === 0 ? 'No sends yet' : stats.smsLastOk ? `OK — ${stats.smsSuccessPct}% sent` : `DOWN — last send failed`}
+                </span>
+              </div>
+              {stats.smsLastOk === false && stats.smsLastDetail && (
+                <div className="syshealth-row">
+                  <span className="syshealth-row-label" />
+                  <span className="syshealth-val" style={{ fontSize: 11, color: '#991B1B' }}>{stats.smsLastDetail}</span>
+                </div>
+              )}
+
               <div className="syshealth-divider" />
 
               {/* Read success */}
@@ -181,7 +205,7 @@ export default function SystemHealth({ aboveFab }: Props) {
                       style={{ color: OP_COLOR[op.type] }}
                     >{op.type.toUpperCase()}</span>
                     <span className="syshealth-op-table">{op.table}</span>
-                    <span className="syshealth-op-src">{op.source === 'supabase' ? 'SB' : 'LC'}</span>
+                    <span className="syshealth-op-src">{op.source === 'supabase' ? 'SB' : op.source === 'api' ? 'API' : 'LC'}</span>
                     <span className="syshealth-op-ms">{op.duration}ms</span>
                     <span className={`syshealth-op-ok ${op.success ? 'ok' : 'fail'}`}>
                       {op.success ? '✓' : '✗'}
@@ -209,7 +233,7 @@ export default function SystemHealth({ aboveFab }: Props) {
                       style={{ color: OP_COLOR[op.type] }}
                     >{op.type.toUpperCase()}</span>
                     <span className="syshealth-log-table">{op.table}</span>
-                    <span className="syshealth-log-src">{op.source === 'supabase' ? '☁ SB' : '💾 LC'}</span>
+                    <span className="syshealth-log-src">{op.source === 'supabase' ? '☁ SB' : op.source === 'api' ? '⇄ API' : '💾 LC'}</span>
                     <span className="syshealth-log-ms">{op.duration}ms</span>
                     <span className={`syshealth-op-ok ${op.success ? 'ok' : 'fail'}`}>
                       {op.success ? '✓' : '✗'}

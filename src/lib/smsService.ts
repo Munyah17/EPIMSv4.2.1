@@ -115,6 +115,20 @@ interface AfrosoftResponse {
  * anyone noticing messages had stopped going out.
  */
 import { supabase } from './supabase'
+import { health } from './health'
+
+/** Push an SMS gateway result into System Health, and when it failed, make
+ *  it loud — the notify-failed event (dashboard toast/banner) plus a
+ *  notification_log row so the failure outlives this browser session.
+ *  notify.ts imports this file, so the import is deferred — a static one
+ *  would be circular. */
+async function reportSmsResult(ok: boolean, detail: string | undefined, durationMs: number) {
+  health.record({ ts: Date.now(), type: 'notify', table: 'sms-gateway', success: ok, duration: durationMs, source: 'api', detail })
+  if (ok) return
+  const { reportOutcome } = await import('./notify')
+  reportOutcome({ channel: 'sms', recipient: 'gateway', event: 'system', status: 'failed', detail })
+}
+
 async function callAfrosoft(
   numbers: string[], message: string,
 ): Promise<{ ok: true; data: AfrosoftResponse } | { ok: false; error: string }> {
@@ -206,6 +220,7 @@ export async function sendBulkSms(numbers: string[], message: string): Promise<B
     return { sent: 0, failed: invalidResults.length, results: invalidResults }
   }
 
+  const started = Date.now()
   const result = await callAfrosoft(valid, message)
 
   if (!result.ok) {
@@ -220,6 +235,10 @@ export async function sendBulkSms(numbers: string[], message: string): Promise<B
       if (!d.success) enqueueOutbox(phone, message)
       return { phone, result: d }
     }))
+    // Health + loudness: if every number failed on both routes the gateway
+    // is effectively down — record it, banner it, log it.
+    const anySent = fallback.some(r => r.result.success)
+    void reportSmsResult(anySent, anySent ? undefined : `All routes failed for ${valid.length} number(s): ${result.error}`, Date.now() - started)
     return {
       sent: fallback.filter(r => r.result.success).length,
       failed: fallback.filter(r => !r.result.success).length + invalidResults.length,
@@ -257,6 +276,9 @@ export async function sendBulkSms(numbers: string[], message: string): Promise<B
   })
 
   const all = [...results, ...invalidResults]
+  // Gateway answered — that's an SMS-gateway success even if individual
+  // numbers were refused (a blacklisted number isn't a dead gateway).
+  void reportSmsResult(true, results.some(r => !r.result.success) ? `${results.filter(r => !r.result.success).length} of ${valid.length} number(s) refused by gateway` : undefined, Date.now() - started)
   return {
     sent: all.filter(r => r.result.success).length,
     failed: all.filter(r => !r.result.success).length,
