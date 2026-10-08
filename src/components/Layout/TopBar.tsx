@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
+import { hardRefresh } from '../../lib/hardRefresh'
 import type { ActivePanel } from '../../App'
 import type { ToastMessage } from '../../types'
 
@@ -45,6 +46,7 @@ export default function TopBar({ activePanel, onMenuToggle, showToast }: TopBarP
   const { user, logout } = useAuth()
   const [showDropdown, setShowDropdown] = useState(false)
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
 
   const today = new Date().toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
 
@@ -72,6 +74,23 @@ export default function TopBar({ activePanel, onMenuToggle, showToast }: TopBarP
         </div>
 
         <div className="topbar-right">
+          {/* Clears cached app data and pulls the latest build — the fix
+              for "the portal is still showing the old version" after a
+              deploy. Auth tokens are deliberately not cleared. */}
+          <button
+            type="button"
+            className="topbar-refresh"
+            title="Refresh — clear cache and load the latest version"
+            aria-label="Refresh app"
+            disabled={refreshing}
+            onClick={() => {
+              setRefreshing(true)
+              showToast('info', 'Refreshing — loading the latest version…')
+              void hardRefresh()
+            }}
+          >
+            <span className={refreshing ? 'refresh-spin' : undefined}>↻</span> Refresh
+          </button>
           <div className="topbar-profile" onClick={() => setShowDropdown(o => !o)}>
             <div className="topbar-avatar">{user?.name.charAt(0)}</div>
             <div className="topbar-user-info">

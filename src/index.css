@@ -352,6 +352,11 @@ tbody tr:hover td{background:var(--surface)}
 /* --- TOPBAR REACT CLASSES --- */
 .topbar-left{display:flex;align-items:center;gap:12px;flex:1;min-width:0}
 .topbar-right{display:flex;align-items:center;gap:8px;position:relative}
+.topbar-refresh{display:inline-flex;align-items:center;gap:6px;background:none;border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;font-family:'DM Sans',sans-serif;transition:background .15s,color .15s}
+.topbar-refresh:hover{background:var(--surface);color:var(--text)}
+.topbar-refresh:disabled{opacity:.6;cursor:default}
+.refresh-spin{display:inline-block;animation:refresh-rotate .8s linear infinite}
+@keyframes refresh-rotate{to{transform:rotate(360deg)}}
 .topbar-title{font-size:14px;font-weight:500;color:var(--text)}
 .topbar-profile{display:flex;align-items:center;gap:9px;cursor:pointer;padding:5px 8px;border-radius:8px;transition:background 0.15s;-webkit-user-select:none;user-select:none}
 .topbar-profile:hover{background:var(--surface)}
