@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
 import { generateTransactionId } from './_lib/transactionId'
+import { dispatchNotification } from './_lib/notify.js'
 
 /**
  * Public Developer API (/api/v1/...). External developers integrate this
@@ -424,7 +425,18 @@ async function createClient_(admin: SupabaseClient, body: Json, agentId: string)
     agent_id: agentId,
     status: 'active',
   }).select('id').single()
-  if (!error) return { status: 201, body: { data: { id: data.id, nationalId, existing: false } } }
+  if (!error) {
+    // The client and the office both hear about a new registration —
+    // wherever it came in from.
+    void dispatchNotification(admin, {
+      event: 'registration',
+      client: { name, phone, email: body.email ? String(body.email) : null },
+      smsText: `Motions: Welcome ${name.split(' ')[0]}, your details are registered with us. An agent will be in touch to arrange cover.`,
+      emailSubject: 'Welcome to Motions Microinsurance',
+      emailText: `Dear ${name},\n\nYour details have been registered with Motions Microinsurance.\n\nPlease note this registration does not itself put any cover in place. One of our agents will contact you to arrange a policy suited to you.\n\nRegards,\nMotions Microinsurance`,
+    }).catch(e => console.error('v1.clients: registration notify failed', e))
+    return { status: 201, body: { data: { id: data.id, nationalId, existing: false } } }
+  }
   if (error.code !== '23505') return { status: 400, body: { error: pgMessage(error) } }
 
   // Already exists — only hand back the id (and let the caller treat it as
@@ -569,6 +581,18 @@ async function createPolicy(admin: SupabaseClient, body: Json, dev: Record<strin
     console.error('createPolicy: wallet ledger write failed after successful debit', dev.id, data.id, ledgerError.message)
   }
 
+  // Issued through a partner, still our policy — the client gets the same
+  // registration confirmation as a counter sale, and the office sees it land.
+  const { data: contact } = await admin.from('clients').select('name, phone, email').eq('id', clientId).maybeSingle()
+  void dispatchNotification(admin, {
+    event: 'registration',
+    ref: data.policy_number,
+    client: contact ?? undefined,
+    smsText: `Motions: Policy ${data.policy_number} (${product.name}) is registered for you — cover $${Number(product.cover_amount).toLocaleString()}, premium $${Number(product.premium).toFixed(2)}/mo. It becomes live once approved.`,
+    emailSubject: `Policy ${data.policy_number} registered`,
+    emailText: `Dear ${contact?.name ?? 'Client'},\n\nYour policy has been registered through one of our agents.\n\nPolicy Number:  ${data.policy_number}\nProduct:        ${product.name}\nCover Amount:   $${Number(product.cover_amount).toLocaleString()}\nPremium:        $${Number(product.premium).toFixed(2)} per month\nStatus:         PENDING APPROVAL\n\nWe will confirm once it is active.\n\nRegards,\nMotions Microinsurance`,
+  }).catch(e => console.error('v1.policies: registration notify failed', e))
+
   return { status: 201, body: { data: { id: data.id, policyNumber: data.policy_number, status: 'pending' } } }
 }
 
@@ -689,7 +713,7 @@ async function recordPayment(admin: SupabaseClient, body: Json, agentId: string)
   }
 
   const { data: policy } = await admin.from('policies')
-    .select('id, agent_id, status, product_id, premium, dependants, next_payment_date, clients!client_id(name)')
+    .select('id, agent_id, status, product_id, premium, dependants, next_payment_date, clients!client_id(name, email, phone)')
     .eq('policy_number', policyNumber).maybeSingle()
   if (!policy || policy.agent_id !== agentId) return { status: 404, body: { error: 'Policy not found.' } }
 
@@ -749,7 +773,7 @@ async function recordPayment(admin: SupabaseClient, body: Json, agentId: string)
 
   let nextStatus = policy.status
   if (periodsPaid >= 1) {
-    if (policy.status === 'lapsed') nextStatus = category === 'agriculture' ? 'active' : 'waiting_period'
+    if (policy.status === 'lapsed' || policy.status === 'defaulted') nextStatus = category === 'agriculture' ? 'active' : 'waiting_period'
     else if (category === 'agriculture' && policy.status === 'waiting_period') nextStatus = 'active'
   }
 
@@ -764,6 +788,17 @@ async function recordPayment(admin: SupabaseClient, body: Json, agentId: string)
     last_payment_date: today.toISOString().split('T')[0],
     next_payment_date: next.toISOString().split('T')[0],
   }).eq('id', policy.id)
+
+  if (category !== 'agriculture') {
+    const client = policy.clients as { name?: string; email?: string | null; phone?: string | null } | null
+    const amountFmt = `$${amount.toFixed(2)}`
+    void dispatchNotification(admin, {
+      event: 'payment', ref: policyNumber, client,
+      smsText: `Motions: Payment received. ${amountFmt} via ${method} for policy ${policyNumber}. Reference ${paymentRow.reference}. Thank you.`,
+      emailSubject: `Payment received: policy ${policyNumber}`,
+      emailText: `Dear ${client?.name ?? 'Client'},\n\nWe have received your payment.\n\nAmount:    ${amountFmt}\nPolicy:    ${policyNumber}\nMethod:    ${method}\nReference: ${paymentRow.reference}\n\nThank you for keeping your cover up to date.\n\nRegards,\nMotions Microinsurance`,
+    }).catch(e => console.error('v1.payments: notify failed', e))
+  }
 
   return { status: 201, body: { data: { id: paymentRow.id, reference: paymentRow.reference, status: 'completed' } } }
 }

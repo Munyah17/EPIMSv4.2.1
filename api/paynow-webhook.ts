@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { Paynow } from 'paynow'
 import { createClient } from '@supabase/supabase-js'
+import { dispatchNotification } from './_lib/notify.js'
 
 /**
  * Paynow's resultUrl callback -- a real webhook, not client-side polling.
@@ -181,6 +182,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     await admin.from('paynow_transactions').update({
       status: 'failed', paynow_reference: paynowReference, updated_at: new Date().toISOString(),
     }).eq('reference', reference)
+    // The gateway's own text to the payer is not our payment confirmation —
+    // OUR failure notice goes out on our own channels so the client knows
+    // nothing was collected and the office knows to follow up.
+    const { data: fPolicy } = await admin
+      .from('policies')
+      .select('policy_number, clients!client_id(name, email, phone), products!product_id(category)')
+      .eq('id', txn.policy_id)
+      .maybeSingle()
+    const fClient = (fPolicy as { clients?: { name: string; email: string | null; phone: string | null } | null } | null)?.clients ?? null
+    const fCat = (fPolicy as { products?: { category: string } | null } | null)?.products?.category
+    if (fPolicy && fCat !== 'agriculture') {
+      const amount = `$${(txn.expected_amount ?? 0).toFixed(2)}`
+      await dispatchNotification(admin, {
+        event: 'payment', ref: fPolicy.policy_number, client: fClient,
+        smsText: `Motions: Your payment of ${amount} for policy ${fPolicy.policy_number} could not be completed. No money was collected — please try again or contact us.`,
+        emailSubject: `Payment not completed: policy ${fPolicy.policy_number}`,
+        emailText: `Dear ${fClient?.name ?? 'Client'},\n\nYour payment of ${amount} for policy ${fPolicy.policy_number} could not be completed (status: ${status}).\n\nNo money was collected. Please try again — via EcoCash, Paynow, ZIPIT, or at our offices — or contact us for help.\n\nRegards,\nMotions Microinsurance`,
+      }).catch(e => console.error('paynow-webhook: failure notify failed', e))
+    }
     return res.status(200).json({ ok: true, note: 'Marked failed.' })
   }
 
@@ -196,7 +216,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Paid, and the amount matches what this reference was for.
   const { data: policy } = await admin
     .from('policies')
-    .select('id, product_id, premium, dependants, status, next_payment_date')
+    .select('id, policy_number, product_id, client_id, premium, dependants, status, next_payment_date, clients!client_id(name, email, phone)')
     .eq('id', txn.policy_id)
     .maybeSingle()
   if (!policy) {
@@ -269,6 +289,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       last_payment_date: today.toISOString().split('T')[0],
       next_payment_date: next.toISOString().split('T')[0],
     }).eq('id', policy.id)
+
+    // OUR payment confirmation — distinct from anything Paynow texted the
+    // payer — goes to the client and the office on all three channels.
+    const client = (policy as unknown as { clients?: { name: string; email: string | null; phone: string | null } | null }).clients ?? null
+    if (category !== 'agriculture') {
+      const amount = `$${confirmedAmount.toFixed(2)}`
+      await dispatchNotification(admin, {
+        event: 'payment', ref: policy.policy_number, client,
+        smsText: `Motions: Payment received. ${amount} via Paynow for policy ${policy.policy_number}. Reference ${reference}. Thank you.`,
+        emailSubject: `Payment received: policy ${policy.policy_number}`,
+        emailText: `Dear ${client?.name ?? 'Client'},\n\nWe have received your payment.\n\nAmount:    ${amount}\nPolicy:    ${policy.policy_number}\nMethod:    Paynow\nReference: ${reference}\n\nThank you for keeping your cover up to date.\n\nRegards,\nMotions Microinsurance`,
+      }).catch(e => console.error('paynow-webhook: payment notify failed', e))
+    }
   }
 
   return res.status(200).json({ ok: true })

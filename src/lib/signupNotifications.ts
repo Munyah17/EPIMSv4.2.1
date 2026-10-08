@@ -1,5 +1,5 @@
 import type { Policy, Client, Payment } from '../types'
-import { sendSms } from './smsService'
+import { notifyPhone } from './notify'
 import { sendEmail, getNotifSettings } from './mailService'
 import { MAILBOXES } from './mailboxes'
 import { premiumPeriodLabel } from './productUtils'
@@ -36,14 +36,32 @@ function money(amount: number): string {
  * policy has no cover, and telling them otherwise would be the worst kind
  * of mistake for an insurer to make by SMS.
  */
+/** A registration that did NOT land — the office needs to know a client
+ *  tried to register and it failed, same urgency as a successful one. */
+export async function notifyRegistrationFailed(what: string, detail: string): Promise<void> {
+  const cfg = getNotifSettings()
+  const alert = `${COMPANY_NAME}: ${what} FAILED. ${detail}`
+  const recipients = [...new Set([...ADMIN_ALERT_NUMBERS, cfg.superAdminPhone].filter(Boolean))] as string[]
+  for (const number of recipients) {
+    notifyPhone(number, alert, 'registration')
+  }
+  void sendEmail({
+    to: cfg.insurerEmail,
+    subject: `[Registration Failed] ${what}`,
+    from: MAILBOXES.admin,
+    body: `A registration did not complete.\n\nWhat failed: ${what}\nDetail:      ${detail}\nTime:        ${new Date().toISOString()}${cfg.signature ? `\n\n---\n${cfg.signature}` : ''}`,
+  }).catch(() => { /**/ })
+}
+
 export async function notifyClientRegistered(client: Client, registeredBy?: string): Promise<void> {
   const cfg = getNotifSettings()
 
   if (client.phone) {
-    void sendSms(
+    notifyPhone(
       client.phone,
       `${COMPANY_NAME}: Welcome ${client.name.split(' ')[0]}, your details are registered with us. An agent will be in touch to arrange cover.`,
-    ).catch(() => { /**/ })
+      'registration',
+    )
   }
 
   if (client.email) {
@@ -66,7 +84,7 @@ Please note this registration does not itself put any cover in place. One of our
   const alert = `${COMPANY_NAME}: New client registered. ${client.name}, ${client.phone || 'no phone'}${registeredBy ? `, by ${registeredBy}` : ''}. No policy yet.`
   const recipients = [...new Set([...ADMIN_ALERT_NUMBERS, cfg.superAdminPhone].filter(Boolean))] as string[]
   for (const number of recipients) {
-    void sendSms(number, alert).catch(() => { /**/ })
+    notifyPhone(number, alert, 'registration')
   }
 }
 
@@ -81,10 +99,11 @@ export async function notifyPolicyRegistered(policy: Policy, client: Client): Pr
     const waiting = policy.status === 'waiting_period'
       ? ' Your waiting period has started; we will confirm when cover is active.'
       : ' Your cover is active.'
-    void sendSms(
+    notifyPhone(
       client.phone,
       `${COMPANY_NAME}: Welcome ${client.name.split(' ')[0]}. Policy ${policy.policyNumber} (${policy.productName}) is registered, cover ${cover}.${waiting}`,
-    ).catch(() => { /**/ })
+      'registration', policy.policyNumber,
+    )
   }
 
   if (client.email) {
@@ -117,7 +136,7 @@ Keep this email for your records. If any detail above is wrong, contact us and w
   // the office numbers -- nobody wants the same alert twice.
   const recipients = [...new Set([...ADMIN_ALERT_NUMBERS, cfg.superAdminPhone].filter(Boolean))] as string[]
   for (const number of recipients) {
-    void sendSms(number, alert).catch(() => { /**/ })
+    notifyPhone(number, alert, 'registration', policy.policyNumber)
   }
 
   const insurerRecipient = cfg.insurerEmail
@@ -162,15 +181,53 @@ export async function notifyPaymentReceived(payment: Payment, client: { phone?: 
   // would announce a transaction the client was never part of. Office
   // alerts below still go out; staff need the receipt regardless.
   if (productCategory !== 'agriculture' && client?.phone) {
-    void sendSms(
+    notifyPhone(
       client.phone,
       `${COMPANY_NAME}: Payment received. ${amount} via ${payment.method} for policy ${payment.policyNumber}. Reference ${payment.reference}. Thank you.`,
-    ).catch(() => { /**/ })
+      'payment', payment.policyNumber,
+    )
   }
 
   const alert = `${COMPANY_NAME}: Payment received. ${payment.clientName}, policy ${payment.policyNumber}, ${amount} via ${payment.method}. Ref ${payment.reference}.`
   const recipients = [...new Set([...ADMIN_ALERT_NUMBERS, cfg.superAdminPhone].filter(Boolean))] as string[]
   for (const number of recipients) {
-    void sendSms(number, alert).catch(() => { /**/ })
+    notifyPhone(number, alert, 'payment', payment.policyNumber)
   }
+}
+
+/** A payment that came back failed — a declined EcoCash prompt, a bounced
+ *  Paynow transaction. The client hears it plainly (their bank's own
+ *  message doesn't count as ours) and the office knows someone needs a
+ *  follow-up call. */
+export async function notifyPaymentFailed(payment: { policyNumber: string; clientName: string; amount: number; method?: string; reference?: string }, client: { phone?: string; email?: string | null } | null | undefined, productCategory?: string): Promise<void> {
+  const cfg = getNotifSettings()
+  const amount = money(payment.amount)
+
+  if (productCategory !== 'agriculture' && client?.phone) {
+    notifyPhone(
+      client.phone,
+      `${COMPANY_NAME}: Your payment of ${amount} for policy ${payment.policyNumber} could not be completed. Please try again or contact us.`,
+      'payment', payment.policyNumber,
+    )
+  }
+  if (productCategory !== 'agriculture' && client?.email) {
+    void sendEmail({
+      to: client.email,
+      subject: `Payment not completed: policy ${payment.policyNumber}`,
+      from: MAILBOXES.noreply,
+      body: `Dear ${payment.clientName},\n\nYour payment of ${amount} for policy ${payment.policyNumber} could not be completed${payment.method ? ` via ${payment.method}` : ''}.\n\nNo money was collected. Please try again — via EcoCash, Paynow, ZIPIT, or at our offices — or contact us for help.${cfg.signature ? `\n\n---\n${cfg.signature}` : ''}`,
+    }).catch(() => { /**/ })
+  }
+
+  const alert = `${COMPANY_NAME}: Payment FAILED. ${payment.clientName}, policy ${payment.policyNumber}, ${amount}${payment.method ? ` via ${payment.method}` : ''}.`
+  const recipients = [...new Set([...ADMIN_ALERT_NUMBERS, cfg.superAdminPhone].filter(Boolean))] as string[]
+  for (const number of recipients) {
+    notifyPhone(number, alert, 'payment', payment.policyNumber)
+  }
+  void sendEmail({
+    to: cfg.insurerEmail,
+    subject: `[Payment Failed] ${payment.policyNumber}: ${payment.clientName}`,
+    from: MAILBOXES.admin,
+    body: `A payment attempt failed.\n\nPolicy:    ${payment.policyNumber}\nClient:    ${payment.clientName}\nAmount:    ${amount}\nMethod:    ${payment.method ?? 'not specified'}\nReference: ${payment.reference ?? '—'}${cfg.signature ? `\n\n---\n${cfg.signature}` : ''}`,
+  }).catch(() => { /**/ })
 }

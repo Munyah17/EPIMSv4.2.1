@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { ToastMessage, Client } from '../types'
 import type { ActivePanel } from '../App'
-import { db } from '../lib/db'
+import { db, type NotificationFailure } from '../lib/db'
 import { sendBulkSms, getSmsSettings, saveSmsSettings, getSmsLog, clearSmsLog } from '../lib/smsService'
 import type { SmsSettings, SmsLogEntry } from '../lib/smsService'
 import { useAuth } from '../contexts/AuthContext'
@@ -25,6 +25,10 @@ export default function MassMessaging({ showToast }: Props) {
   const [tab, setTab] = useState<'compose' | 'settings' | 'log'>('compose')
   const [smsConfig, setSmsConfig] = useState<SmsSettings>(() => getSmsSettings())
   const [log, setLog] = useState<SmsLogEntry[]>([])
+  // WhatsApp messages queued because no Business API credentials exist yet —
+  // the wa.me link in each row opens WhatsApp with the text pre-filled, so
+  // the client still gets the message with one tap.
+  const [waQueue, setWaQueue] = useState<NotificationFailure[]>([])
 
   useEffect(() => {
     db.clients.list().then(({ data, error }) => {
@@ -34,6 +38,7 @@ export default function MassMessaging({ showToast }: Props) {
       setSelected(new Set(all.map(c => c.id)))
     }).catch(() => showToast('error', 'Failed to load clients.'))
     setLog(getSmsLog())
+    void db.notificationLog.whatsappOutbox().then(setWaQueue)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -277,6 +282,36 @@ export default function MassMessaging({ showToast }: Props) {
             </table>
             </div>
           )}
+        </div>
+      )}
+
+      {waQueue.length > 0 && (
+        <div className="card" style={{ marginTop: 20 }}>
+          <div className="card-header">
+            <span className="card-title">WhatsApp Outbox ({waQueue.length} queued)</span>
+          </div>
+          <div className="info-banner info-banner-warning" style={{ marginBottom: 8 }}>
+            WhatsApp Business API is not configured — these messages are queued. Tap "Send via WhatsApp" to deliver each one by hand (opens WhatsApp with the message pre-filled).
+          </div>
+          <div className="tbl-scroll">
+          <table className="table">
+            <thead><tr><th>Time</th><th>Event</th><th>To</th><th>Ref</th><th></th></tr></thead>
+            <tbody>
+              {waQueue.map((row, i) => {
+                const link = row.detail?.match(/https:\/\/wa\.me\/\S+/)?.[0]
+                return (
+                  <tr key={i}>
+                    <td className="mono" style={{ whiteSpace: 'nowrap' }}>{formatDateTime(row.at)}</td>
+                    <td>{row.event}</td>
+                    <td className="mono">{row.recipient}</td>
+                    <td className="mono">{row.ref ?? '—'}</td>
+                    <td>{link && <a className="btn btn-primary btn-sm" href={link} target="_blank" rel="noreferrer">Send via WhatsApp</a>}</td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+          </div>
         </div>
       )}
     </div>

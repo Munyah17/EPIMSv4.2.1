@@ -197,7 +197,7 @@ export interface PolicyCard {
 // standard 90-day wait (non-agriculture) or instantly on first payment
 // (agriculture); lapsed = a missed payment reinstates to waiting_period, not
 // straight back to active.
-export type PolicyStatus = 'active' | 'waiting_period' | 'lapsed' | 'cancelled' | 'pending' | 'expired'
+export type PolicyStatus = 'active' | 'waiting_period' | 'lapsed' | 'cancelled' | 'pending' | 'expired' | 'defaulted'
 
 export interface Policy {
   id: string

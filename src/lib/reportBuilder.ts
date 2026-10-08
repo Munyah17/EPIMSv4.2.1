@@ -118,7 +118,7 @@ export const GROUP_OPTIONS: Record<string, { value: GroupBy; label: string }[]> 
 }
 
 export const STATUS_OPTIONS: Record<string, string[]> = {
-  policies: ['active', 'waiting_period', 'pending', 'lapsed', 'cancelled', 'expired'],
+  policies: ['active', 'waiting_period', 'pending', 'lapsed', 'defaulted', 'cancelled', 'expired'],
   claims: ['pending', 'under_review', 'approved', 'rejected', 'paid'],
   payments: ['completed', 'pending', 'failed'],
   clients: ['active', 'inactive'],

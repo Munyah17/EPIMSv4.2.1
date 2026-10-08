@@ -420,6 +420,7 @@ tbody tr:hover td{background:var(--surface)}
 /* --- PILLS (status variants) --- */
 .pill-active{background:#D1FAE5;color:#065f46}
 .pill-lapsed{background:#FEE2E2;color:#991b1b}
+.pill-defaulted{background:#FEF3C7;color:#92400e}
 .pill-inactive{background:var(--surface2);color:var(--muted)}
 .pill-pending{background:#FEF3C7;color:#92400e}
 .pill-waiting_period{background:#DBEAFE;color:#1e40af}

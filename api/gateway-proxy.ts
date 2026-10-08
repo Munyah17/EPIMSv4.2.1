@@ -64,9 +64,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // The 'sms' action sends on OUR Afrosoft key and the plain relay still
   // originates traffic from our function — neither can be anonymous. The
   // Afrosoft balance and our sender ID are both spent by a stranger's text.
+  // Our own serverless callers (the public website's provisioning pipeline)
+  // authenticate with the shared machine secret instead of a user session.
   const admin = serviceClient()
   if (!admin) return res.status(500).json({ error: 'Server is not configured.' })
-  if (!(await requireSession(req, admin))) {
+  const machineSecret = process.env.NOTIFY_SECRET || process.env.CRON_SECRET
+  const isMachine = !!machineSecret && req.headers.authorization === `Bearer ${machineSecret}`
+  if (!isMachine && !(await requireSession(req, admin))) {
     return res.status(401).json({ error: 'Sign-in required.' })
   }
 

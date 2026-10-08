@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { ActivePanel } from '../App'
 import type { ToastMessage, Policy } from '../types'
-import { db, type DashboardStats } from '../lib/db'
+import { db, type DashboardStats, type NotificationFailure } from '../lib/db'
 import { formatPremium } from '../lib/productUtils'
 import { formatDate } from '../lib/dateUtils'
 import { useAuth } from '../contexts/AuthContext'
@@ -72,6 +72,20 @@ export default function Dashboard({ setActivePanel }: Props) {
   useEffect(() => {
     if (!canSeeHealth) return
     return health.subscribe(() => setHealthSnap(health.stats))
+  }, [canSeeHealth])
+
+  // Failed notification deliveries (SMS/email/WhatsApp) in the last 24h —
+  // the thing health.stats cannot see, since it only tracks DB reads and
+  // writes. Sits next to the health strip so "100% but nobody got the
+  // confirmation" is contradicted on the same screen.
+  const [notifyFails, setNotifyFails] = useState<NotificationFailure[]>([])
+  useEffect(() => {
+    if (!canSeeHealth) return
+    let cancelled = false
+    const load = () => db.notificationLog.recentFailures(24).then(f => { if (!cancelled) setNotifyFails(f) }).catch(() => { /**/ })
+    void load()
+    const t = setInterval(load, 60000)
+    return () => { cancelled = true; clearInterval(t) }
   }, [canSeeHealth])
 
   useEffect(() => {
@@ -198,7 +212,19 @@ export default function Dashboard({ setActivePanel }: Props) {
             <span style={{ color: 'var(--muted)' }}>Avg latency: <strong style={{ color: 'var(--text)' }}>{healthSnap.avgMs}ms</strong></span>
             <span style={{ color: 'var(--muted)' }}>Success: <strong style={{ color: 'var(--text)' }}>{healthSnap.sbSuccessPct}%</strong></span>
             {healthSnap.localMode && <span className="pill pill-warning pill-xs">Using cached data</span>}
+            <span style={{ color: 'var(--muted)' }}>
+              Notifications (24h): <strong style={{ color: notifyFails.length ? 'var(--danger)' : 'var(--text)' }}>{notifyFails.length === 0 ? 'all delivered' : `${notifyFails.length} failed`}</strong>
+            </span>
           </div>
+          {notifyFails.length > 0 && (
+            <div className="info-banner info-banner-warning" style={{ marginTop: 12 }}>
+              ⚠ {notifyFails.length} notification{notifyFails.length === 1 ? '' : 's'} failed to send in the last 24h.
+              Latest: {notifyFails[0].channel} → {notifyFails[0].recipient}
+              {notifyFails[0].ref ? ` (${notifyFails[0].ref})` : ''}
+              {notifyFails[0].detail ? ` — ${notifyFails[0].detail.slice(0, 120)}` : ''}.
+              Clients may not have received their confirmations — check the delivery log.
+            </div>
+          )}
         </div>
       )}
 

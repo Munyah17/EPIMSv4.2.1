@@ -4,7 +4,7 @@ import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
 import { useAuth } from '../contexts/AuthContext'
-import { notifyClientRegistered } from '../lib/signupNotifications'
+import { notifyClientRegistered, notifyRegistrationFailed } from '../lib/signupNotifications'
 import { searchMembers } from '../lib/memberNumbers'
 import RegisterClientModal from '../components/modals/RegisterClientModal'
 import EditClientModal from '../components/modals/EditClientModal'
@@ -77,7 +77,11 @@ export default function Clients({ showToast }: Props) {
 
   const handleRegister = async (client: Client) => {
     const { data, error } = await db.clients.create(client)
-    if (error || !data) { showToast('error', 'Failed to register client.'); return }
+    if (error || !data) {
+      showToast('error', 'Failed to register client.')
+      void notifyRegistrationFailed('Client registration', `${client.name} — ${error ?? 'unknown error'}`)
+      return
+    }
     setClients(prev => [data, ...prev])
     showToast('success', `Client ${data.name} registered.`)
     setShowRegister(false)
@@ -94,7 +98,11 @@ export default function Clients({ showToast }: Props) {
 
   const handleAssignPolicy = async (policy: Policy) => {
     const { data, error } = await db.policies.create(policy)
-    if (error || !data) { showToast('error', 'Failed to create policy.'); return }
+    if (error || !data) {
+      showToast('error', 'Failed to create policy.')
+      void notifyRegistrationFailed('Policy registration', `${policy.clientName} / ${policy.productName} — ${error ?? 'unknown error'}`)
+      return
+    }
     setClients(prev => prev.map(c => c.id === data.clientId ? { ...c, policyCount: c.policyCount + 1 } : c))
     showToast('success', `Policy ${data.policyNumber} assigned to ${data.clientName}.`)
     setAssignPolicyClient(null)

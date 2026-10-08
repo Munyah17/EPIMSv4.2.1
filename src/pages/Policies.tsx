@@ -4,8 +4,8 @@ import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
 import { exportPolicyReport, getPolicyReportPdfBase64 } from '../lib/exportUtils'
-import { notifyPolicyRegistered, ADMIN_ALERT_NUMBERS } from '../lib/signupNotifications'
-import { sendSms } from '../lib/smsService'
+import { notifyPolicyRegistered, notifyRegistrationFailed, ADMIN_ALERT_NUMBERS } from '../lib/signupNotifications'
+import { notifyPhone } from '../lib/notify'
 import { COMPANY_NAME } from '../lib/company'
 import { recordActivity } from '../lib/activityLog'
 import { sendSystemEmail } from '../lib/mailService'
@@ -106,6 +106,7 @@ export default function Policies({ showToast, initialCategory }: Props) {
     active: policies.filter(p => p.status === 'active').length,
     waiting_period: policies.filter(p => p.status === 'waiting_period').length,
     lapsed: policies.filter(p => p.status === 'lapsed').length,
+    defaulted: policies.filter(p => p.status === 'defaulted').length,
     pending: policies.filter(p => p.status === 'pending').length,
     cancelled: policies.filter(p => p.status === 'cancelled').length,
     expired: policies.filter(p => p.status === 'expired').length,
@@ -127,7 +128,11 @@ export default function Policies({ showToast, initialCategory }: Props) {
     const { data, error } = await db.policies.create(policy)
     // Show the real reason: "failed to create" tells a user nothing when the
     // refusal is a duplicate they can actually do something about.
-    if (error || !data) { showToast('error', error ?? 'Failed to create policy.'); return }
+    if (error || !data) {
+      showToast('error', error ?? 'Failed to create policy.')
+      void notifyRegistrationFailed('Policy registration', `${policy.clientName} / ${policy.productName} — ${error ?? 'unknown error'}`)
+      return
+    }
     setPolicies(prev => [data, ...prev])
     showToast('success', `Policy ${data.policyNumber} created successfully.`)
     setShowNew(false)
@@ -187,6 +192,15 @@ export default function Policies({ showToast, initialCategory }: Props) {
     showToast('success', `Policy ${data.policyNumber} rejected.`)
   }
 
+  /** A defaulted policy is paused, not dead — Admin/Super Admin can put it
+   *  back into waiting_period, where it resumes the normal billing cycle. */
+  const handleReenable = async (policy: Policy) => {
+    const { data, error } = await db.policies.update(policy.id, { status: 'waiting_period' })
+    if (error || !data) { showToast('error', 'Failed to re-enable policy.'); return }
+    setPolicies(prev => prev.map(p => p.id === data.id ? data : p))
+    showToast('success', `Policy ${data.policyNumber} re-enabled (waiting period).`)
+  }
+
   const handleDelete = async (policy: Policy) => {
     // Checked up front so the confirmation can say exactly what will be
     // destroyed, instead of failing afterwards with a generic refusal.
@@ -209,7 +223,7 @@ export default function Policies({ showToast, initialCategory }: Props) {
       })
       showToast('success', `Policy ${policy.policyNumber} deleted.`)
       for (const number of ADMIN_ALERT_NUMBERS) {
-        void sendSms(number, `${COMPANY_NAME}: Policy ${policy.policyNumber} (${policy.clientName}) was DELETED by ${user?.name ?? 'a staff member'}.`).catch(() => { /**/ })
+        notifyPhone(number, `${COMPANY_NAME}: Policy ${policy.policyNumber} (${policy.clientName}) was DELETED by ${user?.name ?? 'a staff member'}.`, 'system', policy.policyNumber)
       }
       return
     }
@@ -235,7 +249,7 @@ export default function Policies({ showToast, initialCategory }: Props) {
     setPolicies(prev => prev.filter(p => p.id !== policy.id))
     showToast('success', `Policy ${policy.policyNumber} and its ${attached} deleted. Recorded in the activity log.`)
     for (const number of ADMIN_ALERT_NUMBERS) {
-      void sendSms(number, `${COMPANY_NAME}: Policy ${policy.policyNumber} (${policy.clientName}) was DELETED by ${user?.name ?? 'a staff member'}, along with ${attached}.`).catch(() => { /**/ })
+      notifyPhone(number, `${COMPANY_NAME}: Policy ${policy.policyNumber} (${policy.clientName}) was DELETED by ${user?.name ?? 'a staff member'}, along with ${attached}.`, 'system', policy.policyNumber)
     }
   }
 
@@ -283,6 +297,7 @@ export default function Policies({ showToast, initialCategory }: Props) {
             <option value="active">Active ({statusCounts.active})</option>
             <option value="waiting_period">Waiting Period ({statusCounts.waiting_period})</option>
             <option value="lapsed">Lapsed ({statusCounts.lapsed})</option>
+            <option value="defaulted">Paused / Defaulted ({statusCounts.defaulted})</option>
             <option value="pending">Pending ({statusCounts.pending})</option>
             <option value="cancelled">Cancelled ({statusCounts.cancelled})</option>
             <option value="expired">Expired ({statusCounts.expired})</option>
@@ -355,6 +370,9 @@ export default function Policies({ showToast, initialCategory }: Props) {
                       )}
                       {p.status === 'pending' && hasPermission('policies.reject') && (
                         <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => handleReject(p)}>Reject</button>
+                      )}
+                      {p.status === 'defaulted' && (user?.role === 'admin' || user?.role === 'super_admin') && (
+                        <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--success)' }} onClick={() => handleReenable(p)}>Re-enable</button>
                       )}
                       <button type="button" className="btn btn-primary btn-sm" onClick={() => setPayPolicy(p)}>Pay Online</button>
                       {hasPermission('policies.delete') && (

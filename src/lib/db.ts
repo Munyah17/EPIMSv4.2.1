@@ -1102,7 +1102,7 @@ async function applyCompletedPaymentToPolicy(policyId: string, amountPaid: numbe
   // periodsPaid for exactly that reason.
   let status = policy.status
   if (periodsPaid >= 1) {
-    if (policy.status === 'lapsed') status = category === 'agriculture' ? 'active' : 'waiting_period'
+    if (policy.status === 'lapsed' || policy.status === 'defaulted') status = category === 'agriculture' ? 'active' : 'waiting_period'
     else if (category === 'agriculture' && policy.status === 'waiting_period') status = 'active'
   }
 
@@ -2230,7 +2230,7 @@ async function loadDashboardStatsLight(): Promise<DashboardStats | null> {
     supabase.from('claims').select('*', { count: 'exact', head: true }).in('status', ['pending', 'under_review']),
     supabase.from('leads').select('*', { count: 'exact', head: true }).eq('status', 'new'),
     supabase.from('fraud_cases').select('*', { count: 'exact', head: true }).eq('status', 'open'),
-    supabase.from('policies').select('*', { count: 'exact', head: true }).eq('status', 'lapsed'),
+    supabase.from('policies').select('*', { count: 'exact', head: true }).in('status', ['lapsed', 'defaulted']),
     supabase.from('policies').select('*', { count: 'exact', head: true }),
     supabase.from('payments').select('amount').eq('status', 'completed').limit(5000),
     supabase.from('policies').select('products!product_id(category)').limit(5000),
@@ -2294,7 +2294,7 @@ async function loadDashboardStatsFallback(): Promise<DashboardStats> {
   ])
   const pol = allPolicies ?? [], cla = allClaims ?? [], pay = allPayments ?? [], lea = allLeads ?? [], fra = allFraud ?? [], cli = allClients ?? []
   const total = pol.length
-  const lapsed = pol.filter(p => p.status === 'lapsed').length
+  const lapsed = pol.filter(p => p.status === 'lapsed' || p.status === 'defaulted').length
   const categoryCounts = new Map<string, number>()
   // Bucketed by product category, matching the primary query above — this
   // fallback used to bucket by product NAME, so the dashboard's category
@@ -2319,6 +2319,58 @@ async function loadDashboardStatsFallback(): Promise<DashboardStats> {
     latestFraud: fra[0] ? { claimNumber: fra[0].claimNumber, fraudScore: fra[0].fraudScore, at: fra[0].createdAt } : null,
     latestClient: cli[0] ? (() => { const c = [...cli].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0]; return { name: c.name, at: c.createdAt } })() : null,
   }
+}
+
+// ── NOTIFICATION LOG ────────────────────────────────────────────────
+// The audit table api/_lib/notify.ts writes every delivery attempt into.
+// Read by the admin dashboard so a failed SMS/email/WhatsApp surfaces as
+// a banner instead of pretending health is 100%. Tolerant by design: the
+// table only exists after database/add_notifications.sql runs, and a
+// missing table must read as "no failures to show", not a page error.
+export interface NotificationFailure {
+  event: string
+  channel: string
+  recipient: string
+  ref: string | null
+  detail: string | null
+  at: string
+}
+
+export const notificationLog = {
+  async recentFailures(hours = 24): Promise<NotificationFailure[]> {
+    try {
+      const { data, error } = await supabase
+        .from('notification_log')
+        .select('event, channel, recipient, ref, detail, created_at')
+        .eq('status', 'failed')
+        .gte('created_at', new Date(Date.now() - hours * 3600000).toISOString())
+        .order('created_at', { ascending: false })
+        .limit(50)
+      if (error) return []
+      return (data ?? []).map(r => ({
+        event: r.event, channel: r.channel, recipient: r.recipient,
+        ref: r.ref, detail: r.detail, at: r.created_at,
+      }))
+    } catch { return [] }
+  },
+  /** WhatsApp messages parked for a staff member to send by hand — the
+   *  outbox the wa.me links in `detail` are tapped from. */
+  async whatsappOutbox(): Promise<NotificationFailure[]> {
+    try {
+      const { data, error } = await supabase
+        .from('notification_log')
+        .select('event, channel, recipient, ref, detail, created_at')
+        .eq('channel', 'whatsapp')
+        .eq('status', 'queued')
+        .order('created_at', { ascending: false })
+        .limit(100)
+      if (error) return []
+      return (data ?? []).map(r => ({
+        event: r.event, channel: r.channel, recipient: r.recipient,
+        ref: r.ref, detail: r.detail, at: r.created_at,
+      }))
+    } catch { return [] }
+  },
 }
 
 export const dashboardStats = {
@@ -2667,6 +2719,6 @@ export const db = {
   exchangeRates,
   customRoles, claimAssessments, policyAssessments, photoHashes, cropTypes, fraudSignalRules, heroSlides,
   policyCards, groups, groupMembers,
-  dashboardStats, sidebarCounts,
+  dashboardStats, sidebarCounts, notificationLog,
   subscribeToTable,
 }

@@ -14,8 +14,8 @@ import { taggedReference } from '../../lib/originTag'
 import { db } from '../../lib/db'
 import { policyBillablePremium, billableHeadCount } from '../../lib/premium'
 import { recordActivity } from '../../lib/activityLog'
-import { ADMIN_ALERT_NUMBERS, notifyPaymentReceived } from '../../lib/signupNotifications'
-import { sendSms } from '../../lib/smsService'
+import { ADMIN_ALERT_NUMBERS, notifyPaymentReceived, notifyPaymentFailed } from '../../lib/signupNotifications'
+import { notifyPhone } from '../../lib/notify'
 import { useAuth } from '../../contexts/AuthContext'
 import PhoneInput from '../ui/PhoneInput'
 import { generateTransactionId } from '../../lib/transactionId'
@@ -163,7 +163,13 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
           handleConfirmed(false, res.transactionId)
         }
       }
-      if (status === 'failed') { stopPoll(); setStep('failed') }
+      if (status === 'failed') {
+        stopPoll()
+        setStep('failed')
+        // The gateway gave a definitive no — our own failure notice, not
+        // the gateway's text, is what the client and the office get.
+        void notifyPaymentFailed({ policyNumber: policy.policyNumber, clientName: policy.clientName, amount: totalAmount, method: method === 'paynow' ? 'Paynow' : 'EcoCash', reference: ref }, client, policy.productCategory)
+      }
     }, 4000)
   }
 
@@ -195,7 +201,7 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
     }
     const alert = `Motions: PAYMENT AMOUNT MISMATCH. ${detail}`
     for (const number of ADMIN_ALERT_NUMBERS) {
-      void sendSms(number, alert).catch(() => { /**/ })
+      notifyPhone(number, alert, 'payment', policy?.policyNumber)
     }
   }
 
@@ -286,7 +292,11 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
 
     setResult(res)
 
-    if (!res.success) { setStep('failed'); return }
+    if (!res.success) {
+      setStep('failed')
+      void notifyPaymentFailed({ policyNumber: policy.policyNumber, clientName: policy.clientName, amount: totalAmount, method: method === 'paynow' ? 'Paynow' : 'EcoCash', reference: ref }, client, policy.productCategory)
+      return
+    }
 
     if (res.status === 'redirect' && res.redirectUrl) {
       // Open Paynow in new tab

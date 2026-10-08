@@ -4,6 +4,7 @@ import { startReminderEngine } from './lib/reminderEngine'
 import { initNotifSettings } from './lib/mailService'
 import { startOfflineSync } from './lib/offlineQueue'
 import { DB_FALLBACK_EVENT } from './lib/db'
+import { NOTIFY_FAILURE_EVENT } from './lib/notify'
 import { lazyWithRecovery } from './lib/lazyWithRecovery'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import LoginScreen from './components/Auth/LoginScreen'
@@ -91,10 +92,15 @@ function AppInner() {
 
   useEffect(() => {
     purgeLegacyMockStores()
-    void initNotifSettings()
-    const stopReminders = startReminderEngine()
-    const stopOfflineSync = startOfflineSync()
-    return () => { stopReminders(); stopOfflineSync() }
+    // Deferred past first paint — none of these touch what the screen shows
+    // initially, and running them inline made every sign-in pay for a
+    // settings fetch and a full reminder scan before anything rendered.
+    const start = window.setTimeout(() => {
+      void initNotifSettings()
+      void startReminderEngine()
+      void startOfflineSync()
+    }, 2000)
+    return () => clearTimeout(start)
   }, [])
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [toasts, setToasts] = useState<ToastMessage[]>([])
@@ -135,6 +141,23 @@ function AppInner() {
     window.addEventListener(DB_FALLBACK_EVENT, onFallback)
     return () => window.removeEventListener(DB_FALLBACK_EVENT, onFallback)
   }, [])
+
+  // A notification channel that fails used to vanish quietly — this turns
+  // it into a toast on the very screen that ran the action, rate-limited
+  // the same way as the DB warnings so a fan-out to five numbers doesn't
+  // stack five toasts.
+  useEffect(() => {
+    let lastWarningAt = 0
+    const onFailure = (e: Event) => {
+      const detail = (e as CustomEvent<string>).detail
+      const now = Date.now()
+      if (now - lastWarningAt < 8000) return
+      lastWarningAt = now
+      showToast('warning', `A notification could not be sent (${detail}). Admins can see this on the dashboard health strip.`)
+    }
+    window.addEventListener(NOTIFY_FAILURE_EVENT, onFailure)
+    return () => window.removeEventListener(NOTIFY_FAILURE_EVENT, onFailure)
+  }, [showToast])
 
   if (loading || !user) return null
 

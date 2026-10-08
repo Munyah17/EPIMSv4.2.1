@@ -1,18 +1,18 @@
 import type { Ticket } from '../types'
 import { sendEmail, getNotifSettings } from './mailService'
 import { MAILBOXES } from './mailboxes'
-import { sendSms } from './smsService'
+import { notifyPhone } from './notify'
 import { COMPANY_NAME } from './company'
 import { ADMIN_ALERT_NUMBERS } from './signupNotifications'
 
 /** The four fixed office lines, plus the configured Super Admin number if it
  *  isn't already one of them -- the same set every other event in the
  *  system alerts. */
-function notifyOffice(message: string) {
+function notifyOffice(message: string, ref?: string) {
   const cfg = getNotifSettings()
   const recipients = [...new Set([...ADMIN_ALERT_NUMBERS, cfg.superAdminPhone].filter(Boolean))] as string[]
   for (const number of recipients) {
-    void sendSms(number, `${COMPANY_NAME}: ${message}`).catch(() => { /**/ })
+    notifyPhone(number, `${COMPANY_NAME}: ${message}`, 'ticket', ref)
   }
 }
 
@@ -44,9 +44,9 @@ ${ticket.description}${cfg.signature ? `\n\n---\n${cfg.signature}` : ''}`,
     })
   }
   if (client.phone) {
-    void sendSms(client.phone, `${COMPANY_NAME}: Your support ticket ${ticket.ticketNumber} has been received. We'll be in touch.`).catch(() => { /**/ })
+    notifyPhone(client.phone, `${COMPANY_NAME}: Your support ticket ${ticket.ticketNumber} has been received. We'll be in touch.`, 'ticket', ticket.ticketNumber)
   }
-  notifyOffice(`New support ticket ${ticket.ticketNumber} from ${ticket.clientName}: "${ticket.subject}".`)
+  notifyOffice(`New support ticket ${ticket.ticketNumber} from ${ticket.clientName}: "${ticket.subject}".`, ticket.ticketNumber)
 }
 
 /** Staff posted a reply -- only the client needs telling; the staff member
@@ -70,7 +70,7 @@ Log in or reply to this email to continue the conversation.${cfg.signature ? `\n
     })
   }
   if (client.phone) {
-    void sendSms(client.phone, `${COMPANY_NAME}: You have a new response on ticket ${ticket.ticketNumber}. Check your email for details.`).catch(() => { /**/ })
+    notifyPhone(client.phone, `${COMPANY_NAME}: You have a new response on ticket ${ticket.ticketNumber}. Check your email for details.`, 'ticket', ticket.ticketNumber)
   }
 }
 
@@ -96,6 +96,6 @@ If this did not fully resolve your issue, contact us and we will reopen it.${cfg
     })
   }
   if (client.phone) {
-    void sendSms(client.phone, `${COMPANY_NAME}: Your support ticket ${ticket.ticketNumber} has been closed. Contact us if this isn't fully resolved.`).catch(() => { /**/ })
+    notifyPhone(client.phone, `${COMPANY_NAME}: Your support ticket ${ticket.ticketNumber} has been closed. Contact us if this isn't fully resolved.`, 'ticket', ticket.ticketNumber)
   }
 }

@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { dispatchNotification } from './_lib/notify.js'
 
 /**
  * Billing reminders, run on the server.
@@ -15,10 +16,13 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
  * Vercel Cron calls this once a day (see vercel.json). It is the same
  * schedule the browser engine implements:
  *
- *   R1  5 days before the last day of the month
- *   R2  1 day before
- *   R3  on the day            (+ SMS to the client)
- *   R4  5 days after          (+ caution flag, policy lapses)
+ *   R1   5 days before the last day of the month
+ *   R2   1 day before
+ *   R3   on the day            (+ SMS/WhatsApp to the client)
+ *   O1–O3 days 1–3 after       (daily overdue notices)
+ *   DEF  4 days after          (+ caution flag, policy pauses as
+ *                               'defaulted' — an Admin/Super Admin or a
+ *                               completed payment brings it back)
  *
  * Agriculture policies are skipped entirely: their premium is an annual
  * stop order paid by the sponsoring association, not monthly by the
@@ -53,17 +57,22 @@ function daysDiff(from: Date, to: Date): number {
   return Math.round((b.getTime() - a.getTime()) / 86400000)
 }
 
-type ReminderType = 'r1_pre5' | 'r2_pre1' | 'r3_due' | 'r4_post5'
+type ReminderType = 'r1_pre5' | 'r2_pre1' | 'r3_due' | 'o1' | 'o2' | 'o3' | 'default'
 
 const STAGE_TAG: Record<ReminderType, string> = {
-  r1_pre5: '[R1]', r2_pre1: '[R2]', r3_due: '[R3]', r4_post5: '[R4]',
+  r1_pre5: '[R1]', r2_pre1: '[R2]', r3_due: '[R3]', o1: '[O1]', o2: '[O2]', o3: '[O3]', default: '[DEF]',
 }
 const STAGE_LABEL: Record<ReminderType, string> = {
   r1_pre5: '5-Day Pre-Due Reminder',
   r2_pre1: '1-Day Pre-Due Reminder',
   r3_due: 'Due Date Reminder',
-  r4_post5: 'OVERDUE: Caution Flag Applied',
+  o1: '1 Day Overdue',
+  o2: '2 Days Overdue',
+  o3: '3 Days Overdue',
+  default: 'OVERDUE: Policy Defaulted & Paused',
 }
+/** Overdue day count for O stages — used in the messages themselves. */
+const OVERDUE_DAYS: Partial<Record<ReminderType, number>> = { o1: 1, o2: 2, o3: 3 }
 
 // ── Rows ───────────────────────────────────────────────────────────
 
@@ -100,60 +109,12 @@ function billablePremium(policy: PolicyRow): number {
 }
 
 // ── Delivery ───────────────────────────────────────────────────────
+// Everything goes through api/_lib/notify.ts — Afrosoft SMS, Graph/SMTP
+// email, WhatsApp (Cloud API or a queued wa.me link) — and every attempt
+// lands in notification_log, so a reminder that never arrived is a row
+// to look up rather than a silent drop.
 
 const SIGNATURE = 'Regards,\nMotions Microinsurance\nwww.motions.co.zw'
-
-/** Reuses this deployment's own SMTP-backed mail function rather than
- *  standing up a second email integration. Best-effort: a bounced
- *  notification must never stop the rest of the run. */
-async function sendMail(origin: string, input: { to: string; subject: string; text: string }): Promise<boolean> {
-  try {
-    const res = await fetch(`${origin}/api/send-email`, {
-      method: 'POST',
-      // send-email requires a signed-in user or the cron secret (see
-      // api/send-email.ts); this run carries the secret, which the handler
-      // above already verified is present before any dispatch can happen.
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.CRON_SECRET}` },
-      body: JSON.stringify({ from: 'noreply@motions.co.zw', fromName: 'Motions Microinsurance', ...input }),
-    })
-    return res.ok
-  } catch { return false }
-}
-
-/** Zimbabwe MSISDN: 263 followed by 9 digits. Afrosoft rejects an entire
- *  batch when one recipient is malformed, so a bad number is skipped rather
- *  than allowed to take the run down with it. */
-function normalizeMsisdn(raw: string): string {
-  let digits = raw.replace(/\D/g, '')
-  if (digits.startsWith('0')) digits = `263${digits.slice(1)}`
-  else if (!digits.startsWith('263')) digits = `263${digits}`
-  return digits
-}
-function isValidMsisdn(raw: string): boolean {
-  return /^263[17]\d{8}$/.test(normalizeMsisdn(raw))
-}
-
-/** Sends straight through Afrosoft with the server's own key — the browser
- *  path (/api/gateway-proxy) exists only because a browser has no key. */
-async function sendSms(to: string, message: string): Promise<boolean> {
-  const apiKey = process.env.AFROSOFT_SMS_API_KEY
-  const domain = process.env.AFROSOFT_SMS_DOMAIN || 'sms.vas.co.zw'
-  if (!apiKey || !isValidMsisdn(to)) return false
-
-  const params = new URLSearchParams({ apikey: apiKey, mobiles: normalizeMsisdn(to), sms: message })
-  const senderId = process.env.AFROSOFT_SMS_SENDER_ID
-  if (senderId) params.set('senderid', senderId)
-  if (/[^\x00-\x7F]/.test(message)) params.set('unicode', 'yes')
-
-  try {
-    const res = await fetch(`https://${domain}/client/api/sendmessage?${params.toString()}`)
-    if (!res.ok) return false
-    const body = await res.text()
-    // Afrosoft answers 200 even when it refuses the message; the real
-    // verdict is the error-code in the body.
-    return /"error-code"\s*:\s*"000"/.test(body)
-  } catch { return false }
-}
 
 // ── Reminder bodies ────────────────────────────────────────────────
 
@@ -164,16 +125,31 @@ function clientEmailBody(policy: PolicyRow, type: ReminderType, due: string, amo
     case 'r1_pre5': return `Dear ${name},\n\nThis is a friendly reminder that your insurance premium of $${amount} for policy ${policy.policy_number} (${product}) is due in 5 days on ${due}.\n\nPlease ensure your payment is ready to avoid any lapse in cover.\n\n${SIGNATURE}`
     case 'r2_pre1': return `Dear ${name},\n\nURGENT REMINDER: Your insurance premium of $${amount} for policy ${policy.policy_number} is due TOMORROW, ${due}.\n\nPlease pay immediately to maintain active coverage. You can pay via EcoCash, Paynow, Zipit, or at any of our offices.\n\n${SIGNATURE}`
     case 'r3_due': return `Dear ${name},\n\nYour insurance premium of $${amount} for policy ${policy.policy_number} is DUE TODAY, ${due}.\n\nFailure to pay today may result in your policy lapsing. Please pay now to avoid disruption to your coverage.\n\nPayment methods: EcoCash | Paynow | Zipit | Cash at office\n\n${SIGNATURE}`
-    case 'r4_post5': return `Dear ${name},\n\nNOTICE OF OVERDUE PREMIUM: CAUTION FLAG APPLIED\n\nYour insurance premium for policy ${policy.policy_number} (${product}) was due on ${due} and remains unpaid as of today (5 days overdue).\n\nYour policy coverage may be at risk. Any claims submitted while your premium is in arrears may be subject to review or rejection.\n\nPlease settle $${amount} immediately to restore full coverage and remove this caution flag.\n\n${SIGNATURE}`
+    case 'o1': case 'o2': case 'o3': {
+      const n = OVERDUE_DAYS[type]
+      return `Dear ${name},\n\nOVERDUE NOTICE (${n} day${n! > 1 ? 's' : ''}): Your insurance premium of $${amount} for policy ${policy.policy_number} was due on ${due} and remains unpaid.\n\nYour policy will be PAUSED (defaulted) if payment is not received within 4 days of the due date. Please pay now to keep your cover.\n\nPayment methods: EcoCash | Paynow | Zipit | Cash at office\n\n${SIGNATURE}`
+    }
+    case 'default': return `Dear ${name},\n\nNOTICE OF OVERDUE PREMIUM: POLICY PAUSED (DEFAULTED)\n\nYour insurance premium for policy ${policy.policy_number} (${product}) was due on ${due} and remains unpaid — 4 days overdue.\n\nYour policy has been moved to DEFAULTED status and is paused. Claims submitted now will not be processed. Please settle $${amount} immediately — payment or an administrator can re-enable your policy.\n\nPayment methods: EcoCash | Paynow | Zipit | Cash at office\n\n${SIGNATURE}`
+  }
+}
+
+function clientSmsBody(policy: PolicyRow, type: ReminderType, due: string, amount: string): string {
+  const n = OVERDUE_DAYS[type] ?? 0
+  switch (type) {
+    case 'r1_pre5': return `Motions: Premium of $${amount} for policy ${policy.policy_number} is due in 5 days on ${due}.`
+    case 'r2_pre1': return `Motions: URGENT - Premium of $${amount} for policy ${policy.policy_number} is due TOMORROW.`
+    case 'r3_due': return `Motions: Premium of $${amount} for policy ${policy.policy_number} is DUE TODAY. Pay now via EcoCash/Paynow to keep your coverage active.`
+    case 'o1': case 'o2': case 'o3': return `Motions: Policy ${policy.policy_number} is ${n} day${n > 1 ? 's' : ''} overdue — $${amount} unpaid. It pauses on day 4. Pay now via EcoCash/Paynow.`
+    case 'default': return `Motions: Policy ${policy.policy_number} is 4 days overdue and is now PAUSED (defaulted). Pay $${amount} to reinstate your cover.`
   }
 }
 
 // ── One policy ─────────────────────────────────────────────────────
 
-interface RunStats { considered: number; emailed: number; texted: number; flagged: number; skipped: number }
+interface RunStats { considered: number; sent: number; failed: number; flagged: number; skipped: number }
 
 async function dispatch(
-  admin: SupabaseClient, origin: string, policy: PolicyRow, type: ReminderType, dueDate: Date, stats: RunStats,
+  admin: SupabaseClient, policy: PolicyRow, type: ReminderType, dueDate: Date, stats: RunStats,
 ) {
   const dueISO = dueDate.toISOString().split('T')[0]
   const tag = STAGE_TAG[type]
@@ -191,42 +167,44 @@ async function dispatch(
 
   const amount = billablePremium(policy).toFixed(2)
   const dueLabel = formatDate(dueDate)
-  const email = policy.clients?.email ?? ''
-  const phone = policy.clients?.phone ?? ''
+  const name = policy.clients?.name ?? 'Client'
+  const product = policy.products?.name ?? 'policy'
 
-  if (email) {
-    const ok = await sendMail(origin, {
-      to: email,
-      subject: type === 'r4_post5'
-        ? `Overdue Notice: ${policy.policy_number} Caution Flag Applied`
-        : `Premium Reminder: ${policy.policy_number} due ${formatDate(dueDate)}`,
-      text: clientEmailBody(policy, type, dueLabel, amount),
-    })
-    if (ok) stats.emailed++
-  }
+  // Every stage, client and office, all three channels — and each attempt
+  // is written to notification_log, so a failed send shows up on the
+  // dashboard instead of pretending the run was clean.
+  const deliveries = await dispatchNotification(admin, {
+    event: 'renewal',
+    ref: policy.policy_number,
+    client: { name, phone: policy.clients?.phone, email: policy.clients?.email },
+    smsText: clientSmsBody(policy, type, dueLabel, amount),
+    whatsappText: clientSmsBody(policy, type, dueLabel, amount),
+    emailSubject: type === 'default'
+      ? `Overdue Notice: ${policy.policy_number} PAUSED (Defaulted)`
+      : `Premium Reminder: ${policy.policy_number} due ${dueLabel}`,
+    emailText: clientEmailBody(policy, type, dueLabel, amount) +
+      `\n\n---\nOffice copy — policy ${policy.policy_number}, ${name}, ${product}, $${amount} due. Stage ${tag} ${STAGE_LABEL[type]}.`,
+  })
+  stats.sent += deliveries.filter(d => d.status === 'sent').length
+  stats.failed += deliveries.filter(d => d.status === 'failed').length
 
-  if (type === 'r3_due' && phone) {
-    const ok = await sendSms(phone,
-      `Motions: Premium of $${amount} for policy ${policy.policy_number} is DUE TODAY. Pay now via EcoCash/Paynow to keep your coverage active.`)
-    if (ok) stats.texted++
-  }
-
-  if (type === 'r4_post5') {
+  if (type === 'default') {
     await admin.from('caution_flags').upsert({
       policy_id: policy.id,
       policy_number: policy.policy_number,
       client_id: policy.client_id,
       client_name: policy.clients?.name ?? '',
       agent_id: policy.agent_id,
-      days_overdue: 5,
+      days_overdue: 4,
       flagged_at: new Date().toISOString(),
       months_defaulted: 1,
       cleared: false,
     }, { onConflict: 'policy_id' })
-    // Five days past due lapses the policy outright; paying later reinstates
-    // it to a fresh waiting period rather than straight back to active.
-    if (policy.status !== 'lapsed') {
-      await admin.from('policies').update({ status: 'lapsed' }).eq('id', policy.id)
+    // Four days past due pauses the policy as 'defaulted'; a completed
+    // payment reinstates it to a fresh waiting period, and an Admin or
+    // Super Admin can re-enable it from Policies.
+    if (policy.status !== 'defaulted') {
+      await admin.from('policies').update({ status: 'defaulted' }).eq('id', policy.id)
     }
     stats.flagged++
   }
@@ -281,7 +259,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!supabaseUrl || !serviceKey) return res.status(500).json({ error: 'Server is not configured.' })
   const admin = createClient(supabaseUrl, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } })
 
-  const origin = `https://${req.headers.host}`
   const today = new Date()
   const dueDate = lastDayOfMonth(today)
   const daysToLast = daysDiff(today, dueDate)
@@ -290,7 +267,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     daysToLast === 5 ? 'r1_pre5'
     : daysToLast === 1 ? 'r2_pre1'
     : daysToLast === 0 ? 'r3_due'
-    : daysToLast === -5 ? 'r4_post5'
+    : daysToLast === -1 ? 'o1'
+    : daysToLast === -2 ? 'o2'
+    : daysToLast === -3 ? 'o3'
+    : daysToLast === -4 ? 'default'
     : null
 
   const lifted = await liftWaitingPeriods(admin)
@@ -310,11 +290,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const policies = ((data ?? []) as unknown as PolicyRow[])
     .filter(p => p.products?.category !== 'agriculture')
-  const stats: RunStats = { considered: policies.length, emailed: 0, texted: 0, flagged: 0, skipped: 0 }
+  const stats: RunStats = { considered: policies.length, sent: 0, failed: 0, flagged: 0, skipped: 0 }
 
   for (const policy of policies) {
     try {
-      await dispatch(admin, origin, policy, type, dueDate, stats)
+      await dispatch(admin, policy, type, dueDate, stats)
     } catch (e) {
       // One bad policy must not abandon the rest of the book.
       console.error('cron-reminders: policy failed', policy.policy_number, e)

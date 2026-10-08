@@ -2,7 +2,7 @@ import type { Claim, ClaimStatus } from '../types'
 import { sendEmail, getNotifSettings } from './mailService'
 import { db } from './db'
 import { MAILBOXES } from './mailboxes'
-import { sendSms } from './smsService'
+import { notifyPhone } from './notify'
 import { COMPANY_NAME } from './company'
 import { ADMIN_ALERT_NUMBERS } from './signupNotifications'
 
@@ -60,7 +60,7 @@ Please retain this email for your records. All parties will be copied on further
     void sendEmail({ to: client.email, cc, subject, body: clientBody, linkedTo: claim.id, folder: 'claims', from: MAILBOXES.claims })
   }
   if (client.phone) {
-    void sendSms(client.phone, `${COMPANY_NAME}: Your claim ${claim.claimNumber} has been submitted. You'll be notified as it progresses.`).catch(() => { /**/ })
+    notifyPhone(client.phone, `${COMPANY_NAME}: Your claim ${claim.claimNumber} has been submitted. You'll be notified as it progresses.`, 'claim', claim.claimNumber)
   }
   notifyOffice(claim, `submitted by ${claim.clientName}, $${claim.amount.toLocaleString()}, awaiting intake.`)
 }
@@ -123,7 +123,7 @@ function notifyOffice(claim: Claim, stageMessage: string) {
   const cfg = getNotifSettings()
   const recipients = [...new Set([...ADMIN_ALERT_NUMBERS, cfg.superAdminPhone].filter(Boolean))] as string[]
   for (const number of recipients) {
-    void sendSms(number, `${COMPANY_NAME}: Claim ${claim.claimNumber}: ${stageMessage}`).catch(() => { /**/ })
+    notifyPhone(number, `${COMPANY_NAME}: Claim ${claim.claimNumber}: ${stageMessage}`, 'claim', claim.claimNumber)
   }
 }
 
@@ -139,7 +139,7 @@ export async function notifyClaimIntakeAccepted(claim: Claim, processor: StaffCo
       body: `Dear ${claim.clientName},\n\nYour claim ${claim.claimNumber} has been received and accepted for processing.${claimSummaryBlock(claim)}\n\nIt is now with our claims processing team for assessment.${signature(cfg.signature)}`,
     })
   }
-  if (client.phone) void sendSms(client.phone, `${COMPANY_NAME}: Your claim ${claim.claimNumber} was received and is now being processed.`).catch(() => { /**/ })
+  if (client.phone) notifyPhone(client.phone, `${COMPANY_NAME}: Your claim ${claim.claimNumber} was received and is now being processed.`, 'claim', claim.claimNumber)
 
   if (processor.email) {
     void sendEmail({
@@ -147,7 +147,7 @@ export async function notifyClaimIntakeAccepted(claim: Claim, processor: StaffCo
       body: `${claim.claimNumber} has been accepted at intake and assigned to you for assessment.${claimSummaryBlock(claim)}\n\nLog in to TariqifyIMS to review.${signature(cfg.signature)}`,
     })
   }
-  if (processor.phone) void sendSms(processor.phone, `${COMPANY_NAME}: Claim ${claim.claimNumber} assigned to you for assessment.`).catch(() => { /**/ })
+  if (processor.phone) notifyPhone(processor.phone, `${COMPANY_NAME}: Claim ${claim.claimNumber} assigned to you for assessment.`, 'claim', claim.claimNumber)
 }
 
 export async function notifyClaimIntakeRejected(claim: Claim): Promise<void> {
@@ -161,7 +161,7 @@ export async function notifyClaimIntakeRejected(claim: Claim): Promise<void> {
       body: `Dear ${claim.clientName},\n\nWe were unable to accept your claim ${claim.claimNumber} for processing.${claimSummaryBlock(claim)}\n\nPlease contact us if you believe this is in error.${signature(cfg.signature)}`,
     })
   }
-  if (client.phone) void sendSms(client.phone, `${COMPANY_NAME}: Your claim ${claim.claimNumber} could not be accepted. Please contact us for details.`).catch(() => { /**/ })
+  if (client.phone) notifyPhone(client.phone, `${COMPANY_NAME}: Your claim ${claim.claimNumber} could not be accepted. Please contact us for details.`, 'claim', claim.claimNumber)
 }
 
 export async function notifyClaimEscalated(claim: Claim, reviewer: StaffContact): Promise<void> {
@@ -176,7 +176,7 @@ export async function notifyClaimEscalated(claim: Claim, reviewer: StaffContact)
       body: `Dear ${claim.clientName},\n\nYour claim ${claim.claimNumber} has completed assessment and is now with our final reviewer for a decision.${claimSummaryBlock(claim)}${signature(cfg.signature)}`,
     })
   }
-  if (client.phone) void sendSms(client.phone, `${COMPANY_NAME}: Your claim ${claim.claimNumber} is now with our final reviewer.`).catch(() => { /**/ })
+  if (client.phone) notifyPhone(client.phone, `${COMPANY_NAME}: Your claim ${claim.claimNumber} is now with our final reviewer.`, 'claim', claim.claimNumber)
 
   if (reviewer.email) {
     void sendEmail({
@@ -184,7 +184,7 @@ export async function notifyClaimEscalated(claim: Claim, reviewer: StaffContact)
       body: `${claim.claimNumber} has been assessed and escalated to you for a final decision.${claimSummaryBlock(claim)}${claim.assessmentNotes ? `\n\nAssessment notes:\n${claim.assessmentNotes}` : ''}\n\nLog in to TariqifyIMS to approve or decline.${signature(cfg.signature)}`,
     })
   }
-  if (reviewer.phone) void sendSms(reviewer.phone, `${COMPANY_NAME}: Claim ${claim.claimNumber} needs your final decision.`).catch(() => { /**/ })
+  if (reviewer.phone) notifyPhone(reviewer.phone, `${COMPANY_NAME}: Claim ${claim.claimNumber} needs your final decision.`, 'claim', claim.claimNumber)
 }
 
 export async function notifyClaimFinalDecision(claim: Claim): Promise<void> {
@@ -201,7 +201,7 @@ export async function notifyClaimFinalDecision(claim: Claim): Promise<void> {
     })
   }
   if (client.phone) {
-    void sendSms(client.phone, `${COMPANY_NAME}: Your claim ${claim.claimNumber} has been ${approved ? 'APPROVED' : 'DECLINED'}.`).catch(() => { /**/ })
+    notifyPhone(client.phone, `${COMPANY_NAME}: Your claim ${claim.claimNumber} has been ${approved ? 'APPROVED' : 'DECLINED'}.`, 'claim', claim.claimNumber)
   }
 }
 
@@ -234,7 +234,7 @@ Thank you for choosing our insurance services.${signature(cfg.signature)}`
     void sendEmail({ to: client.email, cc, subject, body: clientBody, linkedTo: claim.id, folder: 'claims', from: MAILBOXES.claims })
   }
   if (client.phone) {
-    void sendSms(client.phone, `${COMPANY_NAME}: Your claim ${claim.claimNumber} has been paid. $${claim.amount.toLocaleString()} processed. Thank you.`).catch(() => { /**/ })
+    notifyPhone(client.phone, `${COMPANY_NAME}: Your claim ${claim.claimNumber} has been paid. $${claim.amount.toLocaleString()} processed. Thank you.`, 'claim', claim.claimNumber)
   }
   notifyOffice(claim, `paid, $${claim.amount.toLocaleString()} processed. Closed.`)
 }

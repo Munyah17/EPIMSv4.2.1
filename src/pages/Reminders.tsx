@@ -55,7 +55,7 @@ export default function Reminders({ showToast }: Props) {
   const upcoming = reminders.filter(r => !r.sent && new Date(r.dueDate) > new Date())
   const sent = reminders.filter(r => r.sent)
 
-  const lapsingPolicies = policies.filter(p => p.status === 'lapsed')
+  const lapsingPolicies = policies.filter(p => p.status === 'lapsed' || p.status === 'defaulted')
   const upcomingRenewals = policies.filter(p => {
     const diff = (new Date(p.endDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
     return diff <= 30 && diff > 0 && p.status === 'active'
@@ -131,7 +131,7 @@ export default function Reminders({ showToast }: Props) {
     if (sending) return
     setSending(true)
     try {
-      const body = p.status === 'lapsed'
+      const body = p.status === 'lapsed' || p.status === 'defaulted'
         ? `Dear ${p.clientName}, your ${p.productName} policy ${p.policyNumber} has lapsed. Please contact us to reinstate your cover.`
         : `Dear ${p.clientName}, your ${p.productName} policy ${p.policyNumber} renews on ${formatDate(p.endDate)}. Please contact us to continue your cover.`
       const channel = await dispatchToClient(p.clientId, p.clientName, `${COMPANY_NAME} — renewal reminder`, body)

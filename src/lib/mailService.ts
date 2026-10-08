@@ -1,6 +1,7 @@
 import type { EmailMessage } from '../types'
 import { db } from './db'
 import { supabase } from './supabase'
+import { reportOutcome } from './notify'
 
 export interface NotifSettings {
   insurerName: string
@@ -137,15 +138,22 @@ export async function sendEmail(opts: SendEmailOptions): Promise<SendEmailResult
     })
     if (!res.ok) {
       const detail = await res.json().catch(() => ({}))
-      return { email, delivered: false, error: detail?.error ?? `Email service error (HTTP ${res.status})` }
+      const err = detail?.error ?? `Email service error (HTTP ${res.status})`
+      reportOutcome({ channel: 'email', recipient: opts.to, event: opts.subject.slice(0, 60), status: 'failed', detail: err })
+      return { email, delivered: false, error: err }
     }
     const result = await res.json().catch(() => ({}))
     if (result?.simulated) {
-      return { email, delivered: false, error: 'Email sending is not configured yet; message recorded but not actually sent.' }
+      const err = 'Email sending is not configured yet; message recorded but not actually sent.'
+      reportOutcome({ channel: 'email', recipient: opts.to, event: opts.subject.slice(0, 60), status: 'skipped', detail: err })
+      return { email, delivered: false, error: err }
     }
+    reportOutcome({ channel: 'email', recipient: opts.to, event: opts.subject.slice(0, 60), status: 'sent' })
     return { email, delivered: true }
   } catch (e) {
-    return { email, delivered: false, error: `Could not reach email service: ${e}` }
+    const err = `Could not reach email service: ${e}`
+    reportOutcome({ channel: 'email', recipient: opts.to, event: opts.subject.slice(0, 60), status: 'failed', detail: err })
+    return { email, delivered: false, error: err }
   }
 }
 

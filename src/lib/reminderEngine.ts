@@ -26,7 +26,7 @@ import type { Policy, Client, Reminder } from '../types'
 import { db } from './db'
 import { MAILBOXES } from './mailboxes'
 import { sendEmail, getNotifSettings } from './mailService'
-import { sendSms } from './smsService'
+import { notifyPhone } from './notify'
 import { NETONE_SUSPENDED } from './claimNotifications'
 import { ADMIN_ALERT_NUMBERS } from './signupNotifications'
 import { policyBillablePremium } from './premium'
@@ -77,17 +77,20 @@ function daysDiff(from: Date, to: Date): number {
 
 // ── Stage tags (dedup markers stored in reminders.message) ────────
 
-type ReminderType = 'r1_pre5' | 'r2_pre1' | 'r3_due' | 'r4_post5'
+type ReminderType = 'r1_pre5' | 'r2_pre1' | 'r3_due' | 'o1' | 'o2' | 'o3' | 'default'
 
 const STAGE_TAG: Record<ReminderType, string> = {
-  r1_pre5: '[R1]', r2_pre1: '[R2]', r3_due: '[R3]', r4_post5: '[R4]',
+  r1_pre5: '[R1]', r2_pre1: '[R2]', r3_due: '[R3]', o1: '[O1]', o2: '[O2]', o3: '[O3]', default: '[DEF]',
 }
 
 const STAGE_LABEL: Record<ReminderType, string> = {
   r1_pre5: '5-Day Pre-Due Reminder',
   r2_pre1: '1-Day Pre-Due Reminder',
   r3_due: 'Due Date Reminder',
-  r4_post5: 'OVERDUE: Caution Flag Applied',
+  o1: '1 Day Overdue',
+  o2: '2 Days Overdue',
+  o3: '3 Days Overdue',
+  default: 'OVERDUE: Policy Defaulted & Paused',
 }
 
 // ── Email templates ────────────────────────────────────────────────
@@ -120,15 +123,27 @@ Failure to pay today may result in your policy lapsing. Please pay now to avoid 
 Payment methods: EcoCash | Paynow | Zipit | Cash at office | Online: ${PAY_ONLINE_URL}
 
 ${sig}`
-    case 'r4_post5': return `Dear ${policy.clientName},
+    case 'o1': case 'o2': case 'o3': {
+      const n = type === 'o1' ? 1 : type === 'o2' ? 2 : 3
+      return `Dear ${policy.clientName},
 
-NOTICE OF OVERDUE PREMIUM: CAUTION FLAG APPLIED
+OVERDUE NOTICE (${n} day${n > 1 ? 's' : ''}): Your insurance premium of $${amountDue(policy).toFixed(2)} for policy ${policy.policyNumber} was due on ${due} and remains unpaid.
 
-Your insurance premium for policy ${policy.policyNumber} (${policy.productName}) was due on ${due} and remains unpaid as of today (5 days overdue).
+Your policy will be PAUSED (defaulted) if payment is not received within 4 days of the due date. Please pay now to keep your cover.
 
-⚠ IMPORTANT: Your policy coverage may be at risk. Any claims submitted while your premium is in arrears may be subject to review or rejection.
+Payment methods: EcoCash | Paynow | Zipit | Cash at office | Online: ${PAY_ONLINE_URL}
 
-Please settle ${amountDue(policy).toFixed(2)} immediately to restore full coverage and remove this caution flag.
+${sig}`
+    }
+    case 'default': return `Dear ${policy.clientName},
+
+NOTICE OF OVERDUE PREMIUM: POLICY PAUSED (DEFAULTED)
+
+Your insurance premium for policy ${policy.policyNumber} (${policy.productName}) was due on ${due} and remains unpaid — 4 days overdue.
+
+Your policy has been moved to DEFAULTED status and is paused. Claims submitted now will not be processed. Any claims submitted while your premium is in arrears may be subject to review or rejection.
+
+Please settle $${amountDue(policy).toFixed(2)} immediately — payment or an administrator can re-enable your policy.
 
 Payment methods: EcoCash | Paynow | Zipit | Cash at office | Online: ${PAY_ONLINE_URL}
 
@@ -145,7 +160,7 @@ Client: ${policy.clientName}
 Product: ${policy.productName}
 Premium Due: $${amountDue(policy).toFixed(2)}
 Due Date: ${due}
-${type === 'r4_post5' ? '\n⚠ Caution flag has been applied to this policy. Client, agent, and insurer are notified.\n' : ''}
+${type === 'default' ? '\n⚠ Policy has been moved to DEFAULTED and paused. Client and office are notified.\n' : ''}
 
 ${sig}`
 }
@@ -170,8 +185,8 @@ async function dispatchReminder(policy: Policy, client: Client | undefined, type
     void sendEmail({
       to: clientEmail,
       cc: allCc,
-      subject: type === 'r4_post5'
-        ? `⚠ Overdue Notice: ${policy.policyNumber} Caution Flag Applied`
+      subject: type === 'default'
+        ? `⚠ Overdue Notice: ${policy.policyNumber} PAUSED (Defaulted)`
         : `Premium Reminder: ${policy.policyNumber} due ${formatDate(dueDate)}`,
       body: buildReminderEmail(policy, type, dueDate, sig),
       folder: 'inbox',
@@ -190,40 +205,43 @@ async function dispatchReminder(policy: Policy, client: Client | undefined, type
   // system-wide event that already had three of its four stages silently
   // SMS-less.
   if (clientPhone) {
+    const overdueDays = type === 'o1' ? 1 : type === 'o2' ? 2 : type === 'o3' ? 3 : 0
     const smsBody = type === 'r1_pre5'
       ? `${COMPANY_NAME}: Premium of $${amountDue(policy).toFixed(2)} for policy ${policy.policyNumber} is due in 5 days on ${formatDate(dueDate)}.`
       : type === 'r2_pre1'
       ? `${COMPANY_NAME}: URGENT - Premium of $${amountDue(policy).toFixed(2)} for policy ${policy.policyNumber} is due TOMORROW.`
       : type === 'r3_due'
       ? `${COMPANY_NAME}: Premium of $${amountDue(policy).toFixed(2)} for policy ${policy.policyNumber} is DUE TODAY. Pay now via EcoCash/Paynow to keep your coverage active.`
-      : `${COMPANY_NAME}: Policy ${policy.policyNumber} is now 5 days overdue and has LAPSED. Pay $${amountDue(policy).toFixed(2)} to reinstate your cover.`
-    sendSms(clientPhone, smsBody).catch(() => { /**/ })
+      : type === 'default'
+      ? `${COMPANY_NAME}: Policy ${policy.policyNumber} is 4 days overdue and is now PAUSED (defaulted). Pay $${amountDue(policy).toFixed(2)} to reinstate your cover.`
+      : `${COMPANY_NAME}: Policy ${policy.policyNumber} is ${overdueDays} day${overdueDays > 1 ? 's' : ''} overdue — $${amountDue(policy).toFixed(2)} unpaid. It pauses on day 4. Pay now via EcoCash/Paynow.`
+    notifyPhone(clientPhone, smsBody, 'renewal', policy.policyNumber)
   }
 
-  if (type === 'r4_post5') {
+  if (type === 'default') {
     await db.cautionFlags.set({
       policyId: policy.id,
       policyNumber: policy.policyNumber,
       clientId: policy.clientId,
       clientName: policy.clientName,
       agentId: policy.agentId,
-      daysOverdue: 5,
+      daysOverdue: 4,
       flaggedAt: new Date().toISOString(),
       monthsDefaulted: 1,
       cleared: false,
     })
-    // A payment missed by 5 days lapses the policy outright — reinstating
-    // later drops it back to a fresh waiting_period rather than straight
-    // back to active (see applyCompletedPaymentToPolicy in db.ts).
-    if (policy.status !== 'lapsed') {
-      await db.policies.update(policy.id, { status: 'lapsed' })
+    // Four days unpaid -> the policy is paused under 'defaulted' rather
+    // than lapsed outright; an Admin/Super Admin can re-enable it, and a
+    // completed payment reinstates it (see applyCompletedPaymentToPolicy).
+    if (policy.status !== 'defaulted') {
+      await db.policies.update(policy.id, { status: 'defaulted' })
     }
-    // The office hears about every lapse the same way it hears about every
-    // other money event in the system -- the four fixed lines, not just
-    // whoever happens to have Billing & Reminders open.
+    // The office hears about every default the same way it hears about
+    // every other money event in the system -- the four fixed lines, not
+    // just whoever happens to have Billing & Reminders open.
     const recipients = [...new Set([...ADMIN_ALERT_NUMBERS, cfg.superAdminPhone].filter(Boolean))] as string[]
     for (const number of recipients) {
-      sendSms(number, `${COMPANY_NAME}: Policy ${policy.policyNumber} LAPSED. ${policy.clientName}, $${amountDue(policy).toFixed(2)} overdue 5 days. Caution flag applied.`).catch(() => { /**/ })
+      notifyPhone(number, `${COMPANY_NAME}: Policy ${policy.policyNumber} PAUSED (defaulted). ${policy.clientName}, $${amountDue(policy).toFixed(2)} overdue 4 days.`, 'renewal', policy.policyNumber)
     }
   }
 
@@ -250,7 +268,10 @@ export async function runReminderCheck() {
   if (daysToLast === 5) type = 'r1_pre5'
   else if (daysToLast === 1) type = 'r2_pre1'
   else if (daysToLast === 0) type = 'r3_due'
-  else if (daysToLast === -5) type = 'r4_post5'
+  else if (daysToLast === -1) type = 'o1'
+  else if (daysToLast === -2) type = 'o2'
+  else if (daysToLast === -3) type = 'o3'
+  else if (daysToLast === -4) type = 'default'
   if (!type) { try { localStorage.setItem(CHECK_KEY, today.toISOString()) } catch { /**/ }; return }
 
   const [{ data: allPolicies }, { data: allClients }, { data: allProducts }] = await Promise.all([db.policies.list(), db.clients.list(), db.products.list()])
