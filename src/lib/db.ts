@@ -69,6 +69,31 @@ function writeFailed(table: string, error: string | null): { data: null; error: 
   return { data: null, error: error ?? 'Could not save to the database. Check your connection and try again — nothing has been saved.' }
 }
 
+/**
+ * Optional-schema probing. Columns added by migrations that the user runs
+ * by hand (groups/group_cover on policies, transaction_id on payments)
+ * are asked for with a cheap `select(column).limit(0)`; the answer is
+ * remembered so every subsequent query can pick the right SELECT string
+ * and write payload. A false is re-checked after a minute so the feature
+ * wakes up on its own once the migration lands — a true is cached for
+ * the session (columns don't disappear).
+ */
+const schemaFlags = new Map<string, { ok: boolean; at: number }>()
+const SCHEMA_PROBE_TTL_MS = 60_000
+
+async function hasColumn(table: string, column: string): Promise<boolean> {
+  const key = `${table}.${column}`
+  const hit = schemaFlags.get(key)
+  if (hit && (hit.ok || Date.now() - hit.at < SCHEMA_PROBE_TTL_MS)) return hit.ok
+  const { error } = await supabase.from(table).select(column).limit(0)
+  const ok = !error
+  schemaFlags.set(key, { ok, at: Date.now() })
+  return ok
+}
+
+const policySelect = () => hasColumn('policies', 'group_id').then(ok => ok ? POLICY_SELECT : POLICY_SELECT_BASE)
+const paymentSelect = () => hasColumn('payments', 'transaction_id').then(ok => ok ? PAYMENT_SELECT : PAYMENT_SELECT_BASE)
+
 /** Dispatched whenever a read/write falls back to browser-local storage, so the UI can warn the user. */
 export const DB_FALLBACK_EVENT = 'ims:db-fallback'
 
@@ -380,14 +405,20 @@ function toCautionFlag(r: any): CautionFlag {
 }
 
 // ── SELECT strings ────────────────────────────────────────────────
-const POLICY_SELECT = `
+// The base shapes are what existed before the group-cover and
+// transaction-id migrations. The extras are appended only after a live
+// probe confirms the columns exist — deploying code ahead of a migration
+// must not take the whole policies/payments screens down with it.
+const POLICY_SELECT_BASE = `
   id, policy_number, client_id, product_id, premium, cover_amount,
   start_date, end_date, status, dependants, payment_method, insurer,
   grower_number, gps_lat, gps_lng, agent_id, next_payment_date, last_payment_date, created_at,
   source,
   clients!client_id(id, name),
   products!product_id(id, name, category, excess),
-  profiles!agent_id(id, name),
+  profiles!agent_id(id, name)
+`
+const POLICY_SELECT = POLICY_SELECT_BASE + `,
   group_id, cover_scope,
   groups!group_id(id, name, group_type)
 `
@@ -404,13 +435,14 @@ const CLAIM_SELECT = `
   assignee:profiles!assigned_to(id, name),
   agent:profiles!agent_id(id, name)
 `
-const PAYMENT_SELECT = `
-  id, reference, policy_id, amount, method, status, payment_date, transaction_id, split_payments, created_at,
+const PAYMENT_SELECT_BASE = `
+  id, reference, policy_id, amount, method, status, payment_date, split_payments, created_at,
   policies!policy_id(
     policy_number,
     clients!client_id(name)
   )
 `
+const PAYMENT_SELECT = PAYMENT_SELECT_BASE.replace('payment_date,', 'payment_date, transaction_id,')
 const TICKET_SELECT = `
   id, ticket_number, client_id, subject, description,
   status, priority, category, assigned_to, messages, created_at, updated_at,
@@ -441,8 +473,9 @@ export const policies = {
   // data yet" empty state), never a fake policy that looks real enough to
   // record a genuine site visit against.
   async list() {
+    const select = await policySelect()
     const { ok, data } = await sb('policies', 'read',
-      () => supabase.from('policies').select(POLICY_SELECT).order('created_at', { ascending: false }),
+      () => supabase.from('policies').select(select).order('created_at', { ascending: false }),
       d => Array.isArray(d),
     )
     if (ok && data) {
@@ -457,8 +490,9 @@ export const policies = {
   },
 
   async get(id: string) {
+    const select = await policySelect()
     const { ok, data } = await sb('policies', 'read',
-      () => supabase.from('policies').select(POLICY_SELECT).eq('id', id).single(),
+      () => supabase.from('policies').select(select).eq('id', id).single(),
     )
     if (ok && data) return { data: toPolicy(data), error: null }
     const cachedPolicy = cacheGet<Policy>('policies')?.data.find(p => p.id === id)
@@ -476,17 +510,31 @@ export const policies = {
       insurer: policy.insurer ?? null, grower_number: policy.growerNumber ?? null,
       gps_lat: policy.gpsLat ?? null, gps_lng: policy.gpsLng ?? null,
       agent_id: policy.agentId ?? null, next_payment_date: policy.nextPaymentDate ?? null,
-      group_id: policy.groupId ?? null, cover_scope: policy.coverScope ?? 'individual',
       // Defaulting to 'web_app' is honest: any insert reaching this code
       // path without a source set was issued by staff in the IMS itself.
       source: policy.source ?? 'web_app',
     }
+    // Group-cover columns only exist once database/add_group_cover.sql has
+    // been run. An individual policy omits them entirely (the DB default
+    // applies); an organisation policy refuses rather than silently
+    // becoming an individual policy detached from its roster.
+    const groupColsReady = await hasColumn('policies', 'group_id')
+    if (policy.groupId || (policy.coverScope && policy.coverScope !== 'individual')) {
+      if (!groupColsReady) {
+        return { data: null, error: 'Corporate/group policies need a database update first — run database/add_group_cover.sql in the Supabase SQL editor, then try again.' }
+      }
+      ;(row as Record<string, unknown>).group_id = policy.groupId ?? null
+      ;(row as Record<string, unknown>).cover_scope = policy.coverScope ?? 'individual'
+    } else if (groupColsReady) {
+      ;(row as Record<string, unknown>).cover_scope = 'individual'
+    }
+    const policySelect_ = await policySelect()
     // Inserted directly rather than through sb(), because a duplicate must
     // be reported as a refusal. Falling back to local storage on a unique
     // violation would tell the user their policy was created and then
     // quietly never sync it -- the opposite of what the constraint is for.
     const start = Date.now()
-    const { data, error } = await supabase.from('policies').insert(row).select(POLICY_SELECT).single()
+    const { data, error } = await supabase.from('policies').insert(row).select(policySelect_).single()
     health.record({ ts: Date.now(), type: 'write', table: 'policies', success: !error, duration: Date.now() - start, source: 'supabase', detail: error ? String(error.message) : undefined })
 
     if (!error && data) return { data: toPolicy(data), error: null }
@@ -517,11 +565,14 @@ export const policies = {
     if (updates.coverAmount !== undefined)           row.cover_amount       = updates.coverAmount
     if (updates.endDate !== undefined)               row.end_date           = updates.endDate
     if (updates.agentId !== undefined)               row.agent_id           = updates.agentId ?? null
-    if (updates.groupId !== undefined)               row.group_id           = updates.groupId ?? null
-    if (updates.coverScope)                          row.cover_scope        = updates.coverScope
     if (updates.source)                              row.source             = updates.source
+    const policySelect_ = await policySelect()
+    if (schemaFlags.get('policies.group_id')?.ok) {
+      if (updates.groupId !== undefined)             row.group_id           = updates.groupId ?? null
+      if (updates.coverScope)                        row.cover_scope        = updates.coverScope
+    }
     const { ok, data, error } = await sb('policies', 'write',
-      () => supabase.from('policies').update(row).eq('id', id).select(POLICY_SELECT).single(),
+      () => supabase.from('policies').update(row).eq('id', id).select(policySelect_).single(),
     )
     if (ok && data) return { data: toPolicy(data), error: null }
     return writeFailed('policies', error)
@@ -1057,8 +1108,9 @@ async function applyCompletedPaymentToPolicy(policyId: string, amountPaid: numbe
 // ── PAYMENTS ──────────────────────────────────────────────────────
 export const payments = {
   async list() {
+    const select = await paymentSelect()
     const { ok, data } = await sb('payments', 'read',
-      () => supabase.from('payments').select(PAYMENT_SELECT).order('payment_date', { ascending: false }),
+      () => supabase.from('payments').select(select).order('payment_date', { ascending: false }),
       d => Array.isArray(d),
     )
     if (ok && data) {
@@ -1080,14 +1132,19 @@ export const payments = {
     if (!Number.isFinite(payment.amount) || payment.amount <= 0) {
       return { data: null, error: 'Payment amount must be greater than zero.' }
     }
-    const row = {
+    const row: Record<string, unknown> = {
       reference: payment.reference, policy_id: payment.policyId,
       amount: payment.amount, method: payment.method, status: payment.status,
-      payment_date: payment.date, transaction_id: payment.transactionId ?? null,
+      payment_date: payment.date,
       split_payments: payment.splitPayments ?? null,
     }
+    // transaction_id only exists once database/add_payment_txn.sql has run
+    // — a payment must still record before it has; the ID just isn't
+    // persisted until it is.
+    const paymentSelect_ = await paymentSelect()
+    if (schemaFlags.get('payments.transaction_id')?.ok) row.transaction_id = payment.transactionId ?? null
     const { ok, data, error } = await sb('payments', 'write',
-      () => supabase.from('payments').insert(row).select(PAYMENT_SELECT).single(),
+      () => supabase.from('payments').insert(row).select(paymentSelect_).single(),
     )
     if (ok && data) {
       const result = toPayment(data)
@@ -1122,10 +1179,13 @@ export const payments = {
     if (updates.amount !== undefined) row.amount = updates.amount
     if (updates.method !== undefined) row.method = updates.method
     if (updates.date !== undefined) row.payment_date = updates.date
-    if (updates.transactionId !== undefined) row.transaction_id = updates.transactionId ?? null
     if (updates.splitPayments !== undefined) row.split_payments = updates.splitPayments ?? null
+    const paymentSelect_ = await paymentSelect()
+    if (schemaFlags.get('payments.transaction_id')?.ok && updates.transactionId !== undefined) {
+      row.transaction_id = updates.transactionId ?? null
+    }
     const { ok, data, error } = await sb('payments', 'write',
-      () => supabase.from('payments').update(row).eq('id', id).select(PAYMENT_SELECT).single(),
+      () => supabase.from('payments').update(row).eq('id', id).select(paymentSelect_).single(),
     )
     if (ok && data) {
       const result = toPayment(data)
@@ -2153,6 +2213,7 @@ export interface DashboardStats {
 }
 
 async function loadDashboardStatsLight(): Promise<DashboardStats | null> {
+  const recentPolicySelect = await policySelect()
   const [
     activeRes, pendingRes, leadsRes, fraudRes, lapsedRes, totalRes, premiumsRes, categoryRes, recentRes,
     latestClaimRes, latestPaymentRes, latestLeadRes, latestFraudRes, clientsCountRes, latestClientRes,
@@ -2165,7 +2226,7 @@ async function loadDashboardStatsLight(): Promise<DashboardStats | null> {
     supabase.from('policies').select('*', { count: 'exact', head: true }),
     supabase.from('payments').select('amount').eq('status', 'completed').limit(5000),
     supabase.from('policies').select('products!product_id(category)').limit(5000),
-    supabase.from('policies').select(POLICY_SELECT).order('created_at', { ascending: false }).limit(5),
+    supabase.from('policies').select(recentPolicySelect).order('created_at', { ascending: false }).limit(5),
     supabase.from('claims').select('claim_number, created_at, policies!policy_id(clients!client_id(name))').order('created_at', { ascending: false }).limit(1),
     supabase.from('payments').select('amount, payment_date, policies!policy_id(clients!client_id(name))').order('payment_date', { ascending: false }).limit(1),
     supabase.from('leads').select('name, source, created_at').order('created_at', { ascending: false }).limit(1),
@@ -2411,6 +2472,10 @@ export const policyCards = {
 export const groups = {
   // See policies.list() above — read-through cache of real rows only.
   async list() {
+    // A missing groups table is a pending migration, not a connectivity
+    // problem — returning an empty list keeps New Policy's scope picker
+    // and the Groups page quiet instead of flashing an offline warning.
+    if (!(await hasColumn('groups', 'id'))) return { data: [] as Group[], error: null }
     const { ok, data } = await sb('groups', 'read',
       () => supabase.from('groups').select('*').order('name'),
       d => Array.isArray(d),
