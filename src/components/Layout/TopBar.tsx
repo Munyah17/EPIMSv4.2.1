@@ -74,22 +74,24 @@ export default function TopBar({ activePanel, onMenuToggle, showToast }: TopBarP
         </div>
 
         <div className="topbar-right">
-          {/* Clears cached app data and pulls the latest build — the fix
-              for "the portal is still showing the old version" after a
-              deploy. Auth tokens are deliberately not cleared. */}
+          {/* "Force Refresh Updates" — for the "I can't see the fix you
+              deployed" problem. Named so a customer can be told to press
+              it without a word about caches or builds: it quietly clears
+              stored data and loads the newest version. Auth tokens are
+              deliberately not cleared — it never signs anyone out. */}
           <button
             type="button"
             className="topbar-refresh"
-            title="Refresh — clear cache and load the latest version"
-            aria-label="Refresh app"
+            title="Force Refresh Updates — loads the newest version"
+            aria-label="Force Refresh Updates"
             disabled={refreshing}
             onClick={() => {
               setRefreshing(true)
-              showToast('info', 'Refreshing — loading the latest version…')
+              showToast('info', 'Getting the latest updates…')
               void hardRefresh()
             }}
           >
-            <span className={refreshing ? 'refresh-spin' : undefined}>↻</span> Refresh
+            <span className={refreshing ? 'refresh-spin' : undefined}>↻</span> Force Refresh Updates
           </button>
           <div className="topbar-profile" onClick={() => setShowDropdown(o => !o)}>
             <div className="topbar-avatar">{user?.name.charAt(0)}</div>
