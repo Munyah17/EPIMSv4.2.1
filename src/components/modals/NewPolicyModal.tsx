@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import type { Policy, Dependant, Client, Product, AppUser } from '../../types'
+import type { Policy, Dependant, Client, Product, AppUser, Group, GroupMember, CoverScope } from '../../types'
 import { MANUAL_PAYMENT_METHODS } from '../../types'
 import { db } from '../../lib/db'
 import { useAuth } from '../../contexts/AuthContext'
@@ -55,6 +55,16 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   // The channel the sale actually came through — defaults to this web app
   // since that's where the staff member is working.
   const [source, setSource] = useState(DEFAULT_POLICY_SOURCE)
+  // Cover scope: 'individual' is the domestic flow below (client +
+  // dependants). 'corporate'/'group' cover an organisation's roster —
+  // the org is the policyholder and is NOT a billed head, only the
+  // selected members are (see src/lib/premium.ts).
+  const [coverScope, setCoverScope] = useState<CoverScope>('individual')
+  const [groups, setGroups] = useState<Group[]>([])
+  const [groupId, setGroupId] = useState('')
+  const [roster, setRoster] = useState<GroupMember[]>([])
+  const [rosterLoading, setRosterLoading] = useState(false)
+  const [selectedMemberIds, setSelectedMemberIds] = useState<Set<string>>(new Set())
   const [products, setProducts] = useState<Product[]>([])
   const [productsLoading, setProductsLoading] = useState(true)
   const [staff, setStaff] = useState<AppUser[]>([])
@@ -78,6 +88,10 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
       if (error) showToast?.('error', 'Failed to load existing clients.')
       if (data) setExistingClients(data)
     }).catch(() => showToast?.('error', 'Failed to load existing clients.'))
+    db.groups.list().then(({ data, error }) => {
+      if (error) showToast?.('error', 'Failed to load groups.')
+      if (data) setGroups(data.filter(g => g.active))
+    }).catch(() => showToast?.('error', 'Failed to load groups.'))
     db.staff.list().then(({ data, error }) => {
       if (error) showToast?.('error', 'Failed to load agents.')
       const active = (data ?? []).filter(s => s.active)
@@ -102,6 +116,32 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
       return { ...d, productId: undefined, productName: undefined, premium: undefined, coverAmount: undefined }
     }))
   }, [product, products])
+
+  // Picking an organisation loads its roster and pre-selects every active
+  // member — the normal case is the whole roster covered, with staff
+  // unticking exceptions rather than ticking one by one.
+  useEffect(() => {
+    if (!groupId) { setRoster([]); setSelectedMemberIds(new Set()); return }
+    setRosterLoading(true)
+    db.groupMembers.list(groupId).then(({ data, error }) => {
+      if (error) showToast?.('error', 'Failed to load the group roster.')
+      const active = (data ?? []).filter(m => m.status === 'active')
+      setRoster(active)
+      setSelectedMemberIds(new Set(active.map(m => m.id)))
+      setRosterLoading(false)
+    }).catch(() => { showToast?.('error', 'Failed to load the group roster.'); setRosterLoading(false) })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupId])
+
+  const toggleMember = (id: string) => {
+    setSelectedMemberIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  const isGroupScope = coverScope !== 'individual'
 
   const clearClientFields = () => {
     setClientName(''); setClientPhone(''); setClientEmail(''); setClientNationalId('')
@@ -173,10 +213,15 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
       if (showToast) showToast('error', 'The policyholder must be at least 18 years old.')
       return
     }
-    const incompleteDependant = dependants.find(d => d.name.trim() && (!d.dob || !d.nationalId.trim()))
-    if (incompleteDependant) {
-      if (showToast) showToast('error', 'Enter date of birth and ID number for every dependant.')
-      return
+    if (isGroupScope) {
+      if (!groupId) { if (showToast) showToast('error', 'Pick the organisation this policy covers.'); return }
+      if (selectedMemberIds.size === 0) { if (showToast) showToast('error', 'Select at least one member to cover.'); return }
+    } else {
+      const incompleteDependant = dependants.find(d => d.name.trim() && (!d.dob || !d.nationalId.trim()))
+      if (incompleteDependant) {
+        if (showToast) showToast('error', 'Enter date of birth and ID number for every dependant.')
+        return
+      }
     }
     const overValue = dependants.find(d => (d.premium ?? 0) > product!.premium || (d.coverAmount ?? 0) > product!.coverAmount)
     if (overValue) {
@@ -225,6 +270,22 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
       createdClient = data
     }
 
+    // Group-scope policies carry the selected roster members in the
+    // dependants array — relationship 'Employee'/'Member' marks them as
+    // organisational cover on documents and member statements.
+    const selectedGroup = groups.find(g => g.id === groupId)
+    const memberDependants: Dependant[] = isGroupScope
+      ? roster.filter(m => selectedMemberIds.has(m.id)).map(m => ({
+          name: m.fullName,
+          relationship: coverScope === 'corporate' ? 'Employee' : 'Member',
+          dob: m.dob ?? '',
+          nationalId: m.nationalId ?? '',
+          phone: m.phone,
+          productId, productName: product!.name,
+          premium: product!.premium, coverAmount: product!.coverAmount,
+        }))
+      : dependants
+
     // Create policy with the client. The number is drawn from the
     // product's sequence (FCP0001, HCP0042, ...) — short, and the prefix
     // alone says which cover it belongs to.
@@ -246,7 +307,10 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
       // 90 days — except agriculture, which has NO waiting period at all
       // and activates instantly on creation. See src/lib/reminderEngine.ts.
       status: product!.category === 'agriculture' ? 'active' : 'waiting_period',
-      dependants,
+      dependants: memberDependants,
+      groupId: isGroupScope ? groupId : undefined,
+      groupName: isGroupScope ? selectedGroup?.name : undefined,
+      coverScope,
       paymentMethod,
       growerNumber: product!.category === 'agriculture' ? (growerNumber || undefined) : undefined,
       createdAt: toIsoDate(new Date()),
@@ -345,6 +409,31 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <h4 style={{ margin: 0 }}>Policy Information</h4>
               <div className="form-group">
+                <label>Cover Scope *</label>
+                <div className="bubble-toggle">
+                  <button type="button" className={`bubble-toggle-btn${coverScope === 'individual' ? ' active' : ''}`} onClick={() => setCoverScope('individual')}>Individual / Family</button>
+                  <button type="button" className={`bubble-toggle-btn${coverScope === 'corporate' ? ' active' : ''}`} onClick={() => setCoverScope('corporate')}>Corporate</button>
+                  <button type="button" className={`bubble-toggle-btn${coverScope === 'group' ? ' active' : ''}`} onClick={() => setCoverScope('group')}>Group</button>
+                </div>
+                {isGroupScope && (
+                  <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
+                    {coverScope === 'corporate'
+                      ? 'A company covering its employees under one policy. The client below is the account holder (e.g. HR contact); the company is the insured organisation.'
+                      : 'An association — church, union, sports club — covering its members under one policy. The client below is the account holder (e.g. secretary).'}
+                  </p>
+                )}
+              </div>
+              {isGroupScope && (
+                <div className="form-group">
+                  <label>Organisation *</label>
+                  <select className="form-control" value={groupId} onChange={e => setGroupId(e.target.value)}>
+                    <option value="">{groups.length === 0 ? 'No groups registered — add one on the Groups page' : 'Select organisation…'}</option>
+                    {groups.map(g => <option key={g.id} value={g.id}>{g.name} ({g.memberCount ?? 0} members)</option>)}
+                  </select>
+                  <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>Register organisations and build their rosters on the Groups page.</p>
+                </div>
+              )}
+              <div className="form-group">
                 <label>Product *</label>
                 <select className="form-control" value={productId} onChange={e => setProductId(e.target.value)} disabled={productsLoading}>
                   <option value="">{productsLoading ? 'Loading products…' : 'Select product…'}</option>
@@ -395,6 +484,47 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
             </div>
           </div>
 
+          {isGroupScope ? (
+            <div style={{ marginTop: '1rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <label>{coverScope === 'corporate' ? 'Employees Covered' : 'Members Covered'} ({selectedMemberIds.size} of {roster.length} selected)</label>
+                {roster.length > 0 && (
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSelectedMemberIds(prev => prev.size === roster.length ? new Set() : new Set(roster.map(m => m.id)))}>
+                    {selectedMemberIds.size === roster.length ? 'Deselect all' : 'Select all'}
+                  </button>
+                )}
+              </div>
+              {!groupId ? (
+                <p style={{ fontSize: 12, color: 'var(--muted)' }}>Pick an organisation above to load its roster.</p>
+              ) : rosterLoading ? (
+                <p style={{ fontSize: 12, color: 'var(--muted)' }}>Loading roster…</p>
+              ) : roster.length === 0 ? (
+                <p style={{ fontSize: 12, color: 'var(--muted)' }}>This organisation has no active members yet — add them on the Groups page first.</p>
+              ) : (
+                <>
+                  <div style={{ maxHeight: 260, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
+                    {roster.map(m => (
+                      <label key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={selectedMemberIds.has(m.id)} onChange={() => toggleMember(m.id)} />
+                        <span style={{ flex: 1 }}>
+                          <strong>{m.fullName}</strong>
+                          {m.position && <span style={{ color: 'var(--muted)', fontSize: 12 }}> · {m.position}</span>}
+                          <div style={{ fontSize: 11, color: 'var(--muted)' }}>{[m.memberNo, m.nationalId].filter(Boolean).join(' · ') || 'No ID on file'}</div>
+                        </span>
+                        {product && <span className="mono" style={{ fontSize: 12, color: 'var(--muted)' }}>${product.premium.toFixed(2)}</span>}
+                      </label>
+                    ))}
+                  </div>
+                  {product && selectedMemberIds.size > 0 && (
+                    <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
+                      Billed: <strong style={{ color: 'var(--text)' }}>${(product.premium * selectedMemberIds.size).toFixed(2)}{premiumPeriodLabel(product.category)}</strong>
+                      {' '}({selectedMemberIds.size} {selectedMemberIds.size === 1 ? 'member' : 'members'} × ${product.premium.toFixed(2)} — the organisation itself is not a billed head)
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
+          ) : (
           <div style={{ marginTop: '1rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
               <label>Dependants</label>
@@ -428,13 +558,14 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
               </>
             )}
           </div>
+          )}
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
           <button
             className="btn btn-primary"
             onClick={handleSave}
-            disabled={!clientName || !clientPhone || !clientNationalId || !productId || (customerMode === 'existing' && !existingClientId)}
+            disabled={!clientName || !clientPhone || !clientNationalId || !productId || (customerMode === 'existing' && !existingClientId) || (isGroupScope && (!groupId || selectedMemberIds.size === 0))}
           >
             {customerMode === 'existing' ? 'Create Policy' : 'Create Policy & Register Client'}
           </button>

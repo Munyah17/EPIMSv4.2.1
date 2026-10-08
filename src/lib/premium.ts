@@ -15,6 +15,12 @@ import type { Dependant, Policy } from '../types'
  * Agriculture is the exception and always has been: the cover is on the
  * crop and the barn, not on a household, so it is billed once a year at the
  * policy premium regardless of who is listed.
+ *
+ * Corporate/group cover is the other exception: the organisation is the
+ * policyholder but is NOT a billed head — only the members on its roster
+ * pay, one premium each. Roster members ride in the same `dependants`
+ * array (relationship 'Employee'/'Member') so everything downstream —
+ * billing, documents, member numbers — treats them uniformly.
  */
 
 export function isPerHeadCategory(category?: string): boolean {
@@ -29,13 +35,23 @@ export function dependantPremium(policy: Policy, dependant: Dependant): number {
 
 export interface PremiumLine {
   name: string
-  role: 'holder' | 'dependant'
+  role: 'holder' | 'dependant' | 'member'
   planName: string
   premium: number
 }
 
 /** Every person being charged on this policy, and what each one costs. */
 export function premiumLines(policy: Policy, category?: string): PremiumLine[] {
+  // Corporate/group scope: the organisation holds the policy but is not a
+  // billed head — the invoice is exactly N members × their own premium.
+  if (policy.coverScope === 'corporate' || policy.coverScope === 'group') {
+    return policy.dependants.map(d => ({
+      name: d.name,
+      role: 'member' as const,
+      planName: d.productName ?? policy.productName,
+      premium: dependantPremium(policy, d),
+    }))
+  }
   const holder: PremiumLine = {
     name: policy.clientName,
     role: 'holder',

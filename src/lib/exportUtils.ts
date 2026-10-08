@@ -254,6 +254,31 @@ function drawTermsPages(doc: jsPDF, product: { name?: string; category?: string 
   doc.setFontSize(7.5)
   doc.setTextColor(...MUTED)
   doc.text(`The exclusion schedules above form part of the Policy Terms and Conditions of ${COMPANY_NAME} and apply to this policy in full.`, 14, y)
+
+  // Execution block — every issued policy document ends with the signee's
+  // full name, date of signature and signature fields, printed whether or
+  // not the copy is signed before it leaves the office.
+  const sigNeed = 42
+  if (y + sigNeed > bottom) { doc.addPage(); y = 20 }
+  y += 14
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(10)
+  doc.setTextColor(...NAVY)
+  doc.text('SIGNATURE', pageWidth / 2, y, { align: 'center' })
+  y += 8
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(8.5)
+  doc.setTextColor(...TEXT)
+  const sigIntro = doc.splitTextToSize('I confirm that I have read, understood and agree to the Policy Terms and Conditions and the Major Exclusions set out in this document.', pageWidth - 28)
+  doc.text(sigIntro, 14, y)
+  y += sigIntro.length * lineHeight + 10
+  const lineStart = 14
+  const fullW = pageWidth - 28
+  doc.text('Signee Full Name: _________________________________', lineStart, y)
+  doc.text('Date of Signature: ______________________', lineStart + fullW * 0.55, y)
+  y += 14
+  doc.text('Signature: _______________________________________', lineStart, y)
+  y += 14
 }
 
 const BRAND_BLUE: [number, number, number] = [65, 105, 225]
@@ -366,11 +391,24 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   })
   y = (doc as any).lastAutoTable.finalY + 8
 
-  sectionBand('DEPENDANTS')
+  // The covered-people band wears the scope's vocabulary: a corporate
+  // policy covers employees, a group policy covers members, an individual
+  // policy covers dependants. Roster members ride in the same dependants
+  // array, so the per-person sub-tables below need no other changes —
+  // their RELATIONSHIP already reads 'Employee'/'Member'.
+  const coveredBand = policy.coverScope === 'corporate' ? 'EMPLOYEES COVERED'
+    : policy.coverScope === 'group' ? 'MEMBERS COVERED'
+    : 'DEPENDANTS'
+  sectionBand(coveredBand)
   if (policy.dependants.length === 0) {
     doc.setFontSize(9)
     doc.setTextColor(...MUTED)
-    doc.text('No dependants on this policy.', 14, y)
+    doc.text(
+      policy.coverScope === 'corporate' ? 'No employees on this policy.'
+        : policy.coverScope === 'group' ? 'No members on this policy.'
+        : 'No dependants on this policy.',
+      14, y,
+    )
     doc.setTextColor(...TEXT)
     y += 8
   } else {

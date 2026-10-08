@@ -16,7 +16,7 @@ import type {
   PolicyStatus, ClaimStatus, PaymentStatus, PaymentMethod,
   TicketStatus, TicketPriority, LeadStatus, FraudCaseStatus, CustomRole,
   ClaimAssessment, PolicyAssessment, AssessmentPhoto, CropType, FraudSignalRule, HeroSlide,
-  PolicyCard,
+  PolicyCard, Group, GroupMember,
 } from '../types'
 import { STAFF_ROLES } from '../types'
 
@@ -179,10 +179,44 @@ function toPolicy(r: any): Policy {
     gpsLng:          r.gps_lng ?? undefined,
     agentId:         r.profiles?.id ?? r.agent_id,
     agentName:       r.profiles?.name,
+    groupId:         r.groups?.id ?? r.group_id ?? undefined,
+    groupName:       r.groups?.name ?? undefined,
+    coverScope:      (r.cover_scope as Policy['coverScope']) ?? 'individual',
     source:          r.source ?? undefined,
     createdAt:       date(r.created_at),
     nextPaymentDate: r.next_payment_date ? date(r.next_payment_date) : undefined,
     lastPaymentDate: r.last_payment_date ? date(r.last_payment_date) : undefined,
+  }
+}
+
+function toGroup(r: Record<string, unknown>, memberCount?: number): Group {
+  return {
+    id:                 r.id as string,
+    name:               r.name as string,
+    groupType:          r.group_type as Group['groupType'],
+    registrationNumber: (r.registration_number as string | null) ?? undefined,
+    contactName:        (r.contact_name as string | null) ?? undefined,
+    contactEmail:       (r.contact_email as string | null) ?? undefined,
+    contactPhone:       (r.contact_phone as string | null) ?? undefined,
+    address:            (r.address as string | null) ?? undefined,
+    active:             r.active as boolean,
+    memberCount,
+    createdAt:          r.created_at as string,
+  }
+}
+
+function toGroupMember(r: Record<string, unknown>): GroupMember {
+  return {
+    id:         r.id as string,
+    groupId:    r.group_id as string,
+    fullName:   r.full_name as string,
+    nationalId: (r.national_id as string | null) ?? undefined,
+    dob:        date(r.dob as string | null) || undefined,
+    phone:      (r.phone as string | null) ?? undefined,
+    position:   (r.position as string | null) ?? undefined,
+    memberNo:   (r.member_no as string | null) ?? undefined,
+    status:     r.status as GroupMember['status'],
+    createdAt:  r.created_at as string,
   }
 }
 
@@ -351,7 +385,9 @@ const POLICY_SELECT = `
   source,
   clients!client_id(id, name),
   products!product_id(id, name, category, excess),
-  profiles!agent_id(id, name)
+  profiles!agent_id(id, name),
+  group_id, cover_scope,
+  groups!group_id(id, name, group_type)
 `
 const CLAIM_SELECT = `
   id, claim_number, policy_id, claim_type, amount, status,
@@ -438,6 +474,7 @@ export const policies = {
       insurer: policy.insurer ?? null, grower_number: policy.growerNumber ?? null,
       gps_lat: policy.gpsLat ?? null, gps_lng: policy.gpsLng ?? null,
       agent_id: policy.agentId ?? null, next_payment_date: policy.nextPaymentDate ?? null,
+      group_id: policy.groupId ?? null, cover_scope: policy.coverScope ?? 'individual',
       // Defaulting to 'web_app' is honest: any insert reaching this code
       // path without a source set was issued by staff in the IMS itself.
       source: policy.source ?? 'web_app',
@@ -478,6 +515,8 @@ export const policies = {
     if (updates.coverAmount !== undefined)           row.cover_amount       = updates.coverAmount
     if (updates.endDate !== undefined)               row.end_date           = updates.endDate
     if (updates.agentId !== undefined)               row.agent_id           = updates.agentId ?? null
+    if (updates.groupId !== undefined)               row.group_id           = updates.groupId ?? null
+    if (updates.coverScope)                          row.cover_scope        = updates.coverScope
     if (updates.source)                              row.source             = updates.source
     const { ok, data, error } = await sb('policies', 'write',
       () => supabase.from('policies').update(row).eq('id', id).select(POLICY_SELECT).single(),
@@ -2361,6 +2400,152 @@ export const policyCards = {
   },
 }
 
+// ── GROUPS (corporate & group cover) ──────────────────────────────
+// An organisation — company, church, union, club — that holds ONE policy
+// covering its member roster. The organisation is the policyholder but is
+// not itself a billed head; only roster members are (see premium.ts).
+export const groups = {
+  // See policies.list() above — read-through cache of real rows only.
+  async list() {
+    const { ok, data } = await sb('groups', 'read',
+      () => supabase.from('groups').select('*').order('name'),
+      d => Array.isArray(d),
+    )
+    if (ok && data) {
+      // memberCount is the ACTIVE roster size — a filtered
+      // group_members(count) embed would drop groups whose members are all
+      // removed, so the count is tallied in a second query instead. A
+      // failed tally is not worth failing the whole list over.
+      const { data: memberRows } = await supabase
+        .from('group_members').select('group_id').eq('status', 'active')
+      const counts = new Map<string, number>()
+      for (const m of (memberRows ?? []) as { group_id: string }[]) {
+        counts.set(m.group_id, (counts.get(m.group_id) ?? 0) + 1)
+      }
+      const mapped = (data as Record<string, unknown>[]).map(r => toGroup(r, counts.get(r.id as string) ?? 0))
+      cacheSet('groups', mapped)
+      return { data: mapped, error: null }
+    }
+    const cached = cacheGet<Group>('groups')
+    if (cached) return { data: cached.data, error: null }
+    local('groups', 'read')
+    return { data: [], error: 'Could not load groups — connect to the internet at least once to cache them for offline use.' }
+  },
+
+  async create(input: Omit<Group, 'id' | 'memberCount' | 'createdAt' | 'active'>) {
+    const name = input.name?.trim()
+    if (!name) return { data: null, error: 'A group name is required.' }
+    const row = {
+      name,
+      group_type: input.groupType,
+      registration_number: input.registrationNumber ?? null,
+      contact_name: input.contactName ?? null,
+      contact_email: input.contactEmail ?? null,
+      contact_phone: input.contactPhone ?? null,
+      address: input.address ?? null,
+      active: true,
+    }
+    const { ok, data, error } = await sb('groups', 'write',
+      () => supabase.from('groups').insert(row).select().single(),
+    )
+    if (ok && data) return { data: toGroup(data as Record<string, unknown>, 0), error: null }
+    return writeFailed('groups', error)
+  },
+
+  async update(id: string, updates: Partial<Group>) {
+    const row: Record<string, unknown> = {}
+    if (updates.name !== undefined)                row.name                = updates.name
+    if (updates.groupType !== undefined)           row.group_type          = updates.groupType
+    if (updates.registrationNumber !== undefined)  row.registration_number = updates.registrationNumber ?? null
+    if (updates.contactName !== undefined)         row.contact_name        = updates.contactName ?? null
+    if (updates.contactEmail !== undefined)        row.contact_email       = updates.contactEmail ?? null
+    if (updates.contactPhone !== undefined)        row.contact_phone       = updates.contactPhone ?? null
+    if (updates.address !== undefined)             row.address             = updates.address ?? null
+    if (updates.active !== undefined)              row.active              = updates.active
+    const { ok, data, error } = await sb('groups', 'write',
+      () => supabase.from('groups').update(row).eq('id', id).select().single(),
+    )
+    if (ok && data) return { data: toGroup(data as Record<string, unknown>), error: null }
+    return writeFailed('groups', error)
+  },
+
+  /**
+   * Hard delete — group_members cascade, so the roster goes with the
+   * group. policies.group_id does NOT cascade (an issued group policy is a
+   * financial record, same reasoning as claims/payments on clients.remove),
+   * so deleting a group that still has policies fails 23503 and is
+   * surfaced as a friendly message — deactivate it (active:false) instead.
+   */
+  async remove(id: string) {
+    const { error } = await supabase.from('groups').delete().eq('id', id)
+    if (error) {
+      return { error: error.code === '23503' ? 'This group still has policies issued to it and cannot be deleted — mark it inactive instead.' : error.message }
+    }
+    return { error: null }
+  },
+}
+
+// ── GROUP MEMBERS (the roster a group policy covers) ────────────────
+export const groupMembers = {
+  /** All members of a group — 'active' rows first (status sorts before
+   *  'removed' alphabetically), then each band alphabetically by name.
+   *  Removed members are returned too because historical claims may
+   *  reference them; callers filter on status where only live members
+   *  matter. */
+  async list(groupId: string) {
+    const { ok, data } = await sb('group_members', 'read',
+      () => supabase.from('group_members').select('*').eq('group_id', groupId)
+        .order('status').order('full_name'),
+      d => Array.isArray(d),
+    )
+    if (ok && data) return { data: (data as Record<string, unknown>[]).map(toGroupMember), error: null }
+    return { data: [] as GroupMember[], error: 'Could not load the group roster.' }
+  },
+
+  async add(input: Omit<GroupMember, 'id' | 'createdAt' | 'status'>) {
+    const fullName = input.fullName?.trim()
+    if (!fullName) return { data: null, error: 'A member name is required.' }
+    const row = {
+      group_id: input.groupId,
+      full_name: fullName,
+      national_id: input.nationalId ?? null,
+      dob: input.dob || null,
+      phone: input.phone ?? null,
+      position: input.position ?? null,
+      member_no: input.memberNo ?? null,
+    }
+    const { ok, data, error } = await sb('group_members', 'write',
+      () => supabase.from('group_members').insert(row).select().single(),
+    )
+    if (ok && data) return { data: toGroupMember(data as Record<string, unknown>), error: null }
+    return writeFailed('group_members', error)
+  },
+
+  async update(id: string, updates: Partial<GroupMember>) {
+    const row: Record<string, unknown> = {}
+    if (updates.fullName !== undefined)   row.full_name   = updates.fullName
+    if (updates.nationalId !== undefined) row.national_id = updates.nationalId ?? null
+    if (updates.dob !== undefined)        row.dob         = updates.dob || null
+    if (updates.phone !== undefined)      row.phone       = updates.phone ?? null
+    if (updates.position !== undefined)   row.position    = updates.position ?? null
+    if (updates.memberNo !== undefined)   row.member_no   = updates.memberNo ?? null
+    if (updates.status !== undefined)     row.status      = updates.status
+    const { ok, data, error } = await sb('group_members', 'write',
+      () => supabase.from('group_members').update(row).eq('id', id).select().single(),
+    )
+    if (ok && data) return { data: toGroupMember(data as Record<string, unknown>), error: null }
+    return writeFailed('group_members', error)
+  },
+
+  /** Soft delete — sets status='removed' rather than deleting the row,
+   *  because historical claims and certificates may still reference the
+   *  member and a vanished roster entry would orphan them. */
+  async remove(id: string) {
+    const { error } = await supabase.from('group_members').update({ status: 'removed' }).eq('id', id)
+    return { error: error?.message ?? null }
+  },
+}
+
 // ── REALTIME ──────────────────────────────────────────────────────
 export function subscribeToTable(table: string, callback: () => void) {
   const channel = supabase
@@ -2376,7 +2561,7 @@ export const db = {
   tickets, emails, leads, staff, fraudCases, reminders, cautionFlags, settings, loginAttempts, developerApi,
   exchangeRates,
   customRoles, claimAssessments, policyAssessments, photoHashes, cropTypes, fraudSignalRules, heroSlides,
-  policyCards,
+  policyCards, groups, groupMembers,
   dashboardStats, sidebarCounts,
   subscribeToTable,
 }

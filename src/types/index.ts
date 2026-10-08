@@ -232,9 +232,59 @@ export interface Policy {
    *  'motions_website', 'whatsapp_chatbot', 'ussd', 'api_partner', or any
    *  future channel. See src/lib/policySources.ts. */
   source?: string
+  /** Corporate/group cover only — the organisation this policy belongs to.
+   *  groupName is denormalized from the joined groups row for display. */
+  groupId?: string
+  groupName?: string
+  /** 'individual' (default) — the client is the policyholder and a billed
+   *  head; 'corporate'/'group' — the organisation is the policyholder and
+   *  is NOT billed, only the roster members are. See premium.ts. */
+  coverScope?: CoverScope
   createdAt: string
   nextPaymentDate?: string
   lastPaymentDate?: string
+}
+
+/** The kind of organisation a Group record describes. */
+export type GroupType = 'company' | 'church' | 'union' | 'sports' | 'club' | 'society' | 'other'
+
+/** What a policy covers: a person ('individual', the default) or an
+ *  organisation's whole roster ('corporate'/'group'). */
+export type CoverScope = 'individual' | 'corporate' | 'group'
+
+/** An organisation — company, church, union, club — registered once and
+ *  issued a single policy covering its member roster. See
+ *  database/add_group_cover.sql. */
+export interface Group {
+  id: string
+  name: string
+  groupType: GroupType
+  registrationNumber?: string
+  contactName?: string
+  contactEmail?: string
+  contactPhone?: string
+  address?: string
+  active: boolean
+  /** Active roster size, filled in by db.groups.list(). */
+  memberCount?: number
+  createdAt: string
+}
+
+/** One person on a group's roster — an employee or member covered by the
+ *  group's policy. Status 'removed' is kept, not deleted, because
+ *  historical claims may still reference the member. */
+export interface GroupMember {
+  id: string
+  groupId: string
+  fullName: string
+  nationalId?: string
+  dob?: string
+  phone?: string
+  /** Job title (corporate) or role in the group. */
+  position?: string
+  memberNo?: string
+  status: 'active' | 'removed'
+  createdAt: string
 }
 
 export interface Product {

@@ -46,10 +46,11 @@ const MyPolicies = lazyWithRecovery('MyPolicies', () => import('./pages/policyho
 const MyClaims = lazyWithRecovery('MyClaims', () => import('./pages/policyholder/MyClaims'))
 const MyPayments = lazyWithRecovery('MyPayments', () => import('./pages/policyholder/MyPayments'))
 const LiveChat = lazyWithRecovery('LiveChat', () => import('./pages/LiveChat'))
+const Groups = lazyWithRecovery('Groups', () => import('./pages/Groups'))
 
 export type ActivePanel =
   | 'dashboard' | 'policies' | 'claims' | 'payments' | 'products'
-  | 'clients' | 'staff' | 'system_access_roles' | 'reminders' | 'reports' | 'leads'
+  | 'clients' | 'groups' | 'staff' | 'system_access_roles' | 'reminders' | 'reports' | 'leads'
   | 'email' | 'tickets' | 'fraud' | 'profile'
   | 'system_health' | 'settings' | 'developer_api' | 'mass_messaging' | 'billing_reminders' | 'pre_loss_assessments' | 'agriculture_insurance' | 'member_cards'
   | 'my_policies' | 'my_claims' | 'my_payments' | 'live_chat'
@@ -146,6 +147,7 @@ function AppInner() {
       case 'payments': return <Payments {...panelProps} />
       case 'products': return <Products {...panelProps} />
       case 'clients': return <Clients {...panelProps} />
+      case 'groups': return <Groups {...panelProps} />
       case 'staff': return <Staff {...panelProps} />
       case 'system_access_roles': return <SystemAccessRoles {...panelProps} />
       case 'reminders': return <Reminders {...panelProps} />

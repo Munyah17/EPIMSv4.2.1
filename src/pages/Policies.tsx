@@ -321,7 +321,16 @@ export default function Policies({ showToast, initialCategory }: Props) {
               ) : filtered.map(p => (
                 <tr key={p.id}>
                   <td><span className="mono">{p.policyNumber}</span></td>
-                  <td>{p.clientName}</td>
+                  <td>
+                    {p.clientName}
+                    {p.groupName && (
+                      <div style={{ fontSize: 11, marginTop: 2 }}>
+                        <span className={`pill ${p.coverScope === 'corporate' ? 'pill-blue' : 'pill-purple'}`}>
+                          {p.coverScope === 'corporate' ? 'Corporate' : 'Group'} · {p.groupName}
+                        </span>
+                      </div>
+                    )}
+                  </td>
                   <td>{p.productName}</td>
                   <td>${p.coverAmount.toLocaleString()}</td>
                   <td>{p.growerNumber ?? '—'}</td>

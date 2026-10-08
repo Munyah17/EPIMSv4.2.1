@@ -17,6 +17,7 @@ const PANEL_TITLES: Record<ActivePanel, string> = {
   payments: 'Payments',
   products: 'Products',
   clients: 'Clients',
+  groups: 'Groups',
   staff: 'Staff',
   reminders: 'Reminders',
   reports: 'Reports',
