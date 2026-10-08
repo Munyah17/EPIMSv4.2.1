@@ -4,6 +4,7 @@ import { sendEmail, getNotifSettings } from './mailService'
 import { MAILBOXES } from './mailboxes'
 import { premiumPeriodLabel } from './productUtils'
 import { COMPANY_NAME } from './company'
+import { isTobaccoFieldToFloor, fieldToFloorCover, fieldToFloorCoverLine } from './exportUtils'
 
 /**
  * Fires the moment a policy is registered, by whatever route -- an agent in
@@ -94,6 +95,17 @@ export async function notifyPolicyRegistered(policy: Policy, client: Client): Pr
   const cover = money(policy.coverAmount)
   const premium = `${money(policy.premium)}${period}`
 
+  // Field-to-Floor messages quote the per-peril breakdown, never a bare
+  // sum insured — the grower needs to know Barn Fire pays $500, not that
+  // the four heads add up to $2,000.
+  const fieldToFloor = isTobaccoFieldToFloor(policy.productName)
+  const coverSms = fieldToFloor
+    ? `cover (Field to Floor): ${fieldToFloorCoverLine(policy.coverAmount)}`
+    : `cover ${cover}`
+  const coverEmail = fieldToFloor
+    ? `Cover Provided (Field to Floor):\n${fieldToFloorCover(policy.coverAmount).map(c => `  ${c.peril.padEnd(14)}${money(c.benefit)}`).join('\n')}`
+    : `Cover Amount:   ${cover}`
+
   // ── The client ────────────────────────────────────────────────────
   if (client.phone) {
     const waiting = policy.status === 'waiting_period'
@@ -101,7 +113,7 @@ export async function notifyPolicyRegistered(policy: Policy, client: Client): Pr
       : ' Your cover is active.'
     notifyPhone(
       client.phone,
-      `${COMPANY_NAME}: Welcome ${client.name.split(' ')[0]}. Policy ${policy.policyNumber} (${policy.productName}) is registered, cover ${cover}.${waiting}`,
+      `${COMPANY_NAME}: Welcome ${client.name.split(' ')[0]}. Policy ${policy.policyNumber} (${policy.productName}) is registered, ${coverSms}.${waiting}`,
       'registration', policy.policyNumber,
     )
   }
@@ -117,7 +129,7 @@ Thank you for choosing ${COMPANY_NAME}. Your policy has been registered.
 
 Policy Number:  ${policy.policyNumber}
 Product:        ${policy.productName}
-Cover Amount:   ${cover}
+${coverEmail}
 Premium:        ${premium}
 Start Date:     ${policy.startDate}
 Status:         ${policy.status.replace('_', ' ').toUpperCase()}

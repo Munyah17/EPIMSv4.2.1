@@ -159,6 +159,36 @@ const AGRICULTURE_COVER = ['Barn Fire', 'Hail Storm', 'Wind Storm']
 /** Standard excess applied unless a product has its own excess configured. */
 const DEFAULT_POLICY_EXCESS = '15% of loss'
 
+/**
+ * Tobacco "Field to Floor" cover runs with the tobacco season, not the day
+ * the policy was keyed in — the document always shows the season dates.
+ * Perils are itemised per sum insured: a $2,000 policy shows $500 per
+ * peril (four × $500), a $1,000 policy shows $250 on the field perils but
+ * the funeral benefit stays $500 — it is the grower's funeral cover, not
+ * scaled with the crop.
+ */
+const TOBACCO_SEASON = { start: '15-NOV-2026', end: '31-AUG-2027' }
+
+export function isTobaccoFieldToFloor(productName: string): boolean {
+  const n = productName.toLowerCase()
+  return n.includes('tobacco') || n.includes('field to floor')
+}
+
+export function fieldToFloorCover(sumInsured: number): Array<{ peril: string; benefit: number }> {
+  const high = sumInsured >= 2000
+  return [
+    { peril: 'Barn Fire',  benefit: high ? 500 : 250 },
+    { peril: 'Hail Storm', benefit: high ? 500 : 250 },
+    { peril: 'Wind Storm', benefit: high ? 500 : 250 },
+    { peril: 'Funeral',    benefit: 500 },
+  ]
+}
+
+/** One line for SMS/WhatsApp: "Barn Fire $500 · Hail Storm $500 · …" */
+export function fieldToFloorCoverLine(sumInsured: number): string {
+  return fieldToFloorCover(sumInsured).map(c => `${c.peril} $${c.benefit}`).join(', ')
+}
+
 /** Money on a printed policy document always carries thousands separators
  *  and exactly two decimals -- "$12,000.00", never "$12000". */
 function money(amount: number): string {
@@ -322,6 +352,9 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   // Agriculture is billed once a year (Stop Order), never monthly -- the
   // whole reason it's handled separately from every other category.
   const isAgriculture = category === 'agriculture'
+  // Field-to-Floor is bound to the tobacco season, not the capture date —
+  // the document prints the fixed season window regardless.
+  const isFieldToFloor = isAgriculture && isTobaccoFieldToFloor(policy.productName)
   const premiumHeading = isAgriculture ? 'Annual Premium' : 'Monthly Premium'
   doc.text(
     isAgriculture && policy.growerNumber ? `${client.name} - ${policy.growerNumber}` : client.name,
@@ -332,7 +365,7 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   doc.setTextColor(...MUTED)
   doc.text(`Generated ${formatDate(new Date())}`, 14, y)
   y += 4.5
-  doc.text(`Commencement Date: ${formatDate(policy.startDate)}`, 14, y)
+  doc.text(`Commencement Date: ${isFieldToFloor ? TOBACCO_SEASON.start : formatDate(policy.startDate)}`, 14, y)
   doc.setTextColor(...TEXT)
   y += 8
 
@@ -345,7 +378,7 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   autoTable(doc, {
     startY: y,
     head: [['Amount Paid', 'Payment Date', 'Expiration Date']],
-    body: [[money(billedPremium), formatDate(policy.lastPaymentDate), formatDate(policy.nextPaymentDate)]],
+    body: [[money(billedPremium), formatDate(policy.lastPaymentDate), isFieldToFloor ? TOBACCO_SEASON.end : formatDate(policy.nextPaymentDate)]],
     styles: { fontSize: 9, lineColor: [220, 226, 240], lineWidth: 0.2 },
     headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold' },
     theme: 'grid',
@@ -479,15 +512,35 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   }
 
   if (isAgriculture) {
-    ensureRoom(20 + AGRICULTURE_COVER.length * 5.5)
-    sectionBand('COVER PROVIDED')
-    doc.setFillColor(...BRAND_RED)
-    doc.setFontSize(9.5)
-    AGRICULTURE_COVER.forEach((peril, i) => {
-      doc.circle(15.5, y + i * 5.5 - 1.3, 0.9, 'F')
-      doc.text(peril, 19, y + i * 5.5)
-    })
-    y += AGRICULTURE_COVER.length * 5.5 + 4
+    if (isFieldToFloor) {
+      // Field to Floor itemises each peril with its benefit amount — the
+      // figure scales with the sum insured except Funeral, which is a
+      // flat $500 grower benefit at every tier.
+      const cover = fieldToFloorCover(policy.coverAmount)
+      ensureRoom(24 + cover.length * 7)
+      sectionBand('COVER PROVIDED (FIELD TO FLOOR)')
+      autoTable(doc, {
+        startY: y,
+        head: [['Cover', 'Benefit']],
+        body: cover.map(c => [c.peril, money(c.benefit)]),
+        styles: { fontSize: 9, lineColor: [220, 226, 240], lineWidth: 0.2 },
+        headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold' },
+        columnStyles: { 1: { halign: 'right' } },
+        theme: 'grid',
+        margin: { left: 14, right: 14 },
+      })
+      y = (doc as any).lastAutoTable.finalY + 8
+    } else {
+      ensureRoom(20 + AGRICULTURE_COVER.length * 5.5)
+      sectionBand('COVER PROVIDED')
+      doc.setFillColor(...BRAND_RED)
+      doc.setFontSize(9.5)
+      AGRICULTURE_COVER.forEach((peril, i) => {
+        doc.circle(15.5, y + i * 5.5 - 1.3, 0.9, 'F')
+        doc.text(peril, 19, y + i * 5.5)
+      })
+      y += AGRICULTURE_COVER.length * 5.5 + 4
+    }
   }
 
   // Excess belongs to agriculture cover and nothing else. Printing it on a
