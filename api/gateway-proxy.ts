@@ -52,8 +52,22 @@ async function sendViaAfrosoft(mobiles: string, message: string) {
   // Non-ASCII has to be declared or Afrosoft mangles it.
   if (/[^\x00-\x7F]/.test(message)) params.set('unicode', 'yes')
 
-  const upstream = await fetch(`https://${domain}/client/api/sendmessage?${params.toString()}`)
-  return { ok: upstream.ok, status: upstream.status, body: await upstream.text() }
+  const url = `https://${domain}/client/api/sendmessage?${params.toString()}`
+  // One automatic retry on transport failure — an SMS is important enough
+  // that a single dropped TCP connection must not be the difference
+  // between "client got the text" and "nobody knows it never sent".
+  try {
+    const upstream = await fetch(url)
+    if (upstream.ok) return { ok: true, status: upstream.status, body: await upstream.text() }
+    if (upstream.status < 500) return { ok: false, status: upstream.status, body: await upstream.text() }
+    // 5xx: fall through to the retry.
+    await upstream.arrayBuffer().catch(() => { /**/ })
+  } catch {
+    // Unreachable: fall through to the retry.
+  }
+  await new Promise(r => setTimeout(r, 1500))
+  const retry = await fetch(url)
+  return { ok: retry.ok, status: retry.status, body: await retry.text() }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

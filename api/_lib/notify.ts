@@ -153,19 +153,28 @@ export async function logDelivery(admin: SupabaseClient | null, event: string, r
 }
 
 /** A failed dispatch is itself an event the office needs to know about —
- *  surfaced on the admin dashboard via notification_log, and here as an
- *  SMS to the office lines ONLY when the failure wasn't SMS itself (a
- *  dead SMS gateway can't report itself). */
+ *  surfaced on the admin dashboard via notification_log, and cross-channel
+ *  alerted here: a dead email transport reports by SMS, a dead SMS gateway
+ *  reports by email. Each channel is the other's smoke alarm. */
 async function alertOfficeOfFailure(admin: SupabaseClient | null, event: string, failures: Delivery[]) {
   if (failures.length === 0) return
+  const summary = failures.map(f => `${f.channel}→${f.recipient}`).slice(0, 4).join('; ')
   const emailFailed = failures.some(f => f.channel === 'email')
   if (emailFailed) {
     // Email is down — the office finds out by text, not by mailbox.
     for (const phone of COMPANY_PHONES) {
       await sendSmsAfrosoft(phone,
-        `Motions ALERT: ${event} notification failed (${failures.map(f => `${f.channel}→${f.recipient}`).slice(0, 3).join('; ')}). Email service unreachable — check Integrations/Settings.`)
+        `Motions ALERT: ${event} notification failed (${summary}). Email service unreachable — check Integrations/Settings.`)
         .then(d => logDelivery(admin, 'system', undefined, d))
     }
+  }
+  const smsFailed = failures.some(f => f.channel === 'sms')
+  if (smsFailed) {
+    // SMS is down — the office finds out by email, not by text.
+    await sendEmailDirect(COMPANY_EMAIL,
+      `[SMS FAILURE] ${event} notification could not be texted`,
+      `One or more SMS deliveries failed after retry:\n\n${failures.filter(f => f.channel === 'sms').map(f => `  ${f.recipient} — ${f.detail ?? 'failed'}`).join('\n')}\n\nCheck the Afrosoft account balance and Integrations/Settings. Queued messages will retry from the app outbox where applicable.`)
+      .then(d => logDelivery(admin, 'system', undefined, d))
   }
 }
 

@@ -191,6 +191,7 @@ export async function sendSms(to: string, message: string): Promise<SmsResult> {
  * comma-separated numbers in a single call.
  */
 export async function sendBulkSms(numbers: string[], message: string): Promise<BulkSmsResult> {
+  startOutboxPump()
   // Bad numbers are separated out and reported individually, rather than
   // being sent and taking every other recipient down with them.
   const invalid = numbers.filter(n => !isValidMsisdn(n))
@@ -216,6 +217,7 @@ export async function sendBulkSms(numbers: string[], message: string): Promise<B
     const fallback = await Promise.all(valid.map(async phone => {
       const d = await sendViaNotify(phone, message)
       logSmsLocally(phone, message, d.success ? 'sent' : 'failed', d.error)
+      if (!d.success) enqueueOutbox(phone, message)
       return { phone, result: d }
     }))
     return {
@@ -260,6 +262,82 @@ export async function sendBulkSms(numbers: string[], message: string): Promise<B
     failed: all.filter(r => !r.result.success).length,
     results: all,
   }
+}
+
+// ── SMS outbox: failed sends retry until they land ───────────────────
+//
+// When BOTH routes (gateway-proxy, then /api/notify) fail, the message is
+// not lost — it goes into a persisted outbox that retries every few
+// minutes and the moment the browser regains connectivity. Entries die at
+// 48 hours or 8 attempts; before that a text is always still trying to
+// get out, which is what "the SMS must never silently fail" means when
+// the network itself is the problem.
+
+const OUTBOX_KEY = 'tqfy_sms_outbox'
+const OUTBOX_MAX_AGE_MS = 48 * 60 * 60 * 1000
+const OUTBOX_MAX_TRIES = 8
+const OUTBOX_FLUSH_MS = 3 * 60 * 1000
+
+interface OutboxEntry { to: string; message: string; ts: number; tries: number }
+
+function readOutbox(): OutboxEntry[] {
+  try { return JSON.parse(localStorage.getItem(OUTBOX_KEY) ?? '[]') } catch { return [] }
+}
+
+function writeOutbox(entries: OutboxEntry[]) {
+  try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(entries.slice(0, 50))) } catch { /**/ }
+}
+
+function enqueueOutbox(to: string, message: string) {
+  const box = readOutbox()
+  // Same text to the same number already waiting? Don't double it.
+  if (box.some(e => e.to === to && e.message === message)) return
+  box.push({ to, message, ts: Date.now(), tries: 0 })
+  writeOutbox(box)
+}
+
+async function flushOutbox() {
+  const box = readOutbox()
+  if (box.length === 0) return
+  const kept: OutboxEntry[] = []
+  for (const entry of box) {
+    if (Date.now() - entry.ts > OUTBOX_MAX_AGE_MS || entry.tries >= OUTBOX_MAX_TRIES) {
+      logSmsLocally(entry.to, entry.message, 'failed', `Outbox gave up after ${entry.tries} tries / ${Math.round((Date.now() - entry.ts) / 3600000)}h — last chance exhausted.`)
+      continue
+    }
+    // Try the primary route, then the notify fallback — same order as a
+    // live send, but the entry drops out only when one actually lands.
+    const primary = await callAfrosoft([entry.to], entry.message)
+    let sent = primary.ok && /"error-code"\s*:\s*"000"/.test(primary.data ? JSON.stringify(primary.data) : '')
+    if (primary.ok && !sent) {
+      const detail = primary.data['sms-response-details']?.[0]
+      sent = (detail?.['sent-sms-details'] ?? []).some(s => msisdnKey(s['mobile-no'] ?? '') === msisdnKey(entry.to))
+    }
+    if (!sent) {
+      const d = await sendViaNotify(entry.to, entry.message)
+      sent = d.success
+    }
+    if (sent) {
+      logSmsLocally(entry.to, entry.message, 'sent', 'delivered by outbox retry')
+    } else {
+      kept.push({ ...entry, tries: entry.tries + 1 })
+    }
+  }
+  writeOutbox(kept)
+}
+
+export function getSmsOutboxCount(): number {
+  return readOutbox().length
+}
+
+let outboxPumpStarted = false
+function startOutboxPump() {
+  if (outboxPumpStarted || typeof window === 'undefined') return
+  outboxPumpStarted = true
+  setInterval(() => { void flushOutbox() }, OUTBOX_FLUSH_MS)
+  window.addEventListener('online', () => { void flushOutbox() })
+  // Catch anything queued before this session opened.
+  void flushOutbox()
 }
 
 // ── Local SMS log (for audit / history) ────────────────────────────
