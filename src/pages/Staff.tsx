@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
-import type { ToastMessage, AppUser } from '../types'
+import { useState, useEffect, useCallback } from 'react'
+import type { ToastMessage, AppUser, CustomRole } from '../types'
 import { SYSTEM_ROLES } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
@@ -42,6 +42,12 @@ export default function Staff({ showToast }: Props) {
   const [editStaff, setEditStaff] = useState<AppUser | null>(null)
   const [permStaff, setPermStaff] = useState<AppUser | null>(null)
   const [showRoles, setShowRoles] = useState(false)
+  const [editRole, setEditRole] = useState<CustomRole | null>(null)
+  const [roles, setRoles] = useState<CustomRole[]>([])
+
+  const loadRoles = useCallback(() => {
+    db.customRoles.list().then(({ data }) => setRoles(data))
+  }, [])
 
   useEffect(() => {
     db.staff.list().then(({ data, error }) => {
@@ -49,7 +55,8 @@ export default function Staff({ showToast }: Props) {
       else if (data) setStaff(data.filter(s => !(SYSTEM_ROLES as string[]).includes(s.role)))
       setLoading(false)
     }).catch(() => { showToast('error', 'Failed to load staff.'); setLoading(false) })
-  }, [showToast])
+    if (user?.role === 'super_admin') loadRoles()
+  }, [showToast, user?.role, loadRoles])
 
   const filtered = staff.filter(s =>
     s.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -117,7 +124,7 @@ export default function Staff({ showToast }: Props) {
           onChange={e => setSearch(e.target.value)}
         />
         {user?.role === 'super_admin' && (
-          <button type="button" className="btn btn-ghost" onClick={() => setShowRoles(true)}>Manage Roles</button>
+          <button type="button" className="btn btn-ghost" onClick={() => { setEditRole(null); setShowRoles(true) }}>Manage Roles</button>
         )}
         <button type="button" className="btn btn-primary" onClick={() => setShowAdd(true)}>+ Add Staff</button>
       </div>
@@ -180,6 +187,56 @@ export default function Staff({ showToast }: Props) {
         )}
       </div>
 
+      {/* User Roles — managed inline like Products: the table is the
+          overview, the modal is the editor. Super Admin only; the roles
+          themselves are reusable permission bundles assigned through each
+          staff member's Permissions action above. */}
+      {user?.role === 'super_admin' && (
+        <div className="card" style={{ marginTop: '1rem' }}>
+          <div className="card-header">
+            <h3 style={{ fontSize: '0.95rem', fontWeight: 700 }}>User Roles</h3>
+            <button type="button" className="btn btn-primary btn-sm" onClick={() => { setEditRole(null); setShowRoles(true) }}>+ Add Role</button>
+          </div>
+          <div className="tbl-scroll">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Role</th>
+                  <th>Description</th>
+                  <th>Rights</th>
+                  <th>Assigned Staff</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {roles.length === 0 ? (
+                  <tr><td colSpan={5} className="td-empty">No custom roles yet — create one to bundle permissions for a team.</td></tr>
+                ) : roles.map(r => (
+                  <tr key={r.id}>
+                    <td><strong>{r.name}</strong></td>
+                    <td>{r.description || '—'}</td>
+                    <td>{r.permissions.length} right{r.permissions.length === 1 ? '' : 's'}</td>
+                    <td>{staff.filter(s => s.customRoleId === r.id).length}</td>
+                    <td>
+                      <ActionMenu items={[
+                        { label: 'Edit', onClick: () => { setEditRole(r); setShowRoles(true) } },
+                        { label: 'Delete', danger: true, onClick: async () => {
+                          if (!window.confirm(`Delete the "${r.name}" role? Staff assigned to it keep their current permissions but lose the role label.`)) return
+                          const { error } = await db.customRoles.remove(r.id)
+                          if (error) { showToast('error', error); return }
+                          setRoles(prev => prev.filter(x => x.id !== r.id))
+                          showToast('success', `Role "${r.name}" deleted.`)
+                        } },
+                      ]} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {(showAdd || editStaff) && (
         <AddStaffModal
           staff={editStaff}
@@ -196,7 +253,12 @@ export default function Staff({ showToast }: Props) {
         />
       )}
       {showRoles && (
-        <RoleManagerModal onClose={() => setShowRoles(false)} showToast={showToast} />
+        <RoleManagerModal
+          onClose={() => { setShowRoles(false); setEditRole(null) }}
+          showToast={showToast}
+          initialRole={editRole}
+          onChanged={loadRoles}
+        />
       )}
     </div>
   )

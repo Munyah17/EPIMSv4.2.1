@@ -7,11 +7,15 @@ import { invalidClass, fieldId } from '../ui/ValidationSummary'
 interface Props {
   onClose: () => void
   showToast: (type: 'success' | 'error' | 'warning' | 'info', message: string) => void
+  /** Open straight into editing this role (from the User Roles table). */
+  initialRole?: CustomRole | null
+  /** Fired after any save/delete so the caller's list refreshes. */
+  onChanged?: () => void
 }
 
 const EMPTY_DRAFT = { name: '', description: '', permissions: [] as string[] }
 
-export default function RoleManagerModal({ onClose, showToast }: Props) {
+export default function RoleManagerModal({ onClose, showToast, initialRole, onChanged }: Props) {
   const [roles, setRoles] = useState<CustomRole[]>([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<CustomRole | null>(null)
@@ -22,7 +26,15 @@ export default function RoleManagerModal({ onClose, showToast }: Props) {
 
   const load = () => db.customRoles.list().then(({ data, error }) => {
     if (error) showToast('error', 'Failed to load custom roles.')
-    else setRoles(data)
+    else {
+      setRoles(data)
+      // Deep-linked edit: jump straight into the editor once roles land.
+      if (initialRole) {
+        const found = data.find(r => r.id === initialRole.id)
+        if (found) setDraft({ name: found.name, description: found.description ?? '', permissions: [...found.permissions] })
+        setEditing(found ?? null)
+      }
+    }
     setLoading(false)
   }).catch(() => { showToast('error', 'Failed to load custom roles.'); setLoading(false) })
   useEffect(() => { load() }, [])
@@ -55,6 +67,7 @@ export default function RoleManagerModal({ onClose, showToast }: Props) {
     showToast('success', `Role "${data.name}" saved.`)
     startNew()
     load()
+    onChanged?.()
   }
 
   const handleDelete = async (r: CustomRole) => {
@@ -64,6 +77,7 @@ export default function RoleManagerModal({ onClose, showToast }: Props) {
     showToast('success', `Role "${r.name}" deleted.`)
     if (editing?.id === r.id) startNew()
     load()
+    onChanged?.()
   }
 
   return (
