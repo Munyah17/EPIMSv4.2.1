@@ -7,7 +7,7 @@ import { formatDate } from '../lib/dateUtils'
 import { useAuth } from '../contexts/AuthContext'
 import { isStale, rateAgeLabel, type ExchangeRate } from '../lib/exchangeRate'
 import { health } from '../lib/health'
-import { isGatewayFlaggedDown, getGatewayWatchStatus, SMS_GATEWAY_EVENT } from '../lib/smsService'
+import { isGatewayFlaggedDown, getGatewayWatchStatus, pingSmsGateway, sendSms, SMS_GATEWAY_EVENT } from '../lib/smsService'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -51,7 +51,7 @@ const EMPTY_STATS: DashboardStats = {
   productBreakdown: [], recentPolicies: [], latestClaim: null, latestPayment: null, latestLead: null, latestFraud: null, latestClient: null,
 }
 
-export default function Dashboard({ setActivePanel }: Props) {
+export default function Dashboard({ showToast, setActivePanel }: Props) {
   const [stats, setStats] = useState<DashboardStats>(EMPTY_STATS)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
@@ -66,6 +66,8 @@ export default function Dashboard({ setActivePanel }: Props) {
   const [gatewayDown, setGatewayDown] = useState<{ down: boolean; source?: string; reason?: string }>(() =>
     isGatewayFlaggedDown() ? { down: true } : { down: false })
   const [gatewayStatus, setGatewayStatus] = useState(() => getGatewayWatchStatus())
+  const [smsTestNumber, setSmsTestNumber] = useState('')
+  const [smsTestSending, setSmsTestSending] = useState(false)
   useEffect(() => {
     const onStatus = (e: Event) => {
       setGatewayDown((e as CustomEvent<{ down: boolean; source?: string; reason?: string }>).detail)
@@ -74,6 +76,32 @@ export default function Dashboard({ setActivePanel }: Props) {
     window.addEventListener(SMS_GATEWAY_EVENT, onStatus)
     return () => window.removeEventListener(SMS_GATEWAY_EVENT, onStatus)
   }, [])
+
+  /** On-demand proof + diagnosis — the send goes out over the real
+   *  pipeline, and a failure is followed by a gateway ping so the answer
+   *  names whose problem it is rather than just saying "failed". */
+  const handleSmsTest = async () => {
+    const to = smsTestNumber.trim()
+    if (!to) { setGatewayStatus(g => ({ ...g, detail: 'Enter a number first — e.g. 0771234567.' })); return }
+    setSmsTestSending(true)
+    try {
+      const result = await sendSms(to, `Motions: SMS gateway test — working as of ${new Date().toLocaleTimeString()}. Sent by ${user?.name ?? 'staff'} from the dashboard.`)
+      if (result.success) {
+        showToast('success', `Test SMS delivered to ${to} — Afrosoft confirmed it. Working end-to-end.`)
+      } else {
+        const ping = await pingSmsGateway()
+        if (!ping.up && ping.source === 'afrosoft') {
+          showToast('error', `⚠ AFROSOFT IS DOWN — the SMS provider cannot deliver text messages right now. This is NOT our system. (${ping.detail})`)
+        } else if (!ping.up) {
+          showToast('error', `⚠ The problem is on OUR side, not Afrosoft's — the gateway is reachable but our service failed. (${ping.detail})`)
+        } else {
+          showToast('error', `Afrosoft is UP and answering, but this send still failed — likely the number or message. (${result.error ?? 'no detail'})`)
+        }
+      }
+    } finally {
+      setSmsTestSending(false)
+    }
+  }
 
   useEffect(() => {
     db.dashboardStats.load()
@@ -265,20 +293,6 @@ export default function Dashboard({ setActivePanel }: Props) {
             <span style={{ color: 'var(--muted)' }}>
               Notifications (24h): <strong style={{ color: notifyFails.length ? 'var(--danger)' : 'var(--text)' }}>{notifyFails.length === 0 ? 'all delivered' : `${notifyFails.length} failed`}</strong>
             </span>
-            {/* Always-on Afrosoft readout — green when the watch pinged and
-                got an answer, red when it couldn't, grey until the first
-                check lands. The red banner above is the loud version. */}
-            <span style={{ color: 'var(--muted)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              <span className="syshealth-dot" style={{
-                background: gatewayStatus.state === 'up' ? '#10B981' : gatewayStatus.state === 'down' ? '#EF4444' : '#94A3B8',
-              }} />
-              Afrosoft SMS: <strong style={{ color: gatewayStatus.state === 'down' ? 'var(--danger)' : 'var(--text)' }}>
-                {gatewayStatus.state === 'up' ? 'OPERATIONAL' : gatewayStatus.state === 'down' ? 'DOWN' : 'CHECKING…'}
-              </strong>
-              {gatewayStatus.checkedAt && (
-                <span style={{ fontSize: 11 }}>(checked {timeAgo(new Date(gatewayStatus.checkedAt).toISOString())})</span>
-              )}
-            </span>
           </div>
           {notifyFails.length > 0 && (
             <div className="info-banner info-banner-warning" style={{ marginTop: 12 }}>
@@ -289,6 +303,82 @@ export default function Dashboard({ setActivePanel }: Props) {
               Clients may not have received their confirmations — check the delivery log.
             </div>
           )}
+        </div>
+      )}
+
+      {/* SMS gateway instrument panel — the thing that answers "is it us
+          or Afrosoft?" in one glance, with a live probe on demand. */}
+      {canSeeHealth && (
+        <div className="card" style={{
+          marginBottom: 20,
+          borderLeft: `4px solid ${gatewayStatus.state === 'up' ? '#10B981' : gatewayStatus.state === 'down' ? '#EF4444' : '#94A3B8'}`,
+        }}>
+          <div className="card-header">
+            <h3 className="card-title">📱 SMS Gateway — Afrosoft</h3>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setActivePanel('mass_messaging')}>Mass Messaging →</button>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setActivePanel('system_health')}>System Health →</button>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+            <span className="syshealth-dot lg" style={{
+              background: gatewayStatus.state === 'up' ? '#10B981' : gatewayStatus.state === 'down' ? '#EF4444' : '#94A3B8',
+            }} />
+            <div>
+              <div style={{
+                fontSize: 17, fontWeight: 800, letterSpacing: 0.3,
+                color: gatewayStatus.state === 'up' ? '#065f46' : gatewayStatus.state === 'down' ? '#991B1B' : 'var(--muted)',
+              }}>
+                {gatewayStatus.state === 'up' ? 'OPERATIONAL — TEXT MESSAGES DELIVERING'
+                  : gatewayStatus.state === 'down'
+                    ? (gatewayStatus.source === 'afrosoft' ? 'DOWN — AFROSOFT CANNOT DELIVER TEXTS' : 'PROBLEM ON OUR SIDE — NOT AFROSOFT')
+                    : 'CHECKING…'}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                {gatewayStatus.checkedAt
+                  ? `Last probe ${timeAgo(new Date(gatewayStatus.checkedAt).toISOString())} · auto-checks every 5 min, no SMS spent`
+                  : 'First automatic check runs shortly after sign-in.'}
+              </div>
+            </div>
+          </div>
+
+          {gatewayStatus.state === 'down' && gatewayStatus.detail && (
+            <div className="info-banner info-banner-danger" style={{ marginBottom: 14, fontSize: 12 }}>
+              {gatewayStatus.detail}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', fontSize: 13, marginBottom: 14, color: 'var(--muted)' }}>
+            <span>Sends this session: <strong style={{ color: 'var(--text)' }}>{healthSnap.smsOpsCount ?? 0}</strong></span>
+            <span>Delivery rate: <strong style={{ color: (healthSnap.smsOpsCount ?? 0) > 0 && healthSnap.smsLastOk === false ? 'var(--danger)' : 'var(--text)' }}>
+              {(healthSnap.smsOpsCount ?? 0) > 0 ? `${healthSnap.smsSuccessPct}%` : '—'}
+            </strong></span>
+            <span>Last send: <strong style={{ color: healthSnap.smsLastOk === false ? 'var(--danger)' : 'var(--text)' }}>
+              {healthSnap.smsLastOk === null || healthSnap.smsLastOk === undefined ? 'none yet' : healthSnap.smsLastOk ? 'delivered ✓' : 'failed ✗'}
+            </strong></span>
+          </div>
+          {healthSnap.smsLastOk === false && healthSnap.smsLastDetail && (
+            <div style={{ fontSize: 12, color: 'var(--danger)', marginTop: -8, marginBottom: 14 }}>
+              {healthSnap.smsLastDetail}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+            <input
+              className="form-control"
+              style={{ fontSize: 12, padding: '6px 10px', maxWidth: 220 }}
+              placeholder="Send a test to… 0771234567"
+              value={smsTestNumber}
+              onChange={e => setSmsTestNumber(e.target.value)}
+            />
+            <button type="button" className="btn btn-primary btn-sm" onClick={handleSmsTest} disabled={smsTestSending}>
+              {smsTestSending ? 'Sending…' : '📱 Send Test SMS'}
+            </button>
+            <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+              A real text through Afrosoft — if it fails we'll tell you whose side the problem is on.
+            </span>
+          </div>
         </div>
       )}
 
