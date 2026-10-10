@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { health } from '../lib/health'
 import type { DbOp } from '../lib/health'
 import { db } from '../lib/db'
-import { sendSms } from '../lib/smsService'
+import { sendSms, pingSmsGateway } from '../lib/smsService'
 import { useAuth } from '../contexts/AuthContext'
 import type { ToastMessage } from '../types'
 import type { ActivePanel } from '../App'
@@ -116,17 +116,30 @@ export default function SystemHealthPage({ showToast }: Props) {
     showToast('info', 'Health tracker stats cleared.')
   }
 
-  /** Proof, not hope: a real Afrosoft round-trip on demand. The result
-   *  lands in the same health tracker and notification_log as every real
-   *  send — the card above flips the moment it lands. */
+  /** Proof, not hope: a real Afrosoft round-trip on demand — and a
+   *  diagnosis. A failed send alone doesn't say WHO is broken, so the
+   *  button follows up with a gateway ping and names the culprit in
+   *  plain terms: Afrosoft's system vs ours. */
   const handleTestSms = async () => {
     const to = testNumber.trim()
     if (!to) { showToast('warning', 'Enter the number to send the test to (e.g. 0771234567).'); return }
     setTestSending(true)
     try {
       const result = await sendSms(to, `Motions: SMS gateway test — working as of ${new Date().toLocaleTimeString()}. Sent by ${user?.name ?? 'staff'} from System Health.`)
-      if (result.success) showToast('success', `Test SMS delivered to ${to} — Afrosoft is working.`)
-      else showToast('error', `Test SMS failed: ${result.error ?? 'no detail'}`)
+      if (result.success) {
+        showToast('success', `Test SMS delivered to ${to} — Afrosoft confirmed it. The SMS system is working end-to-end.`)
+        return
+      }
+      // The send failed — ask the gateway directly whether it's even alive
+      // before blaming anything, so the answer names the source.
+      const ping = await pingSmsGateway()
+      if (!ping.up && ping.source === 'afrosoft') {
+        showToast('error', `⚠ AFROSOFT IS DOWN — the SMS provider cannot deliver text messages right now. This is NOT our system. (${ping.detail})`)
+      } else if (!ping.up) {
+        showToast('error', `⚠ The problem is on OUR side, not Afrosoft's — the gateway is reachable but our service failed. (${ping.detail})`)
+      } else {
+        showToast('error', `Afrosoft is UP and answering, but this send still failed — likely the message or the number itself. (${result.error ?? 'no detail'})`)
+      }
     } finally {
       setTestSending(false)
     }

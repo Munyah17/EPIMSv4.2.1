@@ -39,6 +39,37 @@ interface ProxyRequestBody {
  * never existed. The key belongs on the server, where it is set once and
  * cannot be cleared by a stray click in a settings form.
  */
+/**
+ * Liveness check against Afrosoft that does not spend an SMS: a balance
+ * lookup through the same credentials. The response itself doesn't matter
+ * — ANY HTTP answer (even an auth rejection) proves the host is up; only
+ * a connection failure, timeout, or 5xx counts as "Afrosoft is down".
+ *
+ * `source` names whose problem it is:
+ *  - 'afrosoft' — the gateway host could not be reached or errored out
+ *  - 'config'   — our side: the API key isn't set on the server
+ */
+async function pingAfrosoft(): Promise<{ up: boolean; source: 'afrosoft' | 'config'; detail: string }> {
+  const apiKey = process.env.AFROSOFT_SMS_API_KEY
+  const domain = process.env.AFROSOFT_SMS_DOMAIN || 'sms.vas.co.zw'
+  if (!apiKey) {
+    return { up: false, source: 'config', detail: 'AFROSOFT_SMS_API_KEY is not configured on the server — that is our setup, not Afrosoft.' }
+  }
+  const url = `https://${domain}/client/api/getbalance?${new URLSearchParams({ apikey: apiKey })}`
+  try {
+    const upstream = await fetch(url, { signal: AbortSignal.timeout(10000) })
+    if (upstream.status >= 500) {
+      await upstream.arrayBuffer().catch(() => { /**/ })
+      return { up: false, source: 'afrosoft', detail: `Afrosoft returned HTTP ${upstream.status} — their server is erroring.` }
+    }
+    // Any 2xx/4xx answer means the host is alive and answering us.
+    const body = await upstream.text()
+    return { up: true, source: 'afrosoft', detail: `Afrosoft answered (HTTP ${upstream.status})${body ? `: ${body.slice(0, 120)}` : ''}` }
+  } catch (e) {
+    return { up: false, source: 'afrosoft', detail: `Afrosoft host unreachable (connection/timeout): ${e}` }
+  }
+}
+
 async function sendViaAfrosoft(mobiles: string, message: string) {
   const apiKey = process.env.AFROSOFT_SMS_API_KEY
   const domain = process.env.AFROSOFT_SMS_DOMAIN || 'sms.vas.co.zw'
@@ -89,6 +120,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const proxyReq: ProxyRequestBody = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body ?? {})
+
+  if (proxyReq.action === 'ping') {
+    // Health probe — no message is sent, nothing is spent.
+    const result = await pingAfrosoft()
+    return res.status(200).json(result)
+  }
 
   if (proxyReq.action === 'sms') {
     if (!proxyReq.mobiles || !proxyReq.message) {

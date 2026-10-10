@@ -5,6 +5,7 @@ import { initNotifSettings } from './lib/mailService'
 import { startOfflineSync } from './lib/offlineQueue'
 import { DB_FALLBACK_EVENT } from './lib/db'
 import { NOTIFY_FAILURE_EVENT } from './lib/notify'
+import { startGatewayWatch } from './lib/smsService'
 import { lazyWithRecovery } from './lib/lazyWithRecovery'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import LoginScreen from './components/Auth/LoginScreen'
@@ -99,6 +100,7 @@ function AppInner() {
       void initNotifSettings()
       void startReminderEngine()
       void startOfflineSync()
+      void startGatewayWatch()
     }, 2000)
     return () => clearTimeout(start)
   }, [])

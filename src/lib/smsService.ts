@@ -286,6 +286,111 @@ export async function sendBulkSms(numbers: string[], message: string): Promise<B
   }
 }
 
+// ── Gateway watch: ask Afrosoft if it's alive, on a timer ────────────
+//
+// "Is SMS working" cannot only be answered by real sends — between sends
+// the gateway could be down and nobody would know until the next signup
+// or reminder hit a dead host. This watch pings Afrosoft every few
+// minutes without spending a text, and the moment the state CHANGES:
+//  - 'afrosoft-down'  → health tracker entry, notification_log row, a
+//    persistent dashboard banner, and an office email via /api/notify
+//    (SMTP still works when SMS is dead — that is the point of checking
+//    whose problem it is)
+//  - recovery         → the banner clears and the log says we're back
+//
+// The flag lives in localStorage so a refresh mid-outage re-shows the
+// banner instead of forgetting it, and only TRANSITIONS alert — one
+// office email per outage, not one per poll.
+
+const GATEWAY_FLAG_KEY = 'tqfy_sms_gateway_down'
+const GATEWAY_WATCH_MS = 5 * 60 * 1000
+export const SMS_GATEWAY_EVENT = 'ims:sms-gateway-status'
+
+export interface GatewayPing {
+  up: boolean
+  /** Whose problem it is: 'afrosoft' = provider side, 'config'/'us' = ours. */
+  source: 'afrosoft' | 'config' | 'us'
+  detail: string
+}
+
+export function isGatewayFlaggedDown(): boolean {
+  try { return localStorage.getItem(GATEWAY_FLAG_KEY) === '1' } catch { return false }
+}
+
+export async function pingSmsGateway(): Promise<GatewayPing> {
+  try {
+    const { data: { session } } = await supabase.auth.getSession()
+    const res = await fetch('/api/gateway-proxy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+      body: JSON.stringify({ action: 'ping' }),
+    })
+    if (!res.ok) {
+      // The proxy itself failing (401/500) is OUR side, not Afrosoft's.
+      const err = await res.json().catch(() => ({}))
+      return { up: false, source: 'us', detail: (err as { error?: string })?.error ?? `Gateway proxy error (HTTP ${res.status})` }
+    }
+    const body = await res.json().catch(() => null) as { up?: boolean; source?: string; detail?: string } | null
+    if (body === null) {
+      return { up: false, source: 'us', detail: 'The SMS service is not reachable at /api/gateway-proxy — the API returned a page instead of a response.' }
+    }
+    return {
+      up: !!body.up,
+      source: body.source === 'config' ? 'config' : body.source === 'afrosoft' ? 'afrosoft' : 'us',
+      detail: body.detail ?? 'No detail returned',
+    }
+  } catch (e) {
+    return { up: false, source: 'us', detail: `Could not reach the SMS service at all: ${e}` }
+  }
+}
+
+async function announceGatewayDown(ping: GatewayPing) {
+  const { reportOutcome } = await import('./notify')
+  reportOutcome({ channel: 'sms', recipient: 'gateway', event: 'system', status: 'failed', detail: `AFROSOFT DOWN: ${ping.detail}` })
+  // Office email through /api/notify — SMTP is unaffected by the SMS
+  // gateway being down, which is exactly why the alert rides it.
+  try {
+    const { data: { session } } = await supabase.auth.getSession()
+    await fetch('/api/notify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+      body: JSON.stringify({
+        event: 'system', ref: 'sms-gateway',
+        notifyClient: false, notifyOffice: true,
+        smsText: `Motions: AFROSOFT SMS GATEWAY IS DOWN — text messages cannot be delivered. ${ping.detail}`,
+        emailSubject: '[AFROSOFT DOWN] SMS gateway unreachable — client texts cannot be delivered',
+        emailText: `The SMS gateway (Afrosoft) is DOWN and cannot deliver text messages.\n\nDetail:   ${ping.detail}\nChecked:  ${new Date().toISOString()}\n\nImpact: signup welcomes, payment confirmations, billing reminders and invoice notices will NOT reach clients by SMS until Afrosoft recovers. The dashboard banner stays up for the duration of the outage.\n\nThis alert fires once per outage, not per check.`,
+      }),
+    })
+  } catch { /**/ }
+}
+
+let gatewayWatchStarted = false
+let lastGatewayState: 'up' | 'down' | null = isGatewayFlaggedDown() ? 'down' : null
+
+async function checkGateway() {
+  const ping = await pingSmsGateway()
+  health.record({ ts: Date.now(), type: 'notify', table: 'sms-gateway', success: ping.up, duration: 0, source: 'api', detail: `watch: ${ping.detail}` })
+  const state: 'up' | 'down' = ping.up ? 'up' : 'down'
+
+  if (state === 'down' && lastGatewayState !== 'down') {
+    try { localStorage.setItem(GATEWAY_FLAG_KEY, '1') } catch { /**/ }
+    window.dispatchEvent(new CustomEvent(SMS_GATEWAY_EVENT, { detail: { down: true, source: ping.source, reason: ping.detail } }))
+    void announceGatewayDown(ping)
+  } else if (state === 'up' && lastGatewayState === 'down') {
+    try { localStorage.removeItem(GATEWAY_FLAG_KEY) } catch { /**/ }
+    window.dispatchEvent(new CustomEvent(SMS_GATEWAY_EVENT, { detail: { down: false } }))
+  }
+  lastGatewayState = state
+}
+
+export function startGatewayWatch() {
+  if (gatewayWatchStarted || typeof window === 'undefined') return
+  gatewayWatchStarted = true
+  void checkGateway()
+  setInterval(() => { void checkGateway() }, GATEWAY_WATCH_MS)
+}
+
 // ── SMS outbox: failed sends retry until they land ───────────────────
 //
 // When BOTH routes (gateway-proxy, then /api/notify) fail, the message is

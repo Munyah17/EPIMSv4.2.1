@@ -7,6 +7,7 @@ import { formatDate } from '../lib/dateUtils'
 import { useAuth } from '../contexts/AuthContext'
 import { isStale, rateAgeLabel, type ExchangeRate } from '../lib/exchangeRate'
 import { health } from '../lib/health'
+import { isGatewayFlaggedDown, SMS_GATEWAY_EVENT } from '../lib/smsService'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -57,6 +58,18 @@ export default function Dashboard({ setActivePanel }: Props) {
   const [chartPeriod, setChartPeriod] = useState<'week' | 'month' | 'quarter'>('month')
   const [rate, setRate] = useState<ExchangeRate | null>(null)
   const [rateLoaded, setRateLoaded] = useState(false)
+
+  // Afrosoft outage banner — the background gateway watch flips this on
+  // the moment a probe fails and off when it recovers. Persisted in
+  // localStorage so a mid-outage refresh keeps the warning up; the flag
+  // and the banner outlast the check that set them.
+  const [gatewayDown, setGatewayDown] = useState<{ down: boolean; source?: string; reason?: string }>(() =>
+    isGatewayFlaggedDown() ? { down: true } : { down: false })
+  useEffect(() => {
+    const onStatus = (e: Event) => setGatewayDown((e as CustomEvent<{ down: boolean; source?: string; reason?: string }>).detail)
+    window.addEventListener(SMS_GATEWAY_EVENT, onStatus)
+    return () => window.removeEventListener(SMS_GATEWAY_EVENT, onStatus)
+  }, [])
 
   useEffect(() => {
     db.dashboardStats.load()
@@ -119,6 +132,26 @@ export default function Dashboard({ setActivePanel }: Props) {
 
   return (
     <div className="panel">
+      {gatewayDown.down && (
+        // Big, unmissable, and names whose problem it is — staff answering
+        // a "my text never came" call need to know in one glance that it
+        // is the SMS provider, not this system.
+        <div className="dash-alert" role="alert"
+          style={{ background: '#FEE2E2', border: '2px solid #DC2626', borderRadius: 10, padding: '16px 20px', marginBottom: 18 }}>
+          <span className="dash-alert-icon" style={{ fontSize: 26 }}>📵</span>
+          <div className="dash-alert-body">
+            <span className="dash-alert-title" style={{ fontSize: 16, fontWeight: 800, color: '#991B1B' }}>
+              {gatewayDown.source === 'us' || gatewayDown.source === 'config'
+                ? 'SMS SERVICE PROBLEM — ON OUR SIDE, NOT AFROSOFT'
+                : 'AFROSOFT SMS IS DOWN — TEXT MESSAGES CANNOT BE DELIVERED'}
+            </span>
+            <span className="dash-alert-text" style={{ fontSize: 13, color: '#7F1D1D' }}>
+              {gatewayDown.reason ?? 'The SMS gateway is unreachable.'} Signup welcomes, payment confirmations and billing
+              reminders will not reach clients by SMS until it recovers. The office has been emailed.
+            </span>
+          </div>
+        </div>
+      )}
       {rateNeedsAttention && (
         <div className="dash-alert" role="status">
           <span className="dash-alert-icon">💱</span>
