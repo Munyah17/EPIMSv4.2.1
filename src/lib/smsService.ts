@@ -367,20 +367,38 @@ async function announceGatewayDown(ping: GatewayPing) {
 
 let gatewayWatchStarted = false
 let lastGatewayState: 'up' | 'down' | null = isGatewayFlaggedDown() ? 'down' : null
+let lastGatewayCheck: { at: number; up: boolean; source: string; detail: string } | null = null
+
+/** What the watch last saw — feeds the dashboard's always-on status row. */
+export function getGatewayWatchStatus(): { state: 'up' | 'down' | 'unknown'; checkedAt: number | null; detail: string; source: string } {
+  if (!lastGatewayCheck) {
+    return { state: lastGatewayState === 'down' ? 'down' : 'unknown', checkedAt: null, detail: 'No check run yet this session.', source: 'us' }
+  }
+  return {
+    state: lastGatewayCheck.up ? 'up' : 'down',
+    checkedAt: lastGatewayCheck.at,
+    detail: lastGatewayCheck.detail,
+    source: lastGatewayCheck.source,
+  }
+}
 
 async function checkGateway() {
   const ping = await pingSmsGateway()
   health.record({ ts: Date.now(), type: 'notify', table: 'sms-gateway', success: ping.up, duration: 0, source: 'api', detail: `watch: ${ping.detail}` })
   const state: 'up' | 'down' = ping.up ? 'up' : 'down'
+  lastGatewayCheck = { at: Date.now(), up: ping.up, source: ping.source, detail: ping.detail }
 
   if (state === 'down' && lastGatewayState !== 'down') {
     try { localStorage.setItem(GATEWAY_FLAG_KEY, '1') } catch { /**/ }
-    window.dispatchEvent(new CustomEvent(SMS_GATEWAY_EVENT, { detail: { down: true, source: ping.source, reason: ping.detail } }))
     void announceGatewayDown(ping)
   } else if (state === 'up' && lastGatewayState === 'down') {
     try { localStorage.removeItem(GATEWAY_FLAG_KEY) } catch { /**/ }
-    window.dispatchEvent(new CustomEvent(SMS_GATEWAY_EVENT, { detail: { down: false } }))
   }
+  // Every check updates the dashboard row — the banner itself only
+  // appears on the down transition, but "last checked" always moves.
+  window.dispatchEvent(new CustomEvent(SMS_GATEWAY_EVENT, {
+    detail: { down: state === 'down', source: ping.source, reason: ping.detail, checkedAt: Date.now() },
+  }))
   lastGatewayState = state
 }
 

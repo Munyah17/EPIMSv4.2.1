@@ -7,7 +7,7 @@ import { formatDate } from '../lib/dateUtils'
 import { useAuth } from '../contexts/AuthContext'
 import { isStale, rateAgeLabel, type ExchangeRate } from '../lib/exchangeRate'
 import { health } from '../lib/health'
-import { isGatewayFlaggedDown, SMS_GATEWAY_EVENT } from '../lib/smsService'
+import { isGatewayFlaggedDown, getGatewayWatchStatus, SMS_GATEWAY_EVENT } from '../lib/smsService'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -65,8 +65,12 @@ export default function Dashboard({ setActivePanel }: Props) {
   // and the banner outlast the check that set them.
   const [gatewayDown, setGatewayDown] = useState<{ down: boolean; source?: string; reason?: string }>(() =>
     isGatewayFlaggedDown() ? { down: true } : { down: false })
+  const [gatewayStatus, setGatewayStatus] = useState(() => getGatewayWatchStatus())
   useEffect(() => {
-    const onStatus = (e: Event) => setGatewayDown((e as CustomEvent<{ down: boolean; source?: string; reason?: string }>).detail)
+    const onStatus = (e: Event) => {
+      setGatewayDown((e as CustomEvent<{ down: boolean; source?: string; reason?: string }>).detail)
+      setGatewayStatus(getGatewayWatchStatus())
+    }
     window.addEventListener(SMS_GATEWAY_EVENT, onStatus)
     return () => window.removeEventListener(SMS_GATEWAY_EVENT, onStatus)
   }, [])
@@ -260,6 +264,20 @@ export default function Dashboard({ setActivePanel }: Props) {
             {healthSnap.localMode && <span className="pill pill-warning pill-xs">Using cached data</span>}
             <span style={{ color: 'var(--muted)' }}>
               Notifications (24h): <strong style={{ color: notifyFails.length ? 'var(--danger)' : 'var(--text)' }}>{notifyFails.length === 0 ? 'all delivered' : `${notifyFails.length} failed`}</strong>
+            </span>
+            {/* Always-on Afrosoft readout — green when the watch pinged and
+                got an answer, red when it couldn't, grey until the first
+                check lands. The red banner above is the loud version. */}
+            <span style={{ color: 'var(--muted)', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+              <span className="syshealth-dot" style={{
+                background: gatewayStatus.state === 'up' ? '#10B981' : gatewayStatus.state === 'down' ? '#EF4444' : '#94A3B8',
+              }} />
+              Afrosoft SMS: <strong style={{ color: gatewayStatus.state === 'down' ? 'var(--danger)' : 'var(--text)' }}>
+                {gatewayStatus.state === 'up' ? 'OPERATIONAL' : gatewayStatus.state === 'down' ? 'DOWN' : 'CHECKING…'}
+              </strong>
+              {gatewayStatus.checkedAt && (
+                <span style={{ fontSize: 11 }}>(checked {timeAgo(new Date(gatewayStatus.checkedAt).toISOString())})</span>
+              )}
             </span>
           </div>
           {notifyFails.length > 0 && (
