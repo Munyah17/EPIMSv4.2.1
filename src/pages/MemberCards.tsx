@@ -87,14 +87,33 @@ export default function MemberCards({ showToast }: Props) {
       categoryIssuesMemberCards(p.productCategory)),
     [policies],
   )
-  const results = useMemo(() => {
-    if (search.trim().length >= 2) return searchMembers(cardablePolicies, search, 40)
-    // With no query, show whoever hasn't got a card yet — the actual work.
-    return cardablePolicies
-      .flatMap(p => policyMembers(p))
-      .filter(m => !cardByMember.has(m.memberNumber))
-      .slice(0, 40)
-  }, [cardablePolicies, search, cardByMember])
+  // The browse view is organised by policyholder: each row is the person
+  // carrying the cover, and clicking expands to show the dependants on
+  // their policy. Searching drops the grouping — a specific person can be
+  // found directly whether they hold the policy or ride on it.
+  const policyGroups = useMemo(
+    () => cardablePolicies
+      .map(policy => {
+        const members = policyMembers(policy)
+        const holder = members.find(m => m.role === 'holder')
+        return holder
+          ? { policy, holder, dependants: members.filter(m => m.role !== 'holder') }
+          : null
+      })
+      .filter((g): g is { policy: Policy; holder: PolicyMember; dependants: PolicyMember[] } => !!g),
+    [cardablePolicies],
+  )
+  const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  const toggleExpand = (policyId: string) => setExpanded(prev => {
+    const next = new Set(prev)
+    if (next.has(policyId)) next.delete(policyId); else next.add(policyId)
+    return next
+  })
+
+  const results = useMemo(
+    () => (search.trim().length >= 2 ? searchMembers(cardablePolicies, search, 40) : []),
+    [cardablePolicies, search],
+  )
 
   const selectedCard = selected ? cardByMember.get(selected.memberNumber) : undefined
 
@@ -175,44 +194,100 @@ export default function MemberCards({ showToast }: Props) {
           <div className="member-card-list-title">
             {search.trim().length >= 2
               ? `${results.length} match${results.length === 1 ? '' : 'es'}`
-              : `${results.length} member${results.length === 1 ? '' : 's'} without a card yet`}
+              : `${policyGroups.length} policyholder${policyGroups.length === 1 ? '' : 's'}`}
           </div>
-          {results.length === 0 ? (
-            <div className="empty-state" style={{ padding: '2rem 1rem' }}>
-              {search.trim().length >= 2 ? 'Nobody matches that.' : 'Every member on a live policy has a card.'}
-            </div>
-          ) : (
-            <ul className="member-card-list">
-              {results.map(member => {
-                const card = cardByMember.get(member.memberNumber)
-                return (
-                  <li key={member.memberNumber}>
-                    <button
-                      type="button"
-                      className={`member-card-row${selected?.memberNumber === member.memberNumber ? ' active' : ''}`}
-                      onClick={() => setSelected(enrich(member))}
-                    >
-                      <span className="member-card-row-main">
-                        <span className="member-card-row-name">{member.name || '(unnamed)'}</span>
-                        <span className="mono member-card-row-number">{member.memberNumber}</span>
-                      </span>
-                      <span className="member-card-row-sub">
-                        {member.role === 'holder'
-                          ? 'Policyholder'
-                          : `${member.relationship || 'Dependant'} · carried by ${member.holderName}`}
-                      </span>
-                      <span className="member-card-row-tags">
-                        <span className="pill pill-muted">{member.planName}</span>
-                        {card
-                          ? <span className={`pill ${card.status === 'active' ? 'pill-active' : 'pill-warning'}`}>{card.rfidTag ? `RFID ${card.rfidTag}` : 'Card issued'}</span>
-                          : <span className="pill pill-muted">No card</span>}
-                      </span>
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
+          {(() => {
+            const memberRow = (member: PolicyMember, nested = false) => {
+              const card = cardByMember.get(member.memberNumber)
+              return (
+                <li key={member.memberNumber} style={nested ? { paddingLeft: 22 } : undefined}>
+                  <button
+                    type="button"
+                    className={`member-card-row${selected?.memberNumber === member.memberNumber ? ' active' : ''}`}
+                    onClick={() => setSelected(enrich(member))}
+                  >
+                    <span className="member-card-row-main">
+                      <span className="member-card-row-name">{member.name || '(unnamed)'}</span>
+                      <span className="mono member-card-row-number">{member.memberNumber}</span>
+                    </span>
+                    <span className="member-card-row-sub">
+                      {member.role === 'holder'
+                        ? 'Policyholder'
+                        : `${member.relationship || 'Dependant'} · carried by ${member.holderName}`}
+                    </span>
+                    <span className="member-card-row-tags">
+                      <span className="pill pill-muted">{member.planName}</span>
+                      {card
+                        ? <span className={`pill ${card.status === 'active' ? 'pill-active' : 'pill-warning'}`}>{card.rfidTag ? `RFID ${card.rfidTag}` : 'Card issued'}</span>
+                        : <span className="pill pill-muted">No card</span>}
+                    </span>
+                  </button>
+                </li>
+              )
+            }
+
+            // Search: flat list of anyone matching — holder or dependant.
+            if (search.trim().length >= 2) {
+              return results.length === 0 ? (
+                <div className="empty-state" style={{ padding: '2rem 1rem' }}>Nobody matches that.</div>
+              ) : (
+                <ul className="member-card-list">{results.map(m => memberRow(m))}</ul>
+              )
+            }
+
+            // Browse: policyholders first, dependants under their holder.
+            return policyGroups.length === 0 ? (
+              <div className="empty-state" style={{ padding: '2rem 1rem' }}>No live policies that carry member cards.</div>
+            ) : (
+              <ul className="member-card-list">
+                {policyGroups.map(({ policy, holder, dependants }) => {
+                  const open = expanded.has(policy.id)
+                  return (
+                    <li key={policy.id}>
+                      <div style={{ display: 'flex', alignItems: 'center' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <button
+                            type="button"
+                            className={`member-card-row${selected?.memberNumber === holder.memberNumber ? ' active' : ''}`}
+                            style={{ width: '100%' }}
+                            onClick={() => setSelected(enrich(holder))}
+                          >
+                            <span className="member-card-row-main">
+                              <span className="member-card-row-name">{holder.name || '(unnamed)'}</span>
+                              <span className="mono member-card-row-number">{holder.memberNumber}</span>
+                            </span>
+                            <span className="member-card-row-sub">
+                              Policyholder{dependants.length > 0 ? ` · ${dependants.length} dependant${dependants.length === 1 ? '' : 's'}` : ''}
+                            </span>
+                            <span className="member-card-row-tags">
+                              <span className="pill pill-muted">{holder.planName}</span>
+                              {cardByMember.get(holder.memberNumber)
+                                ? <span className={`pill ${cardByMember.get(holder.memberNumber)!.status === 'active' ? 'pill-active' : 'pill-warning'}`}>{cardByMember.get(holder.memberNumber)!.rfidTag ? `RFID ${cardByMember.get(holder.memberNumber)!.rfidTag}` : 'Card issued'}</span>
+                                : <span className="pill pill-muted">No card</span>}
+                            </span>
+                          </button>
+                        </div>
+                        {dependants.length > 0 && (
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm"
+                            style={{ padding: '4px 8px', fontSize: 15 }}
+                            title={open ? 'Hide dependants' : 'Show dependants'}
+                            onClick={() => toggleExpand(policy.id)}
+                          >{open ? '▾' : '▸'}</button>
+                        )}
+                      </div>
+                      {open && (
+                        <ul className="member-card-list" style={{ marginTop: 2 }}>
+                          {dependants.map(d => memberRow(d, true))}
+                        </ul>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            )
+          })()}
         </div>
 
         <div className="member-card-preview-pane">
