@@ -121,7 +121,7 @@ export default function PhotoEditorModal({ member, onClose, onSaved, showToast, 
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" style={{ maxWidth: 720 }} onClick={e => e.stopPropagation()}>
+      <div className="modal" style={{ maxWidth: 720 }} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h3 className="modal-title">📷 Passport Photo — {member.name || member.memberNumber}</h3>
           <button type="button" className="modal-close" onClick={onClose}>×</button>
