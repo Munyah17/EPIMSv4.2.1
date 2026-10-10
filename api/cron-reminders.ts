@@ -349,7 +349,7 @@ async function issueMonthlyInvoices(admin: SupabaseClient, today: Date) {
 
   const { data, error } = await admin
     .from('policies')
-    .select('id, policy_number, client_id, product_id, premium, status, dependants, agent_id, cover_scope, group_id, clients!client_id(name, email, phone), products!product_id(name, category), groups!group_id(name)')
+    .select('id, policy_number, client_id, product_id, premium, status, dependants, agent_id, cover_scope, group_id, clients!client_id(name, email, phone), products!product_id(name, category), groups!group_id(name, contact_name, contact_phone, contact_email)')
     .in('status', ['active', 'waiting_period'])
     .not('cover_scope', 'is', null)
     .neq('cover_scope', 'individual')
@@ -360,7 +360,7 @@ async function issueMonthlyInvoices(admin: SupabaseClient, today: Date) {
     return stats
   }
 
-  const groupPolicies = (data ?? []) as unknown as Array<PolicyRow & { cover_scope: string; group_id: string | null; groups: { name: string } | null }>
+  const groupPolicies = (data ?? []) as unknown as Array<PolicyRow & { cover_scope: string; group_id: string | null; groups: { name: string; contact_name: string | null; contact_phone: string | null; contact_email: string | null } | null }>
 
   // Sequence runs off the highest number already issued this period.
   const { data: lastRows } = await admin
@@ -410,6 +410,33 @@ async function issueMonthlyInvoices(admin: SupabaseClient, today: Date) {
         emailSubject: `Invoice ${invoiceNumber}: ${org} — ${period}`,
         emailText: `Dear ${policy.clients?.name ?? 'Client'},\n\nYour monthly insurance invoice has been issued.\n\nInvoice:      ${invoiceNumber}\nPolicy:       ${policy.policy_number}\nOrganisation: ${org}\nPeriod:       ${period}\nMembers:      ${heads}\nAmount:       $${amount.toFixed(2)}\nDue date:     ${formatDate(lastDayOfMonth(today))}\n\nPlease arrange payment before the due date to keep cover in force.\n\n${SIGNATURE}`,
       })
+
+      // The organisation's named contact person gets the reminder on their
+      // own line — the account-holder record and the person who actually
+      // pays the invoice are often different people in a company. Same
+      // message, no second office alert, and skipped when the contact is
+      // the same person (same phone/email) as the account holder.
+      const contact = policy.groups
+      if (contact && (contact.contact_phone || contact.contact_email)) {
+        const samePhone = !!contact.contact_phone && contact.contact_phone.replace(/\D/g, '').slice(-9) === (policy.clients?.phone ?? '').replace(/\D/g, '').slice(-9)
+        const sameEmail = !!contact.contact_email && contact.contact_email.toLowerCase() === (policy.clients?.email ?? '').toLowerCase()
+        if (!samePhone || !sameEmail) {
+          await dispatchNotification(admin, {
+            event: 'payment',
+            ref: invoiceNumber,
+            client: {
+              name: contact.contact_name ?? `${org} accounts`,
+              phone: samePhone ? null : contact.contact_phone,
+              email: sameEmail ? null : contact.contact_email,
+            },
+            notifyOffice: false,
+            smsText: sms,
+            whatsappText: sms,
+            emailSubject: `Invoice ${invoiceNumber}: ${org} — ${period}`,
+            emailText: `Dear ${contact.contact_name ?? 'Sir/Madam'},\n\nAn invoice for ${org}'s group insurance has been issued.\n\nInvoice:      ${invoiceNumber}\nPolicy:       ${policy.policy_number}\nOrganisation: ${org}\nPeriod:       ${period}\nMembers:      ${heads}\nAmount:       $${amount.toFixed(2)}\nDue date:     ${formatDate(lastDayOfMonth(today))}\n\nPlease arrange payment before the due date to keep cover in force.\n\n${SIGNATURE}`,
+          })
+        }
+      }
     } catch (e) {
       console.error('cron-reminders: invoice failed for', policy.policy_number, e)
       stats.failed++

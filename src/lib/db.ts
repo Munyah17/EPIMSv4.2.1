@@ -2564,6 +2564,12 @@ export const policyCards = {
 // covering its member roster. The organisation is the policyholder but is
 // not itself a billed head; only roster members are (see premium.ts).
 export const groups = {
+  async get(id: string) {
+    const { data, error } = await supabase.from('groups').select('*').eq('id', id).maybeSingle()
+    if (error || !data) return { data: null, error: error?.message ?? 'Group not found.' }
+    return { data: toGroup(data as Record<string, unknown>, 0), error: null }
+  },
+
   // See policies.list() above — read-through cache of real rows only.
   async list() {
     // A missing groups table is a pending migration, not a connectivity

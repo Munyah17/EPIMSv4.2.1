@@ -229,6 +229,14 @@ export default function Policies({ showToast, initialCategory }: Props) {
     const org = policy.groupName ?? policy.clientName
     const msg = `${COMPANY_NAME}: Invoice ${data.invoiceNumber} issued for ${org} (${policy.policyNumber}) — $${data.amount.toFixed(2)} for ${data.heads} member(s), period ${period}, due ${data.dueDate}.`
     if (client?.phone) notifyPhone(client.phone, msg, 'payment', data.invoiceNumber)
+    // The organisation's named contact person gets the reminder on their
+    // own line — usually a different person from the account holder.
+    if (policy.groupId) {
+      const { data: group } = await db.groups.get(policy.groupId)
+      if (group?.contactPhone && group.contactPhone.replace(/\D/g, '').slice(-9) !== (client?.phone ?? '').replace(/\D/g, '').slice(-9)) {
+        notifyPhone(group.contactPhone, msg, 'payment', data.invoiceNumber)
+      }
+    }
     void recordActivity({ action: 'policy.updated', actor: { id: user?.id, name: user?.name ?? 'Staff', role: user?.role ?? '' }, entityType: 'policy', entityId: policy.id, entityLabel: `${data.invoiceNumber} for ${policy.policyNumber}`, detail: `Invoice issued — $${data.amount.toFixed(2)}, ${data.heads} heads, period ${period}` })
   }
 

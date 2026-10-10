@@ -107,11 +107,16 @@ export default function BillingReminders({ showToast }: Props) {
         if (error) failed++
         else if (created && data) {
           issued++
+          const msg = `${COMPANY_NAME}: Invoice ${data.invoiceNumber} issued for ${p.groupName ?? p.clientName} (${p.policyNumber}) — $${data.amount.toFixed(2)} for ${data.heads} member(s), period ${period}, due ${data.dueDate}.`
           const { data: client } = await db.clients.get(p.clientId)
-          if (client?.phone) {
-            notifyPhone(client.phone,
-              `${COMPANY_NAME}: Invoice ${data.invoiceNumber} issued for ${p.groupName ?? p.clientName} (${p.policyNumber}) — $${data.amount.toFixed(2)} for ${data.heads} member(s), period ${period}, due ${data.dueDate}.`,
-              'payment', data.invoiceNumber)
+          if (client?.phone) notifyPhone(client.phone, msg, 'payment', data.invoiceNumber)
+          // The group's named contact person gets the reminder too — the
+          // account holder and the person who pays are often different.
+          if (p.groupId) {
+            const { data: group } = await db.groups.get(p.groupId)
+            if (group?.contactPhone && group.contactPhone.replace(/\D/g, '').slice(-9) !== (client?.phone ?? '').replace(/\D/g, '').slice(-9)) {
+              notifyPhone(group.contactPhone, msg, 'payment', data.invoiceNumber)
+            }
           }
         } else skipped++
       }
