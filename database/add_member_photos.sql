@@ -33,6 +33,10 @@ INSERT INTO storage.buckets (id, name, public)
 VALUES ('member-photos', 'member-photos', true)
 ON CONFLICT (id) DO NOTHING;
 
+-- 100MB per photo — signed uploads go straight to storage, so the
+-- ceiling is the bucket's own limit, not the API's body size.
+UPDATE storage.buckets SET file_size_limit = 104857600 WHERE id = 'member-photos';
+
 DO $$
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname = 'storage' AND tablename = 'objects' AND policyname = 'member_photos_public_read') THEN
