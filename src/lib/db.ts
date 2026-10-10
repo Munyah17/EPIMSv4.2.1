@@ -2230,6 +2230,9 @@ export interface DashboardStats {
   fraudAlerts: number
   lapseRate: number
   totalClients: number
+  /** Invoices issued but not yet paid — billed money still outstanding. */
+  unpaidInvoices: number
+  unpaidInvoiceAmount: number
   productBreakdown: { category: string; count: number }[]
   recentPolicies: Policy[]
   latestClaim: { claimNumber: string; clientName: string; at: string } | null
@@ -2244,6 +2247,7 @@ async function loadDashboardStatsLight(): Promise<DashboardStats | null> {
   const [
     activeRes, pendingRes, leadsRes, fraudRes, lapsedRes, totalRes, premiumsRes, categoryRes, recentRes,
     latestClaimRes, latestPaymentRes, latestLeadRes, latestFraudRes, clientsCountRes, latestClientRes,
+    unpaidInvoicesRes,
   ] = await Promise.all([
     supabase.from('policies').select('*', { count: 'exact', head: true }).eq('status', 'active'),
     supabase.from('claims').select('*', { count: 'exact', head: true }).in('status', ['pending', 'under_review']),
@@ -2260,6 +2264,10 @@ async function loadDashboardStatsLight(): Promise<DashboardStats | null> {
     supabase.from('fraud_cases').select('fraud_score, created_at, claims!claim_id(claim_number)').order('created_at', { ascending: false }).limit(1),
     supabase.from('clients').select('*', { count: 'exact', head: true }),
     supabase.from('clients').select('name, created_at').order('created_at', { ascending: false }).limit(1),
+    // Invoices are optional (table lands with add_invoices.sql) — queried
+    // apart from the error gate so a missing table degrades to zero, not
+    // a dashboard that refuses to load.
+    supabase.from('invoices').select('amount').eq('status', 'issued').limit(5000),
   ])
 
   const anyError = activeRes.error || pendingRes.error || leadsRes.error || fraudRes.error
@@ -2267,6 +2275,8 @@ async function loadDashboardStatsLight(): Promise<DashboardStats | null> {
     || latestClaimRes.error || latestPaymentRes.error || latestLeadRes.error || latestFraudRes.error
     || clientsCountRes.error || latestClientRes.error
   if (anyError) return null
+
+  const unpaidInvoicesRows = unpaidInvoicesRes.error ? [] : (unpaidInvoicesRes.data ?? []) as { amount: number }[]
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const c = latestClaimRes.data?.[0] as any
@@ -2297,6 +2307,8 @@ async function loadDashboardStatsLight(): Promise<DashboardStats | null> {
     fraudAlerts: fraudRes.count ?? 0,
     lapseRate: total > 0 ? Number((lapsed / total * 100).toFixed(1)) : 0,
     totalClients: clientsCountRes.count ?? 0,
+    unpaidInvoices: unpaidInvoicesRows.length,
+    unpaidInvoiceAmount: Math.round(unpaidInvoicesRows.reduce((s, r) => s + (Number(r.amount) || 0), 0) * 100) / 100,
     productBreakdown: [...categoryCounts.entries()].map(([category, count]) => ({ category, count })),
     recentPolicies: ((recentRes.data ?? []) as unknown[]).map(toPolicy),
     latestClaim: c ? { claimNumber: c.claim_number, clientName: c.policies?.clients?.name ?? '', at: c.created_at } : null,
@@ -2308,10 +2320,11 @@ async function loadDashboardStatsLight(): Promise<DashboardStats | null> {
 }
 
 async function loadDashboardStatsFallback(): Promise<DashboardStats> {
-  const [{ data: allPolicies }, { data: allClaims }, { data: allPayments }, { data: allLeads }, { data: allFraud }, { data: allClients }] = await Promise.all([
-    policies.list(), claims.list(), payments.list(), leads.list(), fraudCases.list(), clients.list(),
+  const [{ data: allPolicies }, { data: allClaims }, { data: allPayments }, { data: allLeads }, { data: allFraud }, { data: allClients }, { data: allInvoices }] = await Promise.all([
+    policies.list(), claims.list(), payments.list(), leads.list(), fraudCases.list(), clients.list(), invoices.list(),
   ])
   const pol = allPolicies ?? [], cla = allClaims ?? [], pay = allPayments ?? [], lea = allLeads ?? [], fra = allFraud ?? [], cli = allClients ?? []
+  const unpaid = (allInvoices ?? []).filter(i => i.status === 'issued')
   const total = pol.length
   const lapsed = pol.filter(p => p.status === 'lapsed' || p.status === 'defaulted').length
   const categoryCounts = new Map<string, number>()
@@ -2330,6 +2343,8 @@ async function loadDashboardStatsFallback(): Promise<DashboardStats> {
     fraudAlerts: fra.filter(f => f.status === 'open').length,
     lapseRate: total > 0 ? Number((lapsed / total * 100).toFixed(1)) : 0,
     totalClients: cli.length,
+    unpaidInvoices: unpaid.length,
+    unpaidInvoiceAmount: Math.round(unpaid.reduce((s, i) => s + i.amount, 0) * 100) / 100,
     productBreakdown: [...categoryCounts.entries()].map(([category, count]) => ({ category, count })),
     recentPolicies: [...pol].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 5),
     latestClaim: cla[0] ? { claimNumber: cla[0].claimNumber, clientName: cla[0].clientName, at: cla[0].dateSubmitted } : null,

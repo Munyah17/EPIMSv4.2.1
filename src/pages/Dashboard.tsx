@@ -46,6 +46,7 @@ function timeAgo(iso: string | undefined): string {
 
 const EMPTY_STATS: DashboardStats = {
   activePolicies: 0, pendingClaims: 0, totalPremiums: 0, newLeads: 0, fraudAlerts: 0, lapseRate: 0, totalClients: 0,
+  unpaidInvoices: 0, unpaidInvoiceAmount: 0,
   productBreakdown: [], recentPolicies: [], latestClaim: null, latestPayment: null, latestLead: null, latestFraud: null, latestClient: null,
 }
 
@@ -190,6 +191,18 @@ export default function Dashboard({ setActivePanel }: Props) {
             <div className="stat-value">{stats.lapseRate}%</div>
             <div className="stat-label">Lapse Rate</div>
             <div className="stat-delta negative">Monitor closely</div>
+          </div>
+        </div>
+        {/* Money billed but not yet collected — the invoice count and the
+            dollar figure both matter, and both want chasing when non-zero. */}
+        <div className="stat-card stat-card-clickable" onClick={() => setActivePanel('billing_reminders')}>
+          <div className="stat-icon stat-icon-gold">🧾</div>
+          <div className="stat-body">
+            <div className="stat-value">{stats.unpaidInvoices}</div>
+            <div className="stat-label">Unpaid Invoices</div>
+            <div className={stats.unpaidInvoices > 0 ? 'stat-delta negative' : 'stat-delta positive'}>
+              {stats.unpaidInvoices > 0 ? `$${stats.unpaidInvoiceAmount.toFixed(2)} outstanding` : 'All collected'}
+            </div>
           </div>
         </div>
       </div>
