@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { Paynow } from 'paynow'
-import type { SupabaseClient } from '@supabase/supabase-js'
 import { serviceClient, requireSession } from './_lib/sessionAuth.js'
+import { initiatePaynowPayment, integrationFor, type PaynowCurrency } from './_lib/paynowInitiate.js'
 
 /**
  * Paynow, through Paynow's own SDK.
@@ -17,43 +17,12 @@ import { serviceClient, requireSession } from './_lib/sessionAuth.js'
  * copy that has always worked. It lives on the server because the SDK is a
  * Node library and Paynow rejects direct browser calls via CORS.
  *
+ * Transaction creation lives in _lib/paynowInitiate.ts so the WhatsApp
+ * bot can start payments the same way without a browser session.
+ *
  * Credentials come from the server environment. Set PAYNOW_INTEGRATION_ID
  * and PAYNOW_INTEGRATION_KEY; the browser never sees them.
  */
-
-export type PaynowCurrency = 'USD' | 'ZWG'
-
-/** Paynow settles in the currency of the integration that created the
- *  transaction, so each currency has its own integration pair. */
-function integrationFor(currency: PaynowCurrency): { id?: string; key?: string } {
-  return currency === 'ZWG'
-    ? { id: process.env.PAYNOW_ZWG_INTEGRATION_ID, key: process.env.PAYNOW_ZWG_INTEGRATION_KEY }
-    : { id: process.env.PAYNOW_INTEGRATION_ID, key: process.env.PAYNOW_INTEGRATION_KEY }
-}
-
-/**
- * Units of `currency` per 1 USD. USD is always 1; ZWG is whatever rate is
- * currently on record, set from the admin portal.
- *
- * There is no default and no fallback: an unset rate means ZWG cannot be
- * charged at all, rather than being charged at the USD figure.
- */
-/** Whether a currency is currently accepted. Absent settings mean accepted,
- *  matching the app's own default. */
-async function currencyIsActive(currency: PaynowCurrency, admin: SupabaseClient): Promise<boolean> {
-  const { data } = await admin.from('app_settings').select('value').eq('key', 'currency_settings').maybeSingle()
-  const active = (data?.value as { active?: Record<string, boolean> } | null)?.active
-  return active?.[currency] !== false
-}
-
-async function rateFor(currency: PaynowCurrency, admin: SupabaseClient): Promise<number | null> {
-  if (currency !== 'ZWG') return 1
-  const { data } = await admin.from('exchange_rates')
-    .select('rate').eq('currency', 'ZWG')
-    .order('effective_date', { ascending: false }).limit(1).maybeSingle()
-  const rate = Number(data?.rate)
-  return Number.isFinite(rate) && rate > 0 ? rate : null
-}
 
 interface InitiateBody {
   action?: string
@@ -92,10 +61,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const origin = `https://${req.headers.host}`
 
   const currency: PaynowCurrency = body.currency === 'ZWG' ? 'ZWG' : 'USD'
-  const { id: integrationId, key: integrationKey } = integrationFor(currency)
-  if (!integrationId || !integrationKey) {
-    return res.status(503).json({ error: `Paynow is not configured on the server for ${currency}.` })
-  }
 
   try {
     if (body.action === 'poll') {
@@ -110,7 +75,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       // Same SDK call the public site uses: it POSTs (not GETs) as Paynow's
       // pollurl expects, and verifies the response hash before trusting it.
-      const paynow = new Paynow('', integrationKey, '', '')
+      const paynow = new Paynow('', integrationFor(currency).key ?? '', '', '')
       const response = await paynow.pollTransaction(body.pollUrl)
       const status = String(response?.status ?? '').toLowerCase()
       // Coerced to a real number (Paynow's SDK returns it as a string), so
@@ -146,84 +111,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(400).json({ error: 'policyId is required and must be a valid UUID.' })
       }
 
-      // Enforced here as well as in the UI: hiding an option in the browser
-      // is a presentation choice, not a control.
-      if (currency !== 'USD' && !(await currencyIsActive(currency, admin))) {
-        return res.status(503).json({ error: 'Temporary Unavailable Due To Maintenance' })
-      }
-
-      // Prices are held in USD; this works out the price in the currency
-      // being charged. Without a rate there is no price to charge, so
-      // nothing is sent to Paynow -- sending the USD figure unconverted
-      // would ask for a fraction of what is owed.
-      const rate = await rateFor(currency, admin)
-      if (rate === null) {
-        return res.status(503).json({ error: 'ZiG payments are unavailable until an exchange rate is set.' })
-      }
-      const amount = Math.round(usdAmount * rate * 100) / 100
-      if (!Number.isFinite(amount) || amount <= 0) {
-        return res.status(400).json({ error: 'Could not determine the amount to charge.' })
-      }
-
-      // Built the way Paynow's Node quickstart documents it: construct with
-      // the integration pair, assign the URLs as properties, createPayment,
-      // add the item, send.
-      const paynow = new Paynow(integrationId, integrationKey)
-      paynow.resultUrl = body.resultUrl || `${origin}/api/paynow-webhook`
-      paynow.returnUrl = body.returnUrl || `${origin}/payment/return`
-
-      // Web based transaction: createPayment(reference). The email is only
-      // ever a convenience -- Paynow uses it purely to auto-login a
-      // registered customer -- but while this integration is in TEST MODE,
-      // Paynow rejects the ENTIRE transaction outright if authemail is set
-      // to anything but the merchant's own registered address:
-      // "The integration ID is in test mode, so if authemail is specified
-      // then it must match the merchants registered email address".
-      // Confirmed live against 26481 on 2026-08-29 -- every real client
-      // with an email on file was failing, silently, because this always
-      // sent it. So it is withheld entirely until Paynow has approved this
-      // integration for live/production use (set PAYNOW_LIVE=true once
-      // that is confirmed in the Paynow merchant dashboard) -- a missing
-      // auto-login is a minor inconvenience; a transaction Paynow refuses
-      // outright is a client who cannot pay at all.
-      const paynowIsLive = process.env.PAYNOW_LIVE === 'true'
-      const payment = (paynowIsLive && body.email)
-        ? paynow.createPayment(reference, body.email)
-        : paynow.createPayment(reference)
-      payment.add(body.description || 'Insurance Premium', amount)
-
-      const response = await paynow.send(payment)
-      if (!response || !response.success) {
-        // Paynow's own words: "in test mode, authemail must match the
-        // merchant's address", "not a site integration", "currently
-        // inactive". Those name the fix; our paraphrase would not.
-        return res.status(200).json({ ok: false, error: String(response?.error ?? 'Paynow declined the request.') })
-      }
-
-      // The transaction now genuinely exists on Paynow's side and can
-      // receive a webhook at any point from here on, so this is recorded
-      // before responding, not after -- a client-side poll succeeding is
-      // no substitute for this, since the whole reason a webhook exists is
-      // to cover a poll that never gets to run (tab closed after paying).
-      // A failure here does not undo the Paynow transaction itself, so it
-      // is logged rather than failing the response -- but reconciliation
-      // for this one reference is degraded to poll-only until it is fixed.
-      const { error: trackError } = await admin.from('paynow_transactions').insert({
-        reference, policy_id: policyId, expected_amount: amount, status: 'pending',
-        currency, usd_amount: usdAmount, rate,
+      const result = await initiatePaynowPayment({
+        reference, usdAmount, currency, policyId, origin, admin,
+        description: body.description, email: body.email,
       })
-      if (trackError) {
-        console.error('paynow_transactions insert failed', reference, trackError.message)
-      }
+      if (!result.ok) return res.status(result.error?.includes('Maintenance') ? 503 : 200).json({ ok: false, error: result.error })
 
       return res.status(200).json({
         ok: true,
-        redirectUrl: String(response.redirectUrl ?? ''),
-        pollUrl: String(response.pollUrl ?? ''),
-        currency,
+        redirectUrl: result.redirectUrl,
+        pollUrl: result.pollUrl,
+        currency: result.currency,
         // What Paynow will actually charge, so the payer is shown the figure
         // they are about to be asked for rather than the USD equivalent.
-        amount,
+        amount: result.amount,
       })
     }
 
