@@ -43,8 +43,8 @@ CREATE INDEX IF NOT EXISTS idx_invoices_period ON public.invoices(period);
 
 ALTER TABLE public.invoices ENABLE ROW LEVEL SECURITY;
 
--- Staff manage invoices; policyholders see their own where they hold one.
+-- Staff manage invoices — same is_staff() pattern as the rest of the
+-- billing tables. Clients receive their invoice by SMS/email, not by
+-- querying this table.
 CREATE POLICY "invoices_staff_all" ON public.invoices FOR ALL TO authenticated
   USING (is_staff()) WITH CHECK (is_staff());
-CREATE POLICY "invoices_select_own" ON public.invoices FOR SELECT TO authenticated
-  USING (client_id IN (SELECT id FROM public.clients WHERE email = auth_user_email()));
