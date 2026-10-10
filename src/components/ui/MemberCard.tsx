@@ -158,7 +158,30 @@ const MemberCard = forwardRef<HTMLDivElement, Props>(function MemberCard(
         }}
       />
 
-      <div style={{ position: 'absolute', top: px(288), left: px(56), right: px(56) }}>
+      {/* Passport portrait — right side of the face, where a photo ID
+          carries it. Falls back to the member's initials when no photo
+          has been uploaded yet. */}
+      <div
+        style={{
+          position: 'absolute', top: px(178), right: px(56),
+          width: px(236), height: px(300),
+          borderRadius: px(16), overflow: 'hidden',
+          border: `${px(4)} solid rgba(255,255,255,0.45)`,
+          background: 'rgba(255,255,255,0.10)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}
+      >
+        {member.photoUrl ? (
+          <img src={member.photoUrl} alt="" crossOrigin="anonymous"
+            style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        ) : (
+          <span style={{ fontSize: px(88), fontWeight: 700, color: 'rgba(255,255,255,0.35)', fontFamily: "'DM Sans', sans-serif" }}>
+            {(member.name || '?').split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
+          </span>
+        )}
+      </div>
+
+      <div style={{ position: 'absolute', top: px(288), left: px(56), right: px(320) }}>
         <div style={{ fontSize: px(20), letterSpacing: px(2.5), textTransform: 'uppercase', color: 'rgba(255,255,255,0.55)' }}>
           Member Number
         </div>

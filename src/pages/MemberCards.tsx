@@ -10,6 +10,8 @@ import type { CardExportFormat } from '../lib/cardExport'
 import MemberCard, { CARD_WIDTH_PX, CARD_HEIGHT_PX } from '../components/ui/MemberCard'
 import IssueCardModal from '../components/modals/IssueCardModal'
 import RfidScanModal from '../components/modals/RfidScanModal'
+import PhotoEditorModal from '../components/modals/PhotoEditorModal'
+import { memberPhotoMap } from '../lib/memberPhotos'
 
 /**
  * Membership IDs.
@@ -46,6 +48,8 @@ export default function MemberCards({ showToast }: Props) {
   const [exporting, setExporting] = useState(false)
   const [issueOpen, setIssueOpen] = useState(false)
   const [scanOpen, setScanOpen] = useState(false)
+  const [photoOpen, setPhotoOpen] = useState(false)
+  const [photos, setPhotos] = useState<Map<string, string>>(new Map())
 
   const frontRef = useRef<HTMLDivElement>(null)
   const backRef = useRef<HTMLDivElement>(null)
@@ -53,12 +57,13 @@ export default function MemberCards({ showToast }: Props) {
   const canIssue = hasPermission('cards.issue')
 
   const load = () => {
-    Promise.all([db.policies.list(), db.clients.list(), db.policyCards.list()])
-      .then(([polRes, cliRes, cardRes]) => {
+    Promise.all([db.policies.list(), db.clients.list(), db.policyCards.list(), memberPhotoMap()])
+      .then(([polRes, cliRes, cardRes, photoMap]) => {
         if (polRes.error || cliRes.error || cardRes.error) showToast('error', 'Failed to load membership data.')
         if (polRes.data) setPolicies(polRes.data)
         if (cliRes.data) setClients(cliRes.data)
         setCards(cardRes.data)
+        setPhotos(photoMap)
         setLoading(false)
       })
       .catch(() => { showToast('error', 'Failed to load membership data.'); setLoading(false) })
@@ -118,11 +123,14 @@ export default function MemberCards({ showToast }: Props) {
   const selectedCard = selected ? cardByMember.get(selected.memberNumber) : undefined
 
   /** Fills in the holder's ID/DOB, which live on the client record rather
-   *  than the policy the member was built from. */
+   *  than the policy the member was built from — plus the passport photo
+   *  registered under their member number. */
   const enrich = (member: PolicyMember): PolicyMember => {
-    if (member.role !== 'holder') return member
+    const photoUrl = photos.get(member.memberNumber)
+    if (member.role !== 'holder') return photoUrl ? { ...member, photoUrl } : member
     const client = clients.find(c => c.id === member.holderClientId)
-    return client ? { ...member, dob: client.dob, nationalId: client.nationalId } : member
+    const enriched = client ? { ...member, dob: client.dob, nationalId: client.nationalId } : member
+    return photoUrl ? { ...enriched, photoUrl } : enriched
   }
 
   const handleExport = async () => {
@@ -220,6 +228,7 @@ export default function MemberCards({ showToast }: Props) {
                       {card
                         ? <span className={`pill ${card.status === 'active' ? 'pill-active' : 'pill-warning'}`}>{card.rfidTag ? `RFID ${card.rfidTag}` : 'Card issued'}</span>
                         : <span className="pill pill-muted">No card</span>}
+                      {photos.has(member.memberNumber) && <span className="pill pill-active" title="Passport photo on file">📷</span>}
                     </span>
                   </button>
                 </li>
@@ -264,6 +273,7 @@ export default function MemberCards({ showToast }: Props) {
                               {cardByMember.get(holder.memberNumber)
                                 ? <span className={`pill ${cardByMember.get(holder.memberNumber)!.status === 'active' ? 'pill-active' : 'pill-warning'}`}>{cardByMember.get(holder.memberNumber)!.rfidTag ? `RFID ${cardByMember.get(holder.memberNumber)!.rfidTag}` : 'Card issued'}</span>
                                 : <span className="pill pill-muted">No card</span>}
+                              {photos.has(holder.memberNumber) && <span className="pill pill-active" title="Passport photo on file">📷</span>}
                             </span>
                           </button>
                         </div>
@@ -347,6 +357,9 @@ export default function MemberCards({ showToast }: Props) {
                   <button type="button" className="btn btn-outline btn-sm" onClick={handlePrint} disabled={exporting} title="Opens a true-size, print-ready PDF in a new tab -- print it to a card printer the same as any other printer.">
                     🖨 Print
                   </button>
+                  <button type="button" className="btn btn-outline btn-sm" onClick={() => setPhotoOpen(true)}>
+                    📷 {photos.has(selected.memberNumber) ? 'Edit Photo' : 'Add Photo'}
+                  </button>
                   {canIssue && (
                     <button type="button" className="btn btn-outline btn-sm" onClick={() => setIssueOpen(true)}>
                       {selectedCard ? '⚙ Manage Card & RFID' : '＋ Issue Card'}
@@ -383,6 +396,19 @@ export default function MemberCards({ showToast }: Props) {
         <RfidScanModal
           onClose={() => setScanOpen(false)}
           onScanned={tag => { setScanOpen(false); handleScanResult(tag) }}
+        />
+      )}
+
+      {photoOpen && selected && (
+        <PhotoEditorModal
+          member={enrich(selected)}
+          staffName={user?.name}
+          onClose={() => setPhotoOpen(false)}
+          onSaved={(memberNumber, url) => {
+            setPhotos(prev => new Map(prev).set(memberNumber, url))
+            setSelected(prev => prev && prev.memberNumber === memberNumber ? { ...prev, photoUrl: url } : prev)
+          }}
+          showToast={showToast}
         />
       )}
     </div>

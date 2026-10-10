@@ -95,6 +95,9 @@ export interface PolicyMember {
    *  their own — they always arrive attached to their policyholder. */
   holderName: string
   holderClientId: string
+  /** Edited passport portrait (member_photos → member-photos bucket).
+   *  Attached at display time — not persisted on the member itself. */
+  photoUrl?: string
 }
 
 function dependantMember(policy: Policy, dependant: Dependant, index: number): PolicyMember {
