@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { health } from '../lib/health'
 import type { DbOp } from '../lib/health'
 import { db } from '../lib/db'
+import { sendSms } from '../lib/smsService'
+import { useAuth } from '../contexts/AuthContext'
 import type { ToastMessage } from '../types'
 import type { ActivePanel } from '../App'
 
@@ -82,10 +84,13 @@ function MetricBar({ label, value, color }: { label: string; value: number; colo
 }
 
 export default function SystemHealthPage({ showToast }: Props) {
+  const { user } = useAuth()
   const [stats, setStats] = useState<Stats>(() => health.stats as Stats)
   const [tab, setTab] = useState<'overview' | 'log'>('overview')
   const [ticker, setTicker] = useState(0)
   const [failedLogins, setFailedLogins] = useState<{ email: string; count: number; lastAttempt: string }[]>([])
+  const [testNumber, setTestNumber] = useState('')
+  const [testSending, setTestSending] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -109,6 +114,22 @@ export default function SystemHealthPage({ showToast }: Props) {
   const handleReset = () => {
     health.reset()
     showToast('info', 'Health tracker stats cleared.')
+  }
+
+  /** Proof, not hope: a real Afrosoft round-trip on demand. The result
+   *  lands in the same health tracker and notification_log as every real
+   *  send — the card above flips the moment it lands. */
+  const handleTestSms = async () => {
+    const to = testNumber.trim()
+    if (!to) { showToast('warning', 'Enter the number to send the test to (e.g. 0771234567).'); return }
+    setTestSending(true)
+    try {
+      const result = await sendSms(to, `Motions: SMS gateway test — working as of ${new Date().toLocaleTimeString()}. Sent by ${user?.name ?? 'staff'} from System Health.`)
+      if (result.success) showToast('success', `Test SMS delivered to ${to} — Afrosoft is working.`)
+      else showToast('error', `Test SMS failed: ${result.error ?? 'no detail'}`)
+    } finally {
+      setTestSending(false)
+    }
   }
 
   return (
@@ -252,6 +273,21 @@ export default function SystemHealthPage({ showToast }: Props) {
               <span style={{ color: stats.smsOpsCount === 0 ? '#6B7E99' : stats.smsLastOk ? '#059669' : '#DC2626', fontWeight: 600 }}>
                 {stats.smsOpsCount === 0 ? 'No sends this session' : stats.smsLastOk ? `✓ Delivering — ${stats.smsSuccessPct}% of ${stats.smsOpsCount} send(s)` : '✗ Last send failed'}
               </span>
+            </div>
+            {/* On-demand proof: a real Afrosoft round-trip to a number of
+                your choosing. A green result here means the gateway works
+                RIGHT NOW, not that it worked the last time anyone sent. */}
+            <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center' }}>
+              <input
+                className="form-control"
+                style={{ fontSize: 12, padding: '6px 10px', flex: 1 }}
+                placeholder="0771234567"
+                value={testNumber}
+                onChange={e => setTestNumber(e.target.value)}
+              />
+              <button className="btn btn-ghost btn-sm" style={{ whiteSpace: 'nowrap' }} onClick={handleTestSms} disabled={testSending}>
+                {testSending ? 'Sending…' : '📱 Send Test SMS'}
+              </button>
             </div>
             {stats.smsLastOk === false && stats.smsLastDetail && (
               <div className="info-banner info-banner-danger" style={{ marginTop: 8, borderRadius: 8, padding: '8px 11px', fontSize: 12 }}>
