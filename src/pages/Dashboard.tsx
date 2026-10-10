@@ -67,6 +67,7 @@ export default function Dashboard({ showToast, setActivePanel }: Props) {
     isGatewayFlaggedDown() ? { down: true } : { down: false })
   const [gatewayStatus, setGatewayStatus] = useState(() => getGatewayWatchStatus())
   const [smsTestNumber, setSmsTestNumber] = useState('')
+  const [smsTestMessage, setSmsTestMessage] = useState('')
   const [smsTestSending, setSmsTestSending] = useState(false)
   useEffect(() => {
     const onStatus = (e: Event) => {
@@ -85,7 +86,9 @@ export default function Dashboard({ showToast, setActivePanel }: Props) {
     if (!to) { setGatewayStatus(g => ({ ...g, detail: 'Enter a number first — e.g. 0771234567.' })); return }
     setSmsTestSending(true)
     try {
-      const result = await sendSms(to, `Motions: SMS gateway test — working as of ${new Date().toLocaleTimeString()}. Sent by ${user?.name ?? 'staff'} from the dashboard.`)
+      const body = smsTestMessage.trim()
+        || `Motions: SMS gateway test — working as of ${new Date().toLocaleTimeString()}. Sent by ${user?.name ?? 'staff'} from the dashboard.`
+      const result = await sendSms(to, body)
       if (result.success) {
         showToast('success', `Test SMS delivered to ${to} — Afrosoft confirmed it. Working end-to-end.`)
       } else {
@@ -364,18 +367,28 @@ export default function Dashboard({ showToast, setActivePanel }: Props) {
             </div>
           )}
 
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', borderTop: '1px solid var(--border)', paddingTop: 14 }}>
-            <input
-              className="form-control"
-              style={{ fontSize: 12, padding: '6px 10px', maxWidth: 220 }}
-              placeholder="Send a test to… 0771234567"
-              value={smsTestNumber}
-              onChange={e => setSmsTestNumber(e.target.value)}
-            />
-            <button type="button" className="btn btn-primary btn-sm" onClick={handleSmsTest} disabled={smsTestSending}>
-              {smsTestSending ? 'Sending…' : '📱 Send Test SMS'}
-            </button>
-            <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <input
+                className="form-control"
+                style={{ fontSize: 12, padding: '6px 10px', width: 160 }}
+                placeholder="To… 0771234567"
+                value={smsTestNumber}
+                onChange={e => setSmsTestNumber(e.target.value)}
+              />
+              <input
+                className="form-control"
+                style={{ fontSize: 12, padding: '6px 10px', flex: 1, minWidth: 220 }}
+                placeholder="Message (optional — leave blank for the standard test text)"
+                value={smsTestMessage}
+                onChange={e => setSmsTestMessage(e.target.value)}
+                maxLength={480}
+              />
+              <button type="button" className="btn btn-primary btn-sm" onClick={handleSmsTest} disabled={smsTestSending}>
+                {smsTestSending ? 'Sending…' : '📱 Send Test SMS'}
+              </button>
+            </div>
+            <span style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginTop: 6 }}>
               A real text through Afrosoft — if it fails we'll tell you whose side the problem is on.
             </span>
           </div>

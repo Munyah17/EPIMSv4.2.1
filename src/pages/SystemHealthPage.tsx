@@ -90,6 +90,7 @@ export default function SystemHealthPage({ showToast }: Props) {
   const [ticker, setTicker] = useState(0)
   const [failedLogins, setFailedLogins] = useState<{ email: string; count: number; lastAttempt: string }[]>([])
   const [testNumber, setTestNumber] = useState('')
+  const [testMessage, setTestMessage] = useState('')
   const [testSending, setTestSending] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
 
@@ -125,7 +126,9 @@ export default function SystemHealthPage({ showToast }: Props) {
     if (!to) { showToast('warning', 'Enter the number to send the test to (e.g. 0771234567).'); return }
     setTestSending(true)
     try {
-      const result = await sendSms(to, `Motions: SMS gateway test — working as of ${new Date().toLocaleTimeString()}. Sent by ${user?.name ?? 'staff'} from System Health.`)
+      const body = testMessage.trim()
+        || `Motions: SMS gateway test — working as of ${new Date().toLocaleTimeString()}. Sent by ${user?.name ?? 'staff'} from System Health.`
+      const result = await sendSms(to, body)
       if (result.success) {
         showToast('success', `Test SMS delivered to ${to} — Afrosoft confirmed it. The SMS system is working end-to-end.`)
         return
@@ -290,13 +293,21 @@ export default function SystemHealthPage({ showToast }: Props) {
             {/* On-demand proof: a real Afrosoft round-trip to a number of
                 your choosing. A green result here means the gateway works
                 RIGHT NOW, not that it worked the last time anyone sent. */}
-            <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 8, marginTop: 10, alignItems: 'center', flexWrap: 'wrap' }}>
               <input
                 className="form-control"
-                style={{ fontSize: 12, padding: '6px 10px', flex: 1 }}
+                style={{ fontSize: 12, padding: '6px 10px', width: 150 }}
                 placeholder="0771234567"
                 value={testNumber}
                 onChange={e => setTestNumber(e.target.value)}
+              />
+              <input
+                className="form-control"
+                style={{ fontSize: 12, padding: '6px 10px', flex: 1, minWidth: 200 }}
+                placeholder="Message (optional — blank sends the standard test text)"
+                value={testMessage}
+                onChange={e => setTestMessage(e.target.value)}
+                maxLength={480}
               />
               <button className="btn btn-ghost btn-sm" style={{ whiteSpace: 'nowrap' }} onClick={handleTestSms} disabled={testSending}>
                 {testSending ? 'Sending…' : '📱 Send Test SMS'}
