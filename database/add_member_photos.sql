@@ -21,6 +21,13 @@ ALTER TABLE public.member_photos ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "member_photos_staff_all" ON public.member_photos FOR ALL TO authenticated
   USING (is_staff()) WITH CHECK (is_staff());
 
+-- Reads are open to any signed-in user: the bucket is already public, so
+-- the table's only real value is the URL map — and policyholders need it
+-- to see their own photos on the portal. Writes for them go through
+-- /api/member-photo (service role after an ownership check), not RLS.
+CREATE POLICY "member_photos_auth_read" ON public.member_photos FOR SELECT TO authenticated
+  USING (true);
+
 -- Public read bucket for card photos; writes stay staff-only.
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('member-photos', 'member-photos', true)

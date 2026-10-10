@@ -1,28 +1,36 @@
 import { supabase } from './supabase'
 
 /**
- * Member portraits — one passport photo per member number, in the public
- * 'member-photos' bucket with the URL registered on member_photos.
+ * Member portraits — one passport photo per member number in the public
+ * 'member-photos' bucket.
  *
- * Public on purpose: the card rasteriser draws it with a plain <img> and
- * a private bucket's signed URLs expire inside the export window. The
- * table stays staff-only so only staff can point a member at a photo.
+ * Writes ALL go through POST /api/member-photo, staff included: the
+ * ownership check (any member for staff, own-policy members for
+ * policyholders) lives there once, not spread across RLS policies that
+ * have to agree. member_photos stays staff-writable in the database;
+ * the API signs its writes with the service role.
+ *
+ * Reads are free: the bucket is public and member_photos is readable by
+ * any signed-in user — the URL map is how cards and the portal find the
+ * current photo.
  */
 
-const BUCKET = 'member-photos'
-
 export async function uploadMemberPhoto(memberNumber: string, blob: Blob, updatedBy?: string): Promise<{ url: string | null; error: string | null }> {
-  const path = `${memberNumber}.png`
-  const { error: upErr } = await supabase.storage.from(BUCKET).upload(path, blob, { upsert: true, contentType: 'image/png' })
-  if (upErr) return { url: null, error: upErr.message }
-  const { data } = supabase.storage.from(BUCKET).getPublicUrl(path)
-  // Cache-bust — same path serves the new upload, but browsers cache the old.
-  const url = `${data.publicUrl}?v=${Date.now()}`
-  const { error: rowErr } = await supabase.from('member_photos').upsert({
-    member_number: memberNumber, photo_url: url, updated_by: updatedBy ?? null,
-  }, { onConflict: 'member_number' })
-  if (rowErr) return { url: null, error: rowErr.message }
-  return { url, error: null }
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = () => reject(new Error('Could not read the photo file.'))
+    reader.readAsDataURL(blob)
+  })
+  const { data: { session } } = await supabase.auth.getSession()
+  const res = await fetch('/api/member-photo', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+    body: JSON.stringify({ memberNumber, image: dataUrl, updatedBy }),
+  })
+  const body = await res.json().catch(() => ({}))
+  if (!res.ok) return { url: null, error: (body as { error?: string })?.error ?? `Upload failed (HTTP ${res.status}).` }
+  return { url: (body as { url: string }).url, error: null }
 }
 
 export async function memberPhotoMap(): Promise<Map<string, string>> {

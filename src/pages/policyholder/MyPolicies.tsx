@@ -4,8 +4,12 @@ import type { ActivePanel } from '../../App'
 import { formatDate } from '../../lib/dateUtils'
 import type { PolicyStatus } from '../../types'
 import { useAuth } from '../../contexts/AuthContext'
-import { premiumPeriodLabel } from '../../lib/productUtils'
+import { premiumPeriodLabel, categoryIssuesMemberCards } from '../../lib/productUtils'
 import { premiumLines, policyBillablePremium, formatBillablePremium } from '../../lib/premium'
+import { policyMembers } from '../../lib/memberNumbers'
+import type { PolicyMember } from '../../lib/memberNumbers'
+import { memberPhotoMap } from '../../lib/memberPhotos'
+import PhotoEditorModal from '../../components/modals/PhotoEditorModal'
 import { usePolicyholderScope } from '../../components/policyholder/usePolicyholderScope'
 
 interface Props {
@@ -25,6 +29,15 @@ export default function MyPolicies({ showToast, setActivePanel }: Props) {
   // Scoped by client/policy ID, not name — see usePolicyholderScope.
   const { policies: myPolicies, loading, error } = usePolicyholderScope()
   const [expandedId, setExpandedId] = useState<string | null>(null)
+  const [photos, setPhotos] = useState<Map<string, string>>(new Map())
+  const [photoMember, setPhotoMember] = useState<PolicyMember | null>(null)
+
+  // Photo URLs for the expanded policy's members — loaded once alongside
+  // the policies; member_photos is readable by any signed-in user, so a
+  // policyholder sees their own family's photos without staff RLS.
+  useEffect(() => {
+    memberPhotoMap().then(setPhotos).catch(() => { /**/ })
+  }, [myPolicies])
 
   useEffect(() => {
     if (error) showToast('error', error)
@@ -103,12 +116,51 @@ export default function MyPolicies({ showToast, setActivePanel }: Props) {
                       Ends {formatDate(p.endDate)} · Payment via <strong>{p.paymentMethod}</strong>
                       {p.lastPaymentDate ? ` · Last paid ${formatDate(p.lastPaymentDate)}` : ''}
                     </div>
+
+                    {categoryIssuesMemberCards(category) && (
+                      <div style={{ marginTop: 10 }}>
+                        <div className="detail-label" style={{ marginBottom: 6 }}>Card photos</div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                          {policyMembers(p).map(m => {
+                            const hasPhoto = photos.has(m.memberNumber)
+                            return (
+                              <div key={m.memberNumber} style={{ display: 'flex', alignItems: 'center', gap: 6, border: '1px solid var(--border)', borderRadius: 8, padding: '5px 9px', fontSize: '0.8rem' }}>
+                                {hasPhoto && (
+                                  <img src={photos.get(m.memberNumber)} alt="" crossOrigin="anonymous"
+                                    style={{ width: 22, height: 28, objectFit: 'cover', borderRadius: 3 }} />
+                                )}
+                                <span style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.name || m.memberNumber}</span>
+                                <button type="button" className="btn btn-ghost btn-sm" style={{ padding: '2px 8px', fontSize: '0.75rem' }}
+                                  onClick={() => setPhotoMember(m)}>
+                                  📷 {hasPhoto ? 'Edit' : 'Add'}
+                                </button>
+                              </div>
+                            )
+                          })}
+                        </div>
+                        <div style={{ fontSize: '0.72rem', color: 'var(--muted)', marginTop: 6 }}>
+                          The photo on each person's membership card. Our office can also take it for you if you visit.
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
             )
           })}
         </div>
+      )}
+
+      {photoMember && (
+        <PhotoEditorModal
+          member={photoMember}
+          staffName={user?.name}
+          onClose={() => setPhotoMember(null)}
+          onSaved={(memberNumber, url) => {
+            setPhotos(prev => new Map(prev).set(memberNumber, url))
+          }}
+          showToast={showToast}
+        />
       )}
     </div>
   )
