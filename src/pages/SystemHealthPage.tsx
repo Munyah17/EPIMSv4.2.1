@@ -22,6 +22,10 @@ interface Stats {
   avgMs: number
   overall: 'healthy' | 'degraded' | 'offline'
   localMode: boolean
+  smsOpsCount: number
+  smsSuccessPct: number
+  smsLastOk: boolean | null
+  smsLastDetail: string | null
   recent: DbOp[]
 }
 
@@ -47,6 +51,7 @@ const OP_COLOR: Record<string, string> = {
   read: '#5B7FE8',
   write: '#10B981',
   delete: '#EF4444',
+  notify: '#A855F7',
 }
 
 function fmtUptime(ms: number) {
@@ -157,6 +162,23 @@ export default function SystemHealthPage({ showToast }: Props) {
             <div className="stat-label">Data Source</div>
           </div>
         </div>
+        {/* Afrosoft is tracked on real send attempts — green only when a
+            message has actually been confirmed by the gateway this session;
+            red with the gateway's own words when it failed; neutral until
+            the first send so nobody reads "healthy" off a gateway nobody
+            has touched. */}
+        <div className="stat-card">
+          <div className="stat-icon" style={{
+            background: stats.smsOpsCount === 0 ? '#F1F5F9' : stats.smsLastOk ? '#D1FAE5' : '#FEE2E2',
+            color: stats.smsOpsCount === 0 ? '#64748B' : stats.smsLastOk ? '#059669' : '#DC2626',
+          }}>📱</div>
+          <div className="stat-body">
+            <div className="stat-value" style={{ fontSize: 15, marginTop: 4 }}>
+              {stats.smsOpsCount === 0 ? 'No sends yet' : stats.smsLastOk ? 'Operational' : 'FAILING'}
+            </div>
+            <div className="stat-label">Afrosoft SMS Gateway</div>
+          </div>
+        </div>
       </div>
 
       {(suspiciousLogins.length > 0 || quotaAlerts.length > 0) && (
@@ -213,6 +235,9 @@ export default function SystemHealthPage({ showToast }: Props) {
             <MetricBar label="Read Success Rate" value={stats.readSuccessPct} color="#5B7FE8" />
             <MetricBar label="Write Success Rate" value={stats.writeSuccessPct} color="#10B981" />
             <MetricBar label="Supabase Success Rate" value={stats.sbSuccessPct} color="#F59E0B" />
+            {stats.smsOpsCount > 0 && (
+              <MetricBar label="SMS Delivery Rate (Afrosoft)" value={stats.smsSuccessPct} color={stats.smsLastOk ? '#A855F7' : '#DC2626'} />
+            )}
           </div>
 
           <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--border)' }}>
@@ -222,6 +247,17 @@ export default function SystemHealthPage({ showToast }: Props) {
                 {stats.sbConnected ? '✓ Connected' : '✗ Not connected'}
               </span>
             </div>
+            <div className="sh-info-row">
+              <span>Afrosoft SMS</span>
+              <span style={{ color: stats.smsOpsCount === 0 ? '#6B7E99' : stats.smsLastOk ? '#059669' : '#DC2626', fontWeight: 600 }}>
+                {stats.smsOpsCount === 0 ? 'No sends this session' : stats.smsLastOk ? `✓ Delivering — ${stats.smsSuccessPct}% of ${stats.smsOpsCount} send(s)` : '✗ Last send failed'}
+              </span>
+            </div>
+            {stats.smsLastOk === false && stats.smsLastDetail && (
+              <div className="info-banner info-banner-danger" style={{ marginTop: 8, borderRadius: 8, padding: '8px 11px', fontSize: 12 }}>
+                📱 Afrosoft: {stats.smsLastDetail}
+              </div>
+            )}
             <div className="sh-info-row">
               <span>Fallback mode</span>
               <span style={{ color: stats.localMode ? '#D97706' : '#6B7E99', fontWeight: 600 }}>
@@ -265,7 +301,7 @@ export default function SystemHealthPage({ showToast }: Props) {
                     <span className="sh-log-time">{fmtTime(op.ts)}</span>
                     <span className="sh-log-op" style={{ color: OP_COLOR[op.type] }}>{op.type.toUpperCase()}</span>
                     <span className="sh-log-table">{op.table}</span>
-                    <span className="sh-log-src">{op.source === 'supabase' ? '☁ Supabase' : '💾 Local'}</span>
+                    <span className="sh-log-src">{op.source === 'supabase' ? '☁ Supabase' : op.source === 'api' ? '⇄ API' : '💾 Local'}</span>
                     <span className="sh-log-ms">{op.duration}ms</span>
                     <span className={op.success ? 'sh-log-ok' : 'sh-log-fail-icon'}>
                       {op.success ? '✓' : '✗'}
