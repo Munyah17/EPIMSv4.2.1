@@ -209,7 +209,9 @@ async function dispatch(
     stats.flagged++
   }
 
-  await admin.from('reminders').insert({
+  // The dedup row carries the verbatim SMS text too — the sent log shows
+  // what the client's phone actually received, not just the stage tag.
+  const reminderRow = {
     type: 'payment_due',
     client_id: policy.client_id,
     policy_id: policy.id,
@@ -217,7 +219,13 @@ async function dispatch(
     message: `${tag} ${STAGE_LABEL[type]}: ${policy.policy_number}`,
     sent: true,
     channel: 'email',
-  })
+  }
+  const { error: insErr } = await admin.from('reminders')
+    .insert({ ...reminderRow, sms_body: clientSmsBody(policy, type, dueLabel, amount) })
+  if (insErr) {
+    // sms_body missing (migration not run) — the dedup row still matters.
+    await admin.from('reminders').insert(reminderRow)
+  }
 }
 
 /** Lifts a non-agriculture policy out of its waiting period once 90 days

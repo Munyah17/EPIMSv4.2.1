@@ -204,17 +204,17 @@ async function dispatchReminder(policy: Policy, client: Client | undefined, type
   // that only ever arrives by email is easy to miss, and this is the one
   // system-wide event that already had three of its four stages silently
   // SMS-less.
+  const overdueDays = type === 'o1' ? 1 : type === 'o2' ? 2 : type === 'o3' ? 3 : 0
+  const smsBody = type === 'r1_pre5'
+    ? `${COMPANY_NAME}: Premium of $${amountDue(policy).toFixed(2)} for policy ${policy.policyNumber} is due in 5 days on ${formatDate(dueDate)}.`
+    : type === 'r2_pre1'
+    ? `${COMPANY_NAME}: URGENT - Premium of $${amountDue(policy).toFixed(2)} for policy ${policy.policyNumber} is due TOMORROW.`
+    : type === 'r3_due'
+    ? `${COMPANY_NAME}: Premium of $${amountDue(policy).toFixed(2)} for policy ${policy.policyNumber} is DUE TODAY. Pay now via EcoCash/Paynow to keep your coverage active.`
+    : type === 'default'
+    ? `${COMPANY_NAME}: Policy ${policy.policyNumber} is 4 days overdue and is now PAUSED (defaulted). Pay $${amountDue(policy).toFixed(2)} to reinstate your cover.`
+    : `${COMPANY_NAME}: Policy ${policy.policyNumber} is ${overdueDays} day${overdueDays > 1 ? 's' : ''} overdue — $${amountDue(policy).toFixed(2)} unpaid. It pauses on day 4. Pay now via EcoCash/Paynow.`
   if (clientPhone) {
-    const overdueDays = type === 'o1' ? 1 : type === 'o2' ? 2 : type === 'o3' ? 3 : 0
-    const smsBody = type === 'r1_pre5'
-      ? `${COMPANY_NAME}: Premium of $${amountDue(policy).toFixed(2)} for policy ${policy.policyNumber} is due in 5 days on ${formatDate(dueDate)}.`
-      : type === 'r2_pre1'
-      ? `${COMPANY_NAME}: URGENT - Premium of $${amountDue(policy).toFixed(2)} for policy ${policy.policyNumber} is due TOMORROW.`
-      : type === 'r3_due'
-      ? `${COMPANY_NAME}: Premium of $${amountDue(policy).toFixed(2)} for policy ${policy.policyNumber} is DUE TODAY. Pay now via EcoCash/Paynow to keep your coverage active.`
-      : type === 'default'
-      ? `${COMPANY_NAME}: Policy ${policy.policyNumber} is 4 days overdue and is now PAUSED (defaulted). Pay $${amountDue(policy).toFixed(2)} to reinstate your cover.`
-      : `${COMPANY_NAME}: Policy ${policy.policyNumber} is ${overdueDays} day${overdueDays > 1 ? 's' : ''} overdue — $${amountDue(policy).toFixed(2)} unpaid. It pauses on day 4. Pay now via EcoCash/Paynow.`
     notifyPhone(clientPhone, smsBody, 'renewal', policy.policyNumber)
   }
 
@@ -252,6 +252,7 @@ async function dispatchReminder(policy: Policy, client: Client | undefined, type
     policyId: policy.id,
     dueDate: dueISO,
     message: `${tag} ${STAGE_LABEL[type]}: ${policy.policyNumber}`,
+    smsBody: clientPhone ? smsBody : undefined,
     sent: true,
     channel: 'email',
   } as Omit<Reminder, 'id'>)

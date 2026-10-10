@@ -557,6 +557,9 @@ export interface Reminder {
   policyNumber?: string
   dueDate: string
   message: string
+  /** The verbatim SMS text delivered to the client's phone — the sent log
+   *  shows what the client actually received, not the internal stage tag. */
+  smsBody?: string
   sent: boolean
   channel: 'sms' | 'whatsapp' | 'email' | 'ussd'
 }

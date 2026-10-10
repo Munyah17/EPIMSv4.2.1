@@ -389,6 +389,7 @@ function toReminder(r: any): Reminder {
     policyNumber: r.policies?.policy_number ?? undefined,
     dueDate:      date(r.due_date),
     message:      r.message ?? '',
+    smsBody:      r.sms_body ?? undefined,
     sent:         r.sent,
     channel:      r.channel,
   }
@@ -470,6 +471,10 @@ const REMINDER_SELECT = `
   clients!client_id(id, name),
   policies!policy_id(policy_number)
 `
+// sms_body arrives with add_reminder_sms_body.sql — probed like every
+// other optional column so a database without it still reads fine.
+const reminderSelect = async () =>
+  (await hasColumn('reminders', 'sms_body')) ? `${REMINDER_SELECT}, sms_body` : REMINDER_SELECT
 
 // ── POLICIES ──────────────────────────────────────────────────────
 export const policies = {
@@ -1732,16 +1737,22 @@ export const fraudCases = {
 // ── REMINDERS ─────────────────────────────────────────────────────
 export const reminders = {
   async list() {
+    const select = await reminderSelect()
     const { ok, data } = await sb('reminders', 'read',
-      () => supabase.from('reminders').select(REMINDER_SELECT).order('due_date'),
+      () => supabase.from('reminders').select(select).order('due_date'),
       d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as unknown[]).map(toReminder), error: null }
     return { data: [] as Reminder[], error: 'Could not load reminders.' }
   },
 
-  async markSent(id: string) {
-    await sb('reminders', 'write', () => supabase.from('reminders').update({ sent: true }).eq('id', id))
+  /** Records the verbatim SMS text alongside the sent flag so the log can
+   *  show the client exactly what their phone received. Tolerant of a
+   *  database that hasn't run add_reminder_sms_body.sql yet. */
+  async markSent(id: string, smsBody?: string) {
+    const payload = smsBody ? { sent: true, sms_body: smsBody } : { sent: true }
+    const { ok } = await sb('reminders', 'write', () => supabase.from('reminders').update(payload).eq('id', id))
+    if (!ok && smsBody) await sb('reminders', 'write', () => supabase.from('reminders').update({ sent: true }).eq('id', id))
 
   },
 
@@ -1764,11 +1775,19 @@ export const reminders = {
   },
 
   async create(reminder: Omit<Reminder, 'id'>) {
+    const select = await reminderSelect()
     const row = {
       type: reminder.type, client_id: reminder.clientId, policy_id: reminder.policyId ?? null,
       due_date: reminder.dueDate, message: reminder.message, sent: reminder.sent, channel: reminder.channel,
     }
-    const { data, error } = await supabase.from('reminders').insert(row).select(REMINDER_SELECT).single()
+    let { data, error } = await supabase.from('reminders')
+      .insert((reminder.smsBody ? { ...row, sms_body: reminder.smsBody } : row) as Record<string, unknown>)
+      .select(select).single()
+    if (error && reminder.smsBody) {
+      // sms_body missing (migration not run) — still log the reminder.
+      const retry = await supabase.from('reminders').insert(row).select(select).single()
+      data = retry.data; error = retry.error
+    }
     if (error) return { data: null, error: error.message }
     return { data: toReminder(data), error: null }
   },

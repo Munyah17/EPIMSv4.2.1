@@ -96,7 +96,7 @@ export default function Reminders({ showToast }: Props) {
   const dispatchReminder = async (r: Reminder): Promise<boolean> => {
     const channel = await dispatchToClient(r.clientId, r.clientName, `${COMPANY_NAME} — policy reminder`, reminderMessage(r))
     if (!channel) return false
-    await db.reminders.markSent(r.id)
+    await db.reminders.markSent(r.id, `${COMPANY_NAME}: ${reminderMessage(r)}`)
     return true
   }
 
@@ -142,6 +142,7 @@ export default function Reminders({ showToast }: Props) {
       const { data } = await db.reminders.create({
         type: 'policy_renewal', clientId: p.clientId, clientName: p.clientName, policyId: p.id, policyNumber: p.policyNumber,
         dueDate: p.endDate, message: `[Manual] Renewal reminder sent to client: ${p.policyNumber} renews on ${formatDate(p.endDate)}`,
+        smsBody: `${COMPANY_NAME}: ${body}`,
         sent: true, channel,
       })
       if (data) setReminders(prev => [...prev, data])
@@ -249,7 +250,7 @@ export default function Reminders({ showToast }: Props) {
           <div className="tbl-scroll">
           <table className="table">
             <thead>
-              <tr><th>Client</th><th>Type</th><th>Message</th><th>Channel</th><th>Status</th></tr>
+              <tr><th>Client</th><th>Type</th><th>SMS Text</th><th>Channel</th><th>Status</th></tr>
             </thead>
             <tbody>
               {sent.length === 0 ? (
@@ -258,7 +259,10 @@ export default function Reminders({ showToast }: Props) {
                 <tr key={r.id}>
                   <td>{r.clientName}</td>
                   <td>{TYPE_ICON[r.type]} {r.type.replace(/_/g, ' ')}</td>
-                  <td className="td-truncate">{r.message}</td>
+                  {/* The verbatim text the client's phone received — stored
+                      on the row from the moment of send; older rows (pre
+                      sms_body) reconstruct it from the same template. */}
+                  <td className="td-truncate" title={r.smsBody ?? reminderMessage(r)}>{r.smsBody ?? reminderMessage(r)}</td>
                   <td>{channelPill(r.channel)}</td>
                   <td><span className="pill pill-active">Sent</span></td>
                 </tr>
