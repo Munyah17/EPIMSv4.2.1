@@ -7,7 +7,7 @@ import { health } from './health'
 // empty result with an explanation; writes fail and say why.
 import { cacheGet, cacheSet } from './offlineCache'
 import { hammingDistance, DUPLICATE_THRESHOLD } from './photoHash'
-import { policyBillablePremium } from './premium'
+import { policyBillablePremium, billableHeadCount } from './premium'
 import { toIsoDate } from './dateUtils'
 import type { ExchangeRate } from './exchangeRate'
 import type {
@@ -16,7 +16,7 @@ import type {
   PolicyStatus, ClaimStatus, PaymentStatus, PaymentMethod,
   TicketStatus, TicketPriority, LeadStatus, FraudCaseStatus, CustomRole,
   ClaimAssessment, PolicyAssessment, AssessmentPhoto, CropType, FraudSignalRule, HeroSlide,
-  PolicyCard, Group, GroupMember,
+  PolicyCard, Group, GroupMember, Invoice, InvoiceStatus,
 } from '../types'
 import { STAFF_ROLES } from '../types'
 
@@ -2712,6 +2712,113 @@ export function subscribeToTable(table: string, callback: () => void) {
   return () => { supabase.removeChannel(channel) }
 }
 
+// ── INVOICES ──────────────────────────────────────────────────────
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toInvoice(r: any): Invoice {
+  return {
+    id:            r.id,
+    invoiceNumber: r.invoice_number,
+    policyId:      r.policy_id,
+    policyNumber:  r.policies?.policy_number ?? '',
+    clientId:      r.client_id,
+    clientName:    r.clients?.name ?? '',
+    groupId:       r.group_id ?? undefined,
+    groupName:     r.groups?.name ?? undefined,
+    period:        r.period,
+    heads:         r.heads,
+    amount:        r.amount,
+    status:        r.status as InvoiceStatus,
+    dueDate:       r.due_date ? date(r.due_date) : undefined,
+    issuedAt:      r.issued_at,
+    paidAt:        r.paid_at ?? undefined,
+    createdBy:     r.created_by ?? undefined,
+  }
+}
+
+const INVOICE_SELECT = `
+  id, invoice_number, policy_id, client_id, group_id, period, heads, amount,
+  status, due_date, issued_at, paid_at, created_by,
+  policies!policy_id(policy_number),
+  clients!client_id(name),
+  groups!group_id(name)
+`
+
+export const invoices = {
+  async list() {
+    const { ok, data } = await sb('invoices', 'read',
+      () => supabase.from('invoices').select(INVOICE_SELECT).order('issued_at', { ascending: false }),
+      d => Array.isArray(d),
+    )
+    if (ok && data) return { data: (data as unknown[]).map(toInvoice), error: null }
+    return { data: [] as Invoice[], error: 'Could not load invoices — the invoices table may not exist yet (run database/add_invoices.sql).' }
+  },
+
+  /**
+   * Issues the invoice for one policy + billing period. The
+   * (policy_id, period) unique index is the dedupe — a second call for the
+   * same month returns the already-issued invoice, never a duplicate.
+   * created:'false' means the invoice already existed and nothing new was
+   * issued (callers use it to decide whether to notify).
+   */
+  async create(policy: Policy, period: string, createdBy: string): Promise<{ data: Invoice | null; error: string | null; created: boolean }> {
+    const heads = billableHeadCount(policy, policy.productCategory)
+    const amount = policyBillablePremium(policy, policy.productCategory)
+    if (amount <= 0) return { data: null, error: 'Nothing to bill — the policy has no payable premium.', created: false }
+
+    // Due on the last day of the invoiced month, same deadline the
+    // reminder schedule already teaches clients to expect.
+    const [yr, mo] = period.split('-').map(Number)
+    const dueDate = new Date(yr, mo, 0).toISOString().split('T')[0]
+
+    const { data: existing } = await supabase.from('invoices')
+      .select(INVOICE_SELECT).eq('policy_id', policy.id).eq('period', period)
+      .neq('status', 'cancelled').maybeSingle()
+    if (existing) return { data: toInvoice(existing), error: null, created: false }
+
+    // Invoice numbers run per period: INV-202610-001, -002, … The unique
+    // index on invoice_number closes the tiny race if two staff generate
+    // at the same instant — the loser retries with the next sequence.
+    const { data: last } = await supabase.from('invoices')
+      .select('invoice_number').like('invoice_number', `INV-${period.replace('-', '')}-%`)
+      .order('invoice_number', { ascending: false }).limit(1)
+    const lastSeq = Number(((last?.[0]?.invoice_number ?? '').match(/-(\d+)$/)?.[1]) ?? 0)
+
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const invoiceNumber = `INV-${period.replace('-', '')}-${String(lastSeq + attempt).padStart(3, '0')}`
+      const { data, error } = await supabase.from('invoices').insert({
+        invoice_number: invoiceNumber,
+        policy_id: policy.id, client_id: policy.clientId, group_id: policy.groupId ?? null,
+        period, heads, amount, due_date: dueDate, created_by: createdBy,
+      }).select(INVOICE_SELECT).single()
+      if (!error && data) return { data: toInvoice(data), error: null, created: true }
+      if (error?.code === '23505') {
+        if (attempt < 3) continue
+        const { data: winner } = await supabase.from('invoices')
+          .select(INVOICE_SELECT).eq('policy_id', policy.id).eq('period', period)
+          .neq('status', 'cancelled').maybeSingle()
+        return { data: winner ? toInvoice(winner) : null, error: winner ? null : 'Invoice number collision — try again.', created: false }
+      }
+      return { data: null, error: error?.message?.includes('invoices') && error.message.includes('not find')
+        ? 'The invoices table does not exist yet — run database/add_invoices.sql in the Supabase SQL editor.'
+        : error?.message ?? 'Failed to create invoice.', created: false }
+    }
+    return { data: null, error: 'Failed to create invoice.', created: false }
+  },
+
+  async markPaid(id: string) {
+    const { data, error } = await supabase.from('invoices')
+      .update({ status: 'paid', paid_at: new Date().toISOString() }).eq('id', id)
+      .select(INVOICE_SELECT).single()
+    if (error || !data) return { data: null, error: error?.message ?? 'Failed to mark invoice paid.' }
+    return { data: toInvoice(data), error: null }
+  },
+
+  async cancel(id: string) {
+    const { error } = await supabase.from('invoices').update({ status: 'cancelled' }).eq('id', id)
+    return { error: error?.message ?? null }
+  },
+}
+
 // ── EXPORT ────────────────────────────────────────────────────────
 export const db = {
   policies, clients, products, claims, payments,
@@ -2719,6 +2826,6 @@ export const db = {
   exchangeRates,
   customRoles, claimAssessments, policyAssessments, photoHashes, cropTypes, fraudSignalRules, heroSlides,
   policyCards, groups, groupMembers,
-  dashboardStats, sidebarCounts, notificationLog,
+  dashboardStats, sidebarCounts, notificationLog, invoices,
   subscribeToTable,
 }

@@ -274,9 +274,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     : null
 
   const lifted = await liftWaitingPeriods(admin)
+  const invoiced = await issueMonthlyInvoices(admin, today)
 
   if (!type) {
-    return res.status(200).json({ ran: today.toISOString(), stage: null, note: 'No reminder stage falls on today.', waitingPeriodsLifted: lifted })
+    return res.status(200).json({ ran: today.toISOString(), stage: null, note: 'No reminder stage falls on today.', waitingPeriodsLifted: lifted, invoices: invoiced })
   }
 
   const { data, error } = await admin
@@ -306,6 +307,105 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     stage: `${STAGE_TAG[type]} ${STAGE_LABEL[type]}`,
     dueDate: dueDate.toISOString().split('T')[0],
     waitingPeriodsLifted: lifted,
+    invoices: invoiced,
     ...stats,
   })
+}
+
+// ── Monthly group-policy invoices ─────────────────────────────────
+//
+// Corporate/group/team policies are billed to the organisation's roster —
+// N members × their premium, the org itself is not a charged head. The
+// cron issues this month's invoice for every live group policy; the
+// (policy_id, period) unique index makes the run idempotent, so it can
+// run every day and only the first insert lands.
+//
+// Group rows do NOT share billablePremium()'s holder+dependants total —
+// that function counts the policyholder as a head, and an organisation is
+// not one. Members only:
+
+function groupBillable(policy: PolicyRow): { heads: number; amount: number } {
+  const own = Number(policy.premium) || 0
+  const deps = policy.dependants ?? []
+  const amount = Math.round(deps.reduce((sum, d) => {
+    const p = Number(d?.premium)
+    return sum + (Number.isFinite(p) && p > 0 ? p : own)
+  }, 0) * 100) / 100
+  return { heads: deps.length, amount }
+}
+
+async function issueMonthlyInvoices(admin: SupabaseClient, today: Date) {
+  const stats = { issued: 0, skipped: 0, failed: 0 }
+  const period = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
+  const dueDate = lastDayOfMonth(today).toISOString().split('T')[0]
+
+  const { data, error } = await admin
+    .from('policies')
+    .select('id, policy_number, client_id, product_id, premium, status, dependants, agent_id, cover_scope, group_id, clients!client_id(name, email, phone), products!product_id(name, category), groups!group_id(name)')
+    .in('status', ['active', 'waiting_period'])
+    .not('cover_scope', 'is', null)
+    .neq('cover_scope', 'individual')
+  if (error) {
+    // cover_scope predates the group-cover migration on some databases —
+    // log and skip rather than fail the whole reminder run.
+    console.error('cron-reminders: invoice query failed', error.message)
+    return stats
+  }
+
+  const groupPolicies = (data ?? []) as unknown as Array<PolicyRow & { cover_scope: string; group_id: string | null; groups: { name: string } | null }>
+
+  // Sequence runs off the highest number already issued this period.
+  const { data: lastRows } = await admin
+    .from('invoices')
+    .select('invoice_number')
+    .like('invoice_number', `INV-${period.replace('-', '')}-%`)
+    .order('invoice_number', { ascending: false })
+    .limit(1)
+  let seq = Number(((lastRows?.[0]?.invoice_number ?? '').match(/-(\d+)$/)?.[1]) ?? 0)
+
+  for (const policy of groupPolicies) {
+    try {
+      const { heads, amount } = groupBillable(policy)
+      if (heads === 0 || amount <= 0) { stats.skipped++; continue }
+
+      // Already issued? The unique index says so before we write anything.
+      const { data: existing } = await admin
+        .from('invoices').select('id').eq('policy_id', policy.id).eq('period', period)
+        .neq('status', 'cancelled').maybeSingle()
+      if (existing) { stats.skipped++; continue }
+
+      seq++
+      const invoiceNumber = `INV-${period.replace('-', '')}-${String(seq).padStart(3, '0')}`
+      const { error: insErr } = await admin.from('invoices').insert({
+        invoice_number: invoiceNumber,
+        policy_id: policy.id, client_id: policy.client_id, group_id: policy.group_id,
+        period, heads, amount, due_date: dueDate, created_by: 'cron',
+      })
+      if (insErr) {
+        if (insErr.code === '23505') { stats.skipped++; seq--; continue }
+        console.error('cron-reminders: invoice insert failed', policy.policy_number, insErr.message)
+        stats.failed++
+        continue
+      }
+      stats.issued++
+
+      // The organisation hears about its bill on every channel — same rule
+      // as every billing event: nothing financial is silent.
+      const org = policy.groups?.name ?? policy.clients?.name ?? 'Client'
+      const sms = `Motions: Invoice ${invoiceNumber} issued for ${org} (${policy.policy_number}) — $${amount.toFixed(2)} for ${heads} member(s), period ${period}, due ${formatDate(lastDayOfMonth(today))}.`
+      await dispatchNotification(admin, {
+        event: 'payment',
+        ref: invoiceNumber,
+        client: { name: policy.clients?.name, phone: policy.clients?.phone, email: policy.clients?.email },
+        smsText: sms,
+        whatsappText: sms,
+        emailSubject: `Invoice ${invoiceNumber}: ${org} — ${period}`,
+        emailText: `Dear ${policy.clients?.name ?? 'Client'},\n\nYour monthly insurance invoice has been issued.\n\nInvoice:      ${invoiceNumber}\nPolicy:       ${policy.policy_number}\nOrganisation: ${org}\nPeriod:       ${period}\nMembers:      ${heads}\nAmount:       $${amount.toFixed(2)}\nDue date:     ${formatDate(lastDayOfMonth(today))}\n\nPlease arrange payment before the due date to keep cover in force.\n\n${SIGNATURE}`,
+      })
+    } catch (e) {
+      console.error('cron-reminders: invoice failed for', policy.policy_number, e)
+      stats.failed++
+    }
+  }
+  return stats
 }

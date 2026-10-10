@@ -441,6 +441,30 @@ export interface Payment {
   splitPayments?: SplitPayment[]
 }
 
+export type InvoiceStatus = 'issued' | 'paid' | 'cancelled'
+
+/** A monthly bill issued against a policy — corporate/group rosters get
+ *  one per month, one per billed head on the premium. */
+export interface Invoice {
+  id: string
+  invoiceNumber: string
+  policyId: string
+  policyNumber: string
+  clientId: string
+  clientName: string
+  groupId?: string
+  groupName?: string
+  /** Billing month, 'YYYY-MM'. */
+  period: string
+  heads: number
+  amount: number
+  status: InvoiceStatus
+  dueDate?: string
+  issuedAt: string
+  paidAt?: string
+  createdBy?: string
+}
+
 export type TicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed'
 export type TicketPriority = 'low' | 'medium' | 'high' | 'urgent'
 

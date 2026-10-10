@@ -207,6 +207,31 @@ export default function Policies({ showToast, initialCategory }: Props) {
     showToast('success', `Policy ${data.policyNumber} re-enabled (waiting period).`)
   }
 
+  /** Manual monthly invoice for a group-cover policy — the same row the
+   *  cron writes automatically on the first of the month; the unique
+   *  (policy, period) key means generating twice just returns the first
+   *  invoice, never a duplicate. */
+  const handleInvoice = async (policy: Policy) => {
+    const now = new Date()
+    const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const { data, error, created } = await db.invoices.create(policy, period, user?.name ?? 'staff')
+    if (error) { showToast('error', error); return }
+    if (!data) { showToast('error', 'Failed to create invoice.'); return }
+    if (!created) {
+      showToast('info', `Invoice ${data.invoiceNumber} already exists for ${period} — nothing new issued.`)
+      return
+    }
+    showToast('success', `Invoice ${data.invoiceNumber} issued — $${data.amount.toFixed(2)} for ${data.heads} member(s), due ${data.dueDate}.`)
+
+    // The client hears about their bill on the phone the moment it exists —
+    // same auto-SMS rule every billing event follows.
+    const { data: client } = await db.clients.get(policy.clientId)
+    const org = policy.groupName ?? policy.clientName
+    const msg = `${COMPANY_NAME}: Invoice ${data.invoiceNumber} issued for ${org} (${policy.policyNumber}) — $${data.amount.toFixed(2)} for ${data.heads} member(s), period ${period}, due ${data.dueDate}.`
+    if (client?.phone) notifyPhone(client.phone, msg, 'payment', data.invoiceNumber)
+    void recordActivity({ action: 'policy.updated', actor: { id: user?.id, name: user?.name ?? 'Staff', role: user?.role ?? '' }, entityType: 'policy', entityId: policy.id, entityLabel: `${data.invoiceNumber} for ${policy.policyNumber}`, detail: `Invoice issued — $${data.amount.toFixed(2)}, ${data.heads} heads, period ${period}` })
+  }
+
   const handleDelete = async (policy: Policy) => {
     // Checked up front so the confirmation can say exactly what will be
     // destroyed, instead of failing afterwards with a generic refusal.
@@ -381,6 +406,9 @@ export default function Policies({ showToast, initialCategory }: Props) {
                         <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--success)' }} onClick={() => handleReenable(p)}>Re-enable</button>
                       )}
                       <button type="button" className="btn btn-primary btn-sm" onClick={() => setPayPolicy(p)}>Pay Online</button>
+                      {p.groupId && hasPermission('payments.create') && (
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => handleInvoice(p)}>Invoice</button>
+                      )}
                       {hasPermission('policies.delete') && (
                         <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => handleDelete(p)}>Delete</button>
                       )}

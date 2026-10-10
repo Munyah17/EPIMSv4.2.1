@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import type { ToastMessage, Policy, CautionFlag } from '../types'
+import type { ToastMessage, Policy, CautionFlag, Invoice } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { runReminderCheck, getLastCheckTime, lastDayOfMonth, firstDayOfMonth } from '../lib/reminderEngine'
@@ -7,6 +7,9 @@ import { getGatewaySettings, saveGatewaySettings, getPaymentLog } from '../lib/p
 import { getSmsLog } from '../lib/smsService'
 import { policyBillablePremium } from '../lib/premium'
 import { formatDate, formatDateTime } from '../lib/dateUtils'
+import { notifyPhone } from '../lib/notify'
+import { COMPANY_NAME } from '../lib/company'
+import { useAuth } from '../contexts/AuthContext'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -14,7 +17,11 @@ interface Props {
 }
 
 export default function BillingReminders({ showToast }: Props) {
-  const [tab, setTab] = useState<'overview' | 'cautions' | 'gw_settings' | 'payment_log'>('overview')
+  const [tab, setTab] = useState<'overview' | 'cautions' | 'gw_settings' | 'payment_log' | 'invoices'>('overview')
+  const { user } = useAuth()
+  const [invoiceList, setInvoiceList] = useState<Invoice[]>([])
+  const [invoicesLoading, setInvoicesLoading] = useState(false)
+  const [generating, setGenerating] = useState(false)
   const [cautions, setCautions] = useState<CautionFlag[]>([])
   const [lastCheck, setLastCheck] = useState(getLastCheckTime())
   const [gwSettings, setGwSettings] = useState(() => getGatewaySettings())
@@ -70,6 +77,67 @@ export default function BillingReminders({ showToast }: Props) {
 
   useEffect(() => { setPayLog(getPaymentLog()) }, [tab])
 
+  const loadInvoices = () => {
+    setInvoicesLoading(true)
+    db.invoices.list().then(({ data, error }) => {
+      if (error) showToast('error', error)
+      setInvoiceList(data)
+    }).finally(() => setInvoicesLoading(false))
+  }
+  useEffect(() => { if (tab === 'invoices') loadInvoices() }, [tab]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const currentPeriod = () => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  }
+
+  /** One click issues the month for every group-cover policy — the same
+   *  rows the cron writes on the 1st; anything already issued is skipped
+   *  by the (policy, period) dedupe, so the button is safe to press twice. */
+  const handleGenerateAll = async () => {
+    setGenerating(true)
+    try {
+      const { data: allPolicies } = await db.policies.list()
+      const groupPolicies = (allPolicies ?? []).filter(p => p.groupId && (p.status === 'active' || p.status === 'waiting_period'))
+      if (groupPolicies.length === 0) { showToast('info', 'No live group-cover policies to invoice.'); return }
+      const period = currentPeriod()
+      let issued = 0, skipped = 0, failed = 0
+      for (const p of groupPolicies) {
+        const { data, error, created } = await db.invoices.create(p, period, user?.name ?? 'staff')
+        if (error) failed++
+        else if (created && data) {
+          issued++
+          const { data: client } = await db.clients.get(p.clientId)
+          if (client?.phone) {
+            notifyPhone(client.phone,
+              `${COMPANY_NAME}: Invoice ${data.invoiceNumber} issued for ${p.groupName ?? p.clientName} (${p.policyNumber}) — $${data.amount.toFixed(2)} for ${data.heads} member(s), period ${period}, due ${data.dueDate}.`,
+              'payment', data.invoiceNumber)
+          }
+        } else skipped++
+      }
+      showToast(failed > 0 ? 'warning' : 'success',
+        `Invoices for ${period}: ${issued} issued, ${skipped} already existed${failed ? `, ${failed} failed` : ''}.`)
+      loadInvoices()
+    } finally {
+      setGenerating(false)
+    }
+  }
+
+  const handleInvoicePaid = async (inv: Invoice) => {
+    const { data, error } = await db.invoices.markPaid(inv.id)
+    if (error || !data) { showToast('error', error ?? 'Failed to mark paid.'); return }
+    setInvoiceList(prev => prev.map(i => i.id === data.id ? data : i))
+    showToast('success', `${inv.invoiceNumber} marked paid.`)
+  }
+
+  const handleInvoiceCancel = async (inv: Invoice) => {
+    if (!window.confirm(`Cancel invoice ${inv.invoiceNumber}? The month can be re-issued afterwards.`)) return
+    const { error } = await db.invoices.cancel(inv.id)
+    if (error) { showToast('error', error); return }
+    setInvoiceList(prev => prev.map(i => i.id === inv.id ? { ...i, status: 'cancelled' as const } : i))
+    showToast('success', `${inv.invoiceNumber} cancelled.`)
+  }
+
   return (
     <div className="panel">
       <div className="tabs">
@@ -77,6 +145,7 @@ export default function BillingReminders({ showToast }: Props) {
         <button className={`tab${tab === 'cautions' ? ' active' : ''}`} onClick={() => setTab('cautions')}>
           Caution Flags {cautions.length > 0 && <span className="nav-badge" style={{ marginLeft: 5 }}>{cautions.length}</span>}
         </button>
+        <button className={`tab${tab === 'invoices' ? ' active' : ''}`} onClick={() => setTab('invoices')}>Invoices</button>
         <button className={`tab${tab === 'gw_settings' ? ' active' : ''}`} onClick={() => setTab('gw_settings')}>Gateway & SMTP</button>
         <button className={`tab${tab === 'payment_log' ? ' active' : ''}`} onClick={() => setTab('payment_log')}>Payment Log</button>
       </div>
@@ -219,6 +288,59 @@ export default function BillingReminders({ showToast }: Props) {
           {cautions.length > 0 && (
             <div className="info-banner info-banner-warning" style={{ marginTop: 14, borderRadius: 8, padding: '10px 13px', fontSize: 12 }}>
               ⚠ Clients with caution flags may have claims subject to review. Flags clear automatically when payment is confirmed.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── INVOICES ── */}
+      {tab === 'invoices' && (
+        <div className="card">
+          <div className="card-header">
+            <span className="card-title">Group Policy Invoices</span>
+            <button className="btn btn-primary btn-sm" onClick={handleGenerateAll} disabled={generating}>
+              {generating ? 'Issuing…' : `＋ Issue ${currentPeriod()} for all group policies`}
+            </button>
+          </div>
+          <p style={{ fontSize: 11, color: 'var(--muted)', margin: '0 0 12px' }}>
+            One invoice per group policy per month — the cron writes them automatically on the 1st; this button and the per-policy
+            Invoice action on Policies do the same job by hand. The organisation gets the SMS the moment the invoice exists.
+          </p>
+          {invoicesLoading ? (
+            <div className="empty-state">Loading invoices…</div>
+          ) : invoiceList.length === 0 ? (
+            <div className="empty-state">No invoices issued yet.</div>
+          ) : (
+            <div className="tbl-scroll">
+            <table className="table">
+              <thead>
+                <tr><th>Invoice</th><th>Policy</th><th>Organisation</th><th>Period</th><th>Heads</th><th>Amount</th><th>Due</th><th>Status</th><th>Actions</th></tr>
+              </thead>
+              <tbody>
+                {invoiceList.map(inv => (
+                  <tr key={inv.id}>
+                    <td><span className="mono">{inv.invoiceNumber}</span></td>
+                    <td><span className="mono">{inv.policyNumber}</span></td>
+                    <td>{inv.groupName ?? inv.clientName}</td>
+                    <td>{inv.period}</td>
+                    <td>{inv.heads}</td>
+                    <td>${inv.amount.toFixed(2)}</td>
+                    <td>{formatDate(inv.dueDate)}</td>
+                    <td><span className={`pill ${inv.status === 'paid' ? 'pill-active' : inv.status === 'cancelled' ? 'pill-cancelled' : 'pill-pending'}`}>{inv.status}</span></td>
+                    <td>
+                      <div className="action-btns">
+                        {inv.status === 'issued' && (
+                          <>
+                            <button className="btn btn-ghost btn-sm" style={{ color: 'var(--success)' }} onClick={() => handleInvoicePaid(inv)}>Mark Paid</button>
+                            <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => handleInvoiceCancel(inv)}>Cancel</button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
             </div>
           )}
         </div>
