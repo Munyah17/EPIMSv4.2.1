@@ -32,6 +32,7 @@ const PANEL_TITLES: Record<ActivePanel, string> = {
   settings: 'Settings',
   developer_api: 'Developers and API',
   mass_messaging: 'Bulk SMS Messaging',
+  whatsapp_bot: 'WhatsApp Chatbot',
   billing_reminders: 'Billing & Reminders',
   pre_loss_assessments: 'Pre-Loss Assessments',
   member_cards: 'Membership IDs',

@@ -31,11 +31,24 @@ const MAPS: Record<Contact['type'], Record<string, Handler>> = {
   unknown: REG_HANDLERS,
 }
 
+/** The WhatsApp Bot page's pause switch — read per inbound message so
+ *  toggling takes effect on the very next one, no redeploy. Default ON:
+ *  only an explicit { enabled: false } in app_settings pauses. */
+async function botEnabled(admin: SupabaseClient): Promise<boolean> {
+  const { data } = await admin.from('app_settings').select('value').eq('key', 'whatsapp_bot').maybeSingle()
+  return (data?.value as { enabled?: boolean } | null)?.enabled !== false
+}
+
 export async function dispatchMessage(admin: SupabaseClient, raw: {
   phone: string; input: string; username: string
 }): Promise<void> {
   const { phone, input, username } = raw
   try {
+    if (!(await botEnabled(admin))) {
+      console.error(`whatsapp bot: paused — inbound message from ${phone} dropped`)
+      return
+    }
+
     const contact = await findContact(admin, phone)
     let session = await findSession(admin, phone)
 
