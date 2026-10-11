@@ -248,6 +248,83 @@ async function liftWaitingPeriods(admin: SupabaseClient): Promise<number> {
   return lifted
 }
 
+// ── Reconciliation: money/registration happened, record didn't ──────
+//
+// The website (and any channel) can leave partial work behind: a client
+// row with no policy, a Paynow transaction that was initiated but never
+// confirmed, a payment recorded on a policy that stayed 'pending'. Each
+// is the signature of money collected with nothing to show for it — and
+// each must be FOUND, not waited for a complaint. Runs inside the daily
+// cron; every finding lands in notification_log (once per item — the ref
+// carries its id, so an issue is reported once, not daily) and a single
+// consolidated office email lists anything new.
+//
+// Nelson Mweeresani's paid-but-unregistered signup is exactly the first
+// case this exists to catch.
+
+async function reconcileBook(admin: SupabaseClient): Promise<{ orphanedClients: number; stalePaynow: number; paidButPending: number; reported: number }> {
+  const cutoff = new Date(Date.now() - 24 * 3600e3).toISOString()
+  const findings: { kind: string; ref: string; line: string }[] = []
+
+  // 1. Client registered >24h ago with no policy at all.
+  const { data: clients } = await admin.from('clients').select('id, name, phone, email, created_at').lt('created_at', cutoff)
+  const { data: policyClientIds } = await admin.from('policies').select('client_id')
+  const covered = new Set((policyClientIds ?? []).map(p => p.client_id))
+  for (const c of clients ?? []) {
+    if (covered.has(c.id)) continue
+    findings.push({ kind: 'orphaned_client', ref: c.id, line: `Client ${c.name} (${c.phone ?? 'no phone'}, ${c.email ?? 'no email'}, registered ${new Date(c.created_at).toLocaleDateString('en-GB')}) has NO policy — money may have been taken with no cover written.` })
+  }
+
+  // 2. Paynow transaction initiated >24h ago, never confirmed or failed.
+  const { data: stale } = await admin.from('paynow_transactions')
+    .select('reference, policy_id, expected_amount, currency, created_at')
+    .eq('status', 'pending').lt('created_at', cutoff)
+  for (const t of stale ?? []) {
+    findings.push({ kind: 'stale_paynow', ref: t.reference, line: `Paynow ref ${t.reference} (${t.currency} ${Number(t.expected_amount).toFixed(2)}, started ${new Date(t.created_at).toLocaleDateString('en-GB')}) never confirmed — check the gateway and reconcile against the payer.` })
+  }
+
+  // 3. A completed payment on a policy still 'pending' — money recorded,
+  // cover never activated.
+  const { data: paidPending } = await admin.from('policies')
+    .select('id, policy_number, client_id, clients!client_id(name, phone)')
+    .eq('status', 'pending')
+  for (const p of (paidPending ?? []) as unknown as { id: string; policy_number: string; clients: { name: string; phone: string | null } | null }[]) {
+    const { data: pays } = await admin.from('payments').select('reference, amount').eq('policy_id', p.id).eq('status', 'completed').limit(1)
+    if (!pays?.length) continue
+    findings.push({ kind: 'paid_but_pending', ref: p.id, line: `Policy ${p.policy_number} (${p.clients?.name ?? 'client'}) has a completed payment (${pays[0].reference}, $${Number(pays[0].amount).toFixed(2)}) but is still PENDING — activate or refund.` })
+  }
+
+  // Report each finding once — notification_log's ref carries the item's
+  // id, so a second run sees it was already raised.
+  let reported = 0
+  const newLines: string[] = []
+  for (const f of findings) {
+    const { data: seen } = await admin.from('notification_log').select('id').eq('event', 'recon').eq('ref', f.ref).limit(1)
+    if (seen?.length) continue
+    await admin.from('notification_log').insert({ event: 'recon', channel: 'email', recipient: 'office', ref: f.ref, status: 'flagged', detail: `${f.kind}: ${f.line}` })
+    newLines.push(`• ${f.line}`)
+    reported++
+  }
+
+  if (newLines.length) {
+    const body = `The daily reconciliation found ${newLines.length} NEW unmatched record(s) — money or registration may have happened with no corresponding policy:\n\n${newLines.join('\n')}\n\nAction: open Payments/Policies in the portal, find the reference, and either activate the policy or refund the payer. These stay flagged in notification_log until resolved.`
+    await dispatchNotification(admin, {
+      event: 'recon', ref: 'reconciliation',
+      notifyClient: false, notifyOffice: true,
+      smsText: `Motions: ${newLines.length} unreconciled record(s) found — possible paid-but-unregistered signup. Check email/portal.`,
+      emailSubject: `[RECONCILIATION] ${newLines.length} unmatched record(s) — possible paid-but-unregistered`,
+      emailText: body,
+    }).catch(e => console.error('cron-reminders: recon notify failed', e))
+  }
+
+  return {
+    orphanedClients: findings.filter(f => f.kind === 'orphaned_client').length,
+    stalePaynow: findings.filter(f => f.kind === 'stale_paynow').length,
+    paidButPending: findings.filter(f => f.kind === 'paid_but_pending').length,
+    reported,
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Vercel Cron sends `Authorization: Bearer $CRON_SECRET`. Fail closed:
   // this endpoint emails and texts the entire book, so an unset secret must
@@ -283,9 +360,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const lifted = await liftWaitingPeriods(admin)
   const invoiced = await issueMonthlyInvoices(admin, today)
+  const recon = await reconcileBook(admin).catch(e => { console.error('cron-reminders: recon failed', e); return null })
 
   if (!type) {
-    return res.status(200).json({ ran: today.toISOString(), stage: null, note: 'No reminder stage falls on today.', waitingPeriodsLifted: lifted, invoices: invoiced })
+    return res.status(200).json({ ran: today.toISOString(), stage: null, note: 'No reminder stage falls on today.', waitingPeriodsLifted: lifted, invoices: invoiced, recon })
   }
 
   const { data, error } = await admin
@@ -316,6 +394,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     dueDate: dueDate.toISOString().split('T')[0],
     waitingPeriodsLifted: lifted,
     invoices: invoiced,
+    recon,
     ...stats,
   })
 }

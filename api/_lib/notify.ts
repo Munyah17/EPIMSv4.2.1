@@ -185,7 +185,7 @@ async function alertOfficeOfFailure(admin: SupabaseClient | null, event: string,
 
 export interface NotifyJob {
   /** Which lifecycle event this is — written to the log for filtering. */
-  event: 'registration' | 'payment' | 'renewal' | 'claim' | 'ticket' | 'system'
+  event: 'registration' | 'payment' | 'renewal' | 'claim' | 'ticket' | 'system' | 'recon'
   /** Policy/claim/ticket number for tracing. */
   ref?: string
   client?: { name?: string; phone?: string | null; email?: string | null } | null

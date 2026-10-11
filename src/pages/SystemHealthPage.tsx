@@ -3,7 +3,15 @@ import { health } from '../lib/health'
 import type { DbOp } from '../lib/health'
 import { db } from '../lib/db'
 import { sendSms, pingSmsGateway } from '../lib/smsService'
+import { supabase } from '../lib/supabase'
 import { useAuth } from '../contexts/AuthContext'
+
+interface ReconData {
+  orphanedClients: { id: string; name: string; phone: string | null; createdAt: string }[]
+  stalePaynow: { reference: string; amount: number; currency: string; createdAt: string }[]
+  paidButPending: { policyNumber: string; clientName: string }[]
+  checkedAt: string
+}
 import type { ToastMessage } from '../types'
 import type { ActivePanel } from '../App'
 
@@ -93,6 +101,7 @@ export default function SystemHealthPage({ showToast }: Props) {
   const [testMessage, setTestMessage] = useState('')
   const [testSending, setTestSending] = useState(false)
   const [websiteLink, setWebsiteLink] = useState<{ ok: boolean | null; detail: string }>({ ok: null, detail: 'Checking…' })
+  const [recon, setRecon] = useState<ReconData | null>(null)
   const logRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -113,7 +122,18 @@ export default function SystemHealthPage({ showToast }: Props) {
     }
     checkWebsiteLink()
     const linkInterval = setInterval(checkWebsiteLink, 60000)
-    return () => { unsub(); clearInterval(interval); clearInterval(secInterval); clearInterval(linkInterval) }
+    // The same three checks the daily cron emails about — live, so a
+    // paid-but-unregistered signup shows within a minute, not overnight.
+    const loadRecon = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) return
+      fetch('/api/admin-recon', { headers: { Authorization: `Bearer ${session.access_token}` } })
+        .then(async res => setRecon(res.ok ? await res.json() : null))
+        .catch(() => { /* card just stays at its last value */ })
+    }
+    void loadRecon()
+    const reconInterval = setInterval(() => void loadRecon(), 60000)
+    return () => { unsub(); clearInterval(interval); clearInterval(secInterval); clearInterval(linkInterval); clearInterval(reconInterval) }
   }, [])
 
   // silence the ticker lint
@@ -244,7 +264,44 @@ export default function SystemHealthPage({ showToast }: Props) {
             <div className="stat-label" title={websiteLink.detail}>Website ↔ Portal</div>
           </div>
         </div>
+        {/* Reconciliation: registration/payment happened, counterpart
+            didn't — the daily cron also emails new findings. */}
+        <div className="stat-card" title={recon ? `Checked ${new Date(recon.checkedAt).toLocaleTimeString()}` : ''}>
+          <div className="stat-icon" style={{
+            background: !recon ? '#F1F5F9' : (recon.orphanedClients.length + recon.stalePaynow.length + recon.paidButPending.length) === 0 ? '#D1FAE5' : '#FEE2E2',
+            color: !recon ? '#64748B' : (recon.orphanedClients.length + recon.stalePaynow.length + recon.paidButPending.length) === 0 ? '#059669' : '#DC2626',
+          }}>⚖</div>
+          <div className="stat-body">
+            <div className="stat-value" style={{ fontSize: 15, marginTop: 4 }}>
+              {!recon ? 'Checking…' : (recon.orphanedClients.length + recon.stalePaynow.length + recon.paidButPending.length) === 0 ? 'Clean' : `${recon.orphanedClients.length + recon.stalePaynow.length + recon.paidButPending.length} unmatched`}
+            </div>
+            <div className="stat-label">Reconciliation</div>
+          </div>
+        </div>
       </div>
+
+      {/* Reconciliation detail — only rendered while there is something
+          unmatched, with the exact reference a human needs to fix it. */}
+      {recon && (recon.orphanedClients.length + recon.stalePaynow.length + recon.paidButPending.length) > 0 && (
+        <div className="card" style={{ marginBottom: 20, borderLeft: '3px solid var(--danger)' }}>
+          <div className="card-header"><span className="card-title">⚖ Unreconciled records — investigate before close of day</span></div>
+          {recon.orphanedClients.map(c => (
+            <div key={c.id} className="info-banner info-banner-danger" style={{ marginBottom: 8, borderRadius: 8, padding: '10px 13px', fontSize: 12 }}>
+              👤 Client <strong>{c.name}</strong> ({c.phone ?? 'no phone'}, registered {new Date(c.createdAt).toLocaleDateString('en-GB')}) has <strong>no policy</strong> — payment may have been taken with no cover written.
+            </div>
+          ))}
+          {recon.stalePaynow.map(t => (
+            <div key={t.reference} className="info-banner info-banner-warning" style={{ marginBottom: 8, borderRadius: 8, padding: '10px 13px', fontSize: 12 }}>
+              💳 Paynow ref <strong>{t.reference}</strong> ({t.currency} ${Number(t.amount).toFixed(2)}) never confirmed — check the gateway, reconcile with the payer.
+            </div>
+          ))}
+          {recon.paidButPending.map(p => (
+            <div key={p.policyNumber} className="info-banner info-banner-danger" style={{ marginBottom: 8, borderRadius: 8, padding: '10px 13px', fontSize: 12 }}>
+              📄 Policy <strong>{p.policyNumber}</strong> ({p.clientName}) has a completed payment but is still <strong>pending</strong> — activate or refund.
+            </div>
+          ))}
+        </div>
+      )}
 
       {(suspiciousLogins.length > 0 || quotaAlerts.length > 0) && (
         <div className="card" style={{ marginBottom: 20, borderLeft: '3px solid var(--danger)' }}>
