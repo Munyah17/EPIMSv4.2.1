@@ -383,14 +383,29 @@ export function getGatewayWatchStatus(): { state: 'up' | 'down' | 'unknown'; che
 }
 
 async function checkGateway() {
-  const ping = await pingSmsGateway()
+  let ping = await pingSmsGateway()
+  // A single failed probe is not an outage — a cold-started function or
+  // a blip in the local connection shouldn't page the office with
+  // "AFROSOFT DOWN". Anything that looks like a provider failure gets
+  // one confirmation probe a few seconds later before it counts.
+  if (!ping.up && ping.source === 'afrosoft') {
+    await new Promise(r => setTimeout(r, 4000))
+    const confirmPing = await pingSmsGateway()
+    ping = confirmPing
+  }
   health.record({ ts: Date.now(), type: 'notify', table: 'sms-gateway', success: ping.up, duration: 0, source: 'api', detail: `watch: ${ping.detail}` })
   const state: 'up' | 'down' = ping.up ? 'up' : 'down'
   lastGatewayCheck = { at: Date.now(), up: ping.up, source: ping.source, detail: ping.detail }
 
   if (state === 'down' && lastGatewayState !== 'down') {
-    try { localStorage.setItem(GATEWAY_FLAG_KEY, '1') } catch { /**/ }
-    void announceGatewayDown(ping)
+    // Only a provider-side or missing-config failure declares "Afrosoft
+    // down". source 'us' means the browser couldn't reach OUR OWN api —
+    // the local network/session, not the gateway; it stays out of the
+    // outage flag and never emails the office a false alarm.
+    if (ping.source !== 'us') {
+      try { localStorage.setItem(GATEWAY_FLAG_KEY, '1') } catch { /**/ }
+      void announceGatewayDown(ping)
+    }
   } else if (state === 'up' && lastGatewayState === 'down') {
     try { localStorage.removeItem(GATEWAY_FLAG_KEY) } catch { /**/ }
   }

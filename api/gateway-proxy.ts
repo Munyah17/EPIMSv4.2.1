@@ -24,8 +24,9 @@ interface ProxyRequestBody {
   method?: 'GET' | 'POST'
   headers?: Record<string, string>
   body?: string
-  /** Set to 'sms' to have the server build the Afrosoft request itself. */
-  action?: 'sms'
+  /** 'sms' sends a real text on our key; 'ping' is the no-spend liveness
+   *  check the gateway watch and System Health use. */
+  action?: 'sms' | 'ping'
   mobiles?: string
   message?: string
 }

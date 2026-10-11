@@ -92,6 +92,7 @@ export default function SystemHealthPage({ showToast }: Props) {
   const [testNumber, setTestNumber] = useState('')
   const [testMessage, setTestMessage] = useState('')
   const [testSending, setTestSending] = useState(false)
+  const [websiteLink, setWebsiteLink] = useState<{ ok: boolean | null; detail: string }>({ ok: null, detail: 'Checking…' })
   const logRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -100,7 +101,19 @@ export default function SystemHealthPage({ showToast }: Props) {
     const loadSecurity = () => { db.loginAttempts.recentFailures(15).then(({ data }) => setFailedLogins(data)) }
     loadSecurity()
     const secInterval = setInterval(loadSecurity, 30000)
-    return () => { unsub(); clearInterval(interval); clearInterval(secInterval) }
+    // The link motions.co.zw depends on: the same endpoint the website
+    // itself pings before a registration, so this row shows exactly the
+    // connectivity their signup flow sees — not a lookalike check.
+    const checkWebsiteLink = () => {
+      fetch('/api/health-check').then(async res => {
+        const body = await res.json().catch(() => null) as { ok?: boolean; db?: boolean; detail?: string } | null
+        if (body === null) return setWebsiteLink({ ok: false, detail: 'Health endpoint returned a page, not a response.' })
+        setWebsiteLink({ ok: !!body.ok, detail: body.detail ?? (body.ok ? 'Portal and database reachable' : 'Unreachable') })
+      }).catch(e => setWebsiteLink({ ok: false, detail: `Could not reach the portal: ${e}` }))
+    }
+    checkWebsiteLink()
+    const linkInterval = setInterval(checkWebsiteLink, 60000)
+    return () => { unsub(); clearInterval(interval); clearInterval(secInterval); clearInterval(linkInterval) }
   }, [])
 
   // silence the ticker lint
@@ -214,6 +227,21 @@ export default function SystemHealthPage({ showToast }: Props) {
               {stats.smsOpsCount === 0 ? 'No sends yet' : stats.smsLastOk ? 'Operational' : 'FAILING'}
             </div>
             <div className="stat-label">Afrosoft SMS Gateway</div>
+          </div>
+        </div>
+        {/* The motions.co.zw -> portal link: pings the same
+            /api/health-check the website calls, so green means website
+            registrations can reach us right now. */}
+        <div className="stat-card">
+          <div className="stat-icon" style={{
+            background: websiteLink.ok === null ? '#F1F5F9' : websiteLink.ok ? '#D1FAE5' : '#FEE2E2',
+            color: websiteLink.ok === null ? '#64748B' : websiteLink.ok ? '#059669' : '#DC2626',
+          }}>🔗</div>
+          <div className="stat-body">
+            <div className="stat-value" style={{ fontSize: 15, marginTop: 4 }}>
+              {websiteLink.ok === null ? 'Checking…' : websiteLink.ok ? 'Connected' : 'UNREACHABLE'}
+            </div>
+            <div className="stat-label" title={websiteLink.detail}>Website ↔ Portal</div>
           </div>
         </div>
       </div>

@@ -111,8 +111,11 @@ export async function sendEmailDirect(to: string, subject: string, text: string)
  *  is pending. */
 export async function sendWhatsAppCloud(to: string, message: string): Promise<Delivery> {
   const msisdn = normalizeMsisdn(to)
-  const token = process.env.WHATSAPP_TOKEN
-  const phoneId = process.env.WHATSAPP_PHONE_ID
+  // Two names for the same credentials: the notify channel pre-dates the
+  // chatbot, which introduced WHATSAPP_ACCESS_TOKEN/PHONE_NUMBER_ID.
+  // Either pair works — set whichever Meta gives you, never both.
+  const token = process.env.WHATSAPP_TOKEN || process.env.WHATSAPP_ACCESS_TOKEN
+  const phoneId = process.env.WHATSAPP_PHONE_ID || process.env.WHATSAPP_PHONE_NUMBER_ID
   if (!token || !phoneId) {
     return {
       channel: 'whatsapp', recipient: msisdn, status: 'queued',
@@ -123,7 +126,7 @@ export async function sendWhatsAppCloud(to: string, message: string): Promise<De
     return { channel: 'whatsapp', recipient: to, status: 'failed', detail: `Not a valid ZW mobile: ${to}` }
   }
   try {
-    const res = await fetch(`https://graph.facebook.com/v19.0/${phoneId}/messages`, {
+    const res = await fetch(`https://graph.facebook.com/${process.env.WHATSAPP_GRAPH_VERSION || 'v19.0'}/${phoneId}/messages`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
