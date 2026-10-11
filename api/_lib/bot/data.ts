@@ -95,6 +95,28 @@ export async function clientsOfAgent(admin: SupabaseClient, agentId: string): Pr
   return (data ?? []).map(toBotClient)
 }
 
+/** An agent's commission book: every live policy on their clients,
+ *  valued at premium x product.commission_pct — the same field the
+ *  portal's commission reports read, so both sides always agree. */
+export async function commissionForAgent(admin: SupabaseClient, agentId: string): Promise<{ rows: string[]; total: number }> {
+  const clients = await clientsOfAgent(admin, agentId)
+  if (!clients.length) return { rows: [], total: 0 }
+  const { data } = await admin.from('policies')
+    .select('policy_number, premium, status, products(name, commission_pct)')
+    .in('client_id', clients.map(c => c.id))
+    .in('status', ['active', 'waiting_period'])
+  const rows: string[] = []
+  let total = 0
+  for (const p of data ?? []) {
+    const prod = p.products as { name?: string; commission_pct?: number } | null
+    const pct = Number(prod?.commission_pct ?? 0)
+    const amount = Math.round(Number(p.premium) * pct) / 100
+    total += amount
+    rows.push(`${p.policy_number} (${prod?.name ?? 'policy'}): ${pct}% of $${Number(p.premium).toFixed(2)} = $${amount.toFixed(2)}/mo`)
+  }
+  return { rows, total }
+}
+
 /** Policy-number prefix — same rules as src/lib/policyNumbers.ts,
  *  re-stated here because api/ can't import the browser bundle
  *  (it pulls in vite env). Keep in sync with that file. */
@@ -123,11 +145,12 @@ async function nextPolicyNumber(admin: SupabaseClient, product: BotProduct): Pro
 }
 
 export async function createClient(admin: SupabaseClient, c: {
-  name: string; nationalId: string; phone: string; email?: string; dob?: string; agentId?: string
+  name: string; nationalId: string; phone: string; email?: string; dob?: string; gender?: string; agentId?: string
 }): Promise<BotClient> {
   const { data, error } = await admin.from('clients').insert({
     name: c.name, national_id: c.nationalId, phone: c.phone,
-    email: c.email ?? '', dob: c.dob || null, address: '', status: 'active',
+    email: c.email ?? '', dob: c.dob || null, gender: c.gender ?? null,
+    address: '', status: 'active',
     agent_id: c.agentId ?? null,
   }).select('id, name, phone, national_id, email').single()
   if (error) throw new Error(`Could not save the client: ${error.message}`)

@@ -16,6 +16,8 @@ export default function EditClientModal({ client, onClose, onSave, onAssignPolic
   const [phone, setPhone] = useState(client.phone)
   const [address, setAddress] = useState(client.address)
   const [occupation, setOccupation] = useState(client.occupation ?? '')
+  const [gender, setGender] = useState(client.gender === 'male' || client.gender === 'female' || !client.gender ? client.gender ?? '' : 'other')
+  const [genderOther, setGenderOther] = useState(client.gender && client.gender !== 'male' && client.gender !== 'female' ? client.gender : '')
   const [status, setStatus] = useState(client.status)
 
 
@@ -28,7 +30,7 @@ export default function EditClientModal({ client, onClose, onSave, onAssignPolic
   const handleSave = () => {
     setAttempted(true)
     if (missing.length > 0) return
-    onSave({ ...client, name: name.trim(), email, phone, address, occupation, status })
+    onSave({ ...client, name: name.trim(), email, phone, address, occupation, status, gender: gender === 'other' ? genderOther.trim() || 'other' : gender || undefined })
   }
 
   return (
@@ -59,6 +61,23 @@ export default function EditClientModal({ client, onClose, onSave, onAssignPolic
               <label>National ID</label>
               <input className="form-control" value={client.nationalId} disabled style={{ opacity: 0.6 }} />
             </div>
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label>Gender</label>
+              <select className="form-control" value={gender} onChange={e => setGender(e.target.value)}>
+                <option value="">Not specified</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="other">Other…</option>
+              </select>
+            </div>
+            {gender === 'other' && (
+              <div className="form-group">
+                <label>Preferred gender</label>
+                <input className="form-control" placeholder="e.g. non-binary" value={genderOther} onChange={e => setGenderOther(e.target.value)} />
+              </div>
+            )}
           </div>
           <div className="form-row">
             <div className="form-group">

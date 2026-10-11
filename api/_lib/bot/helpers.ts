@@ -28,13 +28,20 @@ export function pickIndex(input: string, count: number): number | null {
   return n - 1
 }
 
-/** Payment methods — verbatim from the Frappe constants.py. Index 0 is
- *  always EcoCash (the direct-push rail); everything else goes through
- *  Paynow, which covers cards, Innbucks and ZimSwitch itself. */
+/** Payment methods, normalised to the portal's vocabulary
+ *  (PAYMENT_METHODS in src/types/index.ts). WhatsApp can only collect
+ *  remotely, so the list compresses to the three real channels:
+ *    0  EcoCash      -> direct PIN push to the payer's phone
+ *    1  Paynow       -> checkout link (cards, InnBucks, ZimSwitch ride it)
+ *    2  Office/cash  -> instructions; staff record the payment on-site
+ *  PORTAL_METHOD_NAMES maps each index to the string the portal writes
+ *  on policies.payment_method, so a bot-made policy reads identically
+ *  in the IMS. */
 export const PAYMENT_METHODS: Record<string, string[]> = {
-  usd: ['Ecocash - USD', 'Innbucks - USD', 'VISA/MasterCard - USD', "O'mari - USD", 'ZimSwitch - USD', 'PayGo - USD', 'SSB (Civil Servants) - USD'],
-  zig: ['Ecocash - ZiG', 'ZimSwitch - ZiG', 'PayGo - ZiG', 'SSB (Civil Servants) - ZiG'],
+  usd: ['EcoCash (USD)', 'Paynow (Visa/MasterCard, InnBucks, ZimSwitch)', 'Office payment (cash, bank transfer)'],
+  zig: ['EcoCash (ZiG)', 'Paynow (Visa/MasterCard, InnBucks, ZimSwitch)', 'Office payment (cash, bank transfer)'],
 }
+export const PORTAL_METHOD_NAMES = ['EcoCash', 'Paynow', 'Cash']
 
 export const methodMenu = (currencyKey: string) =>
   PAYMENT_METHODS[currencyKey].map((m, i) => `${i + 1}. ${m}`).join('\n')
@@ -69,6 +76,18 @@ export async function sendPaymentInstruction(opts: {
   description?: string
 }): Promise<void> {
   const { admin, phone, policyId, reference, usdAmount, currency, methodIndex, ecocashNumber, origin, description } = opts
+
+  // Office payment — nothing remote to trigger. The payer gets the
+  // reference and the amount; staff record it in the IMS, which flips
+  // the policy active exactly like an online payment.
+  if (methodIndex === 2) {
+    await sendText(phone,
+      `Pay at any Motions office by cash or bank transfer.\n\n` +
+      `Amount: USD ${usdAmount.toFixed(2)}\nReference: ${reference}\n\n` +
+      `Quote the reference when you pay — cover starts once the payment is recorded.`)
+    return
+  }
+
   const isEcoCash = methodIndex === 0
 
   if (isEcoCash) {

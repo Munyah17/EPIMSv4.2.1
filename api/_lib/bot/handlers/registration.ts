@@ -7,15 +7,16 @@ import { isFullName, isNationalId, isEmail, parseDob, isEcocashPhone, pickIndex,
 /**
  * New-client registration — the Frappe CLIENT_REG_HANDLER_MAP.
  *
- *   menu -> full name -> national ID -> DOB -> email (or 1 to skip)
+ *   menu -> full name -> national ID -> gender (male/female/other text)
+ *   -> DOB -> email (or 1 to skip)
  *   -> product -> payment currency -> payment method
  *   -> [EcoCash number] -> confirm -> client + pending policy created
  *   -> payment instruction -> portal pointer -> session done.
  *
- * Two deliberate differences from the Frappe flow, documented in
- * docs/whatsapp-bot.md: no gender question (clients has no gender
- * column — the Frappe answer went nowhere), and the caller's own
- * WhatsApp number IS the contact number, so it is never asked.
+ * One deliberate difference from the Frappe flow, documented in
+ * docs/whatsapp-bot.md: the caller's own WhatsApp number IS the
+ * contact number, so it is never asked. Gender is a real column
+ * (clients.gender) and 'Other' stores the text the client types.
  */
 
 const MENU_TEXT = (u: string) =>
@@ -52,6 +53,27 @@ const name_: Handler = async ({ input, phone, session, admin }) => {
 const id: Handler = async ({ input, phone, session, admin }) => {
   if (!isNationalId(input)) return sendText(phone, 'Please enter a valid national ID.')
   await patchNote(admin, session, { nationalId: input.trim() })
+  await sendButtons(phone, 'Select your gender', [
+    { id: 'male', title: 'Male' }, { id: 'female', title: 'Female' }, { id: 'other', title: 'Other' },
+  ])
+  return setState(admin, session, 'REG_GENDER')
+}
+
+const gender: Handler = async ({ input, phone, session, admin }) => {
+  if (input === 'other') {
+    await sendText(phone, 'Type your preferred gender (e.g. non-binary)')
+    return setState(admin, session, 'REG_GENDER_OTHER')
+  }
+  if (input !== 'male' && input !== 'female') return sendText(phone, 'Please choose one of the buttons above.')
+  await patchNote(admin, session, { gender: input })
+  await sendText(phone, 'Enter your date of birth (e.g. 26-05-1990)')
+  return setState(admin, session, 'REG_DOB')
+}
+
+const genderOther: Handler = async ({ input, phone, session, admin }) => {
+  const g = input.trim()
+  if (g.length < 2 || g.length > 40) return sendText(phone, 'Please type your preferred gender.')
+  await patchNote(admin, session, { gender: g })
   await sendText(phone, 'Enter your date of birth (e.g. 26-05-1990)')
   return setState(admin, session, 'REG_DOB')
 }
@@ -136,6 +158,7 @@ const confirm: Handler = async ({ input, phone, session, admin, username }) => {
   const client = await createClient(admin, {
     name: String(n.name), nationalId: String(n.nationalId), phone,
     email: n.email as string | undefined, dob: n.dob as string | undefined,
+    gender: n.gender as string | undefined,
   })
   const { start, end } = datePlusOneYear()
   const policy = await createPolicy(admin, {
@@ -171,6 +194,8 @@ export const REG_HANDLERS: Record<string, Handler> = {
   REG_MENU: menu,
   REG_NAME: name_,
   REG_ID: id,
+  REG_GENDER: gender,
+  REG_GENDER_OTHER: genderOther,
   REG_DOB: dob,
   REG_EMAIL: email,
   REG_PRODUCT: product,

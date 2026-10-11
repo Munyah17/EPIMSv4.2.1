@@ -30,7 +30,10 @@ const menu: Handler = async (ctx) => {
   }
   if (input === '1') return payStart(ctx)
   if (input === '2') return viewPolicies(ctx)
-  if (input === '3') return sendText(phone, 'You currently have no policies eligible for renewal.')
+  // Renewing IS paying: the shared Paynow webhook advances
+  // next_payment_date per period paid and reinstates lapsed policies —
+  // so option 3 reuses the same pick-policy flow with a renewal label.
+  if (input === '3') return renewStart(ctx)
   if (input === '4') return claimsStart(ctx)
   if (input === '5') return dependantsMenu(ctx)
   return sendText(phone, MENU(username))
@@ -45,6 +48,16 @@ const payStart: Handler = async ({ phone, session, admin, contact }) => {
     return sendText(phone, 'You have no policies to pay for.')
   }
   await sendText(phone, `Select the policy to pay\n\n${policies.map((p, i) => `${i + 1}. ${p.policyNumber} — ${p.productName} ($${p.premium}/month, ${p.status})`).join('\n')}`)
+  return setState(admin, session, 'CPAY_POLICY')
+}
+
+const renewStart: Handler = async ({ phone, session, admin, contact }) => {
+  const policies = await policiesForClient(admin, contact.client!.id)
+  if (!policies.length) {
+    await deleteSession(admin, session)
+    return sendText(phone, 'You have no policies to renew.')
+  }
+  await sendText(phone, `Select the policy to renew\n\n${policies.map((p, i) => `${i + 1}. ${p.policyNumber} — ${p.productName} ($${p.premium}/month, ${p.status})`).join('\n')}`)
   return setState(admin, session, 'CPAY_POLICY')
 }
 
@@ -194,6 +207,27 @@ const depName: Handler = async ({ input, phone, session, admin }) => {
 const depId: Handler = async ({ input, phone, session, admin }) => {
   if (!isNationalId(input)) return sendText(phone, 'Please enter a valid national ID.')
   await patchNote(admin, session, { depNationalId: input.trim() })
+  await sendButtons(phone, "Select the dependant's gender", [
+    { id: 'male', title: 'Male' }, { id: 'female', title: 'Female' }, { id: 'other', title: 'Other' },
+  ])
+  return setState(admin, session, 'CDEP_GENDER')
+}
+
+const depGender: Handler = async ({ input, phone, session, admin }) => {
+  if (input === 'other') {
+    await sendText(phone, "Type the dependant's preferred gender")
+    return setState(admin, session, 'CDEP_GENDER_OTHER')
+  }
+  if (input !== 'male' && input !== 'female') return sendText(phone, 'Please choose one of the buttons above.')
+  await patchNote(admin, session, { depGender: input })
+  await sendText(phone, "Enter the dependant's date of birth (e.g. 26-05-2000)")
+  return setState(admin, session, 'CDEP_DOB')
+}
+
+const depGenderOther: Handler = async ({ input, phone, session, admin }) => {
+  const g = input.trim()
+  if (g.length < 2 || g.length > 40) return sendText(phone, 'Please type a valid gender.')
+  await patchNote(admin, session, { depGender: g })
   await sendText(phone, "Enter the dependant's date of birth (e.g. 26-05-2000)")
   return setState(admin, session, 'CDEP_DOB')
 }
@@ -239,7 +273,7 @@ const depProduct: Handler = async (ctx) => {
   await patchNote(admin, session, {
     flow: 'new_dependant',
     dependant: {
-      name: n.depName, nationalId: n.depNationalId, dob: n.depDob,
+      name: n.depName, nationalId: n.depNationalId, dob: n.depDob, gender: n.depGender,
       relationship: n.depRelationship, productId: p.id, productName: p.name,
       premium: p.premium, coverAmount: p.coverAmount,
     },
@@ -262,6 +296,8 @@ export const CLIENT_HANDLERS: Record<string, Handler> = {
   CDEP_REMOVE_ID: depRemoveId,
   CDEP_NAME: depName,
   CDEP_ID: depId,
+  CDEP_GENDER: depGender,
+  CDEP_GENDER_OTHER: depGenderOther,
   CDEP_DOB: depDob,
   CDEP_REL: depRel,
   CDEP_POLICY: depPolicy,

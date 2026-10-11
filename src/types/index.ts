@@ -117,6 +117,10 @@ export interface Client {
   phone: string
   nationalId: string
   dob: string
+  /** Free text - 'male'/'female' for most, but a client can supply their
+   *  own preferred term (the WhatsApp bot's 'Other' option stores the
+   *  text as given), so this is never constrained to a fixed list. */
+  gender?: string
   address: string
   occupation?: string
   insurer?: Insurer
@@ -142,6 +146,9 @@ export interface Dependant {
   name: string
   relationship: string
   dob: string
+  /** Optional — captured by the WhatsApp bot and newer portal forms;
+   *  free text for the same reason clients.gender is. */
+  gender?: string
   /** ID number for a dependant 16+; a birth record/entry number is
    *  accepted for younger dependants (not every birth certificate carries
    *  a future national ID number). */

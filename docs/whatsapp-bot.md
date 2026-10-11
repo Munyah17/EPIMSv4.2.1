@@ -89,7 +89,9 @@ State names are prefixed per flow so the three menus never collide:
    `premium × months`.
 2. My Policies → lists live policies + dependants → "Add New Policy"
    runs the product → tail path (creates a second policy, `pending`).
-3. Renew Policy → stub, same as the old bot.
+3. Renew Policy → pick policy → months → tail. Renewal is a payment:
+   the Paynow webhook advances `next_payment_date` per period paid and
+   reinstates `lapsed` policies — the same code path the portal uses.
 4. Claims → pick policy → send a document/photo → a `claims` row is
    filed at `intake` stage with the WhatsApp media id recorded — staff
    see it on the Claims page.
@@ -104,17 +106,28 @@ State names are prefixed per flow so the three menus never collide:
 2. Add New Dependant → sponsor's national ID → sponsor's policy →
    dependant wizard → tail.
 3. My Clients → `clients WHERE agent_id = agent's profile`.
-4. Commission → stub.
+4. Commission → real figure: `premium × products.commission_pct` summed
+   over every live policy on the agent's book — the same field the
+   portal's commission reporting reads.
 5. Make Payment → client's national ID → their policies → months → tail.
 
 **Payment tail (shared by every flow)**
-Currency (USD / ZiG) → method menu → method index `0` = EcoCash direct
-push via `chargeEip` (the payer's phone gets the PIN prompt); every
-other method = a Paynow checkout link via `initiatePaynowPayment`.
+Currency (USD / ZiG) → method menu → three real channels, in the
+portal's own vocabulary (`PORTAL_METHOD_NAMES` maps them to what
+`policies.payment_method` records):
+- `EcoCash` → direct PIN push via `chargeEip` — the payer's phone gets
+  the prompt
+- `Paynow` → checkout link via `initiatePaynowPayment` — cards,
+  InnBucks, ZimSwitch and bank all ride it
+- `Office payment` → instructions + reference; staff record it and the
+  policy activates identically
+
 ZiG converts through the latest `exchange_rates` row — same rule as the
 portal. References are `POLICYNUMBER-xxxx` and every Paynow transaction
 writes a `paynow_transactions` row, so `api/paynow-webhook.ts`
-reconciles them exactly like a portal payment.
+reconciles them exactly like a portal payment — including advancing
+`next_payment_date` and reinstating lapsed policies (that is what makes
+"Renew Policy" a real flow, not a stub).
 
 ## Where everything lives
 
@@ -131,6 +144,7 @@ reconciles them exactly like a portal payment.
 | `api/_lib/bot/handlers/{registration,client,agent}.ts` | the three menus' step handlers |
 | `api/_lib/paynowInitiate.ts` | Paynow transaction creation, shared with `api/paynow.ts` |
 | `database/add_wa_sessions.sql` | the session table migration |
+| `database/add_client_gender.sql` | `clients.gender` column |
 
 ## One-time setup
 
@@ -189,22 +203,40 @@ Watch the conversation rows in Supabase → Table Editor → `wa_sessions`.
 
 Deliberate, documented simplifications — not lost features:
 
-- **No gender question.** The `clients` table has no gender column; the
-  Frappe bot collected it and wrote it nowhere.
 - **No "enter your phone number" in registration** — the caller is on
   WhatsApp; their number is already known.
 - **Policy + package → product.** The IMS keeps one row per plan
   (`products`), so the two-step Frappe pick collapses to one list.
-- **Relationships** come from a fixed list (`tail.ts`/`agent.ts`) — the
-  Frappe `Relationship` doctype has no IMS equivalent.
+- **Gender is captured for real** — `clients.gender` (added by
+  `database/add_client_gender.sql`), with an **Other** option that
+  stores the text the client types. Free text, not an enum. The portal
+  register/edit forms carry the same field. Dependants carry it in the
+  policy's `dependants` JSONB.
+- **Payment methods match the portal** — EcoCash / Paynow / office
+  payment, recorded with the same names the IMS writes (Frappe's
+  ZimSwitch/PayGo/SSB list had no portal equivalent; those all resolve
+  to Paynow or office anyway).
 - **Payment works.** `process_payment()` was a stub returning a sample
   URL; here EcoCash pushes really fire and Paynow links really open.
+- **Renew Policy and Commission are real** — renewal rides the payment
+  webhook (advances `next_payment_date`, reinstates lapsed), commission
+  reads `products.commission_pct`.
 - **Claims file real rows** instead of acknowledging and discarding the
   document.
 - **`note` is wiped on `exit`** — the Frappe version kept stale keys
   between flows.
 - **Requests are verified** with Meta's app-secret signature when
   `WHATSAPP_APP_SECRET` is configured.
+
+### One database, two channels — changes propagate by construction
+
+Anything stored in Supabase shows the same value on both channels
+without syncing: a client/payment/dependant created on WhatsApp appears
+in the portal at once, and portal edits (products, prices, exchange
+rates, agent phones, client records) are what the bot reads on its next
+message. The exceptions that live in code — prompts, validators, method
+labels — are the channel's own concern, not data, so they can't drift
+apart silently.
 
 ## Troubleshooting
 

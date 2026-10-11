@@ -2,7 +2,7 @@ import type { Handler, Ctx } from './types.js'
 import { sendText, sendButtons } from './whatsapp.js'
 import { setState, patchNote, deleteSession } from './store.js'
 import { getActiveProducts, createClient, createPolicy, addDependant } from './data.js'
-import { isEcocashPhone, pickIndex, PAYMENT_METHODS, methodMenu, sendPaymentInstruction, datePlusOneYear } from './helpers.js'
+import { isEcocashPhone, pickIndex, PAYMENT_METHODS, PORTAL_METHOD_NAMES, methodMenu, sendPaymentInstruction, datePlusOneYear } from './helpers.js'
 
 /**
  * The shared payment tail. Every flow in all three menus ends the same
@@ -82,6 +82,7 @@ export function makeTail(prefix: string): Record<string, Handler> {
       const client = await createClient(admin, {
         name: String(n.name), nationalId: String(n.nationalId), phone: String(n.clientPhone ?? phone),
         email: n.email as string | undefined, dob: n.dob as string | undefined,
+        gender: n.gender as string | undefined,
         agentId: n.agentId as string | undefined,
       })
       n.clientId = client.id
@@ -97,7 +98,8 @@ export function makeTail(prefix: string): Record<string, Handler> {
       }
       const { start, end } = datePlusOneYear()
       const policy = await createPolicy(admin, {
-        clientId: String(n.clientId), product, paymentMethod: String(n.method ?? ''),
+        clientId: String(n.clientId), product,
+        paymentMethod: PORTAL_METHOD_NAMES[Number(n.methodIndex)] ?? 'Paynow',
         agentId: n.agentId as string | undefined, startDate: start, endDate: end,
       })
       policyId = policy.id

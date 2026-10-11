@@ -1,7 +1,7 @@
 import type { Handler, Ctx } from '../types.js'
 import { sendText, sendButtons } from '../whatsapp.js'
 import { setState, patchNote, deleteSession } from '../store.js'
-import { getActiveProducts, policiesForClient, clientByNationalId, clientsOfAgent } from '../data.js'
+import { getActiveProducts, policiesForClient, clientByNationalId, clientsOfAgent, commissionForAgent } from '../data.js'
 import { isFullName, isNationalId, isEmail, parseDob, pickIndex } from '../helpers.js'
 import { makeTail, startTail } from '../tail.js'
 
@@ -35,7 +35,7 @@ const menu: Handler = async (ctx) => {
     return setState(admin, session, 'AD_HOLDER_ID')
   }
   if (input === '3') return viewClients(ctx)
-  if (input === '4') return sendText(phone, 'Commission statements are coming to the portal — ask the office for now.')
+  if (input === '4') return commission(ctx)
   if (input === '5') {
     await sendText(phone, "Enter the client's national ID (e.g. 083837373U23)")
     return setState(admin, session, 'APAY_ID')
@@ -56,6 +56,27 @@ const acId: Handler = async ({ input, phone, session, admin }) => {
   if (!isNationalId(input)) return sendText(phone, 'Please enter a valid national ID.')
   if (await clientByNationalId(admin, input)) return sendText(phone, 'A client with that national ID already exists (send exit to cancel).')
   await patchNote(admin, session, { nationalId: input.trim() })
+  await sendButtons(phone, "Select the client's gender", [
+    { id: 'male', title: 'Male' }, { id: 'female', title: 'Female' }, { id: 'other', title: 'Other' },
+  ])
+  return setState(admin, session, 'AC_GENDER')
+}
+
+const acGender: Handler = async ({ input, phone, session, admin }) => {
+  if (input === 'other') {
+    await sendText(phone, "Type the client's preferred gender")
+    return setState(admin, session, 'AC_GENDER_OTHER')
+  }
+  if (input !== 'male' && input !== 'female') return sendText(phone, 'Please choose one of the buttons above.')
+  await patchNote(admin, session, { gender: input })
+  await sendText(phone, "Enter the client's date of birth (e.g. 26-05-1990)")
+  return setState(admin, session, 'AC_DOB')
+}
+
+const acGenderOther: Handler = async ({ input, phone, session, admin }) => {
+  const g = input.trim()
+  if (g.length < 2 || g.length > 40) return sendText(phone, 'Please type a valid gender.')
+  await patchNote(admin, session, { gender: g })
   await sendText(phone, "Enter the client's date of birth (e.g. 26-05-1990)")
   return setState(admin, session, 'AC_DOB')
 }
@@ -140,6 +161,27 @@ const adName: Handler = async ({ input, phone, session, admin }) => {
 const adId: Handler = async ({ input, phone, session, admin }) => {
   if (!isNationalId(input)) return sendText(phone, 'Please enter a valid national ID.')
   await patchNote(admin, session, { depNationalId: input.trim() })
+  await sendButtons(phone, "Select the dependant's gender", [
+    { id: 'male', title: 'Male' }, { id: 'female', title: 'Female' }, { id: 'other', title: 'Other' },
+  ])
+  return setState(admin, session, 'AD_GENDER')
+}
+
+const adGender: Handler = async ({ input, phone, session, admin }) => {
+  if (input === 'other') {
+    await sendText(phone, "Type the dependant's preferred gender")
+    return setState(admin, session, 'AD_GENDER_OTHER')
+  }
+  if (input !== 'male' && input !== 'female') return sendText(phone, 'Please choose one of the buttons above.')
+  await patchNote(admin, session, { depGender: input })
+  await sendText(phone, "Enter the dependant's date of birth (e.g. 26-05-2000)")
+  return setState(admin, session, 'AD_DOB')
+}
+
+const adGenderOther: Handler = async ({ input, phone, session, admin }) => {
+  const g = input.trim()
+  if (g.length < 2 || g.length > 40) return sendText(phone, 'Please type a valid gender.')
+  await patchNote(admin, session, { depGender: g })
   await sendText(phone, "Enter the dependant's date of birth (e.g. 26-05-2000)")
   return setState(admin, session, 'AD_DOB')
 }
@@ -171,7 +213,7 @@ const adProduct: Handler = async (ctx) => {
   await patchNote(admin, session, {
     flow: 'new_dependant',
     dependant: {
-      name: n.depName, nationalId: n.depNationalId, dob: n.depDob,
+      name: n.depName, nationalId: n.depNationalId, dob: n.depDob, gender: n.depGender,
       relationship: n.depRelationship, productId: p.id, productName: p.name,
       premium: p.premium, coverAmount: p.coverAmount,
     },
@@ -187,6 +229,17 @@ const viewClients: Handler = async ({ phone, admin, contact }) => {
   return sendText(phone, clients.length
     ? `You have ${clients.length} client${clients.length === 1 ? '' : 's'}\n\n${clients.map((c, i) => `(${i + 1}) ${c.name}\nID: ${c.nationalId}\nContact: ${c.phone}`).join('\n\n')}`
     : 'You have no clients yet — option 1 adds one.')
+}
+
+/* --------------------------- 4. Commission -------------------------------- */
+
+/** Real commission — premium x product.commission_pct across every live
+ *  policy on the agent's book, same field the portal's reports read. */
+const commission: Handler = async ({ phone, admin, contact }) => {
+  const { rows, total } = await commissionForAgent(admin, contact.agent!.id)
+  return sendText(phone, rows.length
+    ? `Your commission book (per month)\n\n${rows.join('\n')}\n\nTotal: $${total.toFixed(2)}/month`
+    : 'No live policies on your book yet — commission shows here once your clients are covered.')
 }
 
 /* --------------------------- 5. Make Payment ------------------------------ */
@@ -228,9 +281,11 @@ const apayMonths: Handler = async (ctx) => {
 
 export const AGENT_HANDLERS: Record<string, Handler> = {
   AGENT_MENU: menu,
-  AC_NAME: acName, AC_ID: acId, AC_DOB: acDob, AC_EMAIL: acEmail, AC_PHONE: acPhone, AC_PRODUCT: acProduct,
+  AC_NAME: acName, AC_ID: acId, AC_GENDER: acGender, AC_GENDER_OTHER: acGenderOther,
+  AC_DOB: acDob, AC_EMAIL: acEmail, AC_PHONE: acPhone, AC_PRODUCT: acProduct,
   ...makeTail('AC'),
-  AD_HOLDER_ID: adHolderId, AD_POLICY: adPolicy, AD_NAME: adName, AD_ID: adId, AD_DOB: adDob,
+  AD_HOLDER_ID: adHolderId, AD_POLICY: adPolicy, AD_NAME: adName, AD_ID: adId,
+  AD_GENDER: adGender, AD_GENDER_OTHER: adGenderOther, AD_DOB: adDob,
   AD_REL: adRel, AD_PRODUCT: adProduct,
   ...makeTail('AD'),
   APAY_ID: apayId, APAY_POLICY: apayPolicy, APAY_MONTHS: apayMonths,

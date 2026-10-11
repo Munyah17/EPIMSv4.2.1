@@ -140,6 +140,7 @@ function toClient(r: Record<string, unknown>): Client {
     phone:       r.phone as string,
     nationalId:  r.national_id as string,
     dob:         date(r.dob as string),
+    gender:      (r.gender as string | null) ?? undefined,
     address:     (r.address as string) ?? '',
     occupation:  r.occupation as string | undefined,
     insurer:     (r.insurer as Client['insurer']) ?? undefined,
@@ -693,6 +694,7 @@ export const clients = {
     const row = {
       name: client.name, email: client.email, phone: client.phone,
       national_id: client.nationalId, dob: client.dob || null,
+      gender: client.gender ?? null,
       address: client.address, occupation: client.occupation ?? null,
       insurer: client.insurer ?? null, status: client.status,
       insurer_provisional: client.insurerProvisional ?? false,
@@ -710,6 +712,7 @@ export const clients = {
     if (updates.name       !== undefined) row.name       = updates.name
     if (updates.email      !== undefined) row.email      = updates.email
     if (updates.phone      !== undefined) row.phone      = updates.phone
+    if (updates.gender     !== undefined) row.gender     = updates.gender ?? null
     if (updates.address    !== undefined) row.address    = updates.address
     if (updates.occupation !== undefined) row.occupation = updates.occupation
     if (updates.insurer    !== undefined) row.insurer    = updates.insurer ?? null

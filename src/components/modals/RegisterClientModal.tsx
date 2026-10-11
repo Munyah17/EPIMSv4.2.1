@@ -16,6 +16,8 @@ export default function RegisterClientModal({ onClose, onSave }: Props) {
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
   const [nationalId, setNationalId] = useState('')
+  const [gender, setGender] = useState('')
+  const [genderOther, setGenderOther] = useState('')
   const [dob, setDob] = useState('')
   const [address, setAddress] = useState('')
   const [occupation, setOccupation] = useState('')
@@ -43,6 +45,7 @@ export default function RegisterClientModal({ onClose, onSave }: Props) {
     const client: Client = {
       id: `c${Date.now()}`,
       name, email, phone, nationalId, dob, address, occupation,
+      gender: gender === 'other' ? genderOther.trim() || 'other' : gender || undefined,
       agentId: agentId || undefined,
       createdAt: toIsoDate(new Date()),
       policyCount: 0,
@@ -79,6 +82,23 @@ export default function RegisterClientModal({ onClose, onSave }: Props) {
               <label>National ID *</label>
               <input className={invalidClass(missing, attempted, 'nationalId')} placeholder="e.g. 632118532K12" value={nationalId} onChange={e => setNationalId(e.target.value.replace(/-/g, ''))} />
             </div>
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label>Gender</label>
+              <select className="form-control" value={gender} onChange={e => setGender(e.target.value)}>
+                <option value="">Not specified</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="other">Other…</option>
+              </select>
+            </div>
+            {gender === 'other' && (
+              <div className="form-group">
+                <label>Preferred gender</label>
+                <input className="form-control" placeholder="e.g. non-binary" value={genderOther} onChange={e => setGenderOther(e.target.value)} />
+              </div>
+            )}
           </div>
           <div className="form-row">
             <div className="form-group">
