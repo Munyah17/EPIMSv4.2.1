@@ -99,6 +99,7 @@ const STAFF_SECTIONS: NavSection[] = [
       { id: 'staff', label: 'Staff Management', icon: '✅', roles: ['super_admin', 'admin'] },
       { id: 'reports', label: 'Reports', icon: '📊', roles: ['super_admin', 'admin', 'finance'] },
       { id: 'fraud', label: 'Fraud Alert', icon: '⚠', roles: ['super_admin', 'admin', 'claims_officer'] },
+      { id: 'whatsapp_bot', label: 'WhatsApp Chatbot', icon: '💬', roles: ['super_admin', 'admin'] },
       { id: 'system_access_roles', label: 'System Access Roles', icon: '🔐', roles: ['super_admin'] },
       {
         groupId: 'communications',
@@ -109,7 +110,6 @@ const STAFF_SECTIONS: NavSection[] = [
           { id: 'tickets', label: 'Tickets', icon: '💬' },
           { id: 'live_chat', label: 'Live Chat', icon: '🟢', roles: ['super_admin', 'admin', 'client_relations'] },
           { id: 'mass_messaging', label: 'Bulk SMS Messaging', icon: '📱', roles: ['super_admin', 'admin'] },
-          { id: 'whatsapp_bot', label: 'WhatsApp Chatbot', icon: '🟢', roles: ['super_admin', 'admin'] },
         ],
       },
       {
