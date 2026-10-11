@@ -52,7 +52,9 @@ interface Body {
   currency?: 'USD' | 'ZWG'
   ecocashNumber?: string
   payerEmail?: string
-  origin?: string
+  /** Where the payer lands after Paynow checkout — your result page.
+   *  The resultUrl (status webhook) is always the portal's, never yours. */
+  returnUrl?: string
 }
 
 function machineOk(req: VercelRequest): boolean {
@@ -187,10 +189,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       })
     }
 
-    const origin = body.origin ?? 'https://www.motions.co.zw'
+    // resultUrl is ALWAYS the portal's own webhook — that's the single
+    // reconciliation point every channel shares. The website only owns
+    // the page the payer returns to (returnUrl).
     const initiated = await initiatePaynowPayment({
       admin, reference, policyId: policy.id,
-      usdAmount, currency, origin,
+      usdAmount, currency,
+      origin: 'https://portal.motions.co.zw',
+      returnUrl: body.returnUrl,
       description: `${policy.policyNumber} premium`,
       email: process.env.PAYNOW_LIVE === 'true' ? body.payerEmail : undefined,
     })

@@ -61,6 +61,10 @@ export async function initiatePaynowPayment(opts: {
   policyId: string
   /** Origin used for result/return urls, e.g. https://portal.motions.co.zw */
   origin: string
+  /** Where the PAYER lands after checkout when it isn't our own
+   *  /payment/return page — the website passes its own result page.
+   *  Never touches resultUrl: Paynow status posts always come to US. */
+  returnUrl?: string
   admin: SupabaseClient
 }): Promise<PaynowInitiateResult> {
   const { id: integrationId, key: integrationKey } = integrationFor(opts.currency)
@@ -83,7 +87,7 @@ export async function initiatePaynowPayment(opts: {
 
   const paynow = new Paynow(integrationId, integrationKey)
   paynow.resultUrl = `${opts.origin}/api/paynow-webhook`
-  paynow.returnUrl = `${opts.origin}/payment/return`
+  paynow.returnUrl = opts.returnUrl ?? `${opts.origin}/payment/return`
 
   // While the integration is in TEST MODE Paynow rejects the whole
   // transaction if authemail is anything but the merchant's own address

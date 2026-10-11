@@ -43,7 +43,7 @@ unset server-side, `NOTIFY_SECRET`/`CRON_SECRET` also work.
   "paymentMethod": "paynow",
   "currency": "USD",
   "payerEmail": "nellywacho@gmail.com",
-  "origin": "https://www.motions.co.zw"
+  "returnUrl": "https://www.motions.co.zw/payment-result"
 }
 ```
 
@@ -62,9 +62,11 @@ table is the source of truth, so list products from
   "amount": 10.26
 }
 ```
-Redirect the payer to `redirectUrl`. Confirmation reaches our own
-`api/paynow-webhook.ts` — the policy activates and the payment is
-recorded exactly like a portal sale.
+Redirect the payer to `redirectUrl`. `returnUrl` is optional — where
+the payer lands after checkout (your result page); Paynow's status
+webhook always posts to OUR `api/paynow-webhook.ts` regardless, so
+confirmation, activation and recording happen exactly like a portal
+sale even if the buyer never returns to your page.
 
 **Success — EcoCash (200):**
 ```json
