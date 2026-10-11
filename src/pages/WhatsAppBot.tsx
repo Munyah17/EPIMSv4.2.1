@@ -20,6 +20,8 @@ const CHECK_LABELS: [keyof WaBotStatus['configured'], string][] = [
   ['ecocash', 'EIP_* (EcoCash push)'],
 ]
 
+const CODE_STYLE: React.CSSProperties = { fontSize: 12, overflowWrap: 'anywhere' }
+
 export default function WhatsAppBot({ showToast }: Props) {
   const [status, setStatus] = useState<WaBotStatus | null>(null)
   const [sessions, setSessions] = useState<WaSessionRow[]>([])
@@ -68,30 +70,35 @@ export default function WhatsAppBot({ showToast }: Props) {
   const missing = CHECK_LABELS.filter(([k]) => status && !status.configured[k])
 
   return (
-    <div>
-      <div className="page-header">
-        <div>
-          <h2>WhatsApp Bot</h2>
-          <p>Business number <strong>{BUSINESS_NUMBER}</strong> (Econet) — Meta webhook <code>/api/whatsapp-webhook</code></p>
+    <div className="panel">
+      <div className="sh-page-header">
+        <div className="sh-page-status">
+          <div className="syshealth-dot lg" style={{ background: loading ? '#94A3B8' : status?.enabled ? '#059669' : '#DC2626' }} />
+          <div>
+            <h2 className="sh-page-title">WhatsApp Bot</h2>
+            <p className="sh-page-sub">
+              Business number <strong>{BUSINESS_NUMBER}</strong> (Econet)
+            </p>
+          </div>
         </div>
-        <button className="btn btn-ghost" onClick={() => void refresh()}>↻ Refresh</button>
+        <button className="btn btn-outline" onClick={() => void refresh()}>↻ Refresh</button>
       </div>
 
-      <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: 16 }}>
 
         {/* Live state */}
         <div className="card">
-          <h3>Bot status</h3>
-          {loading ? <p>Loading…</p> : !status ? (
+          <div className="card-header"><span className="card-title">Bot status</span></div>
+          {loading ? <p className="text-muted">Loading…</p> : !status ? (
             <p className="text-muted">Status unavailable — check Vercel env vars are set.</p>
           ) : (
             <>
-              <p>
-                <span className={`badge ${status.enabled ? 'badge-green' : 'badge-red'}`}>
+              <p style={{ marginBottom: 10 }}>
+                <span className={`pill ${status.enabled ? 'pill-success' : 'pill-danger'}`}>
                   {status.enabled ? '● LIVE' : '● PAUSED'}
                 </span>
               </p>
-              <p className="text-muted" style={{ fontSize: 13 }}>
+              <p className="text-muted" style={{ fontSize: 13, marginBottom: 14 }}>
                 {status.counts.openSessions} open session{status.counts.openSessions === 1 ? '' : 's'} ·{' '}
                 {status.counts.sessions24h} in the last 24h · {status.counts.policiesViaBot} policies written via the bot
               </p>
@@ -107,25 +114,25 @@ export default function WhatsAppBot({ showToast }: Props) {
 
         {/* Config checklist */}
         <div className="card">
-          <h3>Server configuration</h3>
-          {loading || !status ? <p>Loading…</p> : (
+          <div className="card-header"><span className="card-title">Server configuration</span></div>
+          {loading || !status ? <p className="text-muted">Loading…</p> : (
             <>
               {CHECK_LABELS.map(([k, label]) => (
-                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
-                  <code style={{ fontSize: 12 }}>{label}</code>
-                  <span className={`badge ${status.configured[k] ? 'badge-green' : 'badge-red'}`}>
+                <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: '1px solid var(--border)' }}>
+                  <code style={CODE_STYLE}>{label}</code>
+                  <span className={`pill ${status.configured[k] ? 'pill-success' : 'pill-danger'}`} style={{ flexShrink: 0 }}>
                     {status.configured[k] ? 'set' : 'missing'}
                   </span>
                 </div>
               ))}
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0' }}>
-                <code style={{ fontSize: 12 }}>Graph API version</code>
-                <span>{status.configured.graphVersion}</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, padding: '6px 0' }}>
+                <code style={CODE_STYLE}>Graph API version</code>
+                <span style={{ fontSize: 12 }}>{status.configured.graphVersion}</span>
               </div>
               {missing.length > 0 && (
-                <p style={{ color: 'var(--danger)', fontSize: 13, marginTop: 8 }}>
+                <div className="info-banner info-banner-danger" style={{ marginTop: 10, borderRadius: 8, padding: '10px 13px', fontSize: 12 }}>
                   {missing.length} variable{missing.length === 1 ? '' : 's'} missing — set in Vercel → Settings → Environment Variables (Production), then redeploy. Values are never shown here.
-                </p>
+                </div>
               )}
             </>
           )}
@@ -133,16 +140,16 @@ export default function WhatsAppBot({ showToast }: Props) {
 
         {/* Test send */}
         <div className="card">
-          <h3>Send test message</h3>
+          <div className="card-header"><span className="card-title">Send test message</span></div>
           <div className="form-group">
             <label>Phone (international format)</label>
-            <input className="form-control" placeholder="e.g. 263775668334" value={testPhone} onChange={e => setTestPhone(e.target.value.replace(/[^\d+]/g, ''))} />
+            <input className="form-control" placeholder="e.g. 263775668334" inputMode="tel" value={testPhone} onChange={e => setTestPhone(e.target.value.replace(/[^\d+]/g, ''))} />
           </div>
-          <div className="form-group">
+          <div className="form-group" style={{ marginTop: 10 }}>
             <label>Message</label>
             <input className="form-control" placeholder="Motions WhatsApp Bot — test from the portal." value={testText} onChange={e => setTestText(e.target.value)} />
           </div>
-          <button className="btn btn-primary" onClick={() => void sendTest()} disabled={sending}>
+          <button className="btn btn-primary" style={{ marginTop: 14 }} onClick={() => void sendTest()} disabled={sending}>
             {sending ? 'Sending…' : 'Send test'}
           </button>
           <p className="text-muted" style={{ fontSize: 12, marginTop: 8 }}>
@@ -153,14 +160,16 @@ export default function WhatsAppBot({ showToast }: Props) {
 
       {/* Open sessions */}
       <div className="card" style={{ marginTop: 16 }}>
-        <h3>Open sessions <span className="badge">{sessions.length}</span></h3>
+        <div className="card-header">
+          <span className="card-title">Open sessions <span className="pill pill-gray">{sessions.length}</span></span>
+        </div>
         <p className="text-muted" style={{ fontSize: 13 }}>
           Conversations in progress (60-minute lifetime). Ending one makes that number start fresh.
         </p>
         {sessions.length === 0 ? (
-          <p className="text-muted">No open sessions.</p>
+          <div className="empty-state" style={{ padding: '20px 0' }}>No open sessions.</div>
         ) : (
-          <div className="table-wrap">
+          <div className="tbl-scroll">
             <table className="table">
               <thead>
                 <tr><th>Phone</th><th>Audience</th><th>Step</th><th>Started</th><th>Details</th><th /></tr>
@@ -168,14 +177,14 @@ export default function WhatsAppBot({ showToast }: Props) {
               <tbody>
                 {sessions.map(s => (
                   <tr key={s.id}>
-                    <td>{s.phone_number}</td>
-                    <td><span className="badge">{s.contact_type}</span></td>
-                    <td><code style={{ fontSize: 12 }}>{s.state}</code></td>
-                    <td>{new Date(s.created_at).toLocaleString()}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{s.phone_number}</td>
+                    <td><span className="pill pill-blue">{s.contact_type}</span></td>
+                    <td><code style={CODE_STYLE}>{s.state}</code></td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{new Date(s.created_at).toLocaleString()}</td>
                     <td style={{ maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12 }}>
                       {s.note && Object.keys(s.note).length > 0 ? Object.keys(s.note).join(', ') : '—'}
                     </td>
-                    <td><button className="btn btn-ghost btn-sm" onClick={() => void endSession(s.id)}>End</button></td>
+                    <td><button className="btn btn-outline btn-sm" onClick={() => void endSession(s.id)}>End</button></td>
                   </tr>
                 ))}
               </tbody>
@@ -186,7 +195,7 @@ export default function WhatsAppBot({ showToast }: Props) {
 
       {/* How it works */}
       <div className="card" style={{ marginTop: 16 }}>
-        <h3>Reference</h3>
+        <div className="card-header"><span className="card-title">Reference</span></div>
         <ul style={{ fontSize: 13, lineHeight: 1.7, paddingLeft: 18, margin: 0 }}>
           <li>Menus: <strong>clients</strong> (pay, policies, renew, claims, dependants), <strong>agents</strong> (add client/dependant, book, commission, pay), <strong>unknown numbers</strong> (register).</li>
           <li>Type <code>exit</code> in any chat to reset to the main menu. Sessions auto-expire after 60 minutes.</li>
