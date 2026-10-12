@@ -10,6 +10,7 @@ import { computeAssignedStartDate } from '../../lib/policyLifecycle'
 import { toIsoDate } from '../../lib/dateUtils'
 import { nextPolicyNumber } from '../../lib/policyNumbers'
 import { POLICY_SOURCES, DEFAULT_POLICY_SOURCE } from '../../lib/policySources'
+import { notifyGroupRegistered } from '../../lib/signupNotifications'
 import ValidationSummary, { MissingField, invalidClass, fieldId, isMissing } from '../ui/ValidationSummary'
 
 interface Props {
@@ -216,6 +217,9 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
     setGroups(prev => [...prev, { ...data, active: true }].sort((a, b) => a.name.localeCompare(b.name)))
     setGroupId(data.id)
     setShowNewOrg(false)
+    // Inline or dedicated page, the organisation gets the same
+    // registration text — the channel shouldn't change the record.
+    void notifyGroupRegistered(data)
     setOrgName(''); setOrgCustomType(''); setOrgExpected(''); setOrgDesc(''); setOrgLinePhone(''); setOrgEmail(''); setOrgAddress(''); setOrgContactName(''); setOrgPhone(''); setOrgContactEmail('')
     showToast?.('success', `${data.name} registered — add its ${coverScope === 'corporate' ? 'employees' : 'members'} below, then finish the policy.`)
   }

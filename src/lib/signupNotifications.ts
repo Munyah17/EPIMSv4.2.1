@@ -1,4 +1,4 @@
-import type { Policy, Client, Payment } from '../types'
+import type { Policy, Client, Payment, Group } from '../types'
 import { notifyPhone } from './notify'
 import { sendEmail, getNotifSettings } from './mailService'
 import { MAILBOXES } from './mailboxes'
@@ -83,6 +83,41 @@ Please note this registration does not itself put any cover in place. One of our
   }
 
   const alert = `${COMPANY_NAME}: New client registered. ${client.name}, ${client.phone || 'no phone'}${registeredBy ? `, by ${registeredBy}` : ''}. No policy yet.`
+  const recipients = [...new Set([...ADMIN_ALERT_NUMBERS, cfg.superAdminPhone].filter(Boolean))] as string[]
+  for (const number of recipients) {
+    notifyPhone(number, alert, 'registration')
+  }
+}
+
+/** An organisation registered for group/corporate cover — the company's
+ *  own numbers get told first (the org line AND the named contact's),
+ *  then the office. Same proof-of-record SMS the client gets on
+ *  registration; an org that never hears from us can't tell a typo'd
+ *  number at this point, when it's still free to fix. */
+export async function notifyGroupRegistered(group: Group): Promise<void> {
+  const cfg = getNotifSettings()
+  const kind = group.groupType === 'other' ? (group.customType ?? 'organisation') : group.groupType
+
+  // The organisation's own numbers — org line and the representative's.
+  const orgNumbers = [...new Set([group.orgPhone, group.contactPhone].filter(Boolean))] as string[]
+  const msg = `${COMPANY_NAME}: ${group.name} is registered as a group client (${kind}).` +
+    `${group.expectedMembers ? ` Expected members: ${group.expectedMembers}.` : ''}` +
+    ` We will manage roster, invoicing and policy updates through ${group.contactName || 'this contact'}${group.contactPhone ? ` on ${group.contactPhone}` : ''}. Keep this SMS.`
+  for (const number of orgNumbers) {
+    notifyPhone(number, msg, 'registration')
+  }
+
+  if (group.orgEmail || group.contactEmail) {
+    void sendEmail({
+      to: (group.orgEmail || group.contactEmail) as string,
+      cc: group.orgEmail && group.contactEmail ? group.contactEmail : undefined,
+      subject: `${group.name} — registered for group cover with ${COMPANY_NAME}`,
+      from: MAILBOXES.noreply,
+      body: `Dear ${group.contactName || group.name},\n\n${group.name} has been registered as a group client with ${COMPANY_NAME}.\n\nType:             ${kind}\nExpected members: ${group.expectedMembers ?? '—'}\n\nWe will manage your member roster, monthly invoicing and policy updates through this account. If any detail above is wrong, contact us and we will correct it.${cfg.signature ? `\n\n---\n${cfg.signature}` : ''}`,
+    }).catch(() => { /**/ })
+  }
+
+  const alert = `${COMPANY_NAME}: New organisation registered. ${group.name} (${kind}), contact ${group.contactName || 'none'} ${group.contactPhone || ''}${group.expectedMembers ? `, ${group.expectedMembers} members expected` : ''}.`
   const recipients = [...new Set([...ADMIN_ALERT_NUMBERS, cfg.superAdminPhone].filter(Boolean))] as string[]
   for (const number of recipients) {
     notifyPhone(number, alert, 'registration')

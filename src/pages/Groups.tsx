@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import type { ToastMessage, Group } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
+import { notifyGroupRegistered } from '../lib/signupNotifications'
 import { formatDate } from '../lib/dateUtils'
 import { useAuth } from '../contexts/AuthContext'
 import GroupModal, { groupTypeLabel, type GroupInput } from '../components/modals/GroupModal'
@@ -58,6 +59,9 @@ export default function Groups({ showToast }: Props) {
       // freshly added group doesn't jump to the bottom until next load.
       setGroups(prev => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)))
       showToast('success', `Group ${data.name} created.`)
+      // The company's own numbers get the proof-of-registration text;
+      // the office hears about it on the alert line too.
+      void notifyGroupRegistered(data)
     }
     setShowAdd(false)
     setEditGroup(null)
