@@ -107,13 +107,23 @@ export async function notifyPolicyRegistered(policy: Policy, client: Client): Pr
     : `Cover Amount:   ${cover}`
 
   // ── The client ────────────────────────────────────────────────────
+  // A receipt-style breakdown, not a one-line summary: the same figures
+  // the policy document prints — product, cover breakdown, premium,
+  // method, dates — so the SMS alone is proof of cover.
   if (client.phone) {
-    const waiting = policy.status === 'waiting_period'
-      ? ' Your waiting period has started; we will confirm when cover is active.'
-      : ' Your cover is active.'
+    const statusLine = policy.status === 'waiting_period'
+      ? 'Waiting period — we will confirm when cover is active.'
+      : 'Cover active.'
     notifyPhone(
       client.phone,
-      `${COMPANY_NAME}: Welcome ${client.name.split(' ')[0]}. Policy ${policy.policyNumber} (${policy.productName}) is registered, ${coverSms}. Payment: ${policy.paymentMethod}.${waiting}`,
+      `${COMPANY_NAME}: Policy ${policy.policyNumber} confirmed.\n` +
+      `Holder:   ${client.name}\n` +
+      `Product:  ${policy.productName}\n` +
+      `${fieldToFloor ? `Cover:    ${fieldToFloorCoverLine(policy.coverAmount)}` : `Cover:    ${cover}`}\n` +
+      `Premium:  ${premium} via ${policy.paymentMethod}\n` +
+      `Start:    ${policy.startDate}\n` +
+      `Status:   ${statusLine}\n` +
+      `Terms & Conditions apply — see your policy document. Keep this SMS.`,
       'registration', policy.policyNumber,
     )
   }

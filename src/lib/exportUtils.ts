@@ -564,6 +564,35 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
     y += excessLines.length * 4.5 + 4
   }
 
+  // ── POLICY CONDITIONS — the plain-language summary the client reads
+  // first. It is a breakdown, not a contract — the exclusion schedules
+  // appended at the end always govern.
+  const conditions: string[] = []
+  if (isFieldToFloor) {
+    conditions.push('This policy covers the policyholder and one spouse only for the funeral benefit.')
+    conditions.push(`Cover runs with the tobacco season (${TOBACCO_SEASON.start} to ${TOBACCO_SEASON.end}), not the date this document was issued.`)
+    conditions.push('Each peril pays up to its scheduled benefit above — no claim exceeds its own peril\'s cover.')
+  } else if (isAgriculture) {
+    conditions.push('Cover applies only to the insured crop and the perils listed above.')
+    conditions.push(`Cover runs with the tobacco season (${TOBACCO_SEASON.start} to ${TOBACCO_SEASON.end}).`)
+  } else {
+    conditions.push(policy.status === 'waiting_period'
+      ? 'This policy is in its waiting period — claims arising during it are not payable.'
+      : 'Cover is in force from the commencement date shown, subject to the terms appended.')
+    conditions.push('Premiums must be kept up to date; a lapsed policy carries no cover until reinstated.')
+    if (policy.dependants.length > 0) {
+      conditions.push(`This policy covers the policyholder and the ${policy.dependants.length} dependant${policy.dependants.length === 1 ? '' : 's'} named above only.`)
+    }
+  }
+  conditions.push('The Terms and Conditions and exclusion schedules on the final pages form part of this policy.')
+  const condLines = conditions.flatMap(c => doc.splitTextToSize(`• ${c}`, pageWidth - 32) as string[])
+  ensureRoom(16 + condLines.length * 4.4)
+  sectionBand('POLICY CONDITIONS')
+  doc.setFontSize(8.5)
+  doc.setTextColor(...TEXT)
+  doc.text(condLines, 14, y)
+  y += condLines.length * 4.4 + 4
+
   ensureRoom(24)
   doc.setDrawColor(220, 226, 240)
   doc.line(14, y, pageWidth - 14, y)

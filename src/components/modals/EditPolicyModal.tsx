@@ -87,7 +87,12 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
             <label>Agent</label>
             <select className="form-control" value={agentId} onChange={e => setAgentId(e.target.value)}>
               <option value="">Unassigned</option>
-              {staff.map(s => <option key={s.id} value={s.id}>{s.name} ({s.role.replace(/_/g, ' ')})</option>)}
+              <optgroup label="Agents">
+                {staff.filter(s => s.role === 'agent').map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+              </optgroup>
+              <optgroup label="Office Staff">
+                {staff.filter(s => s.role !== 'agent').map(s => <option key={s.id} value={s.id}>{s.name} ({s.role.replace(/_/g, ' ')})</option>)}
+              </optgroup>
             </select>
           </div>
         </div>

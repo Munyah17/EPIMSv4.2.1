@@ -131,7 +131,14 @@ export default function RegisterClientModal({ onClose, onSave, existingClients }
             <label>Referred By — Agent</label>
             <select className="form-control" value={agentId} onChange={e => setAgentId(e.target.value)}>
               <option value="">None — direct client</option>
-              {agents.map(a => <option key={a.id} value={a.id}>{a.name} ({a.role.replace(/_/g, ' ')})</option>)}
+              {/* Agents earn referral credit; office staff do not — the
+                  two groups are labelled so the capturer picks right. */}
+              <optgroup label="Agents">
+                {agents.filter(a => a.role === 'agent').map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </optgroup>
+              <optgroup label="Office Staff">
+                {agents.filter(a => a.role !== 'agent').map(a => <option key={a.id} value={a.id}>{a.name} ({a.role.replace(/_/g, ' ')})</option>)}
+              </optgroup>
             </select>
             <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>Optional — only if an agent brought this client in. Any policy created for them later will carry the same agent.</p>
           </div>

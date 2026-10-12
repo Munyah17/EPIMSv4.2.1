@@ -281,7 +281,17 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   }
 
   const addDependant = () => {
-    setDependants(prev => [...prev, { name: '', relationship: '', dob: '', nationalId: '' }])
+    // Field-to-Floor cover is the policyholder and ONE spouse for the
+    // funeral benefit — a second dependant can never exist on it.
+    if (product?.category === 'agriculture' && dependants.length >= 1) {
+      showToast?.('warning', 'Tobacco cover is the policyholder and one spouse only — no other dependants can be added.')
+      return
+    }
+    setDependants(prev => [...prev, {
+      name: '',
+      relationship: product?.category === 'agriculture' ? 'Spouse' : '',
+      dob: '', nationalId: '',
+    }])
   }
 
   const removeDependant = (i: number) => {
@@ -430,7 +440,9 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
           productId, productName: product!.name,
           premium: product!.premium, coverAmount: product!.coverAmount,
         }))
-      : dependants
+      : product!.category === 'agriculture'
+        ? dependants.slice(0, 1).map(d => ({ ...d, relationship: 'Spouse' }))
+        : dependants
 
     // Create policy with the client. The number is drawn from the
     // product's sequence (FCP0001, HCP0042, ...) — short, and the prefix
@@ -754,7 +766,16 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                 <label>Agent (Referred By)</label>
                 <select className="form-control" value={agentId} onChange={e => setAgentId(e.target.value)}>
                   <option value="">Unassigned</option>
-                  {staff.map(s => <option key={s.id} value={s.id}>{s.name} ({s.role.replace(/_/g, ' ')})</option>)}
+                  {/* Field agents and office staff are different books —
+                      commission belongs to the agent who brought the sale,
+                      so the picker names the group instead of trusting the
+                      capturer to know who's an agent. */}
+                  <optgroup label="Agents">
+                    {staff.filter(s => s.role === 'agent').map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </optgroup>
+                  <optgroup label="Office Staff">
+                    {staff.filter(s => s.role !== 'agent').map(s => <option key={s.id} value={s.id}>{s.name} ({s.role.replace(/_/g, ' ')})</option>)}
+                  </optgroup>
                 </select>
                 <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>Optional — the agent who brought this client in. Defaults to you; a new client is bound to the same agent.</p>
               </div>
@@ -872,7 +893,13 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                   <div key={i}>
                     <div className="new-policy-dependant-row" style={{ marginBottom: isMedical ? 4 : 8, alignItems: 'center' }}>
                       <input className="form-control" placeholder="Name" value={d.name} onChange={e => updateDependant(i, 'name', e.target.value)} />
-                      <input className="form-control" placeholder="Relationship" value={d.relationship} onChange={e => updateDependant(i, 'relationship', e.target.value)} />
+                      {product?.category === 'agriculture' ? (
+                        // The funeral benefit covers the holder's spouse
+                        // only — locked, not a free relationship field.
+                        <input className="form-control" value="Spouse" readOnly title="Tobacco cover is the policyholder and one spouse only" style={{ opacity: 0.7 }} />
+                      ) : (
+                        <input className="form-control" placeholder="Relationship" value={d.relationship} onChange={e => updateDependant(i, 'relationship', e.target.value)} />
+                      )}
                       <DateInput value={d.dob} onChange={v => updateDependant(i, 'dob', v)} />
                       <input className="form-control" placeholder="ID (16+) or birth record no." value={d.nationalId} onChange={e => updateDependant(i, 'nationalId', e.target.value.replace(/-/g, ''))} />
                       <select className="form-control" value={d.productId ?? ''} onChange={e => updateDependant(i, 'productId', e.target.value)} disabled={!product}>
