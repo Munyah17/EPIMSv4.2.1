@@ -5,6 +5,7 @@ import { generateTransactionId } from '../../lib/transactionId'
 import { MANUAL_PAYMENT_METHODS } from '../../types'
 import { db } from '../../lib/db'
 import { uploadDocument } from '../../lib/storage'
+import { serverReachable } from '../../lib/notify'
 import { premiumPeriodLabel } from '../../lib/productUtils'
 import { policyBillablePremium, billableHeadCount } from '../../lib/premium'
 import DateInput from '../ui/DateInput'
@@ -105,6 +106,16 @@ export default function RecordPaymentModal({ policyId: initialPolicyId, payment:
     // button do nothing at all with no explanation.
     setAttempted(true)
     if (blockedReason) return
+
+    // No payment is recorded when the server can't be reached — a
+    // collected payment nobody was notified about is worse than a retry.
+    setUploading(true)
+    const up = await serverReachable()
+    setUploading(false)
+    if (!up) {
+      setSaveError('The server is unreachable right now — nothing was recorded. Try again in a moment.')
+      return
+    }
 
     // PoP goes up BEFORE the payment row — a recorded payment without its
     // receipt is the exact gap this exists to close, so a failed upload

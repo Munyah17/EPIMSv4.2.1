@@ -11,6 +11,7 @@ import { toIsoDate } from '../../lib/dateUtils'
 import { nextPolicyNumber } from '../../lib/policyNumbers'
 import { POLICY_SOURCES, DEFAULT_POLICY_SOURCE } from '../../lib/policySources'
 import { notifyGroupRegistered } from '../../lib/signupNotifications'
+import { serverReachable } from '../../lib/notify'
 import ValidationSummary, { MissingField, invalidClass, fieldId, isMissing } from '../ui/ValidationSummary'
 
 interface Props {
@@ -195,6 +196,13 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
     const expected = Number(orgExpected)
     if (!orgContactName.trim()) { showToast?.('error', 'Name the representative / contact person.'); return }
     setOrgSaving(true)
+    // Nothing is registered if the server can't confirm it — the org
+    // gets a retry prompt instead of a half-done record.
+    if (!(await serverReachable())) {
+      setOrgSaving(false)
+      showToast?.('error', 'The server is unreachable right now — nothing was registered. Try again in a moment.')
+      return
+    }
     const { data, error } = await db.groups.create({
       name,
       groupType: orgType,
@@ -380,6 +388,15 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
         if (showToast) showToast('error', `${overValue.name || 'A dependant'}'s plan premium and cover cannot exceed the policyholder's.`)
         return
       }
+    }
+
+    // Server-side rule: a registration is owed a confirmation, and the
+    // confirmation is a server call. If the server can't even be
+    // reached, nothing is written — the capturer retries instead of a
+    // client/policy existing with nobody told.
+    if (!(await serverReachable())) {
+      if (showToast) showToast('error', 'The server is unreachable right now — nothing was registered. Try again in a moment.')
+      return
     }
 
     // Existing customer: update their record in place (details may have

@@ -18,6 +18,25 @@ import { sendSms } from './smsService'
 
 export const NOTIFY_FAILURE_EVENT = 'ims:notify-failed'
 
+/**
+ * Pre-flight gate for writes that are owed a notification.
+ *
+ * Registration and payment flows are server-side: the client/policy row
+ * commits to Supabase and the confirmation/alert fires through /api/*.
+ * If the server cannot even be reached, the write must NOT commit —
+ * otherwise the office sees a client who paid but nobody was told. So
+ * the save paths check this FIRST: unreachable server → nothing is
+ * registered, nothing is collected, the user is told to try again.
+ */
+export async function serverReachable(timeoutMs = 5000): Promise<boolean> {
+  try {
+    const res = await fetch('/api/health-check', { signal: AbortSignal.timeout(timeoutMs) })
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
 export interface NotifyChannelResult {
   channel: string
   recipient: string

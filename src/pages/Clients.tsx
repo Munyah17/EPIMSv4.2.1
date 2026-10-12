@@ -5,7 +5,7 @@ import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
 import { useAuth } from '../contexts/AuthContext'
 import { notifyClientRegistered, notifyRegistrationFailed, ADMIN_ALERT_NUMBERS } from '../lib/signupNotifications'
-import { notifyPhone } from '../lib/notify'
+import { notifyPhone, serverReachable } from '../lib/notify'
 import { recordActivity } from '../lib/activityLog'
 import { COMPANY_NAME } from '../lib/company'
 import { searchMembers } from '../lib/memberNumbers'
@@ -79,6 +79,13 @@ export default function Clients({ showToast }: Props) {
   }
 
   const handleRegister = async (client: Client) => {
+    // Server-side rule: nothing is registered when the server can't be
+    // reached — a client on file with no welcome/alert firing is a
+    // half-done registration.
+    if (!(await serverReachable())) {
+      showToast('error', 'The server is unreachable right now — nothing was registered. Try again in a moment.')
+      return
+    }
     const { data, error } = await db.clients.create(client)
     if (error || !data) {
       showToast('error', error ?? 'Failed to register client.')
@@ -100,9 +107,13 @@ export default function Clients({ showToast }: Props) {
   }
 
   const handleAssignPolicy = async (policy: Policy) => {
+    if (!(await serverReachable())) {
+      showToast('error', 'The server is unreachable right now — nothing was registered. Try again in a moment.')
+      return
+    }
     const { data, error } = await db.policies.create(policy)
     if (error || !data) {
-      showToast('error', 'Failed to create policy.')
+      showToast('error', error ?? 'Failed to create policy.')
       void notifyRegistrationFailed('Policy registration', `${policy.clientName} / ${policy.productName} — ${error ?? 'unknown error'}`)
       return
     }

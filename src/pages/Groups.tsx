@@ -3,6 +3,7 @@ import type { ToastMessage, Group } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { notifyGroupRegistered } from '../lib/signupNotifications'
+import { serverReachable } from '../lib/notify'
 import { formatDate } from '../lib/dateUtils'
 import { useAuth } from '../contexts/AuthContext'
 import GroupModal, { groupTypeLabel, type GroupInput } from '../components/modals/GroupModal'
@@ -53,6 +54,12 @@ export default function Groups({ showToast }: Props) {
       setGroups(prev => prev.map(g => g.id === data.id ? data : g))
       showToast('success', `Group ${data.name} updated.`)
     } else {
+      // A group creation is owed the company SMS — unreachable server
+      // means nothing is registered; the capturer retries.
+      if (!(await serverReachable())) {
+        showToast('error', 'The server is unreachable right now — nothing was registered. Try again in a moment.')
+        return
+      }
       const { data, error } = await db.groups.create(input)
       if (error || !data) { showToast('error', error ?? 'Failed to create group.'); return }
       // The list comes back ordered by name — keep that order locally so a
