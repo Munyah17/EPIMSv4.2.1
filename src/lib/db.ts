@@ -219,6 +219,7 @@ function toPolicy(r: any): Policy {
     teamActivity:    r.team_activity ?? undefined,
     hasChronicIllness: r.has_chronic_illness ?? undefined,
     chronicIllnessDetails: r.chronic_illness_details ?? undefined,
+    contractor:      r.contractor ?? undefined,
     source:          r.source ?? undefined,
     createdAt:       date(r.created_at),
     nextPaymentDate: r.next_payment_date ? date(r.next_payment_date) : undefined,
@@ -441,7 +442,7 @@ const POLICY_SELECT_GROUP = POLICY_SELECT_BASE + `,
   groups!group_id(id, name, group_type)
 `
 const POLICY_SELECT_MED = `,
-  has_chronic_illness, chronic_illness_details`
+  has_chronic_illness, chronic_illness_details, contractor`
 const POLICY_SELECT = POLICY_SELECT_GROUP + POLICY_SELECT_MED
 const CLAIM_SELECT = `
   id, claim_number, policy_id, claim_type, amount, status,
@@ -553,6 +554,14 @@ export const policies = {
       }
       ;(row as Record<string, unknown>).has_chronic_illness = policy.hasChronicIllness
       ;(row as Record<string, unknown>).chronic_illness_details = policy.chronicIllnessDetails ?? null
+    }
+    // contractor shares the medical-columns probe block — it landed in
+    // the same schema-generation pass (add_policy_contractor.sql).
+    if (policy.contractor !== undefined) {
+      if (!medColsReady) {
+        return { data: null, error: 'The contractor field needs a database update first — run database/add_policy_contractor.sql in Supabase, then try again.' }
+      }
+      ;(row as Record<string, unknown>).contractor = policy.contractor || null
     }
     const groupColsReady = await hasColumn('policies', 'group_id')
     if (policy.groupId || (policy.coverScope && policy.coverScope !== 'individual')) {

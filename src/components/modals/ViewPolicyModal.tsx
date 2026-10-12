@@ -86,6 +86,9 @@ export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint, show
             {policy.growerNumber && (
               <div className="detail-item"><span className="detail-label">Grower Number</span><span>{policy.growerNumber}</span></div>
             )}
+            {policy.contractor && (
+              <div className="detail-item"><span className="detail-label">Contractor</span><span>{policy.contractor}</span></div>
+            )}
             <div className="detail-item"><span className="detail-label">Next Payment</span><span>{formatDate(policy.nextPaymentDate)}</span></div>
             <div className="detail-item">
               <span className="detail-label">Last Payment</span>

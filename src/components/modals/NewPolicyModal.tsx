@@ -52,6 +52,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   // rather than seeding a mandatory first row.
   const [dependants, setDependants] = useState<Dependant[]>([])
   const [growerNumber, setGrowerNumber] = useState('')
+  const [contractor, setContractor] = useState('')
   const [agentId, setAgentId] = useState('')
   // The channel the sale actually came through — defaults to this web app
   // since that's where the staff member is working.
@@ -441,6 +442,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
       teamActivity: coverScope === 'team' ? teamActivity.trim() : undefined,
       paymentMethod,
       growerNumber: product!.category === 'agriculture' ? (growerNumber || undefined) : undefined,
+      contractor: product!.category === 'agriculture' ? (contractor.trim() || undefined) : undefined,
       createdAt: toIsoDate(new Date()),
       nextPaymentDate: toIsoDate(new Date(new Date(startDate).setMonth(new Date(startDate).getMonth() + (product!.category === 'agriculture' ? 12 : 1)))),
       agentId: agentId || undefined,
@@ -664,9 +666,15 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                 </div>
               )}
               {product?.category === 'agriculture' && (
-                <div className="form-group">
-                  <label>Grower Number</label>
-                  <input className="form-control" placeholder="Grower registration number" value={growerNumber} onChange={e => setGrowerNumber(e.target.value)} />
+                <div className="form-row">
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label>Grower Number</label>
+                    <input className="form-control" placeholder="Grower registration number" value={growerNumber} onChange={e => setGrowerNumber(e.target.value)} />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label>Contractor</label>
+                    <input className="form-control" placeholder="The merchant the grower is contracted to" value={contractor} onChange={e => setContractor(e.target.value)} />
+                  </div>
                 </div>
               )}
               {isMedical && (

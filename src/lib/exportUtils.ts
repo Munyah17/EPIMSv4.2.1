@@ -357,8 +357,14 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   // the document prints the fixed season window regardless.
   const isFieldToFloor = isAgriculture && isTobaccoFieldToFloor(policy.productName)
   const premiumHeading = isAgriculture ? 'Annual Premium' : 'Monthly Premium'
+  // "Harold Muwi - 2344566 · Contractor: AgriCo" — the grower's identity
+  // to the insurer is name + grower number + who holds their contract.
+  const growerLabel = [
+    isAgriculture && policy.growerNumber ? policy.growerNumber : null,
+    isAgriculture && policy.contractor ? `Contractor: ${policy.contractor}` : null,
+  ].filter(Boolean).join(' · ')
   doc.text(
-    isAgriculture && policy.growerNumber ? `${client.name} - ${policy.growerNumber}` : client.name,
+    growerLabel ? `${client.name} - ${growerLabel}` : client.name,
     14, y,
   )
   y += 5
