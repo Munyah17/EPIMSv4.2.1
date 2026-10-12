@@ -2,12 +2,12 @@
  * Policy Terms & Conditions.
  *
  * Every policy document (exportUtils.ts) appends the terms that apply to
- * THAT policy's product: its own product exclusion schedule followed by
- * the shared General Conditions — not every schedule the company issues.
- * A funeral policy carries funeral exclusions; a health policy never
- * ships tobacco terms stapled to it. The wording is contractual, so it
- * is kept verbatim as issued. policyTermsFor() answers which schedule a
- * product maps to.
+ * THAT policy's product — and only that product's. A funeral policy
+ * carries funeral terms; a tobacco policy carries tobacco terms plus
+ * the Funeral Cash Plan schedule its rider rides on. There is no shared
+ * General Conditions section. The wording is contractual, so it is kept
+ * verbatim as issued. policyTermsFor() answers which schedule a product
+ * maps to.
  */
 
 export interface PolicyTerms {
@@ -210,12 +210,12 @@ const TOBACCO: PolicyTerms = {
   ],
 }
 
-/** No exclusion schedule has been issued for this product yet — the page
- *  still prints, carrying the general conditions, so no policy document
- *  ever ships without its terms. */
+/** Fallback for products with no issued schedule of their own — labelled
+ *  the product's own Policy Terms and Conditions, never "General
+ *  Conditions", so the document reads as its own contract. */
 const GENERAL: PolicyTerms = {
   productTitle: '',
-  exclusionsHeading: 'General Conditions',
+  exclusionsHeading: 'Policy Terms and Conditions',
   exclusionsIntro: 'This policy is subject to the Policy Terms and Conditions of the Insurer. Without limiting those terms, cover under this policy is subject to the following:',
   exclusions: [
     'Claims occurring within the waiting period stated in the policy schedule, calculated from the commencement or reinstatement of the policy.',
@@ -226,20 +226,18 @@ const GENERAL: PolicyTerms = {
   ],
 }
 
-/** The terms document for ONE policy: its own product's exclusion
- *  schedule, then the General Conditions every policy shares. Products
- *  with no schedule of their own (e.g. Medical Aid) print just the
- *  General Conditions — no policy document ships without its terms, and
- *  none carries a schedule for a product it isn't.
+/** The terms document for ONE policy: its own product's Terms and
+ *  Conditions, and only its own — there is no shared General Conditions
+ *  section anymore. A product with no issued schedule of its own falls
+ *  back to the generic policy terms so no document ships bare.
  *
- *  Field-to-Floor is the exception: its cover INCLUDES a flat $500
- *  funeral benefit for the grower, so the funeral schedule is part of
- *  the contract — the document carries tobacco exclusions AND funeral
- *  exclusions, in that order. */
+ *  Field-to-Floor is the exception by design: its cover INCLUDES a flat
+ *  $500 funeral benefit for the grower, so both schedules are part of
+ *  the contract — tobacco terms AND the Funeral Cash Plan terms. */
 export function termsPagesFor(product: { name?: string; category?: string }): PolicyTerms[] {
   const own = policyTermsFor(product)
-  if (own === TOBACCO) return [TOBACCO, FUNERAL, GENERAL]
-  return own === GENERAL ? [GENERAL] : [own, GENERAL]
+  if (own === TOBACCO) return [TOBACCO, FUNERAL]
+  return [own]
 }
 
 /** Picks the exclusion schedule for a product — the same keyword rules the

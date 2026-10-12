@@ -291,104 +291,83 @@ function drawLetterhead(doc: jsPDF, pageWidth: number, logo: string | null, bran
 }
 /**
  * The terms document is part of the contract: the policy's own product
- * exclusion schedule followed by the shared General Conditions, printed
- * in full at the end of the document — the download and the emailed
- * copy alike — flowing across as many pages as it needs.
+ * Terms and Conditions — and ONLY its own (a funeral policy carries
+ * funeral terms; a tobacco policy carries tobacco + its funeral rider —
+ * there is no shared General Conditions section). It flows on from the
+ * schedule above in two newspaper-style columns: the first terms page's
+ * columns begin below whatever already printed, later pages run edge to
+ * edge. The point is brevity — a policy document is two pages at most
+ * (three for tobacco's two schedules), not a booklet.
  */
-function drawTermsPages(doc: jsPDF, product: { name?: string; category?: string }) {
+function drawTermsPages(doc: jsPDF, product: { name?: string; category?: string }, startY: number) {
   const pageWidth = doc.internal.pageSize.getWidth()
   const pageHeight = doc.internal.pageSize.getHeight()
-  const lineHeight = 4.2
+  const MARGIN = 14
+  const GAP = 6
+  const colW = (pageWidth - MARGIN * 2 - GAP) / 2
+  const xOf = (c: number) => MARGIN + c * (colW + GAP)
   const bottom = pageHeight - 16
+  const PAGE_TOP = 20
+  const LH = 3.1
 
-  doc.addPage()
-  let y = 20
+  let col = 0
+  let y = startY
+  let colTop = startY
+  const ensure = (need: number) => {
+    if (y + need <= bottom) return
+    if (col === 0) { col = 1; y = colTop }
+    else { doc.addPage(); col = 0; y = PAGE_TOP; colTop = PAGE_TOP }
+  }
+  const heading = (text: string) => {
+    const lines = doc.splitTextToSize(text, colW)
+    ensure(lines.length * 4 + 3)
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(8)
+    doc.setTextColor(...NAVY)
+    doc.text(lines, xOf(col), y)
+    y += lines.length * 4 + 1
+  }
+  const para = (text: string) => {
+    const lines = doc.splitTextToSize(text, colW - 2)
+    ensure(lines.length * LH + 1)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(6.8)
+    doc.setTextColor(...TEXT)
+    doc.text(lines, xOf(col) + 1.5, y)
+    y += lines.length * LH + 1.4
+  }
 
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(13)
-  doc.setTextColor(...NAVY)
-  doc.text('TERMS AND CONDITIONS', pageWidth / 2, y, { align: 'center' })
-  y += 9
-
+  heading('TERMS AND CONDITIONS')
+  y += 1
   for (const terms of termsPagesFor(product)) {
     if (terms.sections) {
-      // The product's issued Terms & Conditions, in full — preamble,
-      // currency, claims procedure, key terms, exclusions and cessions —
-      // not just the exclusion schedule.
       for (const section of terms.sections) {
-        if (y + 14 > bottom) { doc.addPage(); y = 20 }
-        doc.setFont('helvetica', 'bold')
-        doc.setFontSize(9.5)
-        doc.setTextColor(...NAVY)
-        doc.text(section.heading, 14, y)
-        y += 5.5
-        doc.setFont('helvetica', 'normal')
-        doc.setFontSize(8.5)
-        doc.setTextColor(...TEXT)
-        for (const para of section.paragraphs) {
-          const lines = doc.splitTextToSize(para, pageWidth - 32)
-          if (y + lines.length * lineHeight > bottom) { doc.addPage(); y = 20 }
-          doc.text(lines, 16, y)
-          y += lines.length * lineHeight + 2
-        }
-        y += 4
+        heading(section.heading)
+        section.paragraphs.forEach(para)
+        y += 1.5
       }
       continue
     }
-    if (y + 16 > bottom) { doc.addPage(); y = 20 }
-    doc.setFont('helvetica', 'bold')
-    doc.setFontSize(10)
-    doc.setTextColor(...NAVY)
-    doc.text(terms.exclusionsHeading, pageWidth / 2, y, { align: 'center' })
-    y += 7
-
-    doc.setFont('helvetica', 'normal')
-    doc.setFontSize(8.5)
-    doc.setTextColor(...TEXT)
-    const intro = doc.splitTextToSize(terms.exclusionsIntro, pageWidth - 28)
-    if (y + intro.length * lineHeight > bottom) { doc.addPage(); y = 20 }
-    doc.text(intro, 14, y)
-    y += intro.length * lineHeight + 4
-
-    terms.exclusions.forEach((exclusion, i) => {
-      const lines = doc.splitTextToSize(`${i + 1}. ${exclusion}`, pageWidth - 34)
-      if (y + lines.length * lineHeight > bottom) { doc.addPage(); y = 20 }
-      doc.text(lines, 16, y)
-      y += lines.length * lineHeight + 1.5
-    })
-    y += 6
+    heading(terms.exclusionsHeading)
+    para(terms.exclusionsIntro)
+    terms.exclusions.forEach((e, i) => para(`${i + 1}. ${e}`))
+    y += 1.5
   }
 
-  if (y + 10 > bottom) { doc.addPage(); y = 20 }
-  y += 4
-  doc.setFontSize(7.5)
-  doc.setTextColor(...MUTED)
-  doc.text(`The exclusion schedules above form part of the Policy Terms and Conditions of ${COMPANY_NAME} and apply to this policy in full.`, 14, y)
-
   // Execution block — every issued policy document ends with the signee's
-  // full name, date of signature and signature fields, printed whether or
-  // not the copy is signed before it leaves the office.
-  const sigNeed = 42
-  if (y + sigNeed > bottom) { doc.addPage(); y = 20 }
-  y += 14
-  doc.setFont('helvetica', 'bold')
-  doc.setFontSize(10)
-  doc.setTextColor(...NAVY)
-  doc.text('SIGNATURE', pageWidth / 2, y, { align: 'center' })
-  y += 8
+  // full name, date of signature and signature fields.
+  heading('SIGNATURE')
+  para('I confirm that I have read, understood and agree to the Policy Terms and Conditions and the Major Exclusions set out in this document.')
+  ensure(24)
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(8.5)
+  doc.setFontSize(7.5)
   doc.setTextColor(...TEXT)
-  const sigIntro = doc.splitTextToSize('I confirm that I have read, understood and agree to the Policy Terms and Conditions and the Major Exclusions set out in this document.', pageWidth - 28)
-  doc.text(sigIntro, 14, y)
-  y += sigIntro.length * lineHeight + 10
-  const lineStart = 14
-  const fullW = pageWidth - 28
-  doc.text('Signee Full Name: _________________________________', lineStart, y)
-  doc.text('Date of Signature: ______________________', lineStart + fullW * 0.55, y)
-  y += 14
-  doc.text('Signature: _______________________________________', lineStart, y)
-  y += 14
+  doc.text('Signee Full Name: __________________________', xOf(col) + 1.5, y)
+  y += 7
+  doc.text('Date of Signature: ____________________', xOf(col) + 1.5, y)
+  y += 7
+  doc.text('Signature: ______________________________', xOf(col) + 1.5, y)
+  y += 7
 }
 
 const BRAND_BLUE: [number, number, number] = [65, 105, 225]
@@ -438,23 +417,24 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   const premiumHeading = isAgriculture ? 'Annual Premium' : 'Monthly Premium'
   // "Harold Muwi - 2344566 · Contractor: AgriCo" — the grower's identity
   // to the insurer is name + grower number + who holds their contract.
-  const growerLabel = [
-    isAgriculture && policy.growerNumber ? policy.growerNumber : null,
-    isAgriculture && policy.contractor ? `Contractor: ${policy.contractor}` : null,
-    isAgriculture && policy.hectarage != null ? `Hectarage: ${policy.hectarage} ha` : null,
-  ].filter(Boolean).join(' · ')
-  doc.text(
-    growerLabel ? `${client.name} - ${growerLabel}` : client.name,
-    14, y,
-  )
-  y += 5
-  doc.setFontSize(8)
+  // Identity block — each detail on its own line: run together on one
+  // line the grower/contractor/hectarage string wrapped awkwardly.
+  doc.text(client.name, 14, y)
+  y += 4.5
+  doc.setFontSize(8.5)
   doc.setTextColor(...MUTED)
+  if (isAgriculture && policy.growerNumber) { doc.text(`Grower No: ${policy.growerNumber}`, 14, y); y += 4.2 }
+  if (isAgriculture && policy.contractor) { doc.text(`Contractor: ${policy.contractor}`, 14, y); y += 4.2 }
+  if (isAgriculture && policy.hectarage != null) { doc.text(`Hectarage: ${policy.hectarage} ha`, 14, y); y += 4.2 }
+  // The agent who wrote the business belongs on the document — it's the
+  // person the policyholder claims to, not an internal note.
+  if (policy.agentName) { doc.text(`Field Officer: ${policy.agentName}`, 14, y); y += 4.2 }
+  y += 1
   doc.text(`Generated ${formatDate(new Date())}`, 14, y)
   y += 4.5
   doc.text(`Commencement Date: ${isFieldToFloor ? TOBACCO_SEASON.start : formatDate(policy.startDate)}`, 14, y)
   doc.setTextColor(...TEXT)
-  y += 8
+  y += 7
 
   // Premiums are per head everywhere except agriculture, so the figure on
   // an official document is the whole policy's — the policyholder plus
@@ -675,25 +655,18 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   doc.text(condLines, 14, y)
   y += condLines.length * 4.4 + 4
 
-  ensureRoom(24)
+  ensureRoom(14)
   doc.setDrawColor(220, 226, 240)
   doc.line(14, y, pageWidth - 14, y)
   y += 6
   doc.setFontSize(7.5)
   doc.setTextColor(...MUTED)
-  doc.text('Disclaimer:', 14, y)
-  y += 4
-  const terms = doc.splitTextToSize(
-    `Terms and Conditions apply — this product's Policy Terms and Conditions, including its exclusion schedule, are appended as the final pages of this document. Cover incepts on the start date above, subject to any applicable waiting period. Claims must be reported as soon as reasonably possible and are subject to verification. Premiums must be kept up to date for cover to remain in force; a lapsed policy may require reinstatement.`,
-    pageWidth - 28,
-  )
-  doc.text(terms, 14, y)
-  y += terms.length * 4 + 4
   doc.text(`Copyright © ${COMPANY_NAME}. All rights reserved.`, 14, y)
+  y += 8
 
-  // The complete terms document is part of the contract — always the last
-  // pages, whatever the product.
-  drawTermsPages(doc, { name: policy.productName, category })
+  // The product's Terms and Conditions are part of the contract — they
+  // flow on from here, whatever the product.
+  drawTermsPages(doc, { name: policy.productName, category }, y)
 
   return doc
 }
