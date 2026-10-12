@@ -34,7 +34,6 @@ export default function GroupModal({ group, onClose, onSave }: Props) {
   const [name, setName] = useState(group?.name ?? '')
   const [groupType, setGroupType] = useState<GroupType>(group?.groupType ?? 'company')
   const [customType, setCustomType] = useState(group?.customType ?? '')
-  const [expectedMembers, setExpectedMembers] = useState(group?.expectedMembers !== undefined ? String(group.expectedMembers) : '')
   const [description, setDescription] = useState(group?.description ?? '')
   const [registrationNumber, setRegistrationNumber] = useState(group?.registrationNumber ?? '')
   const [orgPhone, setOrgPhone] = useState(group?.orgPhone ?? '')
@@ -46,14 +45,9 @@ export default function GroupModal({ group, onClose, onSave }: Props) {
 
   const [attempted, setAttempted] = useState(false)
 
-  // Number of Users is optional — the billed number is always the real
-  // roster count, never this estimate.
-  const memberCount = expectedMembers.trim() === '' ? NaN : Number(expectedMembers)
-
   const missing: MissingField[] = []
   if (!name.trim()) missing.push({ key: 'name', label: 'Organisation Name' })
   if (groupType === 'other' && !customType.trim()) missing.push({ key: 'customType', label: 'Custom Type', hint: 'Describe the organisation type in your own words' })
-  if (expectedMembers.trim() !== '' && (!Number.isFinite(memberCount) || memberCount < 1)) missing.push({ key: 'expectedMembers', label: 'Number of Users', hint: 'Whole number, e.g. 25' })
   if (!orgPhone.trim() && !contactPhone.trim()) missing.push({ key: 'orgPhone', label: 'Organisation Phone', hint: 'At least one phone number — the org line or the representative' })
   if (!contactName.trim()) missing.push({ key: 'contactName', label: 'Representative Name', hint: 'Who we deal with on the organisation’s behalf' })
 
@@ -64,7 +58,6 @@ export default function GroupModal({ group, onClose, onSave }: Props) {
       name: name.trim(),
       groupType,
       customType: groupType === 'other' ? customType.trim() : undefined,
-      expectedMembers: Number.isFinite(memberCount) && memberCount >= 1 ? memberCount : undefined,
       description: description.trim() || undefined,
       registrationNumber: registrationNumber.trim() || undefined,
       orgPhone: orgPhone.trim() || undefined,
@@ -111,14 +104,6 @@ export default function GroupModal({ group, onClose, onSave }: Props) {
             </div>
           )}
           <div className="form-row">
-            <div className="form-group" id={fieldId('expectedMembers')}>
-              <label>Number of Users</label>
-              <input
-                type="number" min={1} className={invalidClass(missing, attempted, 'expectedMembers')}
-                value={expectedMembers} onChange={e => setExpectedMembers(e.target.value)}
-                placeholder={group?.memberCount ? `~${group.memberCount} on roster` : 'e.g. 25'}
-              />
-            </div>
             <div className="form-group">
               <label>Registration Number</label>
               <input className="form-control" value={registrationNumber} onChange={e => setRegistrationNumber(e.target.value)} placeholder="Company/organisation reg no." />

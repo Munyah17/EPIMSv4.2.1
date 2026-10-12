@@ -101,7 +101,6 @@ export async function notifyGroupRegistered(group: Group): Promise<void> {
   // The organisation's own numbers — org line and the representative's.
   const orgNumbers = [...new Set([group.orgPhone, group.contactPhone].filter(Boolean))] as string[]
   const msg = `${COMPANY_NAME}: ${group.name} is registered as a group client (${kind}).` +
-    `${group.expectedMembers ? ` Expected members: ${group.expectedMembers}.` : ''}` +
     ` We will manage roster, invoicing and policy updates through ${group.contactName || 'this contact'}${group.contactPhone ? ` on ${group.contactPhone}` : ''}. Keep this SMS.`
   for (const number of orgNumbers) {
     notifyPhone(number, msg, 'registration')
@@ -113,11 +112,11 @@ export async function notifyGroupRegistered(group: Group): Promise<void> {
       cc: group.orgEmail && group.contactEmail ? group.contactEmail : undefined,
       subject: `${group.name} — registered for group cover with ${COMPANY_NAME}`,
       from: MAILBOXES.noreply,
-      body: `Dear ${group.contactName || group.name},\n\n${group.name} has been registered as a group client with ${COMPANY_NAME}.\n\nType:             ${kind}\nExpected members: ${group.expectedMembers ?? '—'}\n\nWe will manage your member roster, monthly invoicing and policy updates through this account. If any detail above is wrong, contact us and we will correct it.${cfg.signature ? `\n\n---\n${cfg.signature}` : ''}`,
+      body: `Dear ${group.contactName || group.name},\n\n${group.name} has been registered as a group client with ${COMPANY_NAME}.\n\nType:             ${kind}\n\nWe will manage your member roster, monthly invoicing and policy updates through this account. If any detail above is wrong, contact us and we will correct it.${cfg.signature ? `\n\n---\n${cfg.signature}` : ''}`,
     }).catch(() => { /**/ })
   }
 
-  const alert = `${COMPANY_NAME}: New organisation registered. ${group.name} (${kind}), contact ${group.contactName || 'none'} ${group.contactPhone || ''}${group.expectedMembers ? `, ${group.expectedMembers} members expected` : ''}.`
+  const alert = `${COMPANY_NAME}: New organisation registered. ${group.name} (${kind}), contact ${group.contactName || 'none'} ${group.contactPhone || ''}.`
   const recipients = [...new Set([...ADMIN_ALERT_NUMBERS, cfg.superAdminPhone].filter(Boolean))] as string[]
   for (const number of recipients) {
     notifyPhone(number, alert, 'registration')

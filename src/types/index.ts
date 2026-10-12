@@ -305,10 +305,6 @@ export interface Group {
    *  (e.g. "School", "NGO"), so reports can say what the org actually is
    *  instead of a forced category. */
   customType?: string
-  /** How many people the organisation expects to cover — required on
-   *  registration; drives premium/billing expectations before the roster
-   *  is even built. */
-  expectedMembers?: number
   /** Free-text brief: what the organisation wants covered, demography,
    *  age ranges, the activity (e.g. "travel cover for a school tour"). */
   description?: string

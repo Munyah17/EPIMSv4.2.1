@@ -85,7 +85,6 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   const [orgName, setOrgName] = useState('')
   const [orgType, setOrgType] = useState<GroupType>('company')
   const [orgCustomType, setOrgCustomType] = useState('')
-  const [orgExpected, setOrgExpected] = useState('')
   const [orgDesc, setOrgDesc] = useState('')
   const [orgLinePhone, setOrgLinePhone] = useState('')
   const [orgEmail, setOrgEmail] = useState('')
@@ -193,7 +192,6 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
     const name = orgName.trim()
     if (!name) { showToast?.('error', 'Give the organisation a name first.'); return }
     if (orgType === 'other' && !orgCustomType.trim()) { showToast?.('error', 'Type is “Other” — give the organisation type a name (e.g. School, NGO).'); return }
-    const expected = Number(orgExpected)
     if (!orgContactName.trim()) { showToast?.('error', 'Name the representative / contact person.'); return }
     setOrgSaving(true)
     // Nothing is registered if the server can't confirm it — the org
@@ -207,7 +205,6 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
       name,
       groupType: orgType,
       customType: orgType === 'other' ? orgCustomType.trim() : undefined,
-      expectedMembers: Number.isFinite(expected) && expected >= 1 ? expected : undefined,
       description: orgDesc.trim() || undefined,
       orgPhone: orgLinePhone.trim() || undefined,
       orgEmail: orgEmail.trim() || undefined,
@@ -227,7 +224,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
     // Inline or dedicated page, the organisation gets the same
     // registration text — the channel shouldn't change the record.
     void notifyGroupRegistered(data)
-    setOrgName(''); setOrgCustomType(''); setOrgExpected(''); setOrgDesc(''); setOrgLinePhone(''); setOrgEmail(''); setOrgAddress(''); setOrgContactName(''); setOrgPhone(''); setOrgContactEmail('')
+    setOrgName(''); setOrgCustomType(''); setOrgDesc(''); setOrgLinePhone(''); setOrgEmail(''); setOrgAddress(''); setOrgContactName(''); setOrgPhone(''); setOrgContactEmail('')
     showToast?.('success', `${data.name} registered — add its ${coverScope === 'corporate' ? 'employees' : 'members'} below, then finish the policy.`)
   }
 
@@ -657,10 +654,8 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                             <input className="form-control" placeholder="School, NGO, SACCO…" value={orgCustomType} onChange={e => setOrgCustomType(e.target.value)} />
                           </div>
                         )}
-                        <div className="form-group" style={{ marginBottom: 0 }}>
-                          <label style={{ fontSize: 11 }}>Number of Users</label>
-                          <input type="number" min={1} className="form-control" placeholder="Expected heads to cover" value={orgExpected} onChange={e => setOrgExpected(e.target.value)} />
-                        </div>
+                        {/* Number of Users removed — the roster IS the
+                            count; an "expected" figure is fiction. */}
                       </div>
                       <div className="form-group" style={{ marginBottom: 8 }}>
                         <label style={{ fontSize: 11 }}>Description / Needs</label>

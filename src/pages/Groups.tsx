@@ -139,7 +139,7 @@ export default function Groups({ showToast }: Props) {
                   <td>{g.contactPhone ?? '—'}</td>
                   <td>
                     <span className="pill pill-active">{g.memberCount ?? 0}</span>
-                    {g.expectedMembers ? <span style={{ fontSize: 11, color: 'var(--muted)' }}> of {g.expectedMembers} expected</span> : null}
+                    <span style={{ fontSize: 11, color: 'var(--muted)' }}> {g.memberCount === 1 ? 'member' : 'members'}</span>
                   </td>
                   <td>{formatDate(g.createdAt)}</td>
                   <td><span className={`pill ${g.active ? 'pill-active' : 'pill-inactive'}`}>{g.active ? 'Active' : 'Inactive'}</span></td>

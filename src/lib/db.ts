@@ -237,7 +237,6 @@ function toGroup(r: Record<string, unknown>, memberCount?: number): Group {
     groupType:          r.group_type as Group['groupType'],
     registrationNumber: (r.registration_number as string | null) ?? undefined,
     customType:         (r.custom_type as string | null) ?? undefined,
-    expectedMembers:    (r.expected_members as number | null) ?? undefined,
     description:        (r.description as string | null) ?? undefined,
     orgPhone:           (r.org_phone as string | null) ?? undefined,
     orgEmail:           (r.org_email as string | null) ?? undefined,
@@ -2688,7 +2687,9 @@ export const groups = {
       group_type: input.groupType,
       registration_number: input.registrationNumber ?? null,
       custom_type: input.groupType === 'other' ? (input.customType?.trim() || null) : null,
-      expected_members: input.expectedMembers ?? null,
+      // expected_members deliberately not written — the roster is the
+      // count; a stored "expected" figure was fiction.
+
       description: input.description?.trim() || null,
       org_phone: input.orgPhone ?? null,
       org_email: input.orgEmail ?? null,
@@ -2705,7 +2706,6 @@ export const groups = {
     // until the migration is re-run.
     if (!(await hasColumn('groups', 'custom_type'))) {
       delete (row as Record<string, unknown>).custom_type
-      delete (row as Record<string, unknown>).expected_members
       delete (row as Record<string, unknown>).description
       delete (row as Record<string, unknown>).org_phone
       delete (row as Record<string, unknown>).org_email
@@ -2726,7 +2726,6 @@ export const groups = {
     // type must clear it or reports show a stale custom label.
     if (updates.groupType !== undefined && updates.groupType !== 'other') row.custom_type = null
     else if (updates.customType !== undefined)                          row.custom_type = updates.customType?.trim() || null
-    if (updates.expectedMembers !== undefined)     row.expected_members   = updates.expectedMembers ?? null
     if (updates.description !== undefined)         row.description        = updates.description ?? null
     if (updates.orgPhone !== undefined)            row.org_phone          = updates.orgPhone ?? null
     if (updates.orgEmail !== undefined)            row.org_email          = updates.orgEmail ?? null
@@ -2736,7 +2735,7 @@ export const groups = {
     if (updates.address !== undefined)             row.address             = updates.address ?? null
     if (updates.active !== undefined)              row.active              = updates.active
     if (!(await hasColumn('groups', 'custom_type'))) {
-      for (const k of ['custom_type', 'expected_members', 'description', 'org_phone', 'org_email']) delete row[k]
+      for (const k of ['custom_type', 'description', 'org_phone', 'org_email']) delete row[k]
     }
     const { ok, data, error } = await sb('groups', 'write',
       () => supabase.from('groups').update(row).eq('id', id).select().single(),
