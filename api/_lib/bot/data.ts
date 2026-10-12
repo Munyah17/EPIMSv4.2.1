@@ -161,6 +161,9 @@ export async function createPolicy(admin: SupabaseClient, p: {
   clientId: string; product: BotProduct; paymentMethod: string; agentId?: string; startDate: string; endDate: string
   /** Channel stamp — 'whatsapp_chatbot', 'motions_website', etc. */
   source?: string
+  /** Medical declaration — required by the caller for health-category
+   *  products (portal validates before this is ever invoked). */
+  hasChronicIllness?: boolean; chronicIllnessDetails?: string
 }): Promise<BotPolicy> {
   const policyNumber = await nextPolicyNumber(admin, p.product)
   const { data, error } = await admin.from('policies').insert({
@@ -169,6 +172,8 @@ export async function createPolicy(admin: SupabaseClient, p: {
     start_date: p.startDate, end_date: p.endDate, status: 'pending',
     dependants: [], payment_method: p.paymentMethod,
     agent_id: p.agentId ?? null, source: p.source ?? 'whatsapp_chatbot',
+    has_chronic_illness: p.hasChronicIllness ?? null,
+    chronic_illness_details: p.chronicIllnessDetails ?? null,
   }).select('id, policy_number, premium, cover_amount, status, dependants, products(name)').single()
   if (error) throw new Error(`Could not save the policy: ${error.message}`)
   return {

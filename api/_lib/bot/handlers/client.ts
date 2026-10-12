@@ -123,6 +123,37 @@ const addProduct: Handler = async (ctx) => {
     flow: 'new_policy', productId: p.id, clientId: contact.client!.id,
     payLabel: `New policy — ${p.name}`,
   })
+  // Health products require the medical declaration — same rule as the
+  // portal and the website. Payment only starts once it's on record.
+  if (p.category === 'health') {
+    await sendButtons(phone,
+      `Medical declaration — ${p.name}\n\nDo you have a chronic illness or existing condition? (e.g. diabetes, hypertension, asthma, HIV)`,
+      [{ id: 'no', title: 'No' }, { id: 'yes', title: 'Yes' }])
+    return setState(admin, session, 'CADD_CHRONIC')
+  }
+  return startTail(ctx, 'CADD', p.premium)
+}
+
+const addChronic: Handler = async (ctx) => {
+  const { input, phone, session, admin } = ctx
+  if (input !== 'yes' && input !== 'no') return sendText(phone, 'Please choose one of the buttons above.')
+  if (input === 'yes') {
+    await sendText(phone, 'Please state the chronic condition or treatment (e.g. hypertension — on medication).')
+    return setState(admin, session, 'CADD_CHRONIC_DETAILS')
+  }
+  await patchNote(admin, session, { hasChronic: 'no' })
+  const p = (await getActiveProducts(admin)).find(x => x.id === session.note.productId)
+  if (!p) { await deleteSession(admin, session); return sendText(phone, 'That product is no longer available — your session has been reset.') }
+  return startTail(ctx, 'CADD', p.premium)
+}
+
+const addChronicDetails: Handler = async (ctx) => {
+  const { input, phone, session, admin } = ctx
+  const d = input.trim()
+  if (d.length < 4 || d.length > 300) return sendText(phone, 'Please state the chronic condition or treatment briefly.')
+  await patchNote(admin, session, { hasChronic: 'yes', chronicDetails: d })
+  const p = (await getActiveProducts(admin)).find(x => x.id === session.note.productId)
+  if (!p) { await deleteSession(admin, session); return sendText(phone, 'That product is no longer available — your session has been reset.') }
   return startTail(ctx, 'CADD', p.premium)
 }
 
@@ -289,7 +320,7 @@ export const CLIENT_HANDLERS: Record<string, Handler> = {
   CPAY_MONTHS: payMonths,
   ...makeTail('CPAY'),
   CVIEW_SEL: viewSel,
-  CADD_PRODUCT: addProduct,
+  CADD_PRODUCT: addProduct, CADD_CHRONIC: addChronic, CADD_CHRONIC_DETAILS: addChronicDetails,
   ...makeTail('CADD'),
   CCLAIM_POLICY: claimPolicy,
   CCLAIM_DOC: claimDoc,

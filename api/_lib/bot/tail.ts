@@ -101,6 +101,8 @@ export function makeTail(prefix: string): Record<string, Handler> {
         clientId: String(n.clientId), product,
         paymentMethod: PORTAL_METHOD_NAMES[Number(n.methodIndex)] ?? 'Paynow',
         agentId: n.agentId as string | undefined, startDate: start, endDate: end,
+        hasChronicIllness: n.hasChronic === 'yes',
+        chronicIllnessDetails: n.chronicDetails as string | undefined,
       })
       policyId = policy.id
       refStem = policy.policyNumber

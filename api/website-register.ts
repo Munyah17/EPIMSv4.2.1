@@ -38,6 +38,7 @@ import { chargeEip, eipConfigured, normalizeMsisdn } from './_lib/ecocashInstant
 
 interface DependantIn {
   name: string; nationalId?: string; dob?: string; relationship?: string; gender?: string
+  hasChronicIllness?: boolean; chronicIllnessDetails?: string
 }
 
 interface Body {
@@ -45,6 +46,9 @@ interface Body {
   reference?: string
   name?: string; nationalId?: string; phone?: string; email?: string
   dob?: string; gender?: string; address?: string; occupation?: string
+  /** Medical declaration — REQUIRED on health-category products, same
+   *  rule as the portal and the WhatsApp bot. */
+  hasChronicIllness?: boolean; chronicIllnessDetails?: string
   agentId?: string
   productCode?: string; productId?: string
   dependants?: DependantIn[]
@@ -113,11 +117,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ ok: false, error: `No active product matching '${body.productId ?? body.productCode}'.` })
   }
 
+  // Medical declaration — health products may not be sold without it
+  // (portal rule, enforced on every channel). A caller missing the
+  // question gets a machine-readable refusal, not a silent policy.
+  if (product.category === 'health') {
+    if (typeof body.hasChronicIllness !== 'boolean') {
+      return res.status(400).json({ ok: false, code: 'MEDICAL_DECLARATION_REQUIRED', error: 'hasChronicIllness (true/false) is required for health products.' })
+    }
+    if (body.hasChronicIllness && !String(body.chronicIllnessDetails ?? '').trim()) {
+      return res.status(400).json({ ok: false, code: 'MEDICAL_DECLARATION_REQUIRED', error: 'chronicIllnessDetails is required when hasChronicIllness is true.' })
+    }
+  }
+
   const dependants = (body.dependants ?? []).slice(0, 10).map(d => ({
     name: String(d.name ?? '').trim(), nationalId: d.nationalId, dob: d.dob,
     relationship: d.relationship ?? 'dependant', gender: d.gender,
+    hasChronicIllness: d.hasChronicIllness === true,
+    chronicIllnessDetails: d.chronicIllnessDetails?.trim() || undefined,
     premium: product.premium, coverAmount: product.coverAmount, productName: product.name,
   })).filter(d => d.name)
+  if (product.category === 'health' && dependants.some(d => d.hasChronicIllness && !d.chronicIllnessDetails)) {
+    return res.status(400).json({ ok: false, code: 'MEDICAL_DECLARATION_REQUIRED', error: 'A dependant flagged with a chronic illness needs chronicIllnessDetails too.' })
+  }
 
   let createdClientId: string | null = null
   try {
@@ -155,6 +176,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         startDate: start.toISOString().split('T')[0],
         endDate: end.toISOString().split('T')[0],
         source: 'motions_website',
+        hasChronicIllness: product.category === 'health' ? body.hasChronicIllness === true : undefined,
+        chronicIllnessDetails: product.category === 'health' ? (body.chronicIllnessDetails?.trim() || undefined) : undefined,
       })
       if (dependants.length) {
         await admin.from('policies').update({ dependants }).eq('id', created.id)

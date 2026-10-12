@@ -1,4 +1,4 @@
-import type { Handler, Ctx } from '../types.js'
+import type { Handler, Ctx, BotProduct } from '../types.js'
 import { sendText, sendButtons } from '../whatsapp.js'
 import { setState, patchNote, deleteSession } from '../store.js'
 import { getActiveProducts, policiesForClient, clientByNationalId, clientsOfAgent, commissionForAgent } from '../data.js'
@@ -124,7 +124,39 @@ const acProduct: Handler = async (ctx) => {
     flow: 'new_client_policy', productId: p.id, agentId: contact.agent!.id,
     payLabel: `New client — ${session.note.name} (${p.name})`,
   })
+  // Health products require the medical declaration — same as the
+  // portal and the client bot. It precedes payment: nobody charges a
+  // health premium to a person whose declaration isn't on file.
+  if (p.category === 'health') {
+    await sendButtons(phone,
+      `Medical declaration — ${p.name}\n\nDoes ${session.note.name} have a chronic illness or existing condition? (e.g. diabetes, hypertension, asthma, HIV)`,
+      [{ id: 'no', title: 'No' }, { id: 'yes', title: 'Yes' }])
+    return setState(admin, session, 'AC_CHRONIC')
+  }
   return startTail(ctx, 'AC', p.premium)
+}
+
+const acChronic: Handler = async (ctx) => {
+  const { input, phone, session, admin } = ctx
+  if (input !== 'yes' && input !== 'no') return sendText(phone, 'Please choose one of the buttons above.')
+  if (input === 'yes') {
+    await sendText(phone, `Please state the client's chronic condition or treatment (e.g. hypertension — on medication).`)
+    return setState(admin, session, 'AC_CHRONIC_DETAILS')
+  }
+  await patchNote(admin, session, { hasChronic: 'no' })
+  const products = await getActiveProducts(admin)
+  const p = products.find(x => x.id === session.note.productId)
+  return startTail(ctx, 'AC', p?.premium ?? 0)
+}
+
+const acChronicDetails: Handler = async (ctx) => {
+  const { input, phone, session, admin } = ctx
+  const d = input.trim()
+  if (d.length < 4 || d.length > 300) return sendText(phone, 'Please state the chronic condition or treatment briefly.')
+  await patchNote(admin, session, { hasChronic: 'yes', chronicDetails: d })
+  const products = await getActiveProducts(admin)
+  const p = products.find(x => x.id === session.note.productId)
+  return startTail(ctx, 'AC', p?.premium ?? 0)
 }
 
 /* ------------------------- 2. Add New Dependant ---------------------------- */
@@ -211,12 +243,53 @@ const adProduct: Handler = async (ctx) => {
   if (pick === null) return sendText(phone, 'Please select one of the products above.')
   const p = products[pick]
   const n = session.note
+  await patchNote(admin, session, { depProductId: p.id })
+  // Health-category dependant cover takes the dependant's own medical
+  // declaration — the holder's declaration says nothing about them.
+  if (p.category === 'health') {
+    await sendButtons(phone,
+      `Medical declaration — ${p.name}\n\nDoes ${n.depName} have a chronic illness or existing condition?`,
+      [{ id: 'no', title: 'No' }, { id: 'yes', title: 'Yes' }])
+    return setState(admin, session, 'AD_CHRONIC')
+  }
+  return commitDependantPick(ctx, p)
+}
+
+/** Health dependant declarations land in the same dependant object the
+ *  portal renders — the record is identical whoever captured it. */
+const adChronic: Handler = async (ctx) => {
+  const { input, phone, session, admin } = ctx
+  if (input !== 'yes' && input !== 'no') return sendText(phone, 'Please choose one of the buttons above.')
+  if (input === 'yes') {
+    await sendText(phone, `Please state ${session.note.depName}'s chronic condition or treatment.`)
+    return setState(admin, session, 'AD_CHRONIC_DETAILS')
+  }
+  await patchNote(admin, session, { depChronic: 'no' })
+  const p = (await getActiveProducts(admin)).find(x => x.id === session.note.depProductId)
+  if (!p) { await deleteSession(admin, session); return sendText(phone, 'That cover is no longer available — your session has been reset.') }
+  return commitDependantPick(ctx, p)
+}
+
+const adChronicDetails: Handler = async (ctx) => {
+  const { input, phone, session, admin } = ctx
+  const d = input.trim()
+  if (d.length < 4 || d.length > 300) return sendText(phone, 'Please state the chronic condition or treatment briefly.')
+  await patchNote(admin, session, { depChronic: 'yes', depChronicDetails: d })
+  const p = (await getActiveProducts(admin)).find(x => x.id === session.note.depProductId)
+  if (!p) { await deleteSession(admin, session); return sendText(phone, 'That cover is no longer available — your session has been reset.') }
+  return commitDependantPick(ctx, p)
+}
+
+async function commitDependantPick(ctx: Ctx, p: BotProduct) {
+  const { phone, session, admin } = ctx
+  const n = session.note
   await patchNote(admin, session, {
     flow: 'new_dependant',
     dependant: {
       name: n.depName, nationalId: n.depNationalId, dob: n.depDob, gender: n.depGender,
       relationship: n.depRelationship, productId: p.id, productName: p.name,
       premium: p.premium, coverAmount: p.coverAmount,
+      ...(n.depChronic === 'yes' ? { hasChronicIllness: true, chronicIllnessDetails: n.depChronicDetails } : {}),
     },
     payLabel: `Dependant — ${n.depName} on ${n.depPolicyNumber} (${p.name})`,
   })
@@ -284,10 +357,12 @@ export const AGENT_HANDLERS: Record<string, Handler> = {
   AGENT_MENU: menu,
   AC_NAME: acName, AC_ID: acId, AC_GENDER: acGender, AC_GENDER_OTHER: acGenderOther,
   AC_DOB: acDob, AC_EMAIL: acEmail, AC_PHONE: acPhone, AC_PRODUCT: acProduct,
+  AC_CHRONIC: acChronic, AC_CHRONIC_DETAILS: acChronicDetails,
   ...makeTail('AC'),
   AD_HOLDER_ID: adHolderId, AD_POLICY: adPolicy, AD_NAME: adName, AD_ID: adId,
   AD_GENDER: adGender, AD_GENDER_OTHER: adGenderOther, AD_DOB: adDob,
   AD_REL: adRel, AD_PRODUCT: adProduct,
+  AD_CHRONIC: adChronic, AD_CHRONIC_DETAILS: adChronicDetails,
   ...makeTail('AD'),
   APAY_ID: apayId, APAY_POLICY: apayPolicy, APAY_MONTHS: apayMonths,
   ...makeTail('APAY'),

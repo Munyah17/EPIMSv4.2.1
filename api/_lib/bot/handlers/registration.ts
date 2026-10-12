@@ -10,7 +10,8 @@ import { coverLabel } from '../../coverBreakdown.js'
  *
  *   menu -> full name -> national ID -> gender (male/female/other text)
  *   -> DOB -> email (or 1 to skip)
- *   -> product -> payment currency -> payment method
+ *   -> product -> [health only: chronic illness? -> details]
+ *   -> payment currency -> payment method
  *   -> [EcoCash number] -> confirm -> client + pending policy created
  *   -> payment instruction -> portal pointer -> session done.
  *
@@ -107,7 +108,38 @@ const product: Handler = async ({ input, phone, session, admin }) => {
   const products = await getActiveProducts(admin)
   const pick = pickIndex(input, products.length)
   if (pick === null) return sendText(phone, 'Please select one of the products above.')
-  await patchNote(admin, session, { productId: products[pick].id })
+  const chosen = products[pick]
+  await patchNote(admin, session, { productId: chosen.id })
+  // Health products require the medical declaration — same rule the
+  // portal enforces. It goes between product and payment so the
+  // declaration is on the policy before a cent is asked for.
+  if (chosen.category === 'health') {
+    await sendButtons(phone,
+      `Medical declaration — ${chosen.name}\n\nDo you have a chronic illness or existing condition? (e.g. diabetes, hypertension, asthma, HIV)`,
+      [{ id: 'no', title: 'No' }, { id: 'yes', title: 'Yes' }])
+    return setState(admin, session, 'REG_CHRONIC')
+  }
+  return askCurrency(admin, session, phone)
+}
+
+const chronic: Handler = async ({ input, phone, session, admin }) => {
+  if (input !== 'yes' && input !== 'no') return sendText(phone, 'Please choose one of the buttons above.')
+  if (input === 'yes') {
+    await sendText(phone, 'Please state the chronic condition or treatment (e.g. hypertension — on medication).')
+    return setState(admin, session, 'REG_CHRONIC_DETAILS')
+  }
+  await patchNote(admin, session, { hasChronic: 'no' })
+  return askCurrency(admin, session, phone)
+}
+
+const chronicDetails: Handler = async ({ input, phone, session, admin }) => {
+  const d = input.trim()
+  if (d.length < 4 || d.length > 300) return sendText(phone, 'Please state the chronic condition or treatment briefly.')
+  await patchNote(admin, session, { hasChronic: 'yes', chronicDetails: d })
+  return askCurrency(admin, session, phone)
+}
+
+async function askCurrency(admin: Parameters<Handler>[0]['admin'], session: Parameters<Handler>[0]['session'], phone: string) {
   await sendButtons(phone, 'Select payment currency', [
     { id: 'USD', title: 'USD' }, { id: 'ZiG', title: 'ZiG' },
   ])
@@ -165,6 +197,8 @@ const confirm: Handler = async ({ input, phone, session, admin, username }) => {
   const policy = await createPolicy(admin, {
     clientId: client.id, product, paymentMethod: String(n.method ?? ''),
     startDate: start, endDate: end,
+    hasChronicIllness: n.hasChronic === 'yes',
+    chronicIllnessDetails: n.chronicDetails as string | undefined,
   })
 
   await sendPaymentInstruction({
@@ -187,6 +221,7 @@ async function confirmPrompt(admin: Parameters<Handler>[0]['admin'], session: Pa
     `Confirm your registration\n\n` +
     `Name: ${n.name}\nNational ID: ${n.nationalId}\n` +
     `Product: ${p?.name ?? ''} ($${p?.premium}/month)\n` +
+    (p?.category === 'health' ? `Chronic condition: ${n.hasChronic === 'yes' ? `Yes — ${n.chronicDetails}` : 'No'}\n` : '') +
     `Payment: ${n.method ?? ''}${n.ecocashNumber ? ` (${n.ecocashNumber})` : ''}`,
     [{ id: 'pay', title: 'Register & Pay' }, { id: 'cancel', title: 'Cancel' }])
 }
@@ -200,6 +235,8 @@ export const REG_HANDLERS: Record<string, Handler> = {
   REG_DOB: dob,
   REG_EMAIL: email,
   REG_PRODUCT: product,
+  REG_CHRONIC: chronic,
+  REG_CHRONIC_DETAILS: chronicDetails,
   REG_CURRENCY: currency,
   REG_METHOD: method,
   REG_ECOCASH: ecocash,
