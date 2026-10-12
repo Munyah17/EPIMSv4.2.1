@@ -235,9 +235,10 @@ function drawLetterhead(doc: jsPDF, pageWidth: number, logo: string | null, bran
   if (cfg.companyEmail) doc.text(`Email: ${cfg.companyEmail}`, pageWidth - 14, ry, { align: 'right' })
 }
 /**
- * The complete terms document is part of the contract, so every issued
- * schedule prints in full at the end of a policy document — the download
- * and the emailed copy alike — flowing across as many pages as it needs.
+ * The terms document is part of the contract: the policy's own product
+ * exclusion schedule followed by the shared General Conditions, printed
+ * in full at the end of the document — the download and the emailed
+ * copy alike — flowing across as many pages as it needs.
  */
 function drawTermsPages(doc: jsPDF, product: { name?: string; category?: string }) {
   const pageWidth = doc.internal.pageSize.getWidth()
@@ -566,7 +567,7 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   doc.text('Disclaimer:', 14, y)
   y += 4
   const terms = doc.splitTextToSize(
-    `Terms and Conditions apply — the complete Policy Terms and Conditions, including every product exclusion schedule, are appended as the final pages of this document. Cover incepts on the start date above, subject to any applicable waiting period. Claims must be reported as soon as reasonably possible and are subject to verification. Premiums must be kept up to date for cover to remain in force; a lapsed policy may require reinstatement.`,
+    `Terms and Conditions apply — this product's Policy Terms and Conditions, including its exclusion schedule, are appended as the final pages of this document. Cover incepts on the start date above, subject to any applicable waiting period. Claims must be reported as soon as reasonably possible and are subject to verification. Premiums must be kept up to date for cover to remain in force; a lapsed policy may require reinstatement.`,
     pageWidth - 28,
   )
   doc.text(terms, 14, y)

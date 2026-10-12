@@ -28,6 +28,7 @@ recent deployments.
   (`requireSession`); callers attach the Supabase access token. Webhook
   endpoints authenticate by signature, not session.
 - Policy terms live in `src/lib/policyTerms.ts` verbatim — every policy
-  document appends ALL product exclusion schedules via `drawTermsPages`.
+  document appends ITS OWN product's exclusion schedule plus the shared
+  General Conditions via `drawTermsPages` (`termsPagesFor`).
 - Premiums are per head except agriculture (`policyBillablePremium`).
 - Secrets stay in `.env*` / server env — never in `src/`.

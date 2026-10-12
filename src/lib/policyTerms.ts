@@ -1,11 +1,13 @@
 /**
  * Policy Terms & Conditions.
  *
- * Every policy document (exportUtils.ts) appends the complete terms —
- * ALL product exclusion schedules in full, not just the one matching the
- * policy's own product. The wording is contractual, so it is kept
- * verbatim as issued. policyTermsFor() still exists for anything that
- * needs to know which schedule applies to a given product.
+ * Every policy document (exportUtils.ts) appends the terms that apply to
+ * THAT policy's product: its own product exclusion schedule followed by
+ * the shared General Conditions — not every schedule the company issues.
+ * A funeral policy carries funeral exclusions; a health policy never
+ * ships tobacco terms stapled to it. The wording is contractual, so it
+ * is kept verbatim as issued. policyTermsFor() answers which schedule a
+ * product maps to.
  */
 
 export interface PolicyTerms {
@@ -132,13 +134,14 @@ const GENERAL: PolicyTerms = {
   ],
 }
 
-/** The complete terms document, in printed order — every issued product
- *  schedule in full. Products with no schedule of their own (e.g. Medical
- *  Aid, Personal Accident Cover) also get the General Conditions appended
- *  so their documents still carry terms that apply to them. */
+/** The terms document for ONE policy: its own product's exclusion
+ *  schedule, then the General Conditions every policy shares. Products
+ *  with no schedule of their own (e.g. Medical Aid) print just the
+ *  General Conditions — no policy document ships without its terms, and
+ *  none carries a schedule for a product it isn't. */
 export function termsPagesFor(product: { name?: string; category?: string }): PolicyTerms[] {
-  const schedules = [FUNERAL, HOSPITAL, LEGAL, TOBACCO]
-  return policyTermsFor(product) === GENERAL ? [...schedules, GENERAL] : schedules
+  const own = policyTermsFor(product)
+  return own === GENERAL ? [GENERAL] : [own, GENERAL]
 }
 
 /** Picks the exclusion schedule for a product — the same keyword rules the
