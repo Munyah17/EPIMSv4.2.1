@@ -83,9 +83,15 @@ export async function exportToExcelMulti(
 }
 
 /**
- * Report-grade PDF: a branded heading block, the active filters spelled
- * out (so a printed report can't be mistaken for a different cut of the
- * data), the headline stats as a small table, then the data table.
+ * Report-grade PDF, laid out like the policy document: the Motions
+ * letterhead, a title block, the active filters spelled out (so a
+ * printed report can't be mistaken for a different cut of the data),
+ * the headline stats as a boxed strip, then the data table.
+ *
+ * Wide tables (the 17-column treaty layout) get landscape +
+ * horizontalPageBreak: the columns flow onto a second page set at full
+ * readable width instead of being crushed into one cramped grid — the
+ * same row appears across the page sets, so reading order is preserved.
  */
 export async function exportReportToPdf(
   filename: string,
@@ -97,36 +103,83 @@ export async function exportReportToPdf(
   /** Wide reports (the 17-column treaty layout) need the extra width. */
   opts?: { landscape?: boolean },
 ) {
-  const [{ jsPDF }, { default: autoTable }] = await Promise.all([import('jspdf'), import('jspdf-autotable')])
+  const [{ jsPDF }, { default: autoTable }, { MOTIONS_LOGO_PNG_BASE64 }] = await Promise.all([
+    import('jspdf'), import('jspdf-autotable'), import('../assets/motionsLogo'),
+  ])
   const doc = new jsPDF({ orientation: opts?.landscape ? 'landscape' : 'portrait' })
-  doc.setFontSize(16)
-  doc.setFont('helvetica', 'bold')
-  doc.text(title, 14, 18)
-  doc.setFont('helvetica', 'normal')
-  doc.setFontSize(9)
-  doc.setTextColor(120)
-  doc.text(subtitle, 14, 25)
+  const pageWidth = doc.internal.pageSize.getWidth()
+  const pageHeight = doc.internal.pageSize.getHeight()
+  const cfg = getNotifSettings()
 
-  let y = 30
+  drawLetterhead(doc, pageWidth, MOTIONS_LOGO_PNG_BASE64, COMPANY_NAME, cfg)
+
+  let y = 26
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(13)
+  doc.setTextColor(...NAVY)
+  doc.text(title.toUpperCase(), 14, y)
+  y += 5.5
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(8.5)
+  doc.setTextColor(...MUTED)
+  const sub = doc.splitTextToSize(`${subtitle} — generated ${formatDate(new Date())}`, pageWidth - 28)
+  doc.text(sub, 14, y)
+  y += sub.length * 4 + 6
+
   if (stats.length > 0) {
     autoTable(doc, {
       head: [stats.map(s => s.label)],
       body: [stats.map(s => s.value)],
       startY: y,
-      styles: { fontSize: 8, halign: 'center' },
-      headStyles: { fillColor: [240, 243, 250], textColor: [70, 80, 110], fontStyle: 'bold' },
+      styles: { fontSize: 8.5, halign: 'center', cellPadding: 2 },
+      headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold' },
       theme: 'grid',
       margin: { left: 14, right: 14 },
     })
-    y = ((doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY ?? y) + 6
+    y = ((doc as unknown as { lastAutoTable?: { finalY?: number } }).lastAutoTable?.finalY ?? y) + 8
   }
+
   autoTable(doc, {
     head: [headers],
     body: rows.map(r => r.map(String)),
     startY: y,
-    styles: { fontSize: 8.5 },
-    headStyles: { fillColor: [65, 105, 225] },
+    styles: {
+      fontSize: opts?.landscape ? 7.5 : 8.5,
+      cellPadding: 1.8,
+      valign: 'middle',
+      lineColor: [220, 226, 240], lineWidth: 0.15,
+      textColor: TEXT,
+      minCellWidth: opts?.landscape ? 14 : undefined,
+    },
+    headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [247, 249, 253] },
+    theme: 'grid',
+    margin: { left: 14, right: 14, top: 16, bottom: 14 },
+    // Columns that don't fit flow to the next page set — the same rows,
+    // next columns — instead of being squeezed unreadably onto one page.
+    // Column 0 (the member's name) repeats on every set so each half
+    // still tells you WHO the row is about.
+    horizontalPageBreak: opts?.landscape ?? false,
+    horizontalPageBreakRepeat: opts?.landscape ? 0 : undefined,
+    didParseCell: data => {
+      // Numbers right-align like every other money column in the system.
+      const v = data.cell.raw
+      if (typeof v === 'string' && v !== '' && !Number.isNaN(Number(v.replace(/[$,]/g, ''))) && data.section === 'body') {
+        data.cell.styles.halign = 'right'
+      }
+    },
   })
+
+  // Page numbers on every page.
+  const total = doc.getNumberOfPages()
+  for (let p = 1; p <= total; p++) {
+    doc.setPage(p)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(7.5)
+    doc.setTextColor(...MUTED)
+    doc.text(`${COMPANY_NAME} — ${title} · Page ${p} of ${total}`, pageWidth / 2, pageHeight - 8, { align: 'center' })
+  }
+
   doc.save(filename)
 }
 
