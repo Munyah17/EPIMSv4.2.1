@@ -8,6 +8,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { isStale, rateAgeLabel, type ExchangeRate } from '../lib/exchangeRate'
 import { health } from '../lib/health'
 import { runSystemCheck, type SystemCheckResult } from '../lib/aiService'
+import { supabase } from '../lib/supabase'
 import { isGatewayFlaggedDown, getGatewayWatchStatus, pingSmsGateway, sendSms, SMS_GATEWAY_EVENT } from '../lib/smsService'
 
 interface Props {
@@ -132,12 +133,49 @@ export default function Dashboard({ showToast, setActivePanel }: Props) {
   const [clearing, setClearing] = useState(false)
   const [aiChecking, setAiChecking] = useState(false)
   const [aiCheck, setAiCheck] = useState<SystemCheckResult | null>(null)
+  interface ReconAlert { kind: string; ref: string; label: string }
+  const [reconAlerts, setReconAlerts] = useState<ReconAlert[]>([])
+  const [reconClearing, setReconClearing] = useState(false)
+  // The reconciliation alerts from System Health, on the dashboard so
+  // they're impossible to miss — admin/finance only, silently absent
+  // for other roles (the endpoint answers 403).
+  const loadRecon = async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) return
+    const res = await fetch('/api/admin-recon', { headers: { Authorization: `Bearer ${session.access_token}` } })
+    if (!res.ok) return
+    const r = await res.json()
+    setReconAlerts([
+      ...(r.orphanedClients ?? []).map((c: { id: string; name: string; phone: string | null; createdAt: string }) =>
+        ({ kind: 'orphaned_client', ref: c.id, label: `👤 Client ${c.name} (${c.phone ?? 'no phone'}, registered ${new Date(c.createdAt).toLocaleDateString('en-GB')}) has no policy — payment may have been taken with no cover written.` })),
+      ...(r.stalePaynow ?? []).map((t: { reference: string; amount: number; currency: string }) =>
+        ({ kind: 'stale_paynow', ref: t.reference, label: `💳 Paynow ref ${t.reference} (${t.currency} $${Number(t.amount).toFixed(2)}) never confirmed — check the gateway, reconcile with the payer.` })),
+      ...(r.paidButPending ?? []).map((p: { id: string; policyNumber: string; clientName: string }) =>
+        ({ kind: 'paid_but_pending', ref: p.id, label: `📄 Policy ${p.policyNumber} (${p.clientName}) has a completed payment but is still pending — activate or refund.` })),
+    ])
+  }
+
+  // Dismissal is acknowledgement, not deletion — the rows keep their
+  // truth; new unmatched items still alert.
+  const dismissRecon = async (items: { kind: string; ref: string }[]) => {
+    setReconClearing(true)
+    const { data: { session } } = await supabase.auth.getSession()
+    await fetch('/api/admin-recon', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+      body: JSON.stringify({ items }),
+    }).catch(() => { /**/ })
+    setReconAlerts(prev => prev.filter(a => !items.some(i => i.kind === a.kind && i.ref === a.ref)))
+    setReconClearing(false)
+  }
+
   useEffect(() => {
     if (!canSeeHealth) return
     let cancelled = false
     const load = () => db.notificationLog.recentFailures(24).then(f => { if (!cancelled) setNotifyFails(f) }).catch(() => { /**/ })
     void load()
-    const t = setInterval(load, 60000)
+    void loadRecon()
+    const t = setInterval(() => { void load(); void loadRecon() }, 60000)
     return () => { cancelled = true; clearInterval(t) }
   }, [canSeeHealth])
 
@@ -340,6 +378,31 @@ export default function Dashboard({ showToast, setActivePanel }: Props) {
                 }}>
                 {clearing ? 'Clearing…' : 'Clear'}
               </button>
+            </div>
+          )}
+
+          {/* Unreconciled records — the same alerts System Health shows,
+              front and centre on the dashboard. Dismissal is
+              acknowledgement, not deletion; new items still alert. */}
+          {reconAlerts.length > 0 && (
+            <div style={{ marginTop: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <div style={{ fontSize: 12, color: 'var(--danger)', fontWeight: 700 }}>
+                  ⚖ Unreconciled records — investigate before close of day
+                </div>
+                <button type="button" className="btn btn-ghost btn-sm" disabled={reconClearing}
+                  onClick={() => void dismissRecon(reconAlerts.map(a => ({ kind: a.kind, ref: a.ref })))}>
+                  {reconClearing ? 'Clearing…' : 'Clear all'}
+                </button>
+              </div>
+              {reconAlerts.map(a => (
+                <div key={`${a.kind}:${a.ref}`} className="info-banner info-banner-danger"
+                  style={{ marginBottom: 6, fontSize: 12, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+                  <span style={{ flex: 1 }}>{a.label}</span>
+                  <button type="button" className="btn btn-ghost btn-sm" style={{ padding: '0 6px' }} title="Acknowledge — stop alerting on this"
+                    onClick={() => void dismissRecon([{ kind: a.kind, ref: a.ref }])}>✕</button>
+                </div>
+              ))}
             </div>
           )}
 
