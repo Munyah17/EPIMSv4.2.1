@@ -138,6 +138,23 @@ export default function SystemHealthPage({ showToast }: Props) {
     setDismissing(false)
   }
 
+  // Run Check probes; Apply Fixes repairs the whitelisted items and
+  // logs each repair in system_fixes (the log renders below the card).
+  const runCheck = async (apply: boolean) => {
+    setAiChecking(true)
+    try {
+      const result = await runSystemCheck({
+        totalOps: stats.totalOps, sbSuccessPct: stats.sbSuccessPct, localMode: stats.localMode,
+      }, apply)
+      setAiCheck(result)
+      if (result.fixLog) setFixLog(result.fixLog)
+      if (apply && result.fixed.length) showToast('success', `${result.fixed.length} fix${result.fixed.length === 1 ? '' : 'es'} applied — see the log below.`)
+    } catch (e) {
+      showToast('error', e instanceof Error ? e.message : 'System check failed.')
+    }
+    setAiChecking(false)
+  }
+
   useEffect(() => {
     const unsub = health.subscribe(() => setStats(health.stats as Stats))
     const interval = setInterval(() => setTicker(t => t + 1), 1000)
@@ -360,22 +377,18 @@ export default function SystemHealthPage({ showToast }: Props) {
       <div className="card" style={{ marginBottom: 20 }}>
         <div className="card-header">
           <span className="card-title">🤖 AI System Check &amp; Fix</span>
-          <button type="button" className="btn btn-primary btn-sm" disabled={aiChecking}
-            onClick={async () => {
-              setAiChecking(true)
-              try {
-                const result = await runSystemCheck({
-                  totalOps: stats.totalOps, sbSuccessPct: stats.sbSuccessPct, localMode: stats.localMode,
-                })
-                setAiCheck(result)
-                if (result.fixLog) setFixLog(result.fixLog)
-              } catch (e) {
-                showToast('error', e instanceof Error ? e.message : 'System check failed.')
-              }
-              setAiChecking(false)
-            }}>
-            {aiChecking ? 'Checking…' : 'Run Check & Fix'}
-          </button>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {(aiCheck?.fixable ?? 0) > 0 && (
+              <button type="button" className="btn btn-primary btn-sm" disabled={aiChecking}
+                onClick={() => void runCheck(true)}>
+                {aiChecking ? 'Fixing…' : `🔧 Apply Fixes (${aiCheck!.fixable})`}
+              </button>
+            )}
+            <button type="button" className="btn btn-ghost btn-sm" disabled={aiChecking}
+              onClick={() => void runCheck(false)}>
+              {aiChecking ? 'Checking…' : 'Run Check'}
+            </button>
+          </div>
         </div>
 
         {aiCheck && (

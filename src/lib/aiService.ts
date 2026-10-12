@@ -117,18 +117,25 @@ export interface SystemCheckResult {
   checkedAt: string
   checks: SystemCheckLine[]
   fixed: string[]
+  /** In check mode: how many items the fixer can repair. */
+  fixable?: number
   fixLog?: SystemCheckFix[]
   ai: { simulated?: boolean; summary: string; findings?: SystemCheckFinding[] }
   error?: string
 }
 
 /** Deterministic probes on the server + Groq interpretation. The client
- *  passes its own health snapshot so the check sees the session too. */
-export async function runSystemCheck(health: { totalOps?: number; sbSuccessPct?: number; localMode?: boolean }): Promise<SystemCheckResult> {
+ *  passes its own health snapshot so the check sees the session too.
+ *  `apply` runs the whitelisted repairs and logs each in system_fixes;
+ *  without it the run only proposes — `fixable` says how much it can do. */
+export async function runSystemCheck(
+  health: { totalOps?: number; sbSuccessPct?: number; localMode?: boolean },
+  apply = false,
+): Promise<SystemCheckResult> {
   const res = await fetch('/api/system-check', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
-    body: JSON.stringify({ health }),
+    body: JSON.stringify({ health, apply }),
   })
   const body = await res.json().catch(() => null)
   if (!res.ok || !body) throw new Error(body?.error ?? `System check failed (${res.status})`)
