@@ -9,7 +9,7 @@ import { useAuth } from '../contexts/AuthContext'
 interface ReconData {
   orphanedClients: { id: string; name: string; phone: string | null; createdAt: string }[]
   stalePaynow: { reference: string; amount: number; currency: string; createdAt: string }[]
-  paidButPending: { policyNumber: string; clientName: string }[]
+  paidButPending: { id: string; policyNumber: string; clientName: string }[]
   checkedAt: string
 }
 import type { ToastMessage } from '../types'
@@ -102,7 +102,37 @@ export default function SystemHealthPage({ showToast }: Props) {
   const [testSending, setTestSending] = useState(false)
   const [websiteLink, setWebsiteLink] = useState<{ ok: boolean | null; detail: string }>({ ok: null, detail: 'Checking…' })
   const [recon, setRecon] = useState<ReconData | null>(null)
+  const [dismissing, setDismissing] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
+
+  // The same three checks the daily cron emails about — live, so a
+  // paid-but-unregistered signup shows within a minute, not overnight.
+  const loadRecon = async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) return
+    fetch('/api/admin-recon', { headers: { Authorization: `Bearer ${session.access_token}` } })
+      .then(async res => setRecon(res.ok ? await res.json() : null))
+      .catch(() => { /* card just stays at its last value */ })
+  }
+
+  // Acknowledge recon items — server-stamped, shared, truth-preserving.
+  // The underlying rows keep their status; only new unmatched items alert.
+  const dismissRecon = async (items: { kind: string; ref: string }[]) => {
+    setDismissing(true)
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch('/api/admin-recon', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+        body: JSON.stringify({ items }),
+      })
+      if (!res.ok) { const b = await res.json().catch(() => null); showToast('error', b?.error ?? 'Could not clear the items.') }
+      else { showToast('success', `${items.length} item${items.length === 1 ? '' : 's'} acknowledged — new issues still alert.`); void loadRecon() }
+    } catch (e) {
+      showToast('error', `Could not clear the items: ${e}`)
+    }
+    setDismissing(false)
+  }
 
   useEffect(() => {
     const unsub = health.subscribe(() => setStats(health.stats as Stats))
@@ -122,15 +152,6 @@ export default function SystemHealthPage({ showToast }: Props) {
     }
     checkWebsiteLink()
     const linkInterval = setInterval(checkWebsiteLink, 60000)
-    // The same three checks the daily cron emails about — live, so a
-    // paid-but-unregistered signup shows within a minute, not overnight.
-    const loadRecon = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (!session) return
-      fetch('/api/admin-recon', { headers: { Authorization: `Bearer ${session.access_token}` } })
-        .then(async res => setRecon(res.ok ? await res.json() : null))
-        .catch(() => { /* card just stays at its last value */ })
-    }
     void loadRecon()
     const reconInterval = setInterval(() => void loadRecon(), 60000)
     return () => { unsub(); clearInterval(interval); clearInterval(secInterval); clearInterval(linkInterval); clearInterval(reconInterval) }
@@ -284,20 +305,39 @@ export default function SystemHealthPage({ showToast }: Props) {
           unmatched, with the exact reference a human needs to fix it. */}
       {recon && (recon.orphanedClients.length + recon.stalePaynow.length + recon.paidButPending.length) > 0 && (
         <div className="card" style={{ marginBottom: 20, borderLeft: '3px solid var(--danger)' }}>
-          <div className="card-header"><span className="card-title">⚖ Unreconciled records — investigate before close of day</span></div>
+          <div className="card-header">
+            <span className="card-title">⚖ Unreconciled records — investigate before close of day</span>
+            {/* Dismissal is acknowledgement, not deletion — the client,
+                the transaction and the policy all keep their truth.
+                New unmatched items still alert. */}
+            <button type="button" className="btn btn-ghost btn-sm" disabled={dismissing}
+              onClick={() => void dismissRecon([
+                ...recon.orphanedClients.map(c => ({ kind: 'orphaned_client', ref: c.id })),
+                ...recon.stalePaynow.map(t => ({ kind: 'stale_paynow', ref: t.reference })),
+                ...recon.paidButPending.map(p => ({ kind: 'paid_but_pending', ref: p.id })),
+              ])}>
+              {dismissing ? 'Clearing…' : 'Clear all'}
+            </button>
+          </div>
           {recon.orphanedClients.map(c => (
-            <div key={c.id} className="info-banner info-banner-danger" style={{ marginBottom: 8, borderRadius: 8, padding: '10px 13px', fontSize: 12 }}>
-              👤 Client <strong>{c.name}</strong> ({c.phone ?? 'no phone'}, registered {new Date(c.createdAt).toLocaleDateString('en-GB')}) has <strong>no policy</strong> — payment may have been taken with no cover written.
+            <div key={c.id} className="info-banner info-banner-danger" style={{ marginBottom: 8, borderRadius: 8, padding: '10px 13px', fontSize: 12, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+              <span style={{ flex: 1 }}>👤 Client <strong>{c.name}</strong> ({c.phone ?? 'no phone'}, registered {new Date(c.createdAt).toLocaleDateString('en-GB')}) has <strong>no policy</strong> — payment may have been taken with no cover written.</span>
+              <button type="button" className="btn btn-ghost btn-sm" style={{ padding: '0 6px' }} title="Acknowledge — stop alerting on this"
+                onClick={() => void dismissRecon([{ kind: 'orphaned_client', ref: c.id }])}>✕</button>
             </div>
           ))}
           {recon.stalePaynow.map(t => (
-            <div key={t.reference} className="info-banner info-banner-warning" style={{ marginBottom: 8, borderRadius: 8, padding: '10px 13px', fontSize: 12 }}>
-              💳 Paynow ref <strong>{t.reference}</strong> ({t.currency} ${Number(t.amount).toFixed(2)}) never confirmed — check the gateway, reconcile with the payer.
+            <div key={t.reference} className="info-banner info-banner-warning" style={{ marginBottom: 8, borderRadius: 8, padding: '10px 13px', fontSize: 12, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+              <span style={{ flex: 1 }}>💳 Paynow ref <strong>{t.reference}</strong> ({t.currency} ${Number(t.amount).toFixed(2)}) never confirmed — check the gateway, reconcile with the payer.</span>
+              <button type="button" className="btn btn-ghost btn-sm" style={{ padding: '0 6px' }} title="Acknowledge — stop alerting on this"
+                onClick={() => void dismissRecon([{ kind: 'stale_paynow', ref: t.reference }])}>✕</button>
             </div>
           ))}
           {recon.paidButPending.map(p => (
-            <div key={p.policyNumber} className="info-banner info-banner-danger" style={{ marginBottom: 8, borderRadius: 8, padding: '10px 13px', fontSize: 12 }}>
-              📄 Policy <strong>{p.policyNumber}</strong> ({p.clientName}) has a completed payment but is still <strong>pending</strong> — activate or refund.
+            <div key={p.policyNumber} className="info-banner info-banner-danger" style={{ marginBottom: 8, borderRadius: 8, padding: '10px 13px', fontSize: 12, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
+              <span style={{ flex: 1 }}>📄 Policy <strong>{p.policyNumber}</strong> ({p.clientName}) has a completed payment but is still <strong>pending</strong> — activate or refund.</span>
+              <button type="button" className="btn btn-ghost btn-sm" style={{ padding: '0 6px' }} title="Acknowledge — stop alerting on this"
+                onClick={() => void dismissRecon([{ kind: 'paid_but_pending', ref: p.id }])}>✕</button>
             </div>
           ))}
         </div>
