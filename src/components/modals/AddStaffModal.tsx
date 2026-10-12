@@ -165,7 +165,6 @@ export default function AddStaffModal({ staff, agentProfile, fixedRole, onClose,
           </div>
           {isAgent && (
             <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '0.9rem', marginBottom: '0.75rem' }}>
-              <p style={{ fontSize: 12, fontWeight: 700, marginBottom: '0.6rem' }}>Agent File — contract & payout</p>
               <div className="form-row">
                 <div className="form-group">
                   <label>National ID</label>
