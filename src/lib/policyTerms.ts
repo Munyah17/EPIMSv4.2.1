@@ -138,9 +138,15 @@ const GENERAL: PolicyTerms = {
  *  schedule, then the General Conditions every policy shares. Products
  *  with no schedule of their own (e.g. Medical Aid) print just the
  *  General Conditions — no policy document ships without its terms, and
- *  none carries a schedule for a product it isn't. */
+ *  none carries a schedule for a product it isn't.
+ *
+ *  Field-to-Floor is the exception: its cover INCLUDES a flat $500
+ *  funeral benefit for the grower, so the funeral schedule is part of
+ *  the contract — the document carries tobacco exclusions AND funeral
+ *  exclusions, in that order. */
 export function termsPagesFor(product: { name?: string; category?: string }): PolicyTerms[] {
   const own = policyTermsFor(product)
+  if (own === TOBACCO) return [TOBACCO, FUNERAL, GENERAL]
   return own === GENERAL ? [GENERAL] : [own, GENERAL]
 }
 

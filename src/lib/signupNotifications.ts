@@ -113,7 +113,7 @@ export async function notifyPolicyRegistered(policy: Policy, client: Client): Pr
       : ' Your cover is active.'
     notifyPhone(
       client.phone,
-      `${COMPANY_NAME}: Welcome ${client.name.split(' ')[0]}. Policy ${policy.policyNumber} (${policy.productName}) is registered, ${coverSms}.${waiting}`,
+      `${COMPANY_NAME}: Welcome ${client.name.split(' ')[0]}. Policy ${policy.policyNumber} (${policy.productName}) is registered, ${coverSms}. Payment: ${policy.paymentMethod}.${waiting}`,
       'registration', policy.policyNumber,
     )
   }
@@ -131,6 +131,7 @@ Policy Number:  ${policy.policyNumber}
 Product:        ${policy.productName}
 ${coverEmail}
 Premium:        ${premium}
+Payment Method: ${policy.paymentMethod}
 Start Date:     ${policy.startDate}
 Status:         ${policy.status.replace('_', ' ').toUpperCase()}
 
@@ -143,7 +144,10 @@ Keep this email for your records. If any detail above is wrong, contact us and w
   }
 
   // ── The office ─────────────────────────────────────────────────────
-  const alert = `${COMPANY_NAME}: New policy ${policy.policyNumber} registered. ${client.name}, ${policy.productName}, cover ${cover}, premium ${premium}. Contact ${client.phone || 'not given'}.`
+  // The office alert quotes the same figure the client read — a tobacco
+  // policy announced as "$2,000" to the office but per-peril to the
+  // grower is how "the document says $500" disputes start.
+  const alert = `${COMPANY_NAME}: New policy ${policy.policyNumber} registered. ${client.name}, ${policy.productName}, ${coverSms}, premium ${premium}. Payment: ${policy.paymentMethod}. Contact ${client.phone || 'not given'}.`
   // Deduplicated in case the configured super-admin line is already one of
   // the office numbers -- nobody wants the same alert twice.
   const recipients = [...new Set([...ADMIN_ALERT_NUMBERS, cfg.superAdminPhone].filter(Boolean))] as string[]
