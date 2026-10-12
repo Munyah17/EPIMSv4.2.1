@@ -57,8 +57,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const body: CreateAccountBody = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body ?? {})
 
-  if (!body.name || !body.email || !body.password || !body.role || !body.department) {
-    return res.status(400).json({ error: 'name, email, password, role, and department are required.' })
+  if (!body.name || !body.password || !body.role || !body.department) {
+    return res.status(400).json({ error: 'name, password, role, and department are required.' })
+  }
+  // Agents are field intermediaries — most never touch this portal.
+  // Email is optional for them; the auth account needs SOME email, so a
+  // placeholder backs it and the profile shows none. Sign-in resolves
+  // by full name regardless.
+  if (!body.email?.trim() && body.role !== 'agent') {
+    return res.status(400).json({ error: 'Email is required for staff accounts.' })
   }
   if (body.password.length < 8) {
     return res.status(400).json({ error: 'Password must be at least 8 characters.' })
@@ -92,8 +99,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(403).json({ error: 'You do not have permission to create staff accounts.' })
   }
 
+  const authEmail = body.email?.trim().toLowerCase()
+    || `agent-${body.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24)}-${Math.random().toString(36).slice(2, 8)}@agent.motions.local`
+
   const { data: created, error: createError } = await admin.auth.admin.createUser({
-    email: body.email,
+    email: authEmail,
     password: body.password,
     email_confirm: true,
     user_metadata: { name: body.name, role: body.role, department: body.department },
@@ -108,6 +118,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const username = body.username?.trim() || body.name.trim()
   const extra: Record<string, unknown> = { username }
+  // The placeholder email backs the auth user only — it must never
+  // appear on the staff list as though it were the agent's address.
+  if (!body.email?.trim()) extra.email = null
   if (isSystemRole) {
     // super_admin/admin get blanket-access sentinels (matching every other
     // system-tier account); tech_support starts with none, granted explicitly.
@@ -123,5 +136,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { data: profile } = await admin.from('profiles').select('*, custom_roles!profiles_custom_role_id_fkey(name)').eq('id', created.user.id).single()
 
-  return res.status(200).json({ success: true, profile: { ...profile, email: created.user.email } })
+  return res.status(200).json({ success: true, profile: { ...profile, email: body.email?.trim() ?? null } })
 }

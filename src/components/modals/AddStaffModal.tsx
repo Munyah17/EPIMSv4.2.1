@@ -77,7 +77,10 @@ export default function AddStaffModal({ staff, agentProfile, fixedRole, onClose,
   const passwordValid = staff ? true : password.length >= 8
   const missing: MissingField[] = []
   if (!name.trim()) missing.push({ key: 'name', label: 'Full Name' })
-  if (!email.trim()) missing.push({ key: 'email', label: 'Email Address' })
+  // Agents are field intermediaries — email is optional for them (the
+  // account still gets created; sign-in resolves by full name anyway).
+  // Staff accounts still require it, and any address given is checked.
+  if (!email.trim()) { if (!isAgent) missing.push({ key: 'email', label: 'Email Address' }) }
   else if (!/^\S+@\S+\.\S+$/.test(email.trim())) missing.push({ key: 'email', label: 'Email Address', hint: 'Not a valid email format' })
   if (!passwordValid) missing.push({ key: 'password', label: 'Temporary Password', hint: 'Minimum 8 characters' })
 
@@ -134,7 +137,7 @@ export default function AddStaffModal({ staff, agentProfile, fixedRole, onClose,
           </div>
           <div className="form-row">
             <div className="form-group" id={fieldId('email')}>
-              <label>Email Address *</label>
+              <label>Email Address {!isAgent && '*'}</label>
               <input type="email" className={invalidClass(missing, attempted, 'email')} value={email} onChange={e => setEmail(e.target.value)} placeholder="staff@tariqify.com" />
             </div>
             <div className="form-group">
