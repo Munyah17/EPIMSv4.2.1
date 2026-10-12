@@ -46,12 +46,14 @@ export default function GroupModal({ group, onClose, onSave }: Props) {
 
   const [attempted, setAttempted] = useState(false)
 
+  // Number of Users is optional — the billed number is always the real
+  // roster count, never this estimate.
   const memberCount = expectedMembers.trim() === '' ? NaN : Number(expectedMembers)
 
   const missing: MissingField[] = []
   if (!name.trim()) missing.push({ key: 'name', label: 'Organisation Name' })
   if (groupType === 'other' && !customType.trim()) missing.push({ key: 'customType', label: 'Custom Type', hint: 'Describe the organisation type in your own words' })
-  if (!Number.isFinite(memberCount) || memberCount < 1) missing.push({ key: 'expectedMembers', label: 'Number of Users', hint: 'How many people this organisation intends to cover' })
+  if (expectedMembers.trim() !== '' && (!Number.isFinite(memberCount) || memberCount < 1)) missing.push({ key: 'expectedMembers', label: 'Number of Users', hint: 'Whole number, e.g. 25' })
   if (!orgPhone.trim() && !contactPhone.trim()) missing.push({ key: 'orgPhone', label: 'Organisation Phone', hint: 'At least one phone number — the org line or the representative' })
   if (!contactName.trim()) missing.push({ key: 'contactName', label: 'Representative Name', hint: 'Who we deal with on the organisation’s behalf' })
 
@@ -62,7 +64,7 @@ export default function GroupModal({ group, onClose, onSave }: Props) {
       name: name.trim(),
       groupType,
       customType: groupType === 'other' ? customType.trim() : undefined,
-      expectedMembers: memberCount,
+      expectedMembers: Number.isFinite(memberCount) && memberCount >= 1 ? memberCount : undefined,
       description: description.trim() || undefined,
       registrationNumber: registrationNumber.trim() || undefined,
       orgPhone: orgPhone.trim() || undefined,
@@ -110,7 +112,7 @@ export default function GroupModal({ group, onClose, onSave }: Props) {
           )}
           <div className="form-row">
             <div className="form-group" id={fieldId('expectedMembers')}>
-              <label>Number of Users *</label>
+              <label>Number of Users</label>
               <input
                 type="number" min={1} className={invalidClass(missing, attempted, 'expectedMembers')}
                 value={expectedMembers} onChange={e => setExpectedMembers(e.target.value)}

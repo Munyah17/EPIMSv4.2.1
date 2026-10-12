@@ -100,7 +100,10 @@ const policySelect = async () => {
   if (groupCols) return POLICY_SELECT_GROUP
   return POLICY_SELECT_BASE
 }
-const paymentSelect = () => hasColumn('payments', 'transaction_id').then(ok => ok ? PAYMENT_SELECT : PAYMENT_SELECT_BASE)
+const paymentSelect = () => Promise.all([
+  hasColumn('payments', 'transaction_id'),
+  hasColumn('payments', 'pop_url'),
+]).then(([txn, pop]) => txn && pop ? PAYMENT_SELECT_BOTH : txn ? PAYMENT_SELECT_TXN : pop ? PAYMENT_SELECT_POP : PAYMENT_SELECT_BASE)
 
 /** Dispatched whenever a read/write falls back to browser-local storage, so the UI can warn the user. */
 export const DB_FALLBACK_EVENT = 'ims:db-fallback'
@@ -310,6 +313,7 @@ function toPayment(r: any): Payment {
     transactionId: r.transaction_id ?? undefined,
     recordedAt:    r.created_at ?? undefined,
     splitPayments: r.split_payments ?? undefined,
+    popUrl:        r.pop_url ?? undefined,
   }
 }
 
@@ -464,7 +468,12 @@ const PAYMENT_SELECT_BASE = `
     clients!client_id(name)
   )
 `
-const PAYMENT_SELECT = PAYMENT_SELECT_BASE.replace('payment_date,', 'payment_date, transaction_id,')
+/** Optional columns are probed (hasColumn) so the select survives an
+ *  env where a migration hasn't run — transaction_id and pop_url both
+ *  came later than the base row. */
+const PAYMENT_SELECT_TXN = PAYMENT_SELECT_BASE.replace('payment_date,', 'payment_date, transaction_id,')
+const PAYMENT_SELECT_POP = PAYMENT_SELECT_BASE.replace('payment_date,', 'payment_date, pop_url,')
+const PAYMENT_SELECT_BOTH = PAYMENT_SELECT_BASE.replace('payment_date,', 'payment_date, transaction_id, pop_url,')
 const TICKET_SELECT = `
   id, ticket_number, client_id, subject, description,
   status, priority, category, assigned_to, messages, created_at, updated_at,
@@ -1222,6 +1231,7 @@ export const payments = {
     // persisted until it is.
     const paymentSelect_ = await paymentSelect()
     if (schemaFlags.get('payments.transaction_id')?.ok) row.transaction_id = payment.transactionId ?? null
+    if (schemaFlags.get('payments.pop_url')?.ok) row.pop_url = payment.popUrl ?? null
     const { ok, data, error } = await sb('payments', 'write',
       () => supabase.from('payments').insert(row).select(paymentSelect_).single(),
     )
@@ -1262,6 +1272,9 @@ export const payments = {
     const paymentSelect_ = await paymentSelect()
     if (schemaFlags.get('payments.transaction_id')?.ok && updates.transactionId !== undefined) {
       row.transaction_id = updates.transactionId ?? null
+    }
+    if (schemaFlags.get('payments.pop_url')?.ok && updates.popUrl !== undefined) {
+      row.pop_url = updates.popUrl ?? null
     }
     const { ok, data, error } = await sb('payments', 'write',
       () => supabase.from('payments').update(row).eq('id', id).select(paymentSelect_).single(),
@@ -2748,6 +2761,47 @@ export const groups = {
   },
 }
 
+/** A group policy's dependants array IS what gets invoiced per head —
+ *  the billed roster. When the organisation's roster changes, every live
+ *  group policy on it re-derives dependants from group_members, or the
+ *  next invoice charges for people who left and misses people who
+ *  joined. Best-effort per write: a failed sync is logged to health,
+ *  never blocks the member operation (the roster write is the truth;
+ *  the next roster change re-runs the sync). */
+async function syncGroupRosterToPolicies(groupId: string) {
+  const { data: mrows, error: mErr } = await supabase.from('group_members')
+    .select('full_name, national_id, dob, phone, position')
+    .eq('group_id', groupId).eq('status', 'active')
+  if (mErr) {
+    health.record({ ts: Date.now(), type: 'read', table: 'group_members', success: false, duration: 0, source: 'supabase', detail: `roster sync read: ${mErr.message}` })
+    return
+  }
+  const { data: prows, error: pErr } = await supabase.from('policies')
+    .select('id, cover_scope, product_id, products!product_id(name, premium, cover_amount)')
+    .eq('group_id', groupId)
+    .in('cover_scope', ['corporate', 'group', 'team'])
+    .in('status', ['active', 'waiting_period', 'lapsed', 'defaulted'])
+  if (pErr || !prows) {
+    health.record({ ts: Date.now(), type: 'read', table: 'policies', success: false, duration: 0, source: 'supabase', detail: `roster sync read: ${pErr?.message ?? 'no rows'}` })
+    return
+  }
+  for (const p of prows as Array<{ id: string; cover_scope: string; product_id: string; products: { name?: string; premium?: number; cover_amount?: number } | null }>) {
+    const prod = p.products
+    const deps = (mrows ?? []).map(m => ({
+      name: m.full_name,
+      relationship: p.cover_scope === 'corporate' ? 'Employee'
+        : p.cover_scope === 'team' ? ((m.position as string | null)?.trim() || 'Team Member')
+        : 'Member',
+      dob: m.dob ?? '', nationalId: m.national_id ?? '', phone: m.phone ?? undefined,
+      productId: p.product_id, productName: prod?.name ?? '',
+      premium: Number(prod?.premium) || 0, coverAmount: prod?.cover_amount ?? null,
+    }))
+    await sb('policies', 'write',
+      () => supabase.from('policies').update({ dependants: deps }).eq('id', p.id),
+    )
+  }
+}
+
 // ── GROUP MEMBERS (the roster a group policy covers) ────────────────
 export const groupMembers = {
   /** All members of a group — 'active' rows first (status sorts before
@@ -2780,7 +2834,10 @@ export const groupMembers = {
     const { ok, data, error } = await sb('group_members', 'write',
       () => supabase.from('group_members').insert(row).select().single(),
     )
-    if (ok && data) return { data: toGroupMember(data as Record<string, unknown>), error: null }
+    if (ok && data) {
+      void syncGroupRosterToPolicies(input.groupId)
+      return { data: toGroupMember(data as Record<string, unknown>), error: null }
+    }
     return writeFailed('group_members', error)
   },
 
@@ -2796,7 +2853,12 @@ export const groupMembers = {
     const { ok, data, error } = await sb('group_members', 'write',
       () => supabase.from('group_members').update(row).eq('id', id).select().single(),
     )
-    if (ok && data) return { data: toGroupMember(data as Record<string, unknown>), error: null }
+    if (ok && data) {
+      // A name/position/status edit changes what the billed roster says —
+      // re-sync the group's policies the same way an add/remove does.
+      void syncGroupRosterToPolicies((data as Record<string, unknown>).group_id as string)
+      return { data: toGroupMember(data as Record<string, unknown>), error: null }
+    }
     return writeFailed('group_members', error)
   },
 
@@ -2804,7 +2866,9 @@ export const groupMembers = {
    *  because historical claims and certificates may still reference the
    *  member and a vanished roster entry would orphan them. */
   async remove(id: string) {
-    const { error } = await supabase.from('group_members').update({ status: 'removed' }).eq('id', id)
+    const { data, error } = await supabase.from('group_members')
+      .update({ status: 'removed' }).eq('id', id).select('group_id').single()
+    if (!error && data?.group_id) void syncGroupRosterToPolicies(data.group_id as string)
     return { error: error?.message ?? null }
   },
 }

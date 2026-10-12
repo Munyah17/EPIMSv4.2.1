@@ -4,6 +4,7 @@ import ValidationSummary, { MissingField, invalidClass, fieldId } from '../ui/Va
 import { generateTransactionId } from '../../lib/transactionId'
 import { MANUAL_PAYMENT_METHODS } from '../../types'
 import { db } from '../../lib/db'
+import { uploadDocument } from '../../lib/storage'
 import { premiumPeriodLabel } from '../../lib/productUtils'
 import { policyBillablePremium, billableHeadCount } from '../../lib/premium'
 import DateInput from '../ui/DateInput'
@@ -33,6 +34,11 @@ export default function RecordPaymentModal({ policyId: initialPolicyId, payment:
   const [status, setStatus] = useState<PaymentStatus>(editing?.status ?? 'completed')
   const [date, setDate] = useState(editing?.date ?? toIsoDate(new Date()))
   const [useSplit, setUseSplit] = useState(!!editing?.splitPayments?.length)
+  // The group representative hands in a bank slip / EcoCash screenshot —
+  // any format a phone produces goes (the bucket has no mime whitelist).
+  const [popFile, setPopFile] = useState<File | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [saveError, setSaveError] = useState('')
   const [splits, setSplits] = useState<SplitPayment[]>(
     editing?.splitPayments?.length ? editing.splitPayments : [{ method: 'EcoCash', amount: 0 }, { method: 'OneMoney', amount: 0 }]
   )
@@ -93,12 +99,28 @@ export default function RecordPaymentModal({ policyId: initialPolicyId, payment:
           : !policy ? 'Still loading the policy — try again in a moment.'
             : null
 
-  const handleSave = () => {
+  const handleSave = async () => {
     // Never a silent return: the button stays live and says what is wrong,
     // including the policy-still-loading case, which used to make the
     // button do nothing at all with no explanation.
     setAttempted(true)
     if (blockedReason) return
+
+    // PoP goes up BEFORE the payment row — a recorded payment without its
+    // receipt is the exact gap this exists to close, so a failed upload
+    // blocks the save rather than recording a naked payment.
+    let popUrl = editing?.popUrl
+    if (popFile && policy) {
+      setUploading(true)
+      const { data: doc, error: uploadError } = await uploadDocument('policies', policy.clientId, popFile)
+      setUploading(false)
+      if (uploadError || !doc) {
+        setSaveError(`Could not upload the proof of payment — ${uploadError ?? 'try again.'}`)
+        return
+      }
+      popUrl = doc.path
+    }
+
     const reference = editing?.reference ?? `PAY${new Date().toISOString().slice(0, 10).replace(/-/g, '')}${String(Date.now()).slice(-3)}`
     const paymentRecord: Payment = {
       id: editing?.id ?? `pay${Date.now()}`,
@@ -119,6 +141,7 @@ export default function RecordPaymentModal({ policyId: initialPolicyId, payment:
       status,
       date,
       splitPayments: useSplit ? splits.filter(s => s.amount > 0) : undefined,
+      popUrl,
     }
     onSave(paymentRecord)
   }
@@ -207,14 +230,29 @@ export default function RecordPaymentModal({ policyId: initialPolicyId, payment:
               </p>
             </div>
           )}
+          {(policy?.groupId || editing?.popUrl) && (
+            <div className="form-group" style={{ marginTop: '0.5rem' }}>
+              <label>Proof of Payment (PoP) — any file type</label>
+              <input type="file" accept="*/*" className="form-control" onChange={e => { setPopFile(e.target.files?.[0] ?? null); setSaveError('') }} />
+              {editing?.popUrl && !popFile && (
+                <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>A proof of payment is already attached — picking a new file replaces it.</p>
+              )}
+              {popFile && (
+                <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>{popFile.name} ({(popFile.size / 1024).toFixed(0)} KB)</p>
+              )}
+            </div>
+          )}
           {blockedReason && (attempted || amount.trim() || policyId) && (
             <p style={{ fontSize: 12, color: 'var(--danger)', margin: '10px 0 0' }}>{blockedReason}</p>
           )}
+          {saveError && (
+            <p style={{ fontSize: 12, color: 'var(--danger)', margin: '10px 0 0' }}>{saveError}</p>
+          )}
         </div>
         <div className="modal-footer">
-          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSave}>
-            {editing ? 'Save Changes' : 'Record Payment'}
+          <button className="btn btn-ghost" onClick={onClose} disabled={uploading}>Cancel</button>
+          <button className="btn btn-primary" onClick={() => void handleSave()} disabled={uploading}>
+            {uploading ? 'Uploading PoP…' : editing ? 'Save Changes' : 'Record Payment'}
           </button>
         </div>
       </div>

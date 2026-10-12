@@ -458,6 +458,10 @@ export interface Payment {
    *  for display alongside the plain `date`. */
   recordedAt?: string
   splitPayments?: SplitPayment[]
+  /** Storage path of the attached proof of payment (private 'documents'
+   *  bucket, policies/<client-id>/…). The group representative hands the
+   *  office a bank slip / EcoCash screenshot; this is where it lives. */
+  popUrl?: string
 }
 
 export type InvoiceStatus = 'issued' | 'paid' | 'cancelled'

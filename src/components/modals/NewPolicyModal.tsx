@@ -193,14 +193,13 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
     if (!name) { showToast?.('error', 'Give the organisation a name first.'); return }
     if (orgType === 'other' && !orgCustomType.trim()) { showToast?.('error', 'Type is “Other” — give the organisation type a name (e.g. School, NGO).'); return }
     const expected = Number(orgExpected)
-    if (!Number.isFinite(expected) || expected < 1) { showToast?.('error', 'Enter the Number of Users the organisation expects to cover.'); return }
     if (!orgContactName.trim()) { showToast?.('error', 'Name the representative / contact person.'); return }
     setOrgSaving(true)
     const { data, error } = await db.groups.create({
       name,
       groupType: orgType,
       customType: orgType === 'other' ? orgCustomType.trim() : undefined,
-      expectedMembers: expected,
+      expectedMembers: Number.isFinite(expected) && expected >= 1 ? expected : undefined,
       description: orgDesc.trim() || undefined,
       orgPhone: orgLinePhone.trim() || undefined,
       orgEmail: orgEmail.trim() || undefined,
@@ -642,7 +641,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                           </div>
                         )}
                         <div className="form-group" style={{ marginBottom: 0 }}>
-                          <label style={{ fontSize: 11 }}>Number of Users *</label>
+                          <label style={{ fontSize: 11 }}>Number of Users</label>
                           <input type="number" min={1} className="form-control" placeholder="Expected heads to cover" value={orgExpected} onChange={e => setOrgExpected(e.target.value)} />
                         </div>
                       </div>
