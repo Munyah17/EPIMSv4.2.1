@@ -4,6 +4,7 @@ import { setState, patchNote, deleteSession } from '../store.js'
 import { getActiveProducts, policiesForClient, clientByNationalId, clientsOfAgent, commissionForAgent } from '../data.js'
 import { isFullName, isNationalId, isEmail, parseDob, pickIndex } from '../helpers.js'
 import { makeTail, startTail } from '../tail.js'
+import { coverLabel } from '../../coverBreakdown.js'
 
 /**
  * Agent menu — the Frappe AGENT_HANDLER_MAP.
@@ -109,7 +110,7 @@ const acPhone: Handler = async ({ input, phone, session, admin }) => {
     await deleteSession(admin, session)
     return sendText(phone, 'No products are available right now.')
   }
-  await sendText(phone, `Select a product\n\n${products.map((p, i) => `${i + 1}. ${p.name} [$${p.premium}/month — cover $${p.coverAmount}]`).join('\n')}`)
+  await sendText(phone, `Select a product\n\n${products.map((p, i) => `${i + 1}. ${p.name} [$${p.premium}/month — ${coverLabel(p.name, p.coverAmount)}]`).join('\n')}`)
   return setState(admin, session, 'AC_PRODUCT')
 }
 

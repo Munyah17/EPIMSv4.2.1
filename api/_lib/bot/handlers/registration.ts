@@ -3,6 +3,7 @@ import { sendText, sendButtons } from '../whatsapp.js'
 import { setState, patchNote, deleteSession } from '../store.js'
 import { getActiveProducts, createClient, createPolicy } from '../data.js'
 import { isFullName, isNationalId, isEmail, parseDob, isEcocashPhone, pickIndex, PAYMENT_METHODS, methodMenu, sendPaymentInstruction, datePlusOneYear } from '../helpers.js'
+import { coverLabel } from '../../coverBreakdown.js'
 
 /**
  * New-client registration — the Frappe CLIENT_REG_HANDLER_MAP.
@@ -32,7 +33,7 @@ const menu: Handler = async ({ input, phone, username, session, admin }) => {
   if (input === '2') {
     const products = await getActiveProducts(admin)
     await sendText(phone, products.length
-      ? `Available products\n\n${products.map((p, i) => `${i + 1}. ${p.name} — $${p.premium}/month, cover $${p.coverAmount}`).join('\n')}\n\nSend 1 to register.`
+      ? `Available products\n\n${products.map((p, i) => `${i + 1}. ${p.name} — $${p.premium}/month, ${coverLabel(p.name, p.coverAmount)}`).join('\n')}\n\nSend 1 to register.`
       : 'No products are available right now. Please try again later.')
     return
   }
@@ -98,7 +99,7 @@ const email: Handler = async ({ input, phone, session, admin }) => {
   }
   await sendText(phone,
     `Select a product\n\nTerms & conditions: https://portal.motions.co.zw\n\n` +
-    products.map((p, i) => `${i + 1}. ${p.name} [$${p.premium}/month — cover $${p.coverAmount}]`).join('\n'))
+    products.map((p, i) => `${i + 1}. ${p.name} [$${p.premium}/month — ${coverLabel(p.name, p.coverAmount)}]`).join('\n'))
   return setState(admin, session, 'REG_PRODUCT')
 }
 

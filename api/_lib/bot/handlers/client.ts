@@ -4,6 +4,7 @@ import { setState, patchNote, deleteSession } from '../store.js'
 import { getActiveProducts, policiesForClient, createClaim } from '../data.js'
 import { isFullName, isNationalId, parseDob, pickIndex } from '../helpers.js'
 import { makeTail, startTail } from '../tail.js'
+import { coverLabel } from '../../coverBreakdown.js'
 
 /**
  * Policyholder menu — the Frappe CLIENT_HANDLER_MAP.
@@ -89,7 +90,7 @@ const viewPolicies: Handler = async ({ phone, session, admin, contact }) => {
   const policies = await policiesForClient(admin, contact.client!.id)
   const list = policies.length
     ? policies.map((p, i) =>
-        `(${i + 1}) ${p.policyNumber} — ${p.productName}\nPremium: $${p.premium}/month | Cover: $${p.coverAmount} | Status: ${p.status}` +
+        `(${i + 1}) ${p.policyNumber} — ${p.productName}\nPremium: $${p.premium}/month | ${coverLabel(p.productName, p.coverAmount)} | Status: ${p.status}` +
         (p.dependants.length ? `\nDependants: ${p.dependants.map(d => d.name).join(', ')}` : '')
       ).join('\n\n')
     : 'You have no policies yet.'
@@ -108,7 +109,7 @@ const viewSel: Handler = async (ctx) => {
   if (input !== 'add') return sendText(phone, 'Please choose one of the buttons above.')
   const products = await getActiveProducts(admin)
   if (!products.length) return sendText(phone, 'No products are available right now.')
-  await sendText(phone, `Select a product\n\n${products.map((p, i) => `${i + 1}. ${p.name} [$${p.premium}/month — cover $${p.coverAmount}]`).join('\n')}`)
+  await sendText(phone, `Select a product\n\n${products.map((p, i) => `${i + 1}. ${p.name} [$${p.premium}/month — ${coverLabel(p.name, p.coverAmount)}]`).join('\n')}`)
   return setState(admin, session, 'CADD_PRODUCT')
 }
 
