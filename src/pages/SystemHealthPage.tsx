@@ -4,6 +4,7 @@ import type { DbOp } from '../lib/health'
 import { db } from '../lib/db'
 import { sendSms, pingSmsGateway } from '../lib/smsService'
 import { supabase } from '../lib/supabase'
+import { runSystemCheck, type SystemCheckResult, type SystemCheckFix } from '../lib/aiService'
 import { useAuth } from '../contexts/AuthContext'
 
 interface ReconData {
@@ -103,6 +104,9 @@ export default function SystemHealthPage({ showToast }: Props) {
   const [websiteLink, setWebsiteLink] = useState<{ ok: boolean | null; detail: string }>({ ok: null, detail: 'Checking…' })
   const [recon, setRecon] = useState<ReconData | null>(null)
   const [dismissing, setDismissing] = useState(false)
+  const [aiChecking, setAiChecking] = useState(false)
+  const [aiCheck, setAiCheck] = useState<SystemCheckResult | null>(null)
+  const [fixLog, setFixLog] = useState<SystemCheckFix[]>([])
   const logRef = useRef<HTMLDivElement>(null)
 
   // The same three checks the daily cron emails about — live, so a
@@ -154,6 +158,11 @@ export default function SystemHealthPage({ showToast }: Props) {
     const linkInterval = setInterval(checkWebsiteLink, 60000)
     void loadRecon()
     const reconInterval = setInterval(() => void loadRecon(), 60000)
+    // What the checker has repaired lately — the log a senior person
+    // reviews after a support call ran the auto-fixer.
+    supabase.from('system_fixes').select('kind, detail, records, applied_at')
+      .order('applied_at', { ascending: false }).limit(10)
+      .then(({ data }) => setFixLog((data ?? []) as SystemCheckFix[]))
     return () => { unsub(); clearInterval(interval); clearInterval(secInterval); clearInterval(linkInterval); clearInterval(reconInterval) }
   }, [])
 
@@ -342,6 +351,81 @@ export default function SystemHealthPage({ showToast }: Props) {
           ))}
         </div>
       )}
+
+      {/* AI System Check — deterministic probes (configuration, the
+          portal↔database link, schema, notifications, phones, pricing,
+          premiums), the whitelisted repairs applied automatically and
+          logged, then Groq's plain-English diagnosis. Built for support
+          duty: anyone on the phone can run it and read the verdict. */}
+      <div className="card" style={{ marginBottom: 20 }}>
+        <div className="card-header">
+          <span className="card-title">🤖 AI System Check &amp; Fix</span>
+          <button type="button" className="btn btn-primary btn-sm" disabled={aiChecking}
+            onClick={async () => {
+              setAiChecking(true)
+              try {
+                const result = await runSystemCheck({
+                  totalOps: stats.totalOps, sbSuccessPct: stats.sbSuccessPct, localMode: stats.localMode,
+                })
+                setAiCheck(result)
+                if (result.fixLog) setFixLog(result.fixLog)
+              } catch (e) {
+                showToast('error', e instanceof Error ? e.message : 'System check failed.')
+              }
+              setAiChecking(false)
+            }}>
+            {aiChecking ? 'Checking…' : 'Run Check & Fix'}
+          </button>
+        </div>
+
+        {aiCheck && (
+          <>
+            <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', fontSize: 12, marginBottom: 10 }}>
+              {aiCheck.checks.map(c => (
+                <span key={c.key} style={{ color: 'var(--muted)', maxWidth: 340 }}>
+                  <span className="syshealth-dot" style={{ display: 'inline-block', marginRight: 6, background: c.status === 'ok' ? '#10B981' : c.status === 'warning' ? '#F59E0B' : '#EF4444' }} />
+                  {c.label}: <strong style={{ color: c.status === 'ok' ? 'var(--text)' : c.status === 'warning' ? '#92400E' : 'var(--danger)' }}>{c.detail}</strong>
+                </span>
+              ))}
+            </div>
+            {aiCheck.fixed.length > 0 && (
+              <div className="info-banner info-banner-info" style={{ fontSize: 12, marginBottom: 8 }}>
+                ✅ <strong>Fixed automatically (logged):</strong> {aiCheck.fixed.join(' ')}
+              </div>
+            )}
+            <div style={{ fontSize: 13, marginBottom: aiCheck.ai.findings?.length ? 8 : 0 }}>
+              {aiCheck.ai.simulated && <span className="pill pill-warning pill-xs" style={{ marginRight: 6 }}>AI unavailable — raw results</span>}
+              {aiCheck.ai.summary}
+            </div>
+            {(aiCheck.ai.findings ?? []).map((f, i) => (
+              <div key={i} className={`info-banner ${f.severity === 'critical' ? 'info-banner-danger' : 'info-banner-warning'}`} style={{ fontSize: 12, marginBottom: 6 }}>
+                <strong>{f.area}:</strong> {f.problem} <em>→ {f.recommendation}</em>
+              </div>
+            ))}
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>
+              Checked {new Date(aiCheck.checkedAt).toLocaleTimeString('en-GB')} · checks run on the server against live data
+            </div>
+          </>
+        )}
+
+        {!aiCheck && (
+          <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+            Probes every integration, the portal↔database link, the schema and the data — repairs what it can safely repair and logs it below, then the AI explains what still needs a person.
+          </div>
+        )}
+
+        {fixLog.length > 0 && (
+          <div style={{ marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6 }}>Fix log — what the checker repaired</div>
+            {fixLog.map(f => (
+              <div key={`${f.kind}-${f.applied_at}`} style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 4 }}>
+                <strong style={{ color: 'var(--text)' }}>{f.detail}</strong>
+                {` — ${new Date(f.applied_at).toLocaleString('en-GB')}`}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {(suspiciousLogins.length > 0 || quotaAlerts.length > 0) && (
         <div className="card" style={{ marginBottom: 20, borderLeft: '3px solid var(--danger)' }}>

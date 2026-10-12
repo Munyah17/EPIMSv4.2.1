@@ -106,11 +106,18 @@ export interface SystemCheckFinding {
   problem: string
   recommendation: string
 }
+export interface SystemCheckFix {
+  kind: string
+  detail: string
+  records: number
+  applied_at: string
+}
 export interface SystemCheckResult {
   ok: boolean
   checkedAt: string
   checks: SystemCheckLine[]
   fixed: string[]
+  fixLog?: SystemCheckFix[]
   ai: { simulated?: boolean; summary: string; findings?: SystemCheckFinding[] }
   error?: string
 }
