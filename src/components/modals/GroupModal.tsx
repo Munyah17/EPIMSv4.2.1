@@ -116,7 +116,6 @@ export default function GroupModal({ group, onClose, onSave }: Props) {
                 value={expectedMembers} onChange={e => setExpectedMembers(e.target.value)}
                 placeholder={group?.memberCount ? `~${group.memberCount} on roster` : 'e.g. 25'}
               />
-              <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>Expected heads to cover — used for premium estimates before the roster is built. Editable anytime.</p>
             </div>
             <div className="form-group">
               <label>Registration Number</label>
