@@ -2468,6 +2468,9 @@ export const notificationLog = {
         .from('notification_log')
         .select('event, channel, recipient, ref, detail, created_at')
         .eq('status', 'failed')
+        // Cleared failures stay in the delivery log — they just stop
+        // raising the banner.
+        .is('dismissed_at', null)
         .gte('created_at', new Date(Date.now() - hours * 3600000).toISOString())
         .order('created_at', { ascending: false })
         .limit(50)
@@ -2478,6 +2481,20 @@ export const notificationLog = {
       }))
     } catch { return [] }
   },
+  /** Clear the banner: every undismissed failure is stamped, keeping
+   *  the row's 'failed' truth for the delivery log. New failures after
+   *  this point still raise the banner — they're not dismissed. */
+  async dismissFailures(): Promise<{ error: string | null }> {
+    try {
+      const { error } = await supabase
+        .from('notification_log')
+        .update({ dismissed_at: new Date().toISOString() })
+        .eq('status', 'failed')
+        .is('dismissed_at', null)
+      return { error: error ? 'Could not clear the notifications.' : null }
+    } catch { return { error: 'Could not clear the notifications.' } }
+  },
+
   /** WhatsApp messages parked for a staff member to send by hand — the
    *  outbox the wa.me links in `detail` are tapped from. */
   async whatsappOutbox(): Promise<NotificationFailure[]> {

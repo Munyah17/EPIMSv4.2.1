@@ -128,6 +128,7 @@ export default function Dashboard({ showToast, setActivePanel }: Props) {
   // writes. Sits next to the health strip so "100% but nobody got the
   // confirmation" is contradicted on the same screen.
   const [notifyFails, setNotifyFails] = useState<NotificationFailure[]>([])
+  const [clearing, setClearing] = useState(false)
   useEffect(() => {
     if (!canSeeHealth) return
     let cancelled = false
@@ -298,12 +299,28 @@ export default function Dashboard({ showToast, setActivePanel }: Props) {
             </span>
           </div>
           {notifyFails.length > 0 && (
-            <div className="info-banner info-banner-warning" style={{ marginTop: 12 }}>
-              ⚠ {notifyFails.length} notification{notifyFails.length === 1 ? '' : 's'} failed to send in the last 24h.
-              Latest: {notifyFails[0].channel} → {notifyFails[0].recipient}
-              {notifyFails[0].ref ? ` (${notifyFails[0].ref})` : ''}
-              {notifyFails[0].detail ? ` — ${notifyFails[0].detail.slice(0, 120)}` : ''}.
-              Clients may not have received their confirmations — check the delivery log.
+            <div className="info-banner info-banner-warning" style={{ marginTop: 12, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+              <span style={{ flex: 1 }}>
+                ⚠ {notifyFails.length} notification{notifyFails.length === 1 ? '' : 's'} failed to send in the last 24h.
+                Latest: {notifyFails[0].channel} → {notifyFails[0].recipient}
+                {notifyFails[0].ref ? ` (${notifyFails[0].ref})` : ''}
+                {notifyFails[0].detail ? ` — ${notifyFails[0].detail.slice(0, 120)}` : ''}.
+                Clients may not have received their confirmations — check the delivery log.
+              </span>
+              {/* Cleared failures keep their 'failed' row in the delivery
+                  log — this only stops them re-raising the banner. New
+                  failures after the clear still alert. */}
+              <button type="button" className="btn btn-ghost btn-sm" disabled={clearing}
+                onClick={async () => {
+                  setClearing(true)
+                  const { error } = await db.notificationLog.dismissFailures()
+                  setClearing(false)
+                  if (error) { showToast('error', error); return }
+                  setNotifyFails([])
+                  showToast('info', 'Notification failures cleared — new ones will still alert.')
+                }}>
+                {clearing ? 'Clearing…' : 'Clear'}
+              </button>
             </div>
           )}
         </div>
