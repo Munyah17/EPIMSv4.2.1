@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { treatyRows, reportDate, TREATY_HEADERS } from './treatyReport'
+import { treatyRows, TREATY_HEADERS } from './treatyReport'
 import type { Policy, Client } from '../types'
 
 const client: Client = {
@@ -17,7 +17,7 @@ const policy: Policy = {
   dependants: [
     { name: 'Rosemary Karikoga', relationship: 'Spouse', dob: '1980-05-10', gender: 'Female', nationalId: '49-053220 R 49', premium: 1, coverAmount: 500 },
   ],
-  paymentMethod: 'EcoCash', billingScope: 'individual',
+  paymentMethod: 'EcoCash', coverScope: 'individual', createdAt: '2026-12-07',
 } as Policy
 
 describe('treaty report export', () => {

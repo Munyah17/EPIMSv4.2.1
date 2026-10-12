@@ -99,7 +99,9 @@ export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint, show
             {latestPayment?.transactionId && (
               <div className="detail-item"><span className="detail-label">Transaction ID</span><span className="mono">{latestPayment.transactionId}</span></div>
             )}
-            <div className="detail-item"><span className="detail-label">Agent</span><span>{policy.agentName ?? '—'}</span></div>
+            {/* Tobacco industry language: the agent on a grower book is
+                the Field Officer. */}
+            <div className="detail-item"><span className="detail-label">{policy.productCategory === 'agriculture' ? 'Field Officer' : 'Agent'}</span><span>{policy.agentName ?? '—'}</span></div>
             {policy.hasChronicIllness !== undefined && (
               <div className="detail-item">
                 <span className="detail-label">Chronic Illness</span>

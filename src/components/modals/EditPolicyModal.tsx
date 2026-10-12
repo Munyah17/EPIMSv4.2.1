@@ -16,6 +16,7 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
   const [nextPaymentDate, setNextPaymentDate] = useState(policy.nextPaymentDate ?? '')
   const [agentId, setAgentId] = useState(policy.agentId ?? '')
   const [growerNumber, setGrowerNumber] = useState(policy.growerNumber ?? '')
+  const [contractor, setContractor] = useState(policy.contractor ?? '')
   const [staff, setStaff] = useState<AppUser[]>([])
   const [isAgriculture, setIsAgriculture] = useState(false)
 
@@ -33,6 +34,7 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
       ...policy, status, paymentMethod, nextPaymentDate: nextPaymentDate || undefined,
       agentId: agentId || undefined, agentName: agent?.name ?? (agentId ? policy.agentName : undefined),
       growerNumber: isAgriculture ? (growerNumber || undefined) : policy.growerNumber,
+      contractor: isAgriculture ? (contractor.trim() || undefined) : policy.contractor,
     })
   }
 
@@ -74,15 +76,33 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
             </div>
           </div>
           {isAgriculture && (
-            <div className="form-group">
-              <label>Grower Number</label>
-              <input className="form-control" placeholder="Grower registration number" value={growerNumber} onChange={e => setGrowerNumber(e.target.value)} />
+            <div className="form-row">
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label>Grower Number</label>
+                <input className="form-control" placeholder="Grower registration number" value={growerNumber} onChange={e => setGrowerNumber(e.target.value)} />
+              </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label>Contractor</label>
+                <input className="form-control" placeholder="The merchant the grower is contracted to" value={contractor} onChange={e => setContractor(e.target.value)} />
+              </div>
+              {/* Field Officer — tobacco industry language for the agent
+                  on the grower book; same agent_id, agents only. */}
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label>Field Officer</label>
+                <select className="form-control" value={agentId} onChange={e => setAgentId(e.target.value)}>
+                  <option value="">Unassigned</option>
+                  {staff.filter(s => s.role === 'agent').map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
             </div>
           )}
           <div className="form-group">
             <label>Next Payment Date</label>
             <DateInput value={nextPaymentDate} onChange={setNextPaymentDate} />
           </div>
+          {/* On agriculture the agent is picked as Field Officer above —
+              one agent_id, one picker. */}
+          {!isAgriculture && (
           <div className="form-group">
             <label>Agent</label>
             <select className="form-control" value={agentId} onChange={e => setAgentId(e.target.value)}>
@@ -95,6 +115,7 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
               </optgroup>
             </select>
           </div>
+          )}
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>

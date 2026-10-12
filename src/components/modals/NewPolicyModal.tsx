@@ -734,6 +734,16 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                     <label>Contractor</label>
                     <input className="form-control" placeholder="The merchant the grower is contracted to" value={contractor} onChange={e => setContractor(e.target.value)} />
                   </div>
+                  {/* Tobacco industry language: the agent working a grower
+                      book is the Field Officer. Same agent_id — just the
+                      right word, and office staff can't fill it. */}
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label>Field Officer</label>
+                    <select className="form-control" value={agentId} onChange={e => setAgentId(e.target.value)}>
+                      <option value="">Unassigned</option>
+                      {staff.filter(s => s.role === 'agent').map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                  </div>
                 </div>
               )}
               {isMedical && (
@@ -777,6 +787,10 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                   ))}
                 </select>
               </div>
+              {/* On agriculture the agent above is the Field Officer —
+                  same agent_id, picked once in the grower block; a second
+                  picker here would just duplicate the same value. */}
+              {product?.category !== 'agriculture' && (
               <div className="form-group">
                 <label>Agent (Referred By)</label>
                 <select className="form-control" value={agentId} onChange={e => setAgentId(e.target.value)}>
@@ -794,6 +808,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                 </select>
                 <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>Optional — the agent who brought this client in. Defaults to you; a new client is bound to the same agent.</p>
               </div>
+              )}
               <div className="form-group">
                 <label>Issued Via *</label>
                 <select className="form-control" value={source} onChange={e => setSource(e.target.value)}>
