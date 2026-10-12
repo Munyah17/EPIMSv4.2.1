@@ -3,7 +3,7 @@ import type { ToastMessage, Policy, PolicyStatus, CautionFlag, Client } from '..
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
-import { exportPolicyReport, getPolicyReportPdfBase64, exportToExcel } from '../lib/exportUtils'
+import { exportPolicyReport, getPolicyReportPdfBase64, exportToExcel, exportToCsv, exportReportToPdf } from '../lib/exportUtils'
 import { treatyRows, TREATY_HEADERS } from '../lib/treatyReport'
 import { toIsoDate } from '../lib/dateUtils'
 import { notifyPolicyRegistered, notifyRegistrationFailed, ADMIN_ALERT_NUMBERS } from '../lib/signupNotifications'
@@ -39,6 +39,7 @@ export default function Policies({ showToast, initialCategory }: Props) {
   const [policies, setPolicies] = useState<Policy[]>([])
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<PolicyStatus | 'all'>('all')
   const [productFilter, setProductFilter] = useState('all')
@@ -143,14 +144,31 @@ export default function Policies({ showToast, initialCategory }: Props) {
     return { client, category: category ?? '' }
   }
 
-  const handleTreatyExport = async () => {
+  const handleTreatyExport = async (format: 'xlsx' | 'csv' | 'pdf') => {
     setExporting(true)
     try {
       // The holder's ID/DOB/gender live on the client row — fetched on
       // demand so a page that never exports never pays for the join.
       const { data: clients } = await db.clients.list()
       const byId = new Map((clients ?? []).map(c => [c.id, c]))
-      await exportToExcel(`policy-report-${toIsoDate(new Date())}.xlsx`, 'Policy Report', TREATY_HEADERS, treatyRows(filtered, byId))
+      const rows = treatyRows(filtered, byId)
+      const base = `policy-report-${toIsoDate(new Date())}`
+      if (format === 'xlsx') {
+        await exportToExcel(`${base}.xlsx`, 'Policy Report', TREATY_HEADERS, rows)
+      } else if (format === 'csv') {
+        exportToCsv(`${base}.csv`, TREATY_HEADERS, rows.map(r => r.map(String)))
+      } else {
+        // The PDF carries the book's totals so a reinsurer reads the
+        // bottom line before the rows.
+        const stats = [
+          { label: 'Policies', value: String(filtered.length) },
+          { label: 'Insured Heads', value: String(rows.length) },
+          { label: 'Total Sum Assured', value: `$${rows.reduce((s, r) => s + Number(r[10] || 0), 0).toLocaleString()}` },
+          { label: 'Total Premium', value: `$${rows.reduce((s, r) => s + Number(r[12] || 0), 0).toFixed(2)}` },
+        ]
+        await exportReportToPdf(`${base}.pdf`, 'Policy Report',
+          `Generated ${formatDate(new Date())} by Motions IMS`, stats, TREATY_HEADERS, rows)
+      }
       showToast('success', `Policy report exported — ${filtered.length} policies.`)
     } catch {
       showToast('error', 'Failed to export the policy report.')
@@ -377,9 +395,24 @@ export default function Policies({ showToast, initialCategory }: Props) {
         {/* The reinsurer's treaty layout — one row per insured head,
             fixed formats (d-MMM-yyyy dates, canonical IDs) so month-to-
             month submissions diff cleanly. */}
-        <button type="button" className="btn btn-ghost" disabled={exporting} onClick={handleTreatyExport}>
-          {exporting ? 'Exporting…' : 'Policy Report'}
-        </button>
+        <div className="action-menu" style={{ position: 'relative' }}>
+          <button type="button" className="btn btn-ghost" disabled={exporting} onClick={() => setExportOpen(o => !o)}>
+            {exporting ? 'Exporting…' : 'Export Policy Report ▾'}
+          </button>
+          {exportOpen && (
+            <>
+              <div className="dropdown-backdrop" onClick={() => setExportOpen(false)} />
+              <div className="profile-dropdown" style={{ minWidth: 170 }}>
+                {([['xlsx', 'Excel (.xlsx)'], ['csv', 'CSV (.csv)'], ['pdf', 'PDF (.pdf)']] as const).map(([f, label]) => (
+                  <button key={f} type="button" className="dropdown-item" style={{ width: '100%', border: 'none', background: 'none', cursor: 'pointer' }}
+                    onClick={() => { setExportOpen(false); void handleTreatyExport(f) }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
         {hasPermission('policies.create') && (
           <button type="button" className="btn btn-primary" onClick={() => setShowNew(true)}>+ New Policy</button>
         )}
