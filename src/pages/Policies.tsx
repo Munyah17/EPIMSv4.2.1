@@ -3,7 +3,9 @@ import type { ToastMessage, Policy, PolicyStatus, CautionFlag, Client } from '..
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
-import { exportPolicyReport, getPolicyReportPdfBase64 } from '../lib/exportUtils'
+import { exportPolicyReport, getPolicyReportPdfBase64, exportToExcel } from '../lib/exportUtils'
+import { treatyRows, TREATY_HEADERS } from '../lib/treatyReport'
+import { toIsoDate } from '../lib/dateUtils'
 import { notifyPolicyRegistered, notifyRegistrationFailed, ADMIN_ALERT_NUMBERS } from '../lib/signupNotifications'
 import { notifyPhone } from '../lib/notify'
 import { COMPANY_NAME } from '../lib/company'
@@ -36,6 +38,7 @@ export default function Policies({ showToast, initialCategory }: Props) {
   const { hasPermission, user } = useAuth()
   const [policies, setPolicies] = useState<Policy[]>([])
   const [loading, setLoading] = useState(true)
+  const [exporting, setExporting] = useState(false)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<PolicyStatus | 'all'>('all')
   const [productFilter, setProductFilter] = useState('all')
@@ -138,6 +141,21 @@ export default function Policies({ showToast, initialCategory }: Props) {
     ])
     const category = allProducts?.find(pr => pr.id === policy.productId)?.category
     return { client, category: category ?? '' }
+  }
+
+  const handleTreatyExport = async () => {
+    setExporting(true)
+    try {
+      // The holder's ID/DOB/gender live on the client row — fetched on
+      // demand so a page that never exports never pays for the join.
+      const { data: clients } = await db.clients.list()
+      const byId = new Map((clients ?? []).map(c => [c.id, c]))
+      await exportToExcel(`policy-report-${toIsoDate(new Date())}.xlsx`, 'Policy Report', TREATY_HEADERS, treatyRows(filtered, byId))
+      showToast('success', `Policy report exported — ${filtered.length} policies.`)
+    } catch {
+      showToast('error', 'Failed to export the policy report.')
+    }
+    setExporting(false)
   }
 
   const handleAdd = async (policy: Policy) => {
@@ -356,6 +374,12 @@ export default function Policies({ showToast, initialCategory }: Props) {
             {products.map(pr => <option key={pr} value={pr}>{pr}</option>)}
           </select>
         </div>
+        {/* The reinsurer's treaty layout — one row per insured head,
+            fixed formats (d-MMM-yyyy dates, canonical IDs) so month-to-
+            month submissions diff cleanly. */}
+        <button type="button" className="btn btn-ghost" disabled={exporting} onClick={handleTreatyExport}>
+          {exporting ? 'Exporting…' : 'Policy Report'}
+        </button>
         {hasPermission('policies.create') && (
           <button type="button" className="btn btn-primary" onClick={() => setShowNew(true)}>+ New Policy</button>
         )}
