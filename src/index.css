@@ -25,30 +25,30 @@ input,textarea,.mono,.select-text{-webkit-user-select:text;user-select:text}
 .app-shell{display:flex;width:100%;height:100%;overflow:hidden;position:fixed;inset:0}
 
 /* SIDEBAR */
-.sidebar{width:220px;min-width:220px;background:var(--blue-dark);display:flex;flex-direction:column;flex-shrink:0;overflow:hidden;transition:transform .28s cubic-bezier(.4,0,.2,1)}
+.sidebar{width:240px;min-width:240px;background:var(--blue-dark);display:flex;flex-direction:column;flex-shrink:0;overflow:hidden;transition:transform .28s cubic-bezier(.4,0,.2,1)}
 .logo-area{padding:18px 18px 14px;border-bottom:1px solid rgba(255,255,255,0.08)}
 .logo-mark{display:flex;align-items:center;gap:9px;margin-bottom:3px}
-.logo-icon{width:28px;height:28px;background:var(--blue-mid);border-radius:7px;display:flex;align-items:center;justify-content:center}
-.logo-icon svg{width:14px;height:14px;fill:white}
-.logo-name{font-family:'DM Serif Display',serif;font-size:15px;color:white}
-.logo-sub{font-size:9px;color:rgba(255,255,255,0.5);letter-spacing:0.08em;text-transform:uppercase;margin-top:1px}
+.logo-icon{width:32px;height:32px;background:var(--blue-mid);border-radius:7px;display:flex;align-items:center;justify-content:center}
+.logo-icon svg{width:16px;height:16px;fill:white}
+.logo-name{font-family:'DM Serif Display',serif;font-size:17px;color:white}
+.logo-sub{font-size:10px;color:rgba(255,255,255,0.5);letter-spacing:0.08em;text-transform:uppercase;margin-top:1px}
 .sidebar-close-btn{display:none;margin-left:auto;background:rgba(255,255,255,0.1);border:none;border-radius:5px;padding:4px 9px;cursor:pointer;color:rgba(255,255,255,0.7);font-size:18px;line-height:1}
 .sidebar-close-btn:hover{background:rgba(255,255,255,0.2)}
 .sidebar-nav{flex:1;min-height:0;padding:7px 0;overflow-y:auto}
 .sidebar-nav::-webkit-scrollbar{width:0}
-.nav-sec{font-size:9px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.4);padding:12px 17px 3px}
-.nav-item{appearance:none;background:transparent;border:none;border-left:2px solid transparent;outline:none;width:100%;text-align:left;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:9px;padding:8px 17px;cursor:pointer;color:#fff;font-size:12px;font-weight:400;transition:all 0.15s;-webkit-user-select:none;user-select:none}
+.nav-sec{font-size:10px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.4);padding:13px 17px 4px}
+.nav-item{appearance:none;background:transparent;border:none;border-left:2px solid transparent;outline:none;width:100%;text-align:left;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:10px;padding:10px 17px;cursor:pointer;color:#fff;font-size:13.5px;font-weight:400;transition:all 0.15s;-webkit-user-select:none;user-select:none}
 .nav-item:hover{background:rgba(255,255,255,0.06);color:#fff}
 .nav-item.active{background:rgba(91,127,232,0.18);color:white;border-left-color:var(--blue-mid);font-weight:500}
-.nav-icon{font-size:13px;flex-shrink:0;opacity:0.65;line-height:1}
+.nav-icon{font-size:15px;flex-shrink:0;opacity:0.65;line-height:1}
 .nav-label{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nav-item.active .nav-icon,.nav-item:hover .nav-icon{opacity:1}
-.nav-badge{margin-left:auto;background:var(--blue-mid);color:white;font-size:9px;font-weight:700;padding:1px 6px;border-radius:10px;white-space:nowrap;flex-shrink:0}
-.sb-footer{padding:11px 17px;border-top:1px solid rgba(255,255,255,0.08)}
+.nav-badge{margin-left:auto;background:var(--blue-mid);color:white;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px;white-space:nowrap;flex-shrink:0}
+.sb-footer{padding:12px 17px;border-top:1px solid rgba(255,255,255,0.08)}
 .user-chip{display:flex;align-items:center;gap:9px}
-.user-av{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#5B7FE8,#4169E1);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:white;flex-shrink:0}
-.user-nm{font-size:11px;font-weight:500;color:white;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:95px}
-.user-rl{font-size:9px;color:rgba(255,255,255,0.5)}
+.user-av{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#5B7FE8,#4169E1);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:white;flex-shrink:0}
+.user-nm{font-size:12.5px;font-weight:500;color:white;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:110px}
+.user-rl{font-size:10px;color:rgba(255,255,255,0.5)}
 .sb-logout{margin-left:auto;background:rgba(255,255,255,0.07);border:none;border-radius:5px;padding:4px 6px;cursor:pointer;color:rgba(255,255,255,0.42);transition:all 0.15s;flex-shrink:0}
 .sb-logout:hover{background:rgba(220,38,38,0.2);color:#FCA5A5}
 .sb-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:298}
@@ -58,10 +58,10 @@ input,textarea,.mono,.select-text{-webkit-user-select:text;user-select:text}
 .main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
 
 /* TOPBAR */
-.topbar{background:var(--white);border-bottom:1px solid var(--border);padding:0 22px;height:54px;display:flex;align-items:center;flex-shrink:0}
+.topbar{background:var(--white);border-bottom:1px solid var(--border);padding:0 22px;height:60px;display:flex;align-items:center;flex-shrink:0}
 .desk-bar{flex:1;display:flex;align-items:center;gap:16px}
-.page-title{font-size:14px;font-weight:500;flex:1}
-.topbar-date{font-size:11px;color:var(--muted);margin-top:1px}
+.page-title{font-size:15px;font-weight:500;flex:1}
+.topbar-date{font-size:12px;color:var(--muted);margin-top:1px}
 .topbar-actions{display:flex;align-items:center;gap:9px}
 .mob-bar{display:none;align-items:center;justify-content:space-between;width:100%}
 .ham-btn{background:transparent;border:none;cursor:pointer;padding:5px;color:var(--text);display:flex;align-items:center;border-radius:6px}
@@ -361,19 +361,19 @@ tbody tr:hover td{background:var(--surface)}
 /* --- TOPBAR REACT CLASSES --- */
 .topbar-left{display:flex;align-items:center;gap:12px;flex:1;min-width:0}
 .topbar-right{display:flex;align-items:center;gap:8px;position:relative}
-.topbar-refresh{display:inline-flex;align-items:center;gap:6px;background:none;border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;font-family:'DM Sans',sans-serif;transition:background .15s,color .15s}
+.topbar-refresh{display:inline-flex;align-items:center;gap:6px;background:none;border:1px solid var(--border);border-radius:8px;padding:7px 13px;font-size:12.5px;font-weight:600;color:var(--muted);cursor:pointer;font-family:'DM Sans',sans-serif;transition:background .15s,color .15s}
 .topbar-refresh:hover{background:var(--surface);color:var(--text)}
 .topbar-refresh:disabled{opacity:.6;cursor:default}
 .refresh-spin{display:inline-block;animation:refresh-rotate .8s linear infinite}
 @keyframes refresh-rotate{to{transform:rotate(360deg)}}
-.topbar-title{font-size:14px;font-weight:500;color:var(--text)}
+.topbar-title{font-size:15.5px;font-weight:500;color:var(--text)}
 .topbar-profile{display:flex;align-items:center;gap:9px;cursor:pointer;padding:5px 8px;border-radius:8px;transition:background 0.15s;-webkit-user-select:none;user-select:none}
 .topbar-profile:hover{background:var(--surface)}
-.topbar-avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#5B7FE8,#4169E1);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:white;flex-shrink:0}
+.topbar-avatar{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#5B7FE8,#4169E1);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:white;flex-shrink:0}
 .topbar-user-info{display:flex;flex-direction:column;line-height:1.2}
-.topbar-user-name{font-size:12px;font-weight:500;color:var(--text)}
-.topbar-user-role{font-size:10px;color:var(--muted);text-transform:capitalize}
-.topbar-chevron{font-size:10px;color:var(--muted)}
+.topbar-user-name{font-size:13px;font-weight:500;color:var(--text)}
+.topbar-user-role{font-size:11px;color:var(--muted);text-transform:capitalize}
+.topbar-chevron{font-size:11px;color:var(--muted)}
 .menu-toggle{background:transparent;border:none;cursor:pointer;font-size:20px;padding:5px;border-radius:6px;color:var(--text);line-height:1;display:none}
 .menu-toggle:hover{background:var(--surface2)}
 @media(max-width:768px){.menu-toggle{display:block}}
