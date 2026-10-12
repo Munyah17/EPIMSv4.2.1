@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { Group, GroupMember, ToastMessage } from '../../types'
 import { db } from '../../lib/db'
+import { groupRateCard } from '../../lib/groupRateCards'
 import { formatDate } from '../../lib/dateUtils'
 import DateInput from '../ui/DateInput'
 import PhoneInput from '../ui/PhoneInput'
@@ -34,6 +35,9 @@ export default function GroupMembersModal({ group, onClose, showToast, onMembers
   const [adding, setAdding] = useState(false)
   const [attempted, setAttempted] = useState(false)
   const memberWord = group.groupType === 'company' ? 'Employee' : 'Member'
+  // Some groups carry an agreed rate card — a fixed schedule of packages
+  // the roster prices from (Peaceful Spirits' custom funeral schedule).
+  const rateCard = groupRateCard(group.name)
   const nameMissing = attempted && !fullName.trim()
   const premiumMissing = attempted && !(Number(premium) > 0)
   const coverMissing = attempted && !(Number(coverAmount) > 0)
@@ -145,7 +149,20 @@ export default function GroupMembersModal({ group, onClose, showToast, onMembers
           </div>
           <div className="form-row" style={{ alignItems: 'flex-end' }}>
             {/* Negotiated per member — the agreed terms for THIS person,
-                not the product's defaults. */}
+                not the product's defaults. A rate-card package fills
+                them; the figures stay editable. */}
+            {rateCard && (
+              <div className="form-group">
+                <label>Package</label>
+                <select className="form-control" defaultValue="" onChange={e => {
+                  const p = rateCard[Number(e.target.value)]
+                  if (p) { setPremium(String(p.premium)); setCoverAmount(String(p.coverAmount)) }
+                }}>
+                  <option value="">Pick a package…</option>
+                  {rateCard.map((p, i) => <option key={i} value={i}>{p.label}</option>)}
+                </select>
+              </div>
+            )}
             <div className="form-group">
               <label>Premium *</label>
               <input type="number" min={0} step="0.01" className={`form-control${premiumMissing ? ' field-invalid' : ''}`} value={premium} onChange={e => setPremium(e.target.value)} placeholder="Agreed premium" />

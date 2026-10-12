@@ -258,6 +258,30 @@ function drawTermsPages(doc: jsPDF, product: { name?: string; category?: string 
   y += 9
 
   for (const terms of termsPagesFor(product)) {
+    if (terms.sections) {
+      // The product's issued Terms & Conditions, in full — preamble,
+      // currency, claims procedure, key terms, exclusions and cessions —
+      // not just the exclusion schedule.
+      for (const section of terms.sections) {
+        if (y + 14 > bottom) { doc.addPage(); y = 20 }
+        doc.setFont('helvetica', 'bold')
+        doc.setFontSize(9.5)
+        doc.setTextColor(...NAVY)
+        doc.text(section.heading, 14, y)
+        y += 5.5
+        doc.setFont('helvetica', 'normal')
+        doc.setFontSize(8.5)
+        doc.setTextColor(...TEXT)
+        for (const para of section.paragraphs) {
+          const lines = doc.splitTextToSize(para, pageWidth - 32)
+          if (y + lines.length * lineHeight > bottom) { doc.addPage(); y = 20 }
+          doc.text(lines, 16, y)
+          y += lines.length * lineHeight + 2
+        }
+        y += 4
+      }
+      continue
+    }
     if (y + 16 > bottom) { doc.addPage(); y = 20 }
     doc.setFont('helvetica', 'bold')
     doc.setFontSize(10)

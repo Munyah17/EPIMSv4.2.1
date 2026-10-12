@@ -18,10 +18,50 @@ export interface PolicyTerms {
   /** The "The Insurer will not be liable..." lead-in sentence. */
   exclusionsIntro: string
   exclusions: string[]
+  /** The product's full Terms & Conditions document — every section
+   *  verbatim as issued. When present, the policy document prints the
+   *  complete wording (preamble, currency, claims, exclusions and all)
+   *  instead of only the exclusion schedule. */
+  sections?: { heading: string; paragraphs: string[] }[]
 }
 
 const FUNERAL: PolicyTerms = {
   productTitle: 'Funeral Cash Plan',
+  // The issued Funeral Cash Plan T&C, verbatim (Motions Funeral Cash
+  // Plan — Terms and Conditions). Sections print in order on the policy
+  // document's terms pages.
+  sections: [
+    { heading: 'Preamble', paragraphs: [
+      'WHEREAS the Insured named in the Schedules hereto (hereinafter called the "Insured") has applied to Motions Microinsurance Company (Private) Limited as mentioned on the schedule hereto (hereinafter called the "Insurer/Motions or the Company") for a Funeral Cash Plan. The product pays a fixed sum assured in the event of death of the life covered provided all the terms and conditions have been met. There are no other benefits payable aside from the sum assured specified in the policy document.',
+    ]},
+    { heading: 'Currency', paragraphs: [
+      'The product can be offered in any currency which is recognised as legal tender in Zimbabwe. The benefits are paid in line with the currency of the premiums.',
+    ]},
+    { heading: 'Claim Notification and Submission', paragraphs: [
+      'The claim must be lodged as soon as possible after death but within 180 days. Death Certificate or Burial Order, Copy of ID of the applicant, Copies of IDs for at least 2 witnesses (with traceable relations) must be submitted, together with a fully completed claims forms (either physical or automated).',
+    ]},
+    { heading: 'Key Policy Terms and Conditions', paragraphs: [
+      'Eligibility Requirements — The cover is open to all residents in Zimbabwe, and Zimbabweans who are resident in the diaspora — subject to approval by the Microinsurer. The policy holder must be at least 18 years and younger than 70 years. Children under the age of 18 and adults above 70 can be covered as dependants.',
+      'Policy commencement date — All policies start from the 1st of the Month, upon payment of premiums and cover cannot be backdated. If the premiums are not paid by the 1st of the Month, cover will be lapsed from midnight on the 1st of the Month. A lapsed Policy can be re-instated upon payment of the Premium however no claim shall be paid for each month the policy was lapsed up to a maximum of 3 months following the reinstatement of the Policy. A policy in lapse for more than 3 months is rendered closed and the individual will have to apply again and go through the waiting. The policies\u2019 grace period is up to the 10th of the month.',
+      'Premium Refund and Cooling Off Rights — There is no premium refunds for policy cancellation or any other reason after the cooling off period or if a claim has been lodged against the policy. The cooling off period shall be 30 days from the day of payment of first premium.',
+      'Paid-up and Surrender Terms — There is no surrender or paid-up values.',
+    ]},
+    { heading: 'Exclusions', paragraphs: [
+      'The Insurer will not be liable in respect of any claim for death which is directly or indirectly caused by, arising from, contributed to by, connected with or resulting from any of the following:',
+      '1. All claims occurring within the waiting period (3 months below 70 and 6 months above 70 years) of commencement or reinstatement of the policy.',
+      '2. War, invasion by a foreign country, acts of foreign enemies, hostilities (whether war is declared or not), civil war, labour disturbances, active participation in strikes or the activities of locked-out workers, rebellion, revolution insurrection or military or usurped power, or the Insured Person engaging in military duty or military exercises with any armed force of any country or international authority.',
+      '3. Suicide, while sane or insane.',
+      '4. Engaging in (or practicing for or taking part in training peculiar to) underwater activities necessitating the use of artificial breathing apparatus, climbing or mountaineering necessitating the use of ropes or guides, potholing, parachuting, hang-gliding, winter sports involving snow and ice.',
+      '5. The actions of any Insured Person(s) or the Insured Person(s)\u2019 personal representatives contrary to the law, criminal or other acts of the law.',
+      '6. Epidemics as defined and declared by the World Health Organisation standards.',
+    ]},
+    { heading: 'Cessions', paragraphs: [
+      'The policy can be ceded to a third party e.g., to cover credit while the insured was still alive.',
+    ]},
+    { heading: 'Policy changes', paragraphs: [
+      'The policyholder can make changes to the level of benefits. Any changes are subject to underwriting and may result in new conditions being imposed. The Insurer reserves the right to review the premiums from time to time and a 30-day notice shall be provided before a review is effected.',
+    ]},
+  ],
   exclusionsHeading: 'Funeral Cash Plan Major Exclusions',
   exclusionsIntro: 'The Insurer will not be liable in respect of any claim for death which is directly or indirectly caused by, arising from, contributed to by, connected with or resulting from any of the following:',
   exclusions: [
@@ -39,6 +79,58 @@ const FUNERAL: PolicyTerms = {
 
 const HOSPITAL: PolicyTerms = {
   productTitle: 'Hospital Cash Plan',
+  // The issued Hospital Cash Plan T&C, verbatim (Motions Hospital Cash
+  // Product — Terms and Conditions).
+  sections: [
+    { heading: 'Preamble', paragraphs: [
+      'WHEREAS the Insured named in the Schedules hereto (hereinafter called the "Insured") has applied to Motions Microinsurance Company (Private) Limited as mentioned on the schedule hereto (hereinafter called the "Insurer/Motions or the Company") for a Hospital Cash Back. This is not a medical aid product, but a medical insurance product which is not meant to indemnify medical costs.',
+      'The benefits are payable for a maximum of 10 days per event or 20 days per annum. Hospitalization related to any chronic illness and/or pre-existing conditions will be limited to a maximum of 3 days per event, and a maximum of 6 days per Policy per year. The Insurer reserves the right to limit payment in terms of any duration of hospitalisation if, in the opinion of our Independent Medical Officer, the duration of admission is not justified. The Insurer further reserves the right to refuse payment in respect of claims resulting from hospitalisation at certain hospitals.',
+    ]},
+    { heading: 'Currency', paragraphs: [
+      'All premiums are paid in advance and are based on the benefit option chosen by the insured. The product can be offered in any currency which is recognised as legal tender in Zimbabwe. The benefits are paid in line with the currency of the premiums.',
+    ]},
+    { heading: 'Claim Notification and Submission', paragraphs: [
+      'The claim must be notified immediately after hospitalisation but within 30 (thirty) days. Ensure that Identity Documents for the Insured, Medical records from the hospital which prove the hospitalisation, Proof of payment for the hospitalisation (either the receipts or the medical aid used) and Letter of admission and discharge from a qualified Medical Practitioner are submitted for claim processing. Additional documents maybe requested by the Independent Medical officer to verify the claim.',
+    ]},
+    { heading: 'Key Policy Terms and Conditions', paragraphs: [
+      'Eligibility Requirements — The cover is open to all residence in Zimbabwe who are older than 18 and younger than 60. Children under the age of 18 can be covered as dependants.',
+      'Policy commencement date — All policies start from the 1st of the Month, upon payment of premiums and cover cannot be backdated. If the premiums are not paid by the 1st of the Month, cover will be lapsed from midnight on 1st of the Month. A lapsed Policy can be re-instated upon payment of the Premium however no claim shall be paid for hospitalisation due to illness for each month the policy was lapsed up to a maximum of 3 months following the reinstatement of the Policy. A policy in lapse for more than 3 months is rendered closed and the individual will have to apply again and go through the waiting period of 3 months for cover to resume. The policies\u2019 grace period is up to the 10th of the month.',
+      'Premium Refund and Cooling Off Rights — There will be no premium refunds for policy cancellation or any other reason after the cooling off period or if a claim has been lodged against the policy. The cooling off period shall be 30 days from payment of first premium.',
+      'Paid-up and Surrender Terms — There is no surrender or paid-up values.',
+      'Waiting period — A period in which Motions will not pay for claims originating from any form of illness which leads to hospitalisation. Only claims as a direct consequence of an accident will be considered during the waiting period.',
+    ]},
+    { heading: 'Exclusions', paragraphs: [
+      'The Insurer will not be liable in respect of any claim for hospitalisation due to Bodily Injury, Illness, Accidental Disability which is directly or indirectly caused by, arising from, contributed to by, aggravated by, connected with or resulting from any of the following:',
+      '1. All claims occurring within 3 months of commencement or reinstatement of the policy, surgery 6 months, chronic and preexisting 12 months.',
+      '2. War, invasion by a foreign country, acts of foreign enemies, hostilities (whether war is declared or not), civil war, labour disturbances, active participation in strikes or the activities of locked-out workers, rebellion, revolution insurrection or military or usurped power, or the Insured Person engaging in military duty or military exercises with any armed force of any country or international authority.',
+      '3. Intentional self-inflicted injury or attempted suicide, while sane or insane.',
+      '4. Engaging in (or practicing for or taking part in training peculiar to) underwater activities necessitating the use of artificial breathing apparatus, climbing or mountaineering necessitating the use of ropes or guides, potholing, parachuting, hang-gliding, winter sports involving snow and ice, professional sports or racing other than on foot.',
+      '5. Engaging in aviation, other than as a fare-paying passenger in a fixed-wing aircraft provided and operated by an airline or air charter company which is duly licensed for the regular transportation of fare-paying passengers, or in a helicopter provided and operated by an airline which is duly licensed for the regular transportation of fare-paying passengers provided such helicopter is operating only between established commercial airports and/or licensed commercial heliports.',
+      '6. The actions of any Insured Person(s) or the Insured Person(s)\u2019 personal representatives contrary to the law, criminal or other acts of the law.',
+      '7. Driving a motor vehicle while the blood alcohol level of the Insured Person is higher than that permitted by law, irrespective of whether such action causes an accident or not.',
+      '8. Maternity.',
+      '9. Hospitalisation where there are no objective indications or impairment in normal health, routine physical or any other examination.',
+      '10. The Insured Person having taken a drug, unless it is proved that the drug was taken in accordance with proper medical prescription and not for the treatment of a drug addiction.',
+      '11. Any psychological or psychiatric disease or disorder including depression and Post Traumatic Stress Disorder.',
+      '12. Confinement in an establishment which is not a hospital, as defined herein.',
+      '13. Operations, treatments and examinations for obesity, cosmetic purposes or of the Insured Person\u2019s own choosing which has no connection with any Illness.',
+      '14. Treatment of infertility or the artificial insemination of a person.',
+      '15. Hospitalisation as a consequence of breast reduction or enlargement operations and/or treatment of cystic fibrosis.',
+      '16. Dental conditions and treatment.',
+      '17. Any hospitalisation not recommended by a qualified Physician.',
+      '18. Any hospitalisation undertaken in nature, cure clinics or hydros or during periods of quarantine.',
+      '19. Hospitalisation due to cosmetic or plastic surgery except in the case of bodily reconstruction after Injury.',
+      '20. Alcohol or drug dependence syndrome including treatment of any medical condition which, in the opinion of the Insurer\u2019s consulting Physician, is considered to be either an underlying cause of, or directly attributable to, alcohol or drug dependence syndrome.',
+      '21. Hospitalisation for the investigation of pain or pain-related conditions and the treatment thereof, which in this context includes bed rest, traction, physiotherapy, spinal blocks, medication or intravenous medication.',
+      '22. Any event traceable to psychiatric trauma and the Insured Person\u2019s state of mental or physical health prior to or after the event that gives rise to a claim.',
+      '23. Visible and non-visible soft tissue injuries excluding clinically confirmed ligament and tendon damage that requires surgical intervention.',
+      '24. Claims as a result of hospitalisation out of the Republic of Zimbabwe.',
+      '25. Hospitalisation due to pandemic or epidemic as declared by the World Health Organisation or the Zimbabwean health ministry.',
+    ]},
+    { heading: 'Cessions', paragraphs: [
+      'The policy can be ceded to a third party e.g., to cover credit prepayments during period of hospitalisation.',
+    ]},
+  ],
   exclusionsHeading: 'Hospital Cash Plan Major Exclusions',
   exclusionsIntro: 'The Insurer will not be liable in respect of any claim for hospitalisation due to Bodily Injury, Illness, Accidental Disability which is directly or indirectly caused by, arising from, contributed to by, aggravated by, connected with or resulting from any of the following:',
   exclusions: [
