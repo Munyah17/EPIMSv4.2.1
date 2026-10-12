@@ -6,7 +6,6 @@ import { useAuth } from '../../contexts/AuthContext'
 import PhoneInput from '../ui/PhoneInput'
 import DateInput from '../ui/DateInput'
 import { premiumPeriodLabel, HECTARAGE_OPTIONS, hectarageLabel } from '../../lib/productUtils'
-import { groupRateCard } from '../../lib/groupRateCards'
 import { computeAssignedStartDate } from '../../lib/policyLifecycle'
 import { toIsoDate } from '../../lib/dateUtils'
 import { nextPolicyNumber } from '../../lib/policyNumbers'
@@ -894,22 +893,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                   </div>
                   <div className="form-row" style={{ marginBottom: 8 }}>
                     {/* Negotiated per member — the agreed figures, not
-                        product defaults. A rate-card package fills them. */}
-                    {(() => {
-                      const card = groupRateCard(groups.find(g => g.id === groupId)?.name)
-                      return card && (
-                        <div className="form-group" style={{ marginBottom: 0 }}>
-                          <label style={{ fontSize: 11 }}>Package</label>
-                          <select className="form-control" defaultValue="" onChange={e => {
-                            const p = card[Number(e.target.value)]
-                            if (p) { setMemberPremium(String(p.premium)); setMemberCover(String(p.coverAmount)) }
-                          }}>
-                            <option value="">Pick a package…</option>
-                            {card.map((p, i) => <option key={i} value={i}>{p.label}</option>)}
-                          </select>
-                        </div>
-                      )
-                    })()}
+                        product defaults. */}
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label style={{ fontSize: 11 }}>Premium *</label>
                       <input type="number" min={0} step="0.01" className="form-control" placeholder="Agreed premium" value={memberPremium} onChange={e => setMemberPremium(e.target.value)} />
