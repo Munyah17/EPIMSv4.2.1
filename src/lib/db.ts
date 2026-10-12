@@ -261,6 +261,8 @@ function toGroupMember(r: Record<string, unknown>): GroupMember {
     phone:      (r.phone as string | null) ?? undefined,
     position:   (r.position as string | null) ?? undefined,
     memberNo:   (r.member_no as string | null) ?? undefined,
+    premium:    r.premium != null ? Number(r.premium) : undefined,
+    coverAmount: r.cover_amount != null ? Number(r.cover_amount) : undefined,
     status:     r.status as GroupMember['status'],
     createdAt:  r.created_at as string,
   }
@@ -2780,7 +2782,7 @@ export const groups = {
  *  the next roster change re-runs the sync). */
 async function syncGroupRosterToPolicies(groupId: string) {
   const { data: mrows, error: mErr } = await supabase.from('group_members')
-    .select('full_name, national_id, dob, phone, position')
+    .select('full_name, national_id, dob, phone, position, premium, cover_amount')
     .eq('group_id', groupId).eq('status', 'active')
   if (mErr) {
     health.record({ ts: Date.now(), type: 'read', table: 'group_members', success: false, duration: 0, source: 'supabase', detail: `roster sync read: ${mErr.message}` })
@@ -2804,7 +2806,11 @@ async function syncGroupRosterToPolicies(groupId: string) {
         : 'Member',
       dob: m.dob ?? '', nationalId: m.national_id ?? '', phone: m.phone ?? undefined,
       productId: p.product_id, productName: prod?.name ?? '',
-      premium: Number(prod?.premium) || 0, coverAmount: prod?.cover_amount ?? null,
+      // Negotiated per member — their agreed premium/sum assured, with
+      // the product figure only as the fallback for rosters captured
+      // before per-member pricing existed.
+      premium: m.premium != null ? Number(m.premium) : (Number(prod?.premium) || 0),
+      coverAmount: m.cover_amount != null ? Number(m.cover_amount) : (prod?.cover_amount ?? null),
     }))
     await sb('policies', 'write',
       () => supabase.from('policies').update({ dependants: deps }).eq('id', p.id),
@@ -2840,6 +2846,8 @@ export const groupMembers = {
       phone: input.phone ?? null,
       position: input.position ?? null,
       member_no: input.memberNo ?? null,
+      premium: input.premium ?? null,
+      cover_amount: input.coverAmount ?? null,
     }
     const { ok, data, error } = await sb('group_members', 'write',
       () => supabase.from('group_members').insert(row).select().single(),
@@ -2859,6 +2867,8 @@ export const groupMembers = {
     if (updates.phone !== undefined)      row.phone       = updates.phone ?? null
     if (updates.position !== undefined)   row.position    = updates.position ?? null
     if (updates.memberNo !== undefined)   row.member_no   = updates.memberNo ?? null
+    if (updates.premium !== undefined)    row.premium     = updates.premium ?? null
+    if (updates.coverAmount !== undefined) row.cover_amount = updates.coverAmount ?? null
     if (updates.status !== undefined)     row.status      = updates.status
     const { ok, data, error } = await sb('group_members', 'write',
       () => supabase.from('group_members').update(row).eq('id', id).select().single(),

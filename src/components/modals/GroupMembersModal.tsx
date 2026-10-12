@@ -26,10 +26,25 @@ export default function GroupMembersModal({ group, onClose, showToast, onMembers
   const [phone, setPhone] = useState('')
   const [position, setPosition] = useState('')
   const [memberNo, setMemberNo] = useState('')
+  // Group insurance is negotiated: every member carries their own agreed
+  // premium and sum assured — required on add/edit, never product defaults.
+  const [premium, setPremium] = useState('')
+  const [coverAmount, setCoverAmount] = useState('')
+  const [editing, setEditing] = useState<GroupMember | null>(null)
   const [adding, setAdding] = useState(false)
   const [attempted, setAttempted] = useState(false)
   const memberWord = group.groupType === 'company' ? 'Employee' : 'Member'
   const nameMissing = attempted && !fullName.trim()
+  const premiumMissing = attempted && !(Number(premium) > 0)
+  const coverMissing = attempted && !(Number(coverAmount) > 0)
+
+  const fill = (m: GroupMember | null) => {
+    setEditing(m)
+    setFullName(m?.fullName ?? ''); setNationalId(m?.nationalId ?? ''); setDob(m?.dob ?? '')
+    setPhone(m?.phone ?? ''); setPosition(m?.position ?? ''); setMemberNo(m?.memberNo ?? '')
+    setPremium(m?.premium != null ? String(m.premium) : ''); setCoverAmount(m?.coverAmount != null ? String(m.coverAmount) : '')
+    setAttempted(false)
+  }
 
   const load = useCallback(async () => {
     const { data, error } = await db.groupMembers.list(group.id)
@@ -47,20 +62,34 @@ export default function GroupMembersModal({ group, onClose, showToast, onMembers
 
   const handleAdd = async () => {
     setAttempted(true)
-    if (!fullName.trim()) { showToast('warning', `Enter the ${memberWord.toLowerCase()}'s full name.`); return }
+    if (!fullName.trim() || !(Number(premium) > 0) || !(Number(coverAmount) > 0)) {
+      showToast('warning', `A ${memberWord.toLowerCase()} needs a name, a premium and a sum assured — group terms are negotiated per member.`)
+      return
+    }
     setAdding(true)
-    const { data, error } = await db.groupMembers.add({
-      groupId: group.id,
+    const fields = {
       fullName: fullName.trim(),
       nationalId: nationalId.trim() || undefined,
       dob: dob || undefined,
       phone: phone.trim() || undefined,
       position: position.trim() || undefined,
       memberNo: memberNo.trim() || undefined,
-    })
+      premium: Number(premium),
+      coverAmount: Number(coverAmount),
+    }
+    if (editing) {
+      const { data, error } = await db.groupMembers.update(editing.id, fields)
+      setAdding(false)
+      if (error || !data) { showToast('error', error ?? 'Failed to update member.'); return }
+      fill(null)
+      await load()
+      showToast('success', `${data.fullName} updated.`)
+      return
+    }
+    const { data, error } = await db.groupMembers.add({ groupId: group.id, ...fields })
     setAdding(false)
     if (error || !data) { showToast('error', error ?? 'Failed to add member.'); return }
-    setFullName(''); setNationalId(''); setDob(''); setPhone(''); setPosition(''); setMemberNo('')
+    fill(null)
     await load()
     showToast('success', `${data.fullName} added to the roster.`)
   }
@@ -113,10 +142,25 @@ export default function GroupMembersModal({ group, onClose, showToast, onMembers
               <label>{memberWord} No.</label>
               <input className="form-control" value={memberNo} onChange={e => setMemberNo(e.target.value)} placeholder="Optional staff/member no." />
             </div>
+          </div>
+          <div className="form-row" style={{ alignItems: 'flex-end' }}>
+            {/* Negotiated per member — the agreed terms for THIS person,
+                not the product's defaults. */}
+            <div className="form-group">
+              <label>Premium *</label>
+              <input type="number" min={0} step="0.01" className={`form-control${premiumMissing ? ' field-invalid' : ''}`} value={premium} onChange={e => setPremium(e.target.value)} placeholder="Agreed premium" />
+            </div>
+            <div className="form-group">
+              <label>Sum Assured *</label>
+              <input type="number" min={0} step="0.01" className={`form-control${coverMissing ? ' field-invalid' : ''}`} value={coverAmount} onChange={e => setCoverAmount(e.target.value)} placeholder="Agreed cover" />
+            </div>
             <div className="form-group">
               <button type="button" className="btn btn-primary btn-sm" onClick={handleAdd} disabled={adding}>
-                {adding ? 'Adding…' : `+ Add ${memberWord}`}
+                {adding ? 'Saving…' : editing ? `Save ${memberWord}` : `+ Add ${memberWord}`}
               </button>
+              {editing && (
+                <button type="button" className="btn btn-ghost btn-sm" style={{ marginLeft: 6 }} onClick={() => fill(null)}>Cancel</button>
+              )}
             </div>
           </div>
 
@@ -124,14 +168,14 @@ export default function GroupMembersModal({ group, onClose, showToast, onMembers
             <table className="table">
               <thead>
                 <tr>
-                  <th>Name</th><th>{memberWord} No.</th><th>National ID</th><th>Date of Birth</th><th>Phone</th><th>{group.groupType === 'company' ? 'Position' : 'Role'}</th><th>Added</th><th></th>
+                  <th>Name</th><th>{memberWord} No.</th><th>National ID</th><th>Date of Birth</th><th>Phone</th><th>{group.groupType === 'company' ? 'Position' : 'Role'}</th><th>Premium</th><th>Sum Assured</th><th>Added</th><th></th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
-                  <tr><td colSpan={8} className="td-empty">Loading roster…</td></tr>
+                  <tr><td colSpan={10} className="td-empty">Loading roster…</td></tr>
                 ) : active.length === 0 ? (
-                  <tr><td colSpan={8} className="td-empty">No active {memberWord.toLowerCase()}s yet — add the first above.</td></tr>
+                  <tr><td colSpan={10} className="td-empty">No active {memberWord.toLowerCase()}s yet — add the first above.</td></tr>
                 ) : active.map(m => (
                   <tr key={m.id}>
                     <td><strong>{m.fullName}</strong></td>
@@ -140,8 +184,15 @@ export default function GroupMembersModal({ group, onClose, showToast, onMembers
                     <td>{m.dob ? formatDate(m.dob) : '—'}</td>
                     <td>{m.phone ?? '—'}</td>
                     <td>{m.position ?? '—'}</td>
+                    <td>{m.premium != null ? `$${m.premium.toFixed(2)}` : '—'}</td>
+                    <td>{m.coverAmount != null ? `$${m.coverAmount.toLocaleString()}` : '—'}</td>
                     <td>{formatDate(m.createdAt)}</td>
-                    <td><button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => handleRemove(m)}>Remove</button></td>
+                    <td>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <button type="button" className="btn btn-ghost btn-sm" onClick={() => fill(m)}>Edit</button>
+                        <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => handleRemove(m)}>Remove</button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
                 {removed.map(m => (
@@ -152,6 +203,8 @@ export default function GroupMembersModal({ group, onClose, showToast, onMembers
                     <td>{m.dob ? formatDate(m.dob) : '—'}</td>
                     <td>{m.phone ?? '—'}</td>
                     <td>{m.position ?? '—'}</td>
+                    <td>{m.premium != null ? `$${m.premium.toFixed(2)}` : '—'}</td>
+                    <td>{m.coverAmount != null ? `$${m.coverAmount.toLocaleString()}` : '—'}</td>
                     <td colSpan={2}><span className="pill pill-inactive">Removed</span></td>
                   </tr>
                 ))}

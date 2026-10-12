@@ -102,6 +102,8 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   const [memberDob, setMemberDob] = useState('')
   const [memberPhone, setMemberPhone] = useState('')
   const [memberRole, setMemberRole] = useState('')
+  const [memberPremium, setMemberPremium] = useState('')
+  const [memberCover, setMemberCover] = useState('')
   const [memberSaving, setMemberSaving] = useState(false)
   const [roster, setRoster] = useState<GroupMember[]>([])
   const [rosterLoading, setRosterLoading] = useState(false)
@@ -232,6 +234,10 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   const addRosterMember = async () => {
     const name = memberName.trim()
     if (!name) { showToast?.('error', 'Give the member a name first.'); return }
+    if (!(Number(memberPremium) > 0) || !(Number(memberCover) > 0)) {
+      showToast?.('error', 'Group terms are negotiated per member — enter the agreed premium and sum assured.')
+      return
+    }
     setMemberSaving(true)
     const { data, error } = await db.groupMembers.add({
       groupId,
@@ -240,12 +246,15 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
       dob: memberDob || undefined,
       phone: memberPhone.trim() || undefined,
       position: memberRole.trim() || undefined,
+      premium: Number(memberPremium),
+      coverAmount: Number(memberCover),
     })
     setMemberSaving(false)
     if (error || !data) { showToast?.('error', error ?? 'Could not add the member.'); return }
     setRoster(prev => [...prev, data])
     setSelectedMemberIds(prev => new Set(prev).add(data.id))
     setMemberName(''); setMemberNatId(''); setMemberDob(''); setMemberPhone(''); setMemberRole('')
+    setMemberPremium(''); setMemberCover('')
   }
 
   const switchScope = (scope: CoverScope) => {
@@ -461,7 +470,9 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
           nationalId: m.nationalId ?? '',
           phone: m.phone,
           productId, productName: product!.name,
-          premium: product!.premium, coverAmount: product!.coverAmount,
+          // Group terms are negotiated per member — the roster's agreed
+          // figures, not the product defaults.
+          premium: m.premium ?? product!.premium, coverAmount: m.coverAmount ?? product!.coverAmount,
         }))
       : product!.category === 'agriculture'
         ? dependants.slice(0, 1).map(d => ({ ...d, relationship: 'Spouse' }))
@@ -880,6 +891,18 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                       <PhoneInput value={memberPhone} onChange={setMemberPhone} />
                     </div>
                   </div>
+                  <div className="form-row" style={{ marginBottom: 8 }}>
+                    {/* Negotiated per member — the agreed figures, not
+                        product defaults. */}
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: 11 }}>Premium *</label>
+                      <input type="number" min={0} step="0.01" className="form-control" placeholder="Agreed premium" value={memberPremium} onChange={e => setMemberPremium(e.target.value)} />
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label style={{ fontSize: 11 }}>Sum Assured *</label>
+                      <input type="number" min={0} step="0.01" className="form-control" placeholder="Agreed cover" value={memberCover} onChange={e => setMemberCover(e.target.value)} />
+                    </div>
+                  </div>
                   <button type="button" className="btn btn-primary btn-sm" disabled={memberSaving} onClick={() => void addRosterMember()}>
                     {memberSaving ? 'Adding…' : `Add ${memberLabel}`}
                   </button>
@@ -902,7 +925,11 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                         <span style={{ flex: 1 }}>
                           <strong>{m.fullName}</strong>
                           {m.position && <span style={{ color: 'var(--muted)', fontSize: 12 }}> · {m.position}</span>}
-                          <div style={{ fontSize: 11, color: 'var(--muted)' }}>{[m.memberNo, m.nationalId].filter(Boolean).join(' · ') || 'No ID on file'}</div>
+                          <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+                            {[m.memberNo, m.nationalId].filter(Boolean).join(' · ') || 'No ID on file'}
+                            {m.premium != null && ` · $${m.premium.toFixed(2)}/mo`}
+                            {m.coverAmount != null && ` · $${m.coverAmount.toLocaleString()} assured`}
+                          </div>
                         </span>
                         {product && <span className="mono" style={{ fontSize: 12, color: 'var(--muted)' }}>${product.premium.toFixed(2)}</span>}
                       </label>

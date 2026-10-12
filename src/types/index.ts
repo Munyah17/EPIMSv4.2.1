@@ -340,6 +340,10 @@ export interface GroupMember {
   /** Job title (corporate) or role in the group. */
   position?: string
   memberNo?: string
+  /** Group insurance is negotiated — this member's OWN agreed premium
+   *  and sum assured, captured per person, never the product defaults. */
+  premium?: number
+  coverAmount?: number
   status: 'active' | 'removed'
   createdAt: string
 }
