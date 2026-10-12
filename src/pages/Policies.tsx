@@ -39,7 +39,11 @@ export default function Policies({ showToast, initialCategory }: Props) {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<PolicyStatus | 'all'>('all')
   const [productFilter, setProductFilter] = useState('all')
-  const categoryFilter = initialCategory
+  // Individual vs group/corporate — the two books are kept on separate
+  // tabs: different billing (monthly client debit vs org invoice),
+  // different people to phone, different rows to reconcile.
+  const [scopeFilter, setScopeFilter] = useState<'all' | 'individual' | 'group'>('all')
+  const categoryFilter = initialCategory && !initialCategory.startsWith('__') ? initialCategory : undefined
   const [showNew, setShowNew] = useState(false)
   const [viewPolicy, setViewPolicy] = useState<Policy | null>(null)
   const [editPolicy, setEditPolicy] = useState<Policy | null>(null)
@@ -50,8 +54,11 @@ export default function Policies({ showToast, initialCategory }: Props) {
 
   // Sidebar "Add New Policy" arrives as initialCategory '__new' — open the
   // modal straight onto the page instead of just navigating to the list.
+  // '__individual'/'__group' land on the matching scope tab.
   useEffect(() => {
     if (initialCategory === '__new') setShowNew(true)
+    if (initialCategory === '__individual') setScopeFilter('individual')
+    else if (initialCategory === '__group') setScopeFilter('group')
   }, [initialCategory])
 
   useEffect(() => {
@@ -86,19 +93,22 @@ export default function Policies({ showToast, initialCategory }: Props) {
     const grower = (p.growerNumber ?? '').toLowerCase()
     if (grower.startsWith(q)) return 0
     if (grower.includes(q)) return 1
-    const fields = [p.policyNumber, p.clientName, p.productName, client?.phone, client?.nationalId]
+    const fields = [p.policyNumber, p.clientName, p.groupName, p.productName, client?.phone, client?.nationalId]
       .filter(Boolean).map(v => String(v).toLowerCase())
     if (fields.some(f => f.startsWith(q))) return 2
     if (fields.some(f => f.includes(q))) return 3
     return -1
   }
 
+  const isGroupPolicy = (p: Policy) => !!p.coverScope && p.coverScope !== 'individual'
+
   const filtered = policies.filter(p => {
     const matchSearch = matchScore(p) >= 0
     const matchStatus = statusFilter === 'all' || p.status === statusFilter
     const matchProduct = productFilter === 'all' || p.productName === productFilter
     const matchCategory = !categoryFilter || p.productCategory === categoryFilter
-    return matchSearch && matchStatus && matchProduct && matchCategory
+    const matchScope = scopeFilter === 'all' || (scopeFilter === 'group') === isGroupPolicy(p)
+    return matchSearch && matchStatus && matchProduct && matchCategory && matchScope
   })
 
   const suggestions = q.length < 2 ? [] : [...policies]
@@ -349,6 +359,20 @@ export default function Policies({ showToast, initialCategory }: Props) {
         {hasPermission('policies.create') && (
           <button type="button" className="btn btn-primary" onClick={() => setShowNew(true)}>+ New Policy</button>
         )}
+      </div>
+
+      {/* Individual and group books separated — the tabs carry counts so
+          an empty group book is visible, not just absent. */}
+      <div className="tab-row">
+        {([
+          ['all', 'All Policies', policies.length],
+          ['individual', 'Individual', policies.filter(p => !isGroupPolicy(p)).length],
+          ['group', 'Group & Corporate', policies.filter(isGroupPolicy).length],
+        ] as const).map(([key, label, count]) => (
+          <button key={key} type="button" className={`tab-item${scopeFilter === key ? ' active' : ''}`} onClick={() => setScopeFilter(key)}>
+            {label} ({count})
+          </button>
+        ))}
       </div>
 
       <div className="card">

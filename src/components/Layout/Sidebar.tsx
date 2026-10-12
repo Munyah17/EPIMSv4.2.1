@@ -61,7 +61,9 @@ const STAFF_SECTIONS: NavSection[] = [
         icon: '🛡',
         items: [
           { id: 'policies', label: 'Add New Policy', icon: '＋', withCategory: '__new', hideBadge: true, roles: ['super_admin', 'admin', 'policy_admin', 'agent'] },
-          { id: 'policies', label: 'View Policies', icon: '🛡' },
+          { id: 'policies', label: 'Individual Policies', icon: '👤', withCategory: '__individual' },
+          { id: 'policies', label: 'Group & Corporate', icon: '🏢', withCategory: '__group' },
+          { id: 'policies', label: 'All Policies', icon: '🛡' },
         ],
       },
       {
