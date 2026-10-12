@@ -33,7 +33,9 @@ export default function BillingReminders({ showToast }: Props) {
   const today = new Date()
   const firstDay = firstDayOfMonth(today)
   const lastDay = lastDayOfMonth(today)
-  const daysLeft = Math.max(0, Math.round((lastDay.getTime() - today.getTime()) / 86400000))
+  // Premiums fall due on the 1st of next month — "days until due" counts
+  // to that, not the month end.
+  const daysLeft = Math.max(0, Math.round((new Date(today.getFullYear(), today.getMonth() + 1, 1).getTime() - today.getTime()) / 86400000))
   const overduePolicyIds = new Set(cautions.map(f => f.policyId))
   const overduePolicies = activePolicies.filter(p => overduePolicyIds.has(p.id))
 
@@ -194,12 +196,12 @@ export default function BillingReminders({ showToast }: Props) {
               <div className="card-header"><span className="card-title">Reminder Schedule</span></div>
               <div className="billing-schedule">
                 {[
-                  { label: 'R1: Pre-due email', desc: '5 days before end of month', icon: '📧', days: lastDay.getDate() - 5 },
-                  { label: 'R2: Urgent email', desc: '1 day before due date', icon: '📧', days: lastDay.getDate() - 1 },
-                  { label: 'R3: Due day email + SMS', desc: 'On the last day of month', icon: '📱', days: lastDay.getDate() },
-                  { label: 'R4: Overdue + Caution flag', desc: '5 days after due date', icon: '⚠', days: 5 },
+                  { label: 'R1: 1st reminder', desc: '20th of the month, 08:00–16:00', icon: '📧', day: 20 },
+                  { label: 'R2: 2nd reminder', desc: '25th of the month, same message', icon: '📧', day: 25 },
+                  { label: 'R3: 3rd reminder', desc: '1st of the next month, same message', icon: '📱', day: 1 },
+                  { label: 'Lapse notice', desc: '10th — unpaid policies lapse', icon: '⚠', day: 10 },
                 ].map((item, i) => {
-                  const isActive = i === 0 ? daysLeft === 5 : i === 1 ? daysLeft === 1 : i === 2 ? daysLeft === 0 : daysLeft < 0
+                  const isActive = today.getDate() === item.day
                   return (
                     <div key={i} className={`billing-schedule-row${isActive ? ' active' : ''}`}>
                       <span className="billing-schedule-icon">{item.icon}</span>
@@ -210,7 +212,7 @@ export default function BillingReminders({ showToast }: Props) {
                       {isActive ? (
                         <span className="pill pill-active" style={{ fontSize: 10 }}>TODAY</span>
                       ) : (
-                        <span className="billing-schedule-desc" style={{ fontSize: 10, whiteSpace: 'nowrap' }}>Day {item.days}</span>
+                        <span className="billing-schedule-desc" style={{ fontSize: 10, whiteSpace: 'nowrap' }}>Day {item.day}</span>
                       )}
                     </div>
                   )

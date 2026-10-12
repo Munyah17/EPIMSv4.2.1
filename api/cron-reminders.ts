@@ -57,22 +57,17 @@ function daysDiff(from: Date, to: Date): number {
   return Math.round((b.getTime() - a.getTime()) / 86400000)
 }
 
-type ReminderType = 'r1_pre5' | 'r2_pre1' | 'r3_due' | 'o1' | 'o2' | 'o3' | 'default'
+type ReminderType = 'r1' | 'r2' | 'r3' | 'lapse'
 
 const STAGE_TAG: Record<ReminderType, string> = {
-  r1_pre5: '[R1]', r2_pre1: '[R2]', r3_due: '[R3]', o1: '[O1]', o2: '[O2]', o3: '[O3]', default: '[DEF]',
+  r1: '[R1]', r2: '[R2]', r3: '[R3]', lapse: '[LAPSE]',
 }
 const STAGE_LABEL: Record<ReminderType, string> = {
-  r1_pre5: '5-Day Pre-Due Reminder',
-  r2_pre1: '1-Day Pre-Due Reminder',
-  r3_due: 'Due Date Reminder',
-  o1: '1 Day Overdue',
-  o2: '2 Days Overdue',
-  o3: '3 Days Overdue',
-  default: 'OVERDUE: Policy Defaulted & Paused',
+  r1: '1st Renewal Reminder (20th)',
+  r2: '2nd Renewal Reminder (25th)',
+  r3: '3rd Renewal Reminder (1st)',
+  lapse: 'Policy Lapsed — grace period ended',
 }
-/** Overdue day count for O stages — used in the messages themselves. */
-const OVERDUE_DAYS: Partial<Record<ReminderType, number>> = { o1: 1, o2: 2, o3: 3 }
 
 // ── Rows ───────────────────────────────────────────────────────────
 
@@ -121,27 +116,19 @@ const SIGNATURE = 'Regards,\nMotions Microinsurance\nwww.motions.co.zw'
 function clientEmailBody(policy: PolicyRow, type: ReminderType, due: string, amount: string): string {
   const name = policy.clients?.name ?? 'Client'
   const product = policy.products?.name ?? 'your policy'
-  switch (type) {
-    case 'r1_pre5': return `Dear ${name},\n\nThis is a friendly reminder that your insurance premium of $${amount} for policy ${policy.policy_number} (${product}) is due in 5 days on ${due}.\n\nPlease ensure your payment is ready to avoid any lapse in cover.\n\n${SIGNATURE}`
-    case 'r2_pre1': return `Dear ${name},\n\nURGENT REMINDER: Your insurance premium of $${amount} for policy ${policy.policy_number} is due TOMORROW, ${due}.\n\nPlease pay immediately to maintain active coverage. You can pay via EcoCash, Paynow, Zipit, or at any of our offices.\n\n${SIGNATURE}`
-    case 'r3_due': return `Dear ${name},\n\nYour insurance premium of $${amount} for policy ${policy.policy_number} is DUE TODAY, ${due}.\n\nFailure to pay today may result in your policy lapsing. Please pay now to avoid disruption to your coverage.\n\nPayment methods: EcoCash | Paynow | Zipit | Cash at office\n\n${SIGNATURE}`
-    case 'o1': case 'o2': case 'o3': {
-      const n = OVERDUE_DAYS[type]
-      return `Dear ${name},\n\nOVERDUE NOTICE (${n} day${n! > 1 ? 's' : ''}): Your insurance premium of $${amount} for policy ${policy.policy_number} was due on ${due} and remains unpaid.\n\nYour policy will be PAUSED (defaulted) if payment is not received within 4 days of the due date. Please pay now to keep your cover.\n\nPayment methods: EcoCash | Paynow | Zipit | Cash at office\n\n${SIGNATURE}`
-    }
-    case 'default': return `Dear ${name},\n\nNOTICE OF OVERDUE PREMIUM: POLICY PAUSED (DEFAULTED)\n\nYour insurance premium for policy ${policy.policy_number} (${product}) was due on ${due} and remains unpaid — 4 days overdue.\n\nYour policy has been moved to DEFAULTED status and is paused. Claims submitted now will not be processed. Please settle $${amount} immediately — payment or an administrator can re-enable your policy.\n\nPayment methods: EcoCash | Paynow | Zipit | Cash at office\n\n${SIGNATURE}`
+  // The three renewal reminders carry the SAME message — only the lapse
+  // notice differs.
+  if (type === 'lapse') {
+    return `Dear ${name},\n\nNOTICE: Your policy ${policy.policy_number} (${product}) has LAPSED.\n\nYour premium of $${amount}, due on ${due}, was not paid within the grace period (to the 10th). Cover is suspended and no claim can be paid while the policy is lapsed.\n\nYou can reinstate the policy by paying the outstanding premium — a lapse of more than 3 months closes the policy.\n\nPayment methods: EcoCash | Paynow | Zipit | Cash at office\n\n${SIGNATURE}`
   }
+  return `Dear ${name},\n\nThis is a reminder that your insurance premium of $${amount} for policy ${policy.policy_number} (${product}) is due on ${due}.\n\nPlease pay by ${due} to keep your cover. You can pay via EcoCash, Paynow, Zipit, or at any of our offices.\n\n${SIGNATURE}`
 }
 
 function clientSmsBody(policy: PolicyRow, type: ReminderType, due: string, amount: string): string {
-  const n = OVERDUE_DAYS[type] ?? 0
-  switch (type) {
-    case 'r1_pre5': return `Motions: Premium of $${amount} for policy ${policy.policy_number} is due in 5 days on ${due}.`
-    case 'r2_pre1': return `Motions: URGENT - Premium of $${amount} for policy ${policy.policy_number} is due TOMORROW.`
-    case 'r3_due': return `Motions: Premium of $${amount} for policy ${policy.policy_number} is DUE TODAY. Pay now via EcoCash/Paynow to keep your coverage active.`
-    case 'o1': case 'o2': case 'o3': return `Motions: Policy ${policy.policy_number} is ${n} day${n > 1 ? 's' : ''} overdue — $${amount} unpaid. It pauses on day 4. Pay now via EcoCash/Paynow.`
-    case 'default': return `Motions: Policy ${policy.policy_number} is 4 days overdue and is now PAUSED (defaulted). Pay $${amount} to reinstate your cover.`
+  if (type === 'lapse') {
+    return `Motions: Your policy ${policy.policy_number} has LAPSED — the premium due ${due} was not paid by the grace deadline. Pay $${amount} to reinstate your cover.`
   }
+  return `Motions: Your premium of $${amount} for policy ${policy.policy_number} is due on ${due}. Pay by ${due} to keep your cover.`
 }
 
 // ── One policy ─────────────────────────────────────────────────────
@@ -179,8 +166,8 @@ async function dispatch(
     client: { name, phone: policy.clients?.phone, email: policy.clients?.email },
     smsText: clientSmsBody(policy, type, dueLabel, amount),
     whatsappText: clientSmsBody(policy, type, dueLabel, amount),
-    emailSubject: type === 'default'
-      ? `Overdue Notice: ${policy.policy_number} PAUSED (Defaulted)`
+    emailSubject: type === 'lapse'
+      ? `Notice: ${policy.policy_number} has LAPSED`
       : `Premium Reminder: ${policy.policy_number} due ${dueLabel}`,
     emailText: clientEmailBody(policy, type, dueLabel, amount) +
       `\n\n---\nOffice copy — policy ${policy.policy_number}, ${name}, ${product}, $${amount} due. Stage ${tag} ${STAGE_LABEL[type]}.`,
@@ -188,23 +175,23 @@ async function dispatch(
   stats.sent += deliveries.filter(d => d.status === 'sent').length
   stats.failed += deliveries.filter(d => d.status === 'failed').length
 
-  if (type === 'default') {
+  if (type === 'lapse') {
     await admin.from('caution_flags').upsert({
       policy_id: policy.id,
       policy_number: policy.policy_number,
       client_id: policy.client_id,
       client_name: policy.clients?.name ?? '',
       agent_id: policy.agent_id,
-      days_overdue: 4,
+      days_overdue: 10,
       flagged_at: new Date().toISOString(),
       months_defaulted: 1,
       cleared: false,
     }, { onConflict: 'policy_id' })
-    // Four days past due pauses the policy as 'defaulted'; a completed
-    // payment reinstates it to a fresh waiting period, and an Admin or
-    // Super Admin can re-enable it from Policies.
-    if (policy.status !== 'defaulted') {
-      await admin.from('policies').update({ status: 'defaulted' }).eq('id', policy.id)
+    // Unpaid past the 10th's grace deadline lapses the policy; a
+    // completed payment reinstates it through a fresh waiting period
+    // (applyCompletedPaymentToPolicy), and an Admin can re-enable it.
+    if (policy.status !== 'lapsed') {
+      await admin.from('policies').update({ status: 'lapsed' }).eq('id', policy.id)
     }
     stats.flagged++
   }
@@ -345,38 +332,54 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const admin = createClient(supabaseUrl, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } })
 
   const today = new Date()
-  const dueDate = lastDayOfMonth(today)
-  const daysToLast = daysDiff(today, dueDate)
-
-  const type: ReminderType | null =
-    daysToLast === 5 ? 'r1_pre5'
-    : daysToLast === 1 ? 'r2_pre1'
-    : daysToLast === 0 ? 'r3_due'
-    : daysToLast === -1 ? 'o1'
-    : daysToLast === -2 ? 'o2'
-    : daysToLast === -3 ? 'o3'
-    : daysToLast === -4 ? 'default'
-    : null
+  // Zimbabwe keeps UTC+2 year-round — the reminder calendar (20th, 25th,
+  // 1st, 10th) and the 08:00–16:00 send window are local business days,
+  // not whatever the server's clock is.
+  const zw = new Date(today.getTime() + 2 * 3600e3)
+  const zwDay = zw.getUTCDate()
+  const zwHour = zw.getUTCHours()
 
   const lifted = await liftWaitingPeriods(admin)
   const invoiced = await issueMonthlyInvoices(admin, today)
   const recon = await reconcileBook(admin).catch(e => { console.error('cron-reminders: recon failed', e); return null })
 
+  const type: ReminderType | null =
+    zwDay === 20 ? 'r1' : zwDay === 25 ? 'r2' : zwDay === 1 ? 'r3' : zwDay === 10 ? 'lapse' : null
+
   if (!type) {
     return res.status(200).json({ ran: today.toISOString(), stage: null, note: 'No reminder stage falls on today.', waitingPeriodsLifted: lifted, invoices: invoiced, recon })
   }
+  // Reminders are client-facing — only ever inside 08:00–16:00 ZW.
+  if (zwHour < 8 || zwHour >= 16) {
+    return res.status(200).json({ ran: today.toISOString(), stage: `${STAGE_TAG[type]} ${STAGE_LABEL[type]}`, note: `Outside the 08:00–16:00 send window (ZW ${String(zwHour).padStart(2, '0')}:00) — client texts suppressed; office jobs still ran.`, waitingPeriodsLifted: lifted, invoices: invoiced, recon })
+  }
+
+  // What the reminder is about: on the 20th/25th the renewal due the 1st
+  // of NEXT month; on the 1st and the 10th, this month's own premium.
+  const dueDate = new Date(zw.getUTCFullYear(), zw.getUTCMonth() + (zwDay >= 20 ? 1 : 0), 1)
+  const dueISO = dueDate.toISOString().split('T')[0]
+  const todayISO = `${zw.getUTCFullYear()}-${String(zw.getUTCMonth() + 1).padStart(2, '0')}-${String(zwDay).padStart(2, '0')}`
 
   const { data, error } = await admin
     .from('policies')
-    .select('id, policy_number, client_id, product_id, premium, status, dependants, agent_id, clients!client_id(name, email, phone), products!product_id(name, category)')
-    .in('status', ['active', 'waiting_period'])
+    .select('id, policy_number, client_id, product_id, premium, status, dependants, agent_id, next_payment_date, clients!client_id(name, email, phone), products!product_id(name, category)')
+    .in('status', ['active', 'waiting_period', 'defaulted'])
   if (error) {
     console.error('cron-reminders: policy query failed', error.message)
     return res.status(500).json({ error: 'Could not load policies for the reminder run.' })
   }
 
-  const policies = ((data ?? []) as unknown as PolicyRow[])
+  // Only the unpaid hear from us — next_payment_date says the date cover
+  // is paid THROUGH, so anything past the due date means the period is
+  // already settled and the policyholder gets nothing but their payment
+  // confirmation.
+  const policies = ((data ?? []) as unknown as (PolicyRow & { next_payment_date: string | null })[])
     .filter(p => p.products?.category !== 'agriculture')
+    // Reminders: still owes the period ending at the due date. Lapse: the
+    // premium was due before today — the grace window to the 10th closed.
+    .filter(p => p.next_payment_date
+      ? (type === 'lapse' ? p.next_payment_date < todayISO : p.next_payment_date <= dueISO)
+      : true)
   const stats: RunStats = { considered: policies.length, sent: 0, failed: 0, flagged: 0, skipped: 0 }
 
   for (const policy of policies) {
