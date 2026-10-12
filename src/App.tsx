@@ -138,7 +138,9 @@ function AppInner() {
       } else {
         if (now - lastWriteWarningAt < 8000) return
         lastWriteWarningAt = now
-        showToast('warning', 'Could not reach the server; your change was saved locally only and has NOT synced yet.')
+        // writeFailed() no longer saves locally — the toast must not claim
+        // it did. The action's own error toast carries the real reason.
+        showToast('warning', 'Could not save to the server — nothing was recorded. Check your connection and try again.')
       }
     }
     window.addEventListener(DB_FALLBACK_EVENT, onFallback)

@@ -305,6 +305,12 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   if (!clientName.trim()) missing.push({ key: 'clientName', label: 'Full Name' })
   if (!clientPhone.trim()) missing.push({ key: 'clientPhone', label: 'Phone Number' })
   if (!clientNationalId.trim()) missing.push({ key: 'clientNationalId', label: 'National ID' })
+  // National ID is unique — catch a re-registration before it reaches
+  // the database: same person must be picked via "Existing Customer".
+  const duplicateNatId = customerMode === 'new' && clientNationalId.trim()
+    ? existingClients.find(c => c.nationalId.toLowerCase() === clientNationalId.trim().toLowerCase())
+    : undefined
+  if (duplicateNatId) missing.push({ key: 'clientNationalId', label: 'National ID', hint: `Already registered to ${duplicateNatId.name} — switch to "Existing Customer" above` })
   if (!clientDob) missing.push({ key: 'clientDob', label: 'Date of Birth' })
   else if (clientAge !== null && clientAge < 18) missing.push({ key: 'clientDob', label: 'Date of Birth', hint: 'The policyholder must be at least 18' })
   if (!productId) missing.push({ key: 'productId', label: 'Product' })
@@ -367,7 +373,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
         address: clientAddress, occupation: clientOccupation,
         agentId: (!clientRecord?.agentId && agentId) ? agentId : undefined,
       })
-      if (error || !data) { if (showToast) showToast('error', 'Failed to update client.'); return }
+      if (error || !data) { if (showToast) showToast('error', error ?? 'Failed to update client.'); return }
       createdClient = data
     } else {
       const newClient: Client = {
@@ -388,7 +394,9 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
         agentId: agentId || undefined,
       }
       const { data, error } = await db.clients.create(newClient)
-      if (error || !data) { if (showToast) showToast('error', 'Failed to create client.'); return }
+      // Surface the real reason — a duplicate national ID, an RLS refusal,
+      // a dropped connection all read very differently to "failed".
+      if (error || !data) { if (showToast) showToast('error', error ?? 'Failed to create client.'); return }
       createdClient = data
     }
 
@@ -524,6 +532,13 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
               <div className="form-group" id={fieldId('clientNationalId')}>
                 <label>National ID *</label>
                 <input className={invalidClass(missing, attempted, 'clientNationalId')} placeholder="e.g. 632118532K12" value={clientNationalId} onChange={e => setClientNationalId(e.target.value.replace(/-/g, ''))} disabled={!!existingClientId} style={existingClientId ? { opacity: 0.6 } : undefined} />
+                {/* Warn the moment a known ID is typed — before the save
+                    button, not after a round-trip to a unique constraint. */}
+                {duplicateNatId && (
+                  <p style={{ fontSize: 11, color: 'var(--danger)', marginTop: 4 }}>
+                    Already registered to {duplicateNatId.name} — switch to "Existing Customer" and pick them there.
+                  </p>
+                )}
               </div>
               <div className="form-group" id={fieldId('clientDob')} style={isMissing(missing, attempted, 'clientDob') ? { outline: '1px solid var(--danger)', borderRadius: 7, outlineOffset: 2 } : undefined}>
                 <label>Date of Birth * (18+)</label>

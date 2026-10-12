@@ -737,6 +737,12 @@ export const clients = {
       () => supabase.from('clients').insert(row).select().single(),
     )
     if (ok && data) return { data: toClient({ ...(data as Record<string,unknown>), policy_count: 0 }), error: null }
+    // National ID is unique — a walk-in who was registered before (by an
+    // agent, the website, or the bot) must be found via the existing-client
+    // search, not reported as a server failure.
+    if (error && /duplicate key/i.test(error) && /national_id/i.test(error)) {
+      return writeFailed('clients', `A client with national ID ${client.nationalId} already exists — switch to "Existing Customer" and search for them instead of registering again.`)
+    }
     return writeFailed('clients', error)
   },
 
@@ -756,6 +762,9 @@ export const clients = {
       () => supabase.from('clients').update(row).eq('id', id).select().single(),
     )
     if (ok && data) return { data: toClient({ ...(data as Record<string,unknown>), policy_count: 0 }), error: null }
+    if (error && /duplicate key/i.test(error) && /national_id/i.test(error)) {
+      return writeFailed('clients', 'That national ID already belongs to another client — check for a duplicate registration first.')
+    }
     return writeFailed('clients', error)
   },
 

@@ -9,9 +9,12 @@ import { toIsoDate } from '../../lib/dateUtils'
 interface Props {
   onClose: () => void
   onSave: (client: Client) => void
+  /** The parent's already-loaded clients — lets the national-ID field warn
+   *  about a duplicate before the database has to. */
+  existingClients?: Client[]
 }
 
-export default function RegisterClientModal({ onClose, onSave }: Props) {
+export default function RegisterClientModal({ onClose, onSave, existingClients }: Props) {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
@@ -38,6 +41,11 @@ export default function RegisterClientModal({ onClose, onSave }: Props) {
   if (!name.trim()) missing.push({ key: 'name', label: 'Full Name' })
   if (!phone.trim()) missing.push({ key: 'phone', label: 'Phone Number' })
   if (!nationalId.trim()) missing.push({ key: 'nationalId', label: 'National ID' })
+  // National ID is unique — warn before the database has to.
+  const duplicateNatId = nationalId.trim()
+    ? existingClients?.find(c => c.nationalId.toLowerCase() === nationalId.trim().toLowerCase())
+    : undefined
+  if (duplicateNatId) missing.push({ key: 'nationalId', label: 'National ID', hint: `Already registered to ${duplicateNatId.name}` })
 
   const handleSave = () => {
     setAttempted(true)
@@ -81,6 +89,11 @@ export default function RegisterClientModal({ onClose, onSave }: Props) {
             <div className="form-group" id={fieldId('nationalId')}>
               <label>National ID *</label>
               <input className={invalidClass(missing, attempted, 'nationalId')} placeholder="e.g. 632118532K12" value={nationalId} onChange={e => setNationalId(e.target.value.replace(/-/g, ''))} />
+              {duplicateNatId && (
+                <p style={{ fontSize: 11, color: 'var(--danger)', marginTop: 4 }}>
+                  Already registered to {duplicateNatId.name} — search their name on the Clients list.
+                </p>
+              )}
             </div>
           </div>
           <div className="form-row">

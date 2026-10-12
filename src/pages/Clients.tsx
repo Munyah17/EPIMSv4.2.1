@@ -81,7 +81,7 @@ export default function Clients({ showToast }: Props) {
   const handleRegister = async (client: Client) => {
     const { data, error } = await db.clients.create(client)
     if (error || !data) {
-      showToast('error', 'Failed to register client.')
+      showToast('error', error ?? 'Failed to register client.')
       void notifyRegistrationFailed('Client registration', `${client.name} — ${error ?? 'unknown error'}`)
       return
     }
@@ -93,7 +93,7 @@ export default function Clients({ showToast }: Props) {
 
   const handleEdit = async (updated: Client) => {
     const { data, error } = await db.clients.update(updated.id, updated)
-    if (error || !data) { showToast('error', 'Failed to update client.'); return }
+    if (error || !data) { showToast('error', error ?? 'Failed to update client.'); return }
     setClients(prev => prev.map(c => c.id === data.id ? data : c))
     showToast('success', `Client ${data.name} updated.`)
     setEditClient(null)
@@ -310,7 +310,7 @@ export default function Clients({ showToast }: Props) {
       </div>
 
       {showRegister && (
-        <RegisterClientModal onClose={() => setShowRegister(false)} onSave={handleRegister} />
+        <RegisterClientModal onClose={() => setShowRegister(false)} onSave={handleRegister} existingClients={clients} />
       )}
       {editClient && (
         <EditClientModal
