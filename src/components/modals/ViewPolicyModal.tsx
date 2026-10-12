@@ -97,6 +97,16 @@ export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint, show
               <div className="detail-item"><span className="detail-label">Transaction ID</span><span className="mono">{latestPayment.transactionId}</span></div>
             )}
             <div className="detail-item"><span className="detail-label">Agent</span><span>{policy.agentName ?? '—'}</span></div>
+            {policy.hasChronicIllness !== undefined && (
+              <div className="detail-item">
+                <span className="detail-label">Chronic Illness</span>
+                <span>
+                  {policy.hasChronicIllness
+                    ? <>Yes — {policy.chronicIllnessDetails || 'declared (no details recorded)'}</>
+                    : 'No — declared'}
+                </span>
+              </div>
+            )}
           </div>
 
           {policyPayments.length > 0 && (
@@ -126,7 +136,7 @@ export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint, show
               <h4 style={{ marginBottom: '0.75rem' }}>{policy.coverScope === 'corporate' ? 'Employees Covered' : policy.coverScope === 'team' ? 'Team Roster Covered' : policy.coverScope === 'group' ? 'Members Covered' : 'Dependants'}</h4>
               <div className="tbl-scroll">
               <table className="table">
-                <thead><tr><th>Member No.</th><th>Name</th><th>Relationship</th><th>Date of Birth</th><th>ID Number</th><th>Plan</th><th>Premium</th></tr></thead>
+                <thead><tr><th>Member No.</th><th>Name</th><th>Relationship</th><th>Date of Birth</th><th>ID Number</th>{policy.hasChronicIllness !== undefined && <th>Chronic</th>}<th>Plan</th><th>Premium</th></tr></thead>
                 <tbody>
                   {policy.dependants.map((d, i) => (
                     <tr key={i}>
@@ -135,6 +145,9 @@ export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint, show
                       <td>{d.relationship}</td>
                       <td>{formatDate(d.dob)}</td>
                       <td>{d.nationalId}</td>
+                      {policy.hasChronicIllness !== undefined && (
+                        <td>{d.hasChronicIllness === undefined ? '—' : d.hasChronicIllness ? `Yes${d.chronicIllnessDetails ? ` — ${d.chronicIllnessDetails}` : ''}` : 'No'}</td>
+                      )}
                       <td>{d.productName ?? policy.productName}</td>
                       <td>${(d.premium ?? policy.premium).toFixed(2)}</td>
                     </tr>

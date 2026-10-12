@@ -91,7 +91,15 @@ async function hasColumn(table: string, column: string): Promise<boolean> {
   return ok
 }
 
-const policySelect = () => hasColumn('policies', 'group_id').then(ok => ok ? POLICY_SELECT : POLICY_SELECT_BASE)
+const policySelect = async () => {
+  const [groupCols, medCols] = await Promise.all([
+    hasColumn('policies', 'group_id'),
+    hasColumn('policies', 'has_chronic_illness'),
+  ])
+  if (groupCols && medCols) return POLICY_SELECT
+  if (groupCols) return POLICY_SELECT_GROUP
+  return POLICY_SELECT_BASE
+}
 const paymentSelect = () => hasColumn('payments', 'transaction_id').then(ok => ok ? PAYMENT_SELECT : PAYMENT_SELECT_BASE)
 
 /** Dispatched whenever a read/write falls back to browser-local storage, so the UI can warn the user. */
@@ -209,6 +217,8 @@ function toPolicy(r: any): Policy {
     groupName:       r.groups?.name ?? undefined,
     coverScope:      (r.cover_scope as Policy['coverScope']) ?? 'individual',
     teamActivity:    r.team_activity ?? undefined,
+    hasChronicIllness: r.has_chronic_illness ?? undefined,
+    chronicIllnessDetails: r.chronic_illness_details ?? undefined,
     source:          r.source ?? undefined,
     createdAt:       date(r.created_at),
     nextPaymentDate: r.next_payment_date ? date(r.next_payment_date) : undefined,
@@ -426,10 +436,13 @@ const POLICY_SELECT_BASE = `
   products!product_id(id, name, category, excess),
   profiles!agent_id(id, name)
 `
-const POLICY_SELECT = POLICY_SELECT_BASE + `,
+const POLICY_SELECT_GROUP = POLICY_SELECT_BASE + `,
   group_id, cover_scope, team_activity,
   groups!group_id(id, name, group_type)
 `
+const POLICY_SELECT_MED = `,
+  has_chronic_illness, chronic_illness_details`
+const POLICY_SELECT = POLICY_SELECT_GROUP + POLICY_SELECT_MED
 const CLAIM_SELECT = `
   id, claim_number, policy_id, claim_type, amount, status,
   stage, assessment_notes, agent_id, category,
@@ -530,6 +543,17 @@ export const policies = {
     // been run. An individual policy omits them entirely (the DB default
     // applies); an organisation policy refuses rather than silently
     // becoming an individual policy detached from its roster.
+    // Medical-declaration columns exist once add_medical_declaration.sql
+    // runs; a health policy REFUSES rather than silently dropping the
+    // underwriting answer it was required to ask.
+    const medColsReady = await hasColumn('policies', 'has_chronic_illness')
+    if (policy.hasChronicIllness !== undefined) {
+      if (!medColsReady) {
+        return { data: null, error: 'Medical declarations need a database update first — run database/add_medical_declaration.sql in Supabase, then try again.' }
+      }
+      ;(row as Record<string, unknown>).has_chronic_illness = policy.hasChronicIllness
+      ;(row as Record<string, unknown>).chronic_illness_details = policy.chronicIllnessDetails ?? null
+    }
     const groupColsReady = await hasColumn('policies', 'group_id')
     if (policy.groupId || (policy.coverScope && policy.coverScope !== 'individual')) {
       if (!groupColsReady) {

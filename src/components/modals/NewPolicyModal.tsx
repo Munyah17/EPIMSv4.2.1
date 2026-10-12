@@ -67,6 +67,12 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   // Soccer Season") — team cover is bound to an activity the way
   // corporate/group cover is bound to an organisation.
   const [teamActivity, setTeamActivity] = useState('')
+  // Health products (Medical Aid, Hospital Cash) carry an underwriting
+  // declaration the sale CANNOT skip: every covered person states whether
+  // they have a chronic illness — null means "not answered yet", which
+  // keeps the policy un-creatable.
+  const [hasChronic, setHasChronic] = useState<boolean | null>(null)
+  const [chronicDetails, setChronicDetails] = useState('')
   // Inline "Create New Organisation" — domain-checkout style: pick or
   // register the org without leaving the form and losing context.
   const [showNewOrg, setShowNewOrg] = useState(false)
@@ -98,6 +104,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   const [productsLoading, setProductsLoading] = useState(true)
   const [staff, setStaff] = useState<AppUser[]>([])
   const product = products.find(p => p.id === productId)
+  const isMedical = product?.category === 'health'
 
   /** A dependant is covered under the same kind of cover as the policy they
    *  sit on, so the plan picker only ever offers products from the policy's
@@ -275,7 +282,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
     setDependants(prev => prev.filter((_, idx) => idx !== i))
   }
 
-  const updateDependant = (i: number, field: keyof Dependant, value: string) => {
+  const updateDependant = (i: number, field: keyof Dependant, value: string | boolean | undefined) => {
     setDependants(prev => prev.map((d, idx) => {
       if (idx !== i) return d
       const next = { ...d, [field]: value }
@@ -306,6 +313,13 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
     if (coverScope === 'team' && !teamActivity.trim()) missing.push({ key: 'teamActivity', label: 'Activity / Event', hint: 'Team cover is for a named activity or season' })
   } else if (dependants.some(d => d.name.trim() && (!d.dob || !d.nationalId.trim()))) {
     missing.push({ key: 'dependants', label: 'Dependant details', hint: 'Every dependant needs a name, date of birth and ID number' })
+  }
+  if (isMedical) {
+    if (hasChronic === null) missing.push({ key: 'chronic', label: 'Chronic illness declaration', hint: 'Medical aid requires an answer — yes or no' })
+    else if (hasChronic && !chronicDetails.trim()) missing.push({ key: 'chronic', label: 'Chronic illness details', hint: 'State the condition(s) declared' })
+    if (dependants.some(d => d.name.trim() && d.hasChronicIllness === undefined)) {
+      missing.push({ key: 'dependants', label: 'Dependant declaration', hint: 'Answer the chronic illness question for every dependant on this medical plan' })
+    }
   }
 
   const [saving, setSaving] = useState(false)
@@ -432,6 +446,8 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
       agentId: agentId || undefined,
       agentName: staff.find(s => s.id === agentId)?.name,
       source,
+      hasChronicIllness: isMedical ? hasChronic ?? undefined : undefined,
+      chronicIllnessDetails: isMedical && hasChronic ? chronicDetails.trim() : undefined,
     }
     await Promise.resolve(onSave(policy))
   }
@@ -653,6 +669,32 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                   <input className="form-control" placeholder="Grower registration number" value={growerNumber} onChange={e => setGrowerNumber(e.target.value)} />
                 </div>
               )}
+              {isMedical && (
+                <div id={fieldId('chronic')} className={isMissing(missing, attempted, 'chronic') ? 'field-invalid-block' : undefined}
+                  style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, marginTop: 8, background: 'var(--surface)' }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--muted)' }}>
+                    Medical Declaration — required
+                  </label>
+                  <div className="form-group" style={{ marginTop: 8, marginBottom: 0 }}>
+                    <label>Does {clientName.trim() || 'the policyholder'} have any chronic illness? *</label>
+                    <div style={{ display: 'flex', gap: 16 }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
+                        <input type="radio" name="chronic" checked={hasChronic === true} onChange={() => setHasChronic(true)} /> Yes
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
+                        <input type="radio" name="chronic" checked={hasChronic === false} onChange={() => { setHasChronic(false); setChronicDetails('') }} /> No
+                      </label>
+                    </div>
+                  </div>
+                  {hasChronic && (
+                    <div className="form-group" style={{ marginTop: 8, marginBottom: 0 }}>
+                      <label>Which chronic condition(s)? *</label>
+                      <input className={invalidClass(missing, attempted, 'chronic')} placeholder="e.g. Hypertension, diabetes, asthma — as declared by the client" value={chronicDetails} onChange={e => setChronicDetails(e.target.value)} />
+                      <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>Recorded on the policy — claims review reads this declaration.</p>
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="form-group">
                 <label>Start Date *</label>
                 <DateInput value={startDate} onChange={setStartDate} disabled={!canOverrideStartDate} className={!canOverrideStartDate ? 'date-input-disabled' : undefined} />
@@ -787,16 +829,37 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                   <span />
                 </div>
                 {dependants.map((d, i) => (
-                  <div key={i} className="new-policy-dependant-row" style={{ marginBottom: 8, alignItems: 'center' }}>
-                    <input className="form-control" placeholder="Name" value={d.name} onChange={e => updateDependant(i, 'name', e.target.value)} />
-                    <input className="form-control" placeholder="Relationship" value={d.relationship} onChange={e => updateDependant(i, 'relationship', e.target.value)} />
-                    <DateInput value={d.dob} onChange={v => updateDependant(i, 'dob', v)} />
-                    <input className="form-control" placeholder="ID (16+) or birth record no." value={d.nationalId} onChange={e => updateDependant(i, 'nationalId', e.target.value.replace(/-/g, ''))} />
-                    <select className="form-control" value={d.productId ?? ''} onChange={e => updateDependant(i, 'productId', e.target.value)} disabled={!product}>
-                      <option value="">{product ? 'Select plan…' : 'Pick the product first'}</option>
-                      {dependantPlanOptions.map(p => <option key={p.id} value={p.id}>{p.name} (${p.premium})</option>)}
-                    </select>
-                    <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => removeDependant(i)} title="Remove dependant">✕</button>
+                  <div key={i}>
+                    <div className="new-policy-dependant-row" style={{ marginBottom: isMedical ? 4 : 8, alignItems: 'center' }}>
+                      <input className="form-control" placeholder="Name" value={d.name} onChange={e => updateDependant(i, 'name', e.target.value)} />
+                      <input className="form-control" placeholder="Relationship" value={d.relationship} onChange={e => updateDependant(i, 'relationship', e.target.value)} />
+                      <DateInput value={d.dob} onChange={v => updateDependant(i, 'dob', v)} />
+                      <input className="form-control" placeholder="ID (16+) or birth record no." value={d.nationalId} onChange={e => updateDependant(i, 'nationalId', e.target.value.replace(/-/g, ''))} />
+                      <select className="form-control" value={d.productId ?? ''} onChange={e => updateDependant(i, 'productId', e.target.value)} disabled={!product}>
+                        <option value="">{product ? 'Select plan…' : 'Pick the product first'}</option>
+                        {dependantPlanOptions.map(p => <option key={p.id} value={p.id}>{p.name} (${p.premium})</option>)}
+                      </select>
+                      <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => removeDependant(i)} title="Remove dependant">✕</button>
+                    </div>
+                    {isMedical && d.name.trim() && (
+                      <div className="form-row" style={{ marginBottom: 8 }}>
+                        <div className="form-group" style={{ marginBottom: 0 }}>
+                          <label style={{ fontSize: 11 }}>Chronic illness for {d.name.trim()}? *</label>
+                          <select className="form-control" value={d.hasChronicIllness === undefined ? '' : d.hasChronicIllness ? 'yes' : 'no'}
+                            onChange={e => updateDependant(i, 'hasChronicIllness', e.target.value === '' ? undefined : e.target.value === 'yes')}>
+                            <option value="">Answer…</option>
+                            <option value="yes">Yes</option>
+                            <option value="no">No</option>
+                          </select>
+                        </div>
+                        {d.hasChronicIllness && (
+                          <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label style={{ fontSize: 11 }}>Condition(s)</label>
+                            <input className="form-control" placeholder="e.g. Diabetes" value={d.chronicIllnessDetails ?? ''} onChange={e => updateDependant(i, 'chronicIllnessDetails', e.target.value)} />
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))}
               </>

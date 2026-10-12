@@ -158,6 +158,10 @@ export interface Dependant {
   premium?: number
   coverAmount?: number
   phone?: string
+  /** Medical/health products only — the underwriting declaration.
+   *  Undefined on non-health policies. */
+  hasChronicIllness?: boolean
+  chronicIllnessDetails?: string
 }
 
 /** Whether a physical/virtual membership card is usable. A card is
@@ -251,6 +255,11 @@ export interface Policy {
   /** Team scope only — the named activity, season or event the cover is
    *  for (e.g. "2026 Soccer Season"). Printed on the policy document. */
   teamActivity?: string
+  /** Medical/health products only — the policyholder's chronic-illness
+   *  declaration, required at registration (policies.has_chronic_illness /
+   *  chronic_illness_details). Undefined on non-health policies. */
+  hasChronicIllness?: boolean
+  chronicIllnessDetails?: string
   createdAt: string
   nextPaymentDate?: string
   lastPaymentDate?: string
