@@ -24,3 +24,12 @@ const MEMBER_CARD_CATEGORIES = ['funeral', 'life', 'health', 'accident']
 export function categoryIssuesMemberCards(category?: string): boolean {
   return !!category && MEMBER_CARD_CATEGORIES.includes(category)
 }
+
+/** Tobacco hectarage — the planted area, captured as a SELECT, never
+ *  free text: a report has to sum it, and "2ha", "2.0", "two hectares"
+ *  don't sum. Stored as the number of hectares on policies.hectarage. */
+export const HECTARAGE_OPTIONS = [0.5, 1, 1.5, 2, 2.5, 3] as const
+
+export function hectarageLabel(ha: number): string {
+  return `${ha} ha`
+}

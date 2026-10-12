@@ -5,7 +5,7 @@ import { db } from '../../lib/db'
 import { useAuth } from '../../contexts/AuthContext'
 import PhoneInput from '../ui/PhoneInput'
 import DateInput from '../ui/DateInput'
-import { premiumPeriodLabel } from '../../lib/productUtils'
+import { premiumPeriodLabel, HECTARAGE_OPTIONS, hectarageLabel } from '../../lib/productUtils'
 import { computeAssignedStartDate } from '../../lib/policyLifecycle'
 import { toIsoDate } from '../../lib/dateUtils'
 import { nextPolicyNumber } from '../../lib/policyNumbers'
@@ -58,6 +58,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   const [dependants, setDependants] = useState<Dependant[]>([])
   const [growerNumber, setGrowerNumber] = useState('')
   const [contractor, setContractor] = useState('')
+  const [hectarage, setHectarage] = useState('')
   const [agentId, setAgentId] = useState('')
   // The channel the sale actually came through — defaults to this web app
   // since that's where the staff member is working.
@@ -351,6 +352,11 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   } else if (dependants.some(d => d.name.trim() && (!d.dob || !d.nationalId.trim()))) {
     missing.push({ key: 'dependants', label: 'Dependant details', hint: 'Every dependant needs a name, date of birth and ID number' })
   }
+  // Tobacco: the planted area is a select, not free text — required so
+  // every agriculture policy carries a summable hectarage.
+  if (product?.category === 'agriculture' && !hectarage) {
+    missing.push({ key: 'hectarage', label: 'Hectarage', hint: 'Pick the planted area' })
+  }
   if (isMedical) {
     if (hasChronic === null) missing.push({ key: 'chronic', label: 'Chronic illness declaration', hint: 'Medical aid requires an answer — yes or no' })
     else if (hasChronic && !chronicDetails.trim()) missing.push({ key: 'chronic', label: 'Chronic illness details', hint: 'State the condition(s) declared' })
@@ -492,6 +498,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
       paymentMethod,
       growerNumber: product!.category === 'agriculture' ? (growerNumber || undefined) : undefined,
       contractor: product!.category === 'agriculture' ? (contractor.trim() || undefined) : undefined,
+      hectarage: product!.category === 'agriculture' ? (Number(hectarage) || undefined) : undefined,
       createdAt: toIsoDate(new Date()),
       nextPaymentDate: toIsoDate(new Date(new Date(startDate).setMonth(new Date(startDate).getMonth() + (product!.category === 'agriculture' ? 12 : 1)))),
       agentId: agentId || undefined,
@@ -742,6 +749,15 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                     <select className="form-control" value={agentId} onChange={e => setAgentId(e.target.value)}>
                       <option value="">Unassigned</option>
                       {staff.filter(s => s.role === 'agent').map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    </select>
+                  </div>
+                  {/* Planted area — a select, never typed: "2ha", "2.0"
+                      and "two hectares" don't sum in a report. */}
+                  <div className="form-group" style={{ marginBottom: 0 }} id={fieldId('hectarage')}>
+                    <label>Hectarage *</label>
+                    <select className={invalidClass(missing, attempted, 'hectarage')} value={hectarage} onChange={e => setHectarage(e.target.value)}>
+                      <option value="">Select…</option>
+                      {HECTARAGE_OPTIONS.map(ha => <option key={ha} value={ha}>{hectarageLabel(ha)}</option>)}
                     </select>
                   </div>
                 </div>

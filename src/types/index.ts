@@ -253,6 +253,10 @@ export interface Policy {
   /** Agriculture policies only — the contractor the grower is contracted
    *  to (the tobacco merchant buying the crop). */
   contractor?: string
+  /** Agriculture policies only — the planted area in hectares. Captured
+   *  as a fixed-value select (0.5/1/1.5/2/2.5/3), never free text, so
+   *  the book can be summed and compared. */
+  hectarage?: number
   /** Farm/field location, captured at registration or via the pre-loss
    *  assessment — agriculture policies only. */
   gpsLat?: number

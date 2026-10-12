@@ -362,6 +362,7 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   const growerLabel = [
     isAgriculture && policy.growerNumber ? policy.growerNumber : null,
     isAgriculture && policy.contractor ? `Contractor: ${policy.contractor}` : null,
+    isAgriculture && policy.hectarage != null ? `Hectarage: ${policy.hectarage} ha` : null,
   ].filter(Boolean).join(' · ')
   doc.text(
     growerLabel ? `${client.name} - ${growerLabel}` : client.name,
@@ -570,10 +571,12 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   const conditions: string[] = []
   if (isFieldToFloor) {
     conditions.push('This policy covers the policyholder and one spouse only for the funeral benefit.')
+    if (policy.hectarage != null) conditions.push(`Cover applies to the insured ${policy.hectarage} ha of crop only — any planted area beyond it is not covered.`)
     conditions.push(`Cover runs with the tobacco season (${TOBACCO_SEASON.start} to ${TOBACCO_SEASON.end}), not the date this document was issued.`)
     conditions.push('Each peril pays up to its scheduled benefit above — no claim exceeds its own peril\'s cover.')
   } else if (isAgriculture) {
     conditions.push('Cover applies only to the insured crop and the perils listed above.')
+    if (policy.hectarage != null) conditions.push(`Cover applies to the insured ${policy.hectarage} ha of crop only — any planted area beyond it is not covered.`)
     conditions.push(`Cover runs with the tobacco season (${TOBACCO_SEASON.start} to ${TOBACCO_SEASON.end}).`)
   } else {
     conditions.push(policy.status === 'waiting_period'

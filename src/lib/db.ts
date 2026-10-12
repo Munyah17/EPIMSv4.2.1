@@ -223,6 +223,7 @@ function toPolicy(r: any): Policy {
     hasChronicIllness: r.has_chronic_illness ?? undefined,
     chronicIllnessDetails: r.chronic_illness_details ?? undefined,
     contractor:      r.contractor ?? undefined,
+    hectarage:       r.hectarage != null ? Number(r.hectarage) : undefined,
     source:          r.source ?? undefined,
     createdAt:       date(r.created_at),
     nextPaymentDate: r.next_payment_date ? date(r.next_payment_date) : undefined,
@@ -445,7 +446,7 @@ const POLICY_SELECT_GROUP = POLICY_SELECT_BASE + `,
   groups!group_id(id, name, group_type)
 `
 const POLICY_SELECT_MED = `,
-  has_chronic_illness, chronic_illness_details, contractor`
+  has_chronic_illness, chronic_illness_details, contractor, hectarage`
 const POLICY_SELECT = POLICY_SELECT_GROUP + POLICY_SELECT_MED
 const CLAIM_SELECT = `
   id, claim_number, policy_id, claim_type, amount, status,
@@ -592,6 +593,14 @@ export const policies = {
       }
       ;(row as Record<string, unknown>).contractor = policy.contractor || null
     }
+    // hectarage lands with the contractor block — tobacco-only field,
+    // same add_policy_hectarage.sql generation.
+    if (policy.hectarage !== undefined) {
+      if (!(await hasColumn('policies', 'hectarage'))) {
+        return { data: null, error: 'The hectarage field needs a database update first — run database/add_policy_hectarage.sql in Supabase, then try again.' }
+      }
+      ;(row as Record<string, unknown>).hectarage = policy.hectarage ?? null
+    }
     const groupColsReady = await hasColumn('policies', 'group_id')
     if (policy.groupId || (policy.coverScope && policy.coverScope !== 'individual')) {
       if (!groupColsReady) {
@@ -632,6 +641,8 @@ export const policies = {
     if (updates.paymentMethod)                       row.payment_method     = updates.paymentMethod
     if (updates.insurer !== undefined)               row.insurer            = updates.insurer ?? null
     if (updates.growerNumber !== undefined)          row.grower_number      = updates.growerNumber ?? null
+    if (updates.contractor !== undefined)            row.contractor         = updates.contractor ?? null
+    if (updates.hectarage !== undefined)             row.hectarage          = updates.hectarage ?? null
     if (updates.gpsLat !== undefined)                row.gps_lat            = updates.gpsLat ?? null
     if (updates.gpsLng !== undefined)                row.gps_lng            = updates.gpsLng ?? null
     if (updates.nextPaymentDate !== undefined)        row.next_payment_date  = updates.nextPaymentDate ?? null

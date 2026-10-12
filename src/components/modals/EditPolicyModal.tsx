@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import type { Policy, PolicyStatus, AppUser } from '../../types'
 import { MANUAL_PAYMENT_METHODS } from '../../types'
 import { db } from '../../lib/db'
+import { HECTARAGE_OPTIONS, hectarageLabel } from '../../lib/productUtils'
 import DateInput from '../ui/DateInput'
 
 interface Props {
@@ -17,6 +18,7 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
   const [agentId, setAgentId] = useState(policy.agentId ?? '')
   const [growerNumber, setGrowerNumber] = useState(policy.growerNumber ?? '')
   const [contractor, setContractor] = useState(policy.contractor ?? '')
+  const [hectarage, setHectarage] = useState(policy.hectarage != null ? String(policy.hectarage) : '')
   const [staff, setStaff] = useState<AppUser[]>([])
   const [isAgriculture, setIsAgriculture] = useState(false)
 
@@ -35,6 +37,7 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
       agentId: agentId || undefined, agentName: agent?.name ?? (agentId ? policy.agentName : undefined),
       growerNumber: isAgriculture ? (growerNumber || undefined) : policy.growerNumber,
       contractor: isAgriculture ? (contractor.trim() || undefined) : policy.contractor,
+      hectarage: isAgriculture ? (hectarage ? Number(hectarage) : undefined) : policy.hectarage,
     })
   }
 
@@ -92,6 +95,13 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
                 <select className="form-control" value={agentId} onChange={e => setAgentId(e.target.value)}>
                   <option value="">Unassigned</option>
                   {staff.filter(s => s.role === 'agent').map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label>Hectarage</label>
+                <select className="form-control" value={hectarage} onChange={e => setHectarage(e.target.value)}>
+                  <option value="">Not recorded</option>
+                  {HECTARAGE_OPTIONS.map(ha => <option key={ha} value={ha}>{hectarageLabel(ha)}</option>)}
                 </select>
               </div>
             </div>
