@@ -16,7 +16,7 @@ import type {
   PolicyStatus, ClaimStatus, PaymentStatus, PaymentMethod,
   TicketStatus, TicketPriority, LeadStatus, FraudCaseStatus, CustomRole,
   ClaimAssessment, PolicyAssessment, AssessmentPhoto, CropType, FraudSignalRule, HeroSlide,
-  PolicyCard, Group, GroupMember, Invoice, InvoiceStatus,
+  PolicyCard, Group, GroupMember, Invoice, InvoiceStatus, AgentProfile,
 } from '../types'
 import { STAFF_ROLES } from '../types'
 
@@ -2873,6 +2873,77 @@ export const groupMembers = {
   },
 }
 
+// ── AGENT PROFILES (the agent file — commission intermediaries, not staff) ──
+export const agentProfiles = {
+  async list() {
+    const { ok, data } = await sb('agent_profiles', 'read',
+      () => supabase.from('agent_profiles').select('*'),
+      d => Array.isArray(d),
+    )
+    if (!ok || !data) return { data: [] as AgentProfile[], error: 'Could not load agent profiles — run database/add_agent_profiles.sql if the table is missing.' }
+    return { data: (data as Record<string, unknown>[]).map(toAgentProfile), error: null }
+  },
+
+  async get(profileId: string) {
+    const { ok, data } = await sb('agent_profiles', 'read',
+      () => supabase.from('agent_profiles').select('*').eq('profile_id', profileId).maybeSingle(),
+    )
+    return { data: ok && data ? toAgentProfile(data as Record<string, unknown>) : null, error: null }
+  },
+
+  async upsert(input: AgentProfile) {
+    const row = {
+      profile_id: input.profileId,
+      national_id: input.nationalId ?? null,
+      territory: input.territory ?? null,
+      contract_start: input.contractStart || null,
+      commission_pct: input.commissionPct ?? null,
+      bank_name: input.bankName ?? null,
+      bank_account: input.bankAccount ?? null,
+      ecocash_number: input.ecocashNumber ?? null,
+      notes: input.notes ?? null,
+      updated_at: new Date().toISOString(),
+    }
+    const { ok, data, error } = await sb('agent_profiles', 'write',
+      () => supabase.from('agent_profiles').upsert(row).select().single(),
+    )
+    if (ok && data) return { data: toAgentProfile(data as Record<string, unknown>), error: null }
+    return writeFailed('agent_profiles', error)
+  },
+
+  /** An agent's book of business — clients registered and policies
+   *  written under their referral, plus premium carried. Two light
+   *  column-only reads, not the full joined policy list. */
+  async bookStats(profileIds: string[]) {
+    if (profileIds.length === 0) return { data: new Map<string, { clients: number; policies: number; premium: number }>(), error: null }
+    const [clientsRes, policiesRes] = await Promise.all([
+      supabase.from('clients').select('agent_id').in('agent_id', profileIds),
+      supabase.from('policies').select('agent_id, premium').in('agent_id', profileIds),
+    ])
+    const stats = new Map<string, { clients: number; policies: number; premium: number }>()
+    for (const c of (clientsRes.data ?? []) as { agent_id: string }[]) {
+      const s = stats.get(c.agent_id) ?? { clients: 0, policies: 0, premium: 0 }
+      s.clients++; stats.set(c.agent_id, s)
+    }
+    for (const p of (policiesRes.data ?? []) as { agent_id: string; premium: number }[]) {
+      const s = stats.get(p.agent_id) ?? { clients: 0, policies: 0, premium: 0 }
+      s.policies++; s.premium += Number(p.premium) || 0; stats.set(p.agent_id, s)
+    }
+    return { data: stats, error: null }
+  },
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toAgentProfile(r: any): AgentProfile {
+  return {
+    profileId: r.profile_id, nationalId: r.national_id ?? undefined,
+    territory: r.territory ?? undefined, contractStart: r.contract_start ?? undefined,
+    commissionPct: r.commission_pct != null ? Number(r.commission_pct) : undefined,
+    bankName: r.bank_name ?? undefined, bankAccount: r.bank_account ?? undefined,
+    ecocashNumber: r.ecocash_number ?? undefined, notes: r.notes ?? undefined,
+  }
+}
+
 // ── REALTIME ──────────────────────────────────────────────────────
 export function subscribeToTable(table: string, callback: () => void) {
   const channel = supabase
@@ -2995,7 +3066,7 @@ export const db = {
   tickets, emails, leads, staff, fraudCases, reminders, cautionFlags, settings, loginAttempts, developerApi,
   exchangeRates,
   customRoles, claimAssessments, policyAssessments, photoHashes, cropTypes, fraudSignalRules, heroSlides,
-  policyCards, groups, groupMembers,
+  policyCards, groups, groupMembers, agentProfiles,
   dashboardStats, sidebarCounts, notificationLog, invoices,
   subscribeToTable,
 }

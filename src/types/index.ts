@@ -46,6 +46,23 @@ export const ROLE_RANK: Record<UserRole, number> = {
  *  because existing rows carry it; nothing here reads or writes it anymore. */
 export type Insurer = string
 
+/** The agent file — keyed 1:1 to the login profile. Agents are
+ *  commission-paid intermediaries onboarded on contract, not employees:
+ *  KYC, territory, contract start and payout rails live here, not on
+ *  profiles (where they'd be NULL for every staff member). */
+export interface AgentProfile {
+  profileId: string
+  nationalId?: string
+  territory?: string
+  contractStart?: string
+  /** Agreed override; blank means the product's own commissionPct. */
+  commissionPct?: number
+  bankName?: string
+  bankAccount?: string
+  ecocashNumber?: string
+  notes?: string
+}
+
 export interface CropType {
   id: string
   name: string
