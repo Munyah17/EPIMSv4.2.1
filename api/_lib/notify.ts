@@ -44,6 +44,9 @@ export interface Delivery {
 export function normalizeMsisdn(raw: string): string {
   let digits = raw.replace(/\D/g, '')
   if (digits.startsWith('0')) digits = `263${digits.slice(1)}`
+  // Country code + trunk 0 kept ("+263 0712345678") — phonebook format;
+  // the 0 must drop or validation fails every such number.
+  else if (digits.startsWith('2630')) digits = `263${digits.slice(4)}`
   else if (!digits.startsWith('263')) digits = `263${digits}`
   return digits
 }

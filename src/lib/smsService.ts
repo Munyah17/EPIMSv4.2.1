@@ -69,6 +69,9 @@ export interface BulkSmsResult {
 function normalizeMsisdn(raw: string): string {
   let digits = raw.replace(/\D/g, '')
   if (digits.startsWith('0')) digits = '263' + digits.slice(1)
+  // "+263 0712345678" — country code WITH the trunk 0 kept — is how
+  // phonebooks commonly store ZW numbers; the 0 must drop again.
+  else if (digits.startsWith('2630')) digits = '263' + digits.slice(4)
   else if (!digits.startsWith('263')) digits = '263' + digits
   return digits
 }

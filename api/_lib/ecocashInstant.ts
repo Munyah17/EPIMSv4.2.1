@@ -33,6 +33,8 @@ function authHeader(): string {
 /** EIP wants MSISDN as 263XXXXXXXXX. */
 export function normalizeMsisdn(phone: string): string {
   const digits = phone.replace(/\D/g, '')
+  // "2630XXXXXXXXX" — country code + trunk 0 kept — drops the 0.
+  if (digits.startsWith('2630')) return `263${digits.slice(4)}`
   if (digits.startsWith('263')) return digits
   if (digits.startsWith('0')) return `263${digits.slice(1)}`
   return `263${digits}`

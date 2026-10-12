@@ -90,3 +90,40 @@ export async function scoreClaimFraud(input: {
     return UNAVAILABLE
   }
 }
+
+// ── System problem checker ──────────────────────────────────────────
+
+export interface SystemCheckLine {
+  key: string
+  label: string
+  status: 'ok' | 'warning' | 'problem'
+  count: number
+  detail: string
+}
+export interface SystemCheckFinding {
+  severity: 'critical' | 'warning' | 'info'
+  area: string
+  problem: string
+  recommendation: string
+}
+export interface SystemCheckResult {
+  ok: boolean
+  checkedAt: string
+  checks: SystemCheckLine[]
+  fixed: string[]
+  ai: { simulated?: boolean; summary: string; findings?: SystemCheckFinding[] }
+  error?: string
+}
+
+/** Deterministic probes on the server + Groq interpretation. The client
+ *  passes its own health snapshot so the check sees the session too. */
+export async function runSystemCheck(health: { totalOps?: number; sbSuccessPct?: number; localMode?: boolean }): Promise<SystemCheckResult> {
+  const res = await fetch('/api/system-check', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+    body: JSON.stringify({ health }),
+  })
+  const body = await res.json().catch(() => null)
+  if (!res.ok || !body) throw new Error(body?.error ?? `System check failed (${res.status})`)
+  return body as SystemCheckResult
+}

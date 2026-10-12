@@ -4,6 +4,7 @@ import scoreClaimFraud from './_lib/score-claim-fraud.js'
 import scoreLead from './_lib/score-lead.js'
 import searchLeads from './_lib/search-leads.js'
 import estimateExchangeRate from './_lib/estimate-exchange-rate.js'
+import systemCheck from './_lib/system-check.js'
 import { serviceClient, requireSession } from './_lib/sessionAuth.js'
 
 /**
@@ -29,6 +30,7 @@ const ROUTES: Record<string, (req: VercelRequest, res: VercelResponse) => Promis
   'score-lead': scoreLead,
   'search-leads': searchLeads,
   'estimate-exchange-rate': estimateExchangeRate,
+  'system-check': systemCheck,
 }
 
 // Rate suggestions stay callable without a session: the only caller is a

@@ -7,6 +7,7 @@ import { formatDate } from '../lib/dateUtils'
 import { useAuth } from '../contexts/AuthContext'
 import { isStale, rateAgeLabel, type ExchangeRate } from '../lib/exchangeRate'
 import { health } from '../lib/health'
+import { runSystemCheck, type SystemCheckResult } from '../lib/aiService'
 import { isGatewayFlaggedDown, getGatewayWatchStatus, pingSmsGateway, sendSms, SMS_GATEWAY_EVENT } from '../lib/smsService'
 
 interface Props {
@@ -129,6 +130,8 @@ export default function Dashboard({ showToast, setActivePanel }: Props) {
   // confirmation" is contradicted on the same screen.
   const [notifyFails, setNotifyFails] = useState<NotificationFailure[]>([])
   const [clearing, setClearing] = useState(false)
+  const [aiChecking, setAiChecking] = useState(false)
+  const [aiCheck, setAiCheck] = useState<SystemCheckResult | null>(null)
   useEffect(() => {
     if (!canSeeHealth) return
     let cancelled = false
@@ -280,7 +283,23 @@ export default function Dashboard({ showToast, setActivePanel }: Props) {
         <div className="card" style={{ marginBottom: 20 }}>
           <div className="card-header">
             <h3 className="card-title">🖥 System Health</h3>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setActivePanel('system_health')}>Open System Health →</button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button type="button" className="btn btn-ghost btn-sm" disabled={aiChecking}
+                onClick={async () => {
+                  setAiChecking(true)
+                  try {
+                    setAiCheck(await runSystemCheck({
+                      totalOps: healthSnap.totalOps, sbSuccessPct: healthSnap.sbSuccessPct, localMode: healthSnap.localMode,
+                    }))
+                  } catch (e) {
+                    showToast('error', e instanceof Error ? e.message : 'System check failed.')
+                  }
+                  setAiChecking(false)
+                }}>
+                {aiChecking ? 'Checking…' : '🤖 AI System Check'}
+              </button>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setActivePanel('system_health')}>Open System Health →</button>
+            </div>
           </div>
           <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'center', fontSize: 13 }}>
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}>
@@ -321,6 +340,35 @@ export default function Dashboard({ showToast, setActivePanel }: Props) {
                 }}>
                 {clearing ? 'Clearing…' : 'Clear'}
               </button>
+            </div>
+          )}
+
+          {/* AI System Check — deterministic probes server-side + Groq
+              interpretation. Fixes already applied are listed first. */}
+          {aiCheck && (
+            <div style={{ marginTop: 14, borderTop: '1px solid var(--border)', paddingTop: 14 }}>
+              <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', fontSize: 12, marginBottom: 10 }}>
+                {aiCheck.checks.map(c => (
+                  <span key={c.key} style={{ color: 'var(--muted)' }}>
+                    <span className="syshealth-dot" style={{ display: 'inline-block', marginRight: 6, background: c.status === 'ok' ? '#10B981' : c.status === 'warning' ? '#F59E0B' : '#EF4444' }} />
+                    {c.label}: <strong style={{ color: c.status === 'ok' ? 'var(--text)' : c.status === 'warning' ? '#92400E' : 'var(--danger)' }}>{c.detail}</strong>
+                  </span>
+                ))}
+              </div>
+              {aiCheck.fixed.length > 0 && (
+                <div className="info-banner info-banner-info" style={{ fontSize: 12, marginBottom: 8 }}>
+                  ✅ <strong>Fixed automatically:</strong> {aiCheck.fixed.join(' ')}
+                </div>
+              )}
+              <div style={{ fontSize: 13, marginBottom: aiCheck.ai.findings?.length ? 8 : 0 }}>
+                {aiCheck.ai.simulated && <span className="pill pill-warning pill-xs" style={{ marginRight: 6 }}>AI unavailable — raw results</span>}
+                {aiCheck.ai.summary}
+              </div>
+              {(aiCheck.ai.findings ?? []).map((f, i) => (
+                <div key={i} className={`info-banner ${f.severity === 'critical' ? 'info-banner-danger' : 'info-banner-warning'}`} style={{ fontSize: 12, marginBottom: 6 }}>
+                  <strong>{f.area}:</strong> {f.problem} <em>→ {f.recommendation}</em>
+                </div>
+              ))}
             </div>
           )}
         </div>
