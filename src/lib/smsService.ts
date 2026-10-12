@@ -346,7 +346,12 @@ export async function pingSmsGateway(): Promise<GatewayPing> {
 
 async function announceGatewayDown(ping: GatewayPing) {
   const { reportOutcome } = await import('./notify')
-  reportOutcome({ channel: 'sms', recipient: 'gateway', event: 'system', status: 'failed', detail: `AFROSOFT DOWN: ${ping.detail}` })
+  // Name the actual fault: 'afrosoft' = provider outage; 'config' = OUR
+  // side missing credentials — the office must not chase Afrosoft for a
+  // key nobody set.
+  const isConfig = ping.source === 'config'
+  const headline = isConfig ? 'SMS GATEWAY MISCONFIGURED' : 'AFROSOFT SMS GATEWAY IS DOWN'
+  reportOutcome({ channel: 'sms', recipient: 'gateway', event: 'system', status: 'failed', detail: `${headline}: ${ping.detail}` })
   // Office email through /api/notify — SMTP is unaffected by the SMS
   // gateway being down, which is exactly why the alert rides it.
   try {
@@ -357,9 +362,11 @@ async function announceGatewayDown(ping: GatewayPing) {
       body: JSON.stringify({
         event: 'system', ref: 'sms-gateway',
         notifyClient: false, notifyOffice: true,
-        smsText: `Motions: AFROSOFT SMS GATEWAY IS DOWN — text messages cannot be delivered. ${ping.detail}`,
-        emailSubject: '[AFROSOFT DOWN] SMS gateway unreachable — client texts cannot be delivered',
-        emailText: `The SMS gateway (Afrosoft) is DOWN and cannot deliver text messages.\n\nDetail:   ${ping.detail}\nChecked:  ${new Date().toISOString()}\n\nImpact: signup welcomes, payment confirmations, billing reminders and invoice notices will NOT reach clients by SMS until Afrosoft recovers. The dashboard banner stays up for the duration of the outage.\n\nThis alert fires once per outage, not per check.`,
+        smsText: `Motions: ${headline} — text messages cannot be delivered. ${ping.detail}`,
+        emailSubject: `[${isConfig ? 'SMS CONFIG' : 'AFROSOFT DOWN'}] ${isConfig ? 'SMS gateway missing configuration' : 'SMS gateway unreachable'} — client texts cannot be delivered`,
+        emailText: `${isConfig
+          ? 'The SMS gateway is not configured correctly — this is OUR side (missing credentials), not an Afrosoft outage.\n\nFix: set AFROSOFT_SMS_API_KEY / AFROSOFT_SMS_DOMAIN on Vercel.'
+          : 'The SMS gateway (Afrosoft) is DOWN and cannot deliver text messages.'}\n\nDetail:   ${ping.detail}\nChecked:  ${new Date().toISOString()}\n\nImpact: signup welcomes, payment confirmations, billing reminders and invoice notices will NOT reach clients by SMS until ${isConfig ? 'the configuration is completed' : 'Afrosoft recovers'}. The dashboard banner stays up for the duration.\n\nThis alert fires once per outage, not per check.`,
       }),
     })
   } catch { /**/ }

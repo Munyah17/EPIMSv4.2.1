@@ -31,6 +31,9 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   const [clientSearch, setClientSearch] = useState('')
   const [existingClientId, setExistingClientId] = useState('')
   const [existingClients, setExistingClients] = useState<Client[]>([])
+  // The picked client's current policies — the pre-check that stops a
+  // second live Funeral plan from reaching the one-per-product index.
+  const [clientPolicies, setClientPolicies] = useState<Array<{ productId: string; productName: string; policyNumber: string; status: string }>>([])
 
   // Client fields
   const [clientName, setClientName] = useState('')
@@ -251,6 +254,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
     setCustomerMode(mode)
     setExistingClientId('')
     setClientSearch('')
+    setClientPolicies([])
     clearClientFields()
   }
 
@@ -273,6 +277,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
     // A client already bound to an agent (registered by one) keeps them
     // as the policy's agent — override below if that's wrong for this sale.
     if (client.agentId) setAgentId(client.agentId)
+    db.policies.listForClient(client.id).then(({ data }) => { if (data) setClientPolicies(data) }).catch(() => {})
   }
 
   const addDependant = () => {
@@ -314,6 +319,13 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   if (!clientDob) missing.push({ key: 'clientDob', label: 'Date of Birth' })
   else if (clientAge !== null && clientAge < 18) missing.push({ key: 'clientDob', label: 'Date of Birth', hint: 'The policyholder must be at least 18' })
   if (!productId) missing.push({ key: 'productId', label: 'Product' })
+  // One live policy per client per product (DB partial unique index:
+  // active | waiting_period). Warn before the save hits it — the staff
+  // member picks another product, or lapses the old one first.
+  const liveProductClash = existingClientId && productId
+    ? clientPolicies.find(p => p.productId === productId && (p.status === 'active' || p.status === 'waiting_period'))
+    : undefined
+  if (liveProductClash) missing.push({ key: 'productId', label: 'Product', hint: `Already holds ${liveProductClash.policyNumber} (${liveProductClash.status.replace(/_/g, ' ')}) on this product` })
   if (isGroupScope) {
     if (!groupId) missing.push({ key: 'groupId', label: 'Organisation', hint: 'Pick one, or register a new one with "+ Create New Organisation"' })
     else if (selectedMemberIds.size === 0) missing.push({ key: 'members', label: membersCoveredLabel, hint: 'Tick at least one roster member' })
@@ -497,7 +509,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                 className={invalidClass(missing, attempted, 'existingClient')}
                 placeholder="Start typing to search…"
                 value={clientSearch}
-                onChange={e => { setClientSearch(e.target.value); setExistingClientId('') }}
+                onChange={e => { setClientSearch(e.target.value); setExistingClientId(''); setClientPolicies([]) }}
               />
               {clientSearchResults.length > 0 && !existingClientId && (
                 <div className="search-suggestions">
@@ -674,6 +686,11 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                   <option value="">{productsLoading ? 'Loading products…' : 'Select product…'}</option>
                   {products.filter(p => p.active).map(p => <option key={p.id} value={p.id}>{p.name} (${p.premium}{premiumPeriodLabel(p.category)})</option>)}
                 </select>
+                {liveProductClash && (
+                  <p style={{ fontSize: 11, color: 'var(--danger)', marginTop: 4 }}>
+                    {clientName || 'This client'} already holds {liveProductClash.policyNumber} ({liveProductClash.status.replace(/_/g, ' ')}) on this product — pick another product, or lapse the existing policy first.
+                  </p>
+                )}
               </div>
               {product && (
                 <div className="info-banner info-banner-info">

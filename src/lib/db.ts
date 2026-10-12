@@ -515,6 +515,27 @@ export const policies = {
     return { data: [], error: 'Could not load policies — connect to the internet at least once to cache them for offline use.' }
   },
 
+  /** Minimal per-client lookup — just enough for "does this client already
+   *  hold a live policy on product X" before an insert hits the unique
+   *  index. Not cached: it must be current the moment it's asked. */
+  async listForClient(clientId: string) {
+    const { ok, data, error } = await sb('policies', 'read',
+      () => supabase.from('policies').select('id, policy_number, product_id, status, products!product_id(name)').eq('client_id', clientId),
+      d => Array.isArray(d),
+    )
+    if (!ok || !data) return { data: null, error: error ?? 'Could not load that client\'s policies.' }
+    return {
+      data: (data as Record<string, unknown>[]).map(r => ({
+        id: r.id as string,
+        policyNumber: r.policy_number as string,
+        productId: r.product_id as string,
+        productName: (r.products as { name?: string } | null)?.name ?? '',
+        status: r.status as PolicyStatus,
+      })),
+      error: null,
+    }
+  },
+
   async get(id: string) {
     const select = await policySelect()
     const { ok, data } = await sb('policies', 'read',
