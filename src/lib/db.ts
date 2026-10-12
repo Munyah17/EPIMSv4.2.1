@@ -92,11 +92,15 @@ async function hasColumn(table: string, column: string): Promise<boolean> {
 }
 
 const policySelect = async () => {
-  const [groupCols, medCols] = await Promise.all([
+  const [groupCols, medCols, hectarageCol] = await Promise.all([
     hasColumn('policies', 'group_id'),
     hasColumn('policies', 'has_chronic_illness'),
+    // The med block grew hectarage after contractor — probe the newest
+    // column too, or a database one generation behind would fail every
+    // policy read instead of degrading to the older select.
+    hasColumn('policies', 'hectarage'),
   ])
-  if (groupCols && medCols) return POLICY_SELECT
+  if (groupCols && medCols && hectarageCol) return POLICY_SELECT
   if (groupCols) return POLICY_SELECT_GROUP
   return POLICY_SELECT_BASE
 }

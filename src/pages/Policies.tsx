@@ -167,7 +167,7 @@ export default function Policies({ showToast, initialCategory }: Props) {
           { label: 'Total Premium', value: `$${rows.reduce((s, r) => s + Number(r[12] || 0), 0).toFixed(2)}` },
         ]
         await exportReportToPdf(`${base}.pdf`, 'Policy Report',
-          `Generated ${formatDate(new Date())} by Motions IMS`, stats, TREATY_HEADERS, rows)
+          `Generated ${formatDate(new Date())} by Motions IMS`, stats, TREATY_HEADERS, rows, { landscape: true })
       }
       showToast('success', `Policy report exported — ${filtered.length} policies.`)
     } catch {

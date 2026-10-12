@@ -94,9 +94,11 @@ export async function exportReportToPdf(
   stats: { label: string; value: string }[],
   headers: string[],
   rows: (string | number)[][],
+  /** Wide reports (the 17-column treaty layout) need the extra width. */
+  opts?: { landscape?: boolean },
 ) {
   const [{ jsPDF }, { default: autoTable }] = await Promise.all([import('jspdf'), import('jspdf-autotable')])
-  const doc = new jsPDF()
+  const doc = new jsPDF({ orientation: opts?.landscape ? 'landscape' : 'portrait' })
   doc.setFontSize(16)
   doc.setFont('helvetica', 'bold')
   doc.text(title, 14, 18)
