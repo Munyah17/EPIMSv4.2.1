@@ -141,7 +141,9 @@ export async function exportReportToPdf(
 
   autoTable(doc, {
     head: [headers],
-    body: rows.map(r => r.map(String)),
+    // Column 0 identifies WHO the row is — printed in capitals like every
+    // other captured name in the system, whatever case it was keyed in.
+    body: rows.map(r => r.map((c, i) => i === 0 ? String(c).toUpperCase() : String(c))),
     startY: y,
     styles: {
       fontSize: opts?.landscape ? 7.5 : 8.5,
@@ -417,21 +419,25 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   const premiumHeading = isAgriculture ? 'Annual Premium' : 'Monthly Premium'
   // "Harold Muwi - 2344566 · Contractor: AgriCo" — the grower's identity
   // to the insurer is name + grower number + who holds their contract.
+  // Captured data prints in capitals regardless of the case the capturer
+  // used — a formal document reads the same for every policyholder.
+  // (Body text — conditions, the terms pages — stays in normal case.)
+  const up = (s?: string | null) => (s ?? '').toUpperCase()
   // Identity block — each detail on its own line: run together on one
   // line the grower/contractor/hectarage string wrapped awkwardly.
-  doc.text(client.name, 14, y)
+  doc.text(up(client.name), 14, y)
   y += 4.5
   doc.setFontSize(8.5)
   doc.setTextColor(...MUTED)
-  if (isAgriculture && policy.growerNumber) { doc.text(`Grower No: ${policy.growerNumber}`, 14, y); y += 4.2 }
-  if (isAgriculture && policy.contractor) { doc.text(`Contractor: ${policy.contractor}`, 14, y); y += 4.2 }
+  if (isAgriculture && policy.growerNumber) { doc.text(`Grower No: ${up(policy.growerNumber)}`, 14, y); y += 4.2 }
+  if (isAgriculture && policy.contractor) { doc.text(`Contractor: ${up(policy.contractor)}`, 14, y); y += 4.2 }
   if (isAgriculture && policy.hectarage != null) { doc.text(`Hectarage: ${policy.hectarage} ha`, 14, y); y += 4.2 }
   // The agent who wrote the business belongs on the document — it's the
   // person the policyholder claims to, not an internal note.
   // Two different roles, both named: the agent/field officer who sourced
   // the business, and the staff member who captured it at the desk.
-  if (policy.agentName) { doc.text(`Field Officer: ${policy.agentName}`, 14, y); y += 4.2 }
-  if (policy.capturedByName) { doc.text(`Captured By: ${policy.capturedByName}`, 14, y); y += 4.2 }
+  if (policy.agentName) { doc.text(`Field Officer: ${up(policy.agentName)}`, 14, y); y += 4.2 }
+  if (policy.capturedByName) { doc.text(`Captured By: ${up(policy.capturedByName)}`, 14, y); y += 4.2 }
   y += 1
   doc.text(`Generated ${formatDate(new Date())}`, 14, y)
   y += 4.5
@@ -448,7 +454,7 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   autoTable(doc, {
     startY: y,
     head: [['Amount Paid', 'Payment Method', 'Payment Date', 'Expiration Date']],
-    body: [[money(billedPremium), policy.paymentMethod, formatDate(policy.lastPaymentDate), isFieldToFloor ? TOBACCO_SEASON.end : formatDate(policy.nextPaymentDate)]],
+    body: [[money(billedPremium), up(policy.paymentMethod), formatDate(policy.lastPaymentDate), isFieldToFloor ? TOBACCO_SEASON.end : formatDate(policy.nextPaymentDate)]],
     styles: { fontSize: 9, lineColor: [220, 226, 240], lineWidth: 0.2 },
     headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold' },
     theme: 'grid',
@@ -472,7 +478,7 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
     startY: y,
     head: [['Member No.', 'Policy Package', premiumHeading, 'Cover', 'Currency', 'Issued Via', 'Status']],
     body: [[
-      holderMemberNumber(policy.policyNumber), policy.productName, money(policy.premium),
+      holderMemberNumber(policy.policyNumber), up(policy.productName), money(policy.premium),
       money(policy.coverAmount), 'USD', policySourceLabel(policy.source), policy.status.toUpperCase(),
     ]],
     styles: { fontSize: 8.5, lineColor: [220, 226, 240], lineWidth: 0.2 },
@@ -486,7 +492,7 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   autoTable(doc, {
     startY: y,
     head: [['Full Name', 'National ID', 'Mobile Number', 'Date of Birth', 'Registration Date']],
-    body: [[client.name, client.nationalId, client.phone, formatDate(client.dob), formatDate(client.createdAt)]],
+    body: [[up(client.name), up(client.nationalId), client.phone, formatDate(client.dob), formatDate(client.createdAt)]],
     styles: { fontSize: 8.5, lineColor: [220, 226, 240], lineWidth: 0.2 },
     headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold' },
     theme: 'grid',
@@ -504,8 +510,8 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
       startY: y,
       head: [[policy.coverScope === 'corporate' ? 'Company' : 'Organisation', ...(policy.coverScope === 'team' ? ['Activity / Season'] : []), 'Cover Type']],
       body: [[
-        policy.groupName,
-        ...(policy.coverScope === 'team' ? [policy.teamActivity ?? '—'] : []),
+        up(policy.groupName),
+        ...(policy.coverScope === 'team' ? [up(policy.teamActivity) || '—'] : []),
         policy.coverScope === 'corporate' ? 'Corporate — employees covered' : policy.coverScope === 'team' ? 'Team — activity cover, immediate' : 'Group — members covered',
       ]],
       styles: { fontSize: 8.5, lineColor: [220, 226, 240], lineWidth: 0.2 },
@@ -543,7 +549,7 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
       doc.setFontSize(8)
       doc.setTextColor(...NAVY)
       const header = doc.splitTextToSize(
-        `MEMBER NO: ${dependantMemberNumber(policy.policyNumber, i)}  |  FULL NAME: ${d.name}  |  NATIONAL ID: ${d.nationalId || '—'}  |  RELATIONSHIP: ${d.relationship}  |  DATE OF BIRTH: ${formatDate(d.dob)}`,
+        `MEMBER NO: ${dependantMemberNumber(policy.policyNumber, i)}  |  FULL NAME: ${up(d.name)}  |  NATIONAL ID: ${up(d.nationalId) || '—'}  |  RELATIONSHIP: ${up(d.relationship)}  |  DATE OF BIRTH: ${formatDate(d.dob)}`,
         pageWidth - 32,
       )
       doc.text(header, 18, y)
@@ -553,7 +559,7 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
         startY: y,
         head: [['Policy Package', premiumHeading, 'Cover', 'Currency', 'Status']],
         body: [[
-          d.productName ?? policy.productName,
+          up(d.productName ?? policy.productName),
           money(d.premium ?? policy.premium),
           money(d.coverAmount ?? policy.coverAmount), 'USD', policy.status.toUpperCase(),
         ]],
