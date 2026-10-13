@@ -434,10 +434,10 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   if (isAgriculture && policy.hectarage != null) { doc.text(`Hectarage: ${policy.hectarage} ha`, 14, y); y += 4.2 }
   // The agent who wrote the business belongs on the document — it's the
   // person the policyholder claims to, not an internal note.
-  // Two different roles, both named: the agent/field officer who sourced
-  // the business, and the staff member who captured it at the desk.
+  // The agent/field officer who sourced the business belongs on the
+  // document; the staff member who captured it is internal attribution —
+  // view modal and records only, not the client's copy.
   if (policy.agentName) { doc.text(`Field Officer: ${up(policy.agentName)}`, 14, y); y += 4.2 }
-  if (policy.capturedByName) { doc.text(`Captured By: ${up(policy.capturedByName)}`, 14, y); y += 4.2 }
   y += 1
   doc.text(`Generated ${formatDate(new Date())}`, 14, y)
   y += 4.5
