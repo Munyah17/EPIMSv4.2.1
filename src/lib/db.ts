@@ -92,17 +92,20 @@ async function hasColumn(table: string, column: string): Promise<boolean> {
 }
 
 const policySelect = async () => {
-  const [groupCols, medCols, hectarageCol] = await Promise.all([
+  const [groupCols, medCols, hectarageCol, capturedCol] = await Promise.all([
     hasColumn('policies', 'group_id'),
     hasColumn('policies', 'has_chronic_illness'),
     // The med block grew hectarage after contractor — probe the newest
     // column too, or a database one generation behind would fail every
     // policy read instead of degrading to the older select.
     hasColumn('policies', 'hectarage'),
+    // captured_by records the staff member who captured the policy —
+    // probed so a database before that migration still reads fine.
+    hasColumn('policies', 'captured_by'),
   ])
-  if (groupCols && medCols && hectarageCol) return POLICY_SELECT
-  if (groupCols) return POLICY_SELECT_GROUP
-  return POLICY_SELECT_BASE
+  if (groupCols && medCols && hectarageCol) return POLICY_SELECT + (capturedCol ? POLICY_SELECT_CAP : '')
+  if (groupCols) return POLICY_SELECT_GROUP + (capturedCol ? POLICY_SELECT_CAP : '')
+  return POLICY_SELECT_BASE + (capturedCol ? POLICY_SELECT_CAP : '')
 }
 const paymentSelect = () => Promise.all([
   hasColumn('payments', 'transaction_id'),
@@ -220,6 +223,10 @@ function toPolicy(r: any): Policy {
     gpsLng:          r.gps_lng ?? undefined,
     agentId:         r.profiles?.id ?? r.agent_id,
     agentName:       r.profiles?.name,
+    // The staff member who captured the policy — a different person from
+    // the agent/field officer who sourced the business.
+    capturedById:    r.capturer?.id ?? r.captured_by ?? undefined,
+    capturedByName:  r.capturer?.name ?? undefined,
     groupId:         r.groups?.id ?? r.group_id ?? undefined,
     groupName:       r.groups?.name ?? undefined,
     coverScope:      (r.cover_scope as Policy['coverScope']) ?? 'individual',
@@ -454,6 +461,10 @@ const POLICY_SELECT_GROUP = POLICY_SELECT_BASE + `,
 const POLICY_SELECT_MED = `,
   has_chronic_illness, chronic_illness_details, contractor, hectarage`
 const POLICY_SELECT = POLICY_SELECT_GROUP + POLICY_SELECT_MED
+// Who captured the policy — a staff profile, unlike agent_id (the field
+// officer who sourced it). Probed like the other newer columns.
+const POLICY_SELECT_CAP = `,
+  captured_by, capturer:profiles!captured_by(id, name)`
 const CLAIM_SELECT = `
   id, claim_number, policy_id, claim_type, amount, status,
   stage, assessment_notes, agent_id, category,
@@ -575,6 +586,14 @@ export const policies = {
       // Defaulting to 'web_app' is honest: any insert reaching this code
       // path without a source set was issued by staff in the IMS itself.
       source: policy.source ?? 'web_app',
+    }
+    // Who captured the policy — the staff member at the desk, as distinct
+    // from agent_id (the field officer who sourced the business). The
+    // column lands via database/add_policy_captured_by.sql; probed so a
+    // database without it still writes fine.
+    if (await hasColumn('policies', 'captured_by')) {
+      const { data: { session } } = await supabase.auth.getSession()
+      ;(row as Record<string, unknown>).captured_by = session?.user?.id ?? null
     }
     // Group-cover columns only exist once database/add_group_cover.sql has
     // been run. An individual policy omits them entirely (the DB default

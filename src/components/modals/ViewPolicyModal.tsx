@@ -105,6 +105,7 @@ export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint, show
             {/* Tobacco industry language: the agent on a grower book is
                 the Field Officer. */}
             <div className="detail-item"><span className="detail-label">{policy.productCategory === 'agriculture' ? 'Field Officer' : 'Agent'}</span><span>{policy.agentName ?? '—'}</span></div>
+            <div className="detail-item"><span className="detail-label">Captured By</span><span>{policy.capturedByName ?? '—'}</span></div>
             {policy.hasChronicIllness !== undefined && (
               <div className="detail-item">
                 <span className="detail-label">Chronic Illness</span>

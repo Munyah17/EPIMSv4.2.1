@@ -263,6 +263,11 @@ export interface Policy {
   gpsLng?: number
   agentId?: string
   agentName?: string
+  /** The staff member who captured the policy — a different person from
+   *  the agent/field officer who sourced the business. Null on bot,
+   *  website and policyholder-channel policies. */
+  capturedById?: string
+  capturedByName?: string
   /** Where the policy was bought/issued — 'web_app' (staff in the IMS),
    *  'motions_website', 'whatsapp_chatbot', 'ussd', 'api_partner', or any
    *  future channel. See src/lib/policySources.ts. */
