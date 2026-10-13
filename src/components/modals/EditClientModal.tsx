@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { Client } from '../../types'
 import PhoneInput from '../ui/PhoneInput'
+import DateInput from '../ui/DateInput'
 import ValidationSummary, { MissingField, invalidClass, fieldId } from '../ui/ValidationSummary'
 
 interface Props {
@@ -19,6 +20,7 @@ export default function EditClientModal({ client, onClose, onSave, onAssignPolic
   const [gender, setGender] = useState(client.gender === 'male' || client.gender === 'female' || !client.gender ? client.gender ?? '' : 'other')
   const [genderOther, setGenderOther] = useState(client.gender && client.gender !== 'male' && client.gender !== 'female' ? client.gender : '')
   const [status, setStatus] = useState(client.status)
+  const [dob, setDob] = useState(client.dob ?? '')
 
 
   const [attempted, setAttempted] = useState(false)
@@ -26,11 +28,14 @@ export default function EditClientModal({ client, onClose, onSave, onAssignPolic
   const missing: MissingField[] = []
   if (!name.trim()) missing.push({ key: 'name', label: 'Full Name' })
   if (!phone.trim()) missing.push({ key: 'phone', label: 'Phone' })
+  // ID and DOB are never optional — the National ID field is locked
+  // (identity doesn't change), and DOB must stay filled once captured.
+  if (!dob) missing.push({ key: 'dob', label: 'Date of Birth' })
 
   const handleSave = () => {
     setAttempted(true)
     if (missing.length > 0) return
-    onSave({ ...client, name: name.trim(), email, phone, address, occupation, status, gender: gender === 'other' ? genderOther.trim() || 'other' : gender || undefined })
+    onSave({ ...client, name: name.trim(), email, phone, address, occupation, status, dob, gender: gender === 'other' ? genderOther.trim() || 'other' : gender || undefined })
   }
 
   return (
@@ -60,6 +65,12 @@ export default function EditClientModal({ client, onClose, onSave, onAssignPolic
             <div className="form-group">
               <label>National ID</label>
               <input className="form-control" value={client.nationalId} disabled style={{ opacity: 0.6 }} />
+            </div>
+          </div>
+          <div className="form-row">
+            <div className="form-group" id={fieldId('dob')} style={attempted && !dob ? { outline: '1px solid var(--danger)', borderRadius: 7, outlineOffset: 2 } : undefined}>
+              <label>Date of Birth *</label>
+              <DateInput value={dob} onChange={setDob} />
             </div>
           </div>
           <div className="form-row">

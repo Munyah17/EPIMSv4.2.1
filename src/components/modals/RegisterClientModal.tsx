@@ -41,6 +41,9 @@ export default function RegisterClientModal({ onClose, onSave, existingClients }
   if (!name.trim()) missing.push({ key: 'name', label: 'Full Name' })
   if (!phone.trim()) missing.push({ key: 'phone', label: 'Phone Number' })
   if (!nationalId.trim()) missing.push({ key: 'nationalId', label: 'National ID' })
+  // ID and DOB are the person's identity to the insurer — a claim
+  // against a client without both cannot be verified. Never optional.
+  if (!dob) missing.push({ key: 'dob', label: 'Date of Birth' })
   // National ID is unique — warn before the database has to.
   const duplicateNatId = nationalId.trim()
     ? existingClients?.find(c => c.nationalId.toLowerCase() === nationalId.trim().toLowerCase())
@@ -114,8 +117,8 @@ export default function RegisterClientModal({ onClose, onSave, existingClients }
             )}
           </div>
           <div className="form-row">
-            <div className="form-group">
-              <label>Date of Birth</label>
+            <div className="form-group" id={fieldId('dob')} style={attempted && !dob ? { outline: '1px solid var(--danger)', borderRadius: 7, outlineOffset: 2 } : undefined}>
+              <label>Date of Birth *</label>
               <DateInput value={dob} onChange={setDob} />
             </div>
             <div className="form-group">

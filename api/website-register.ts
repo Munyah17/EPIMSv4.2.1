@@ -98,9 +98,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const name = String(body.name ?? '').trim()
   const nationalId = String(body.nationalId ?? '').trim()
+  const dob = String(body.dob ?? '').trim()
   const phone = String(body.phone ?? '').trim()
-  if (!name || !nationalId || !phone) {
-    return res.status(400).json({ ok: false, error: 'name, nationalId and phone are required.' })
+  // ID and DOB are the person's identity to the insurer — same rule as
+  // the portal: no registration proceeds without both.
+  if (!name || !nationalId || !dob || !phone) {
+    return res.status(400).json({ ok: false, error: 'name, nationalId, dob and phone are required.' })
   }
 
   const paymentMethod = body.paymentMethod === 'ecocash' ? 'ecocash' : 'paynow'
@@ -149,7 +152,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!client) {
       client = await createClient(admin, {
         name, nationalId, phone,
-        email: body.email, dob: body.dob, gender: body.gender,
+        email: body.email, dob, gender: body.gender,
         agentId: body.agentId,
       })
       createdClientId = client.id

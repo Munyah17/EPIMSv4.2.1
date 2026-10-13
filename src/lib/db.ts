@@ -797,6 +797,8 @@ export const clients = {
     if (updates.name       !== undefined) row.name       = updates.name
     if (updates.email      !== undefined) row.email      = updates.email
     if (updates.phone      !== undefined) row.phone      = updates.phone
+    if (updates.nationalId !== undefined) row.national_id = updates.nationalId
+    if (updates.dob        !== undefined) row.dob        = updates.dob || null
     if (updates.gender     !== undefined) row.gender     = updates.gender ?? null
     if (updates.address    !== undefined) row.address    = updates.address
     if (updates.occupation !== undefined) row.occupation = updates.occupation

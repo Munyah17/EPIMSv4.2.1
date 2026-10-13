@@ -35,6 +35,10 @@ export default function GroupMembersModal({ group, onClose, showToast, onMembers
   const [attempted, setAttempted] = useState(false)
   const memberWord = group.groupType === 'company' ? 'Employee' : 'Member'
   const nameMissing = attempted && !fullName.trim()
+  // ID and DOB are the member's identity to the insurer — a claim can't
+  // be verified against a roster row that has neither.
+  const natIdMissing = attempted && !nationalId.trim()
+  const dobMissing = attempted && !dob
   const premiumMissing = attempted && !(Number(premium) > 0)
   const coverMissing = attempted && !(Number(coverAmount) > 0)
 
@@ -62,8 +66,8 @@ export default function GroupMembersModal({ group, onClose, showToast, onMembers
 
   const handleAdd = async () => {
     setAttempted(true)
-    if (!fullName.trim() || !(Number(premium) > 0) || !(Number(coverAmount) > 0)) {
-      showToast('warning', `A ${memberWord.toLowerCase()} needs a name, a premium and a sum assured — group terms are negotiated per member.`)
+    if (!fullName.trim() || !nationalId.trim() || !dob || !(Number(premium) > 0) || !(Number(coverAmount) > 0)) {
+      showToast('warning', `A ${memberWord.toLowerCase()} needs a name, National ID, date of birth, a premium and a sum assured — capture all of them to continue.`)
       return
     }
     setAdding(true)
@@ -121,11 +125,11 @@ export default function GroupMembersModal({ group, onClose, showToast, onMembers
               <input className={`form-control${nameMissing ? ' field-invalid' : ''}`} value={fullName} onChange={e => setFullName(e.target.value)} placeholder="Full name" />
             </div>
             <div className="form-group">
-              <label>National ID</label>
-              <input className="form-control" value={nationalId} onChange={e => setNationalId(e.target.value.replace(/-/g, ''))} placeholder="e.g. 632118532K12" />
+              <label>National ID *</label>
+              <input className={`form-control${natIdMissing ? ' field-invalid' : ''}`} value={nationalId} onChange={e => setNationalId(e.target.value.replace(/-/g, ''))} placeholder="e.g. 632118532K12" />
             </div>
-            <div className="form-group">
-              <label>Date of Birth</label>
+            <div className="form-group" style={dobMissing ? { outline: '1px solid var(--danger)', borderRadius: 7, outlineOffset: 2 } : undefined}>
+              <label>Date of Birth *</label>
               <DateInput value={dob} onChange={setDob} />
             </div>
           </div>

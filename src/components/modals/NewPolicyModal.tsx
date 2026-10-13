@@ -234,6 +234,10 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   const addRosterMember = async () => {
     const name = memberName.trim()
     if (!name) { showToast?.('error', 'Give the member a name first.'); return }
+    if (!memberNatId.trim() || !memberDob) {
+      showToast?.('error', 'Capture the member\'s National ID and Date of Birth — every covered person must have both.')
+      return
+    }
     if (!(Number(memberPremium) > 0) || !(Number(memberCover) > 0)) {
       showToast?.('error', 'Group terms are negotiated per member — enter the agreed premium and sum assured.')
       return
