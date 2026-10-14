@@ -299,6 +299,7 @@ function drawLetterhead(doc: jsPDF, pageWidth: number, logo: string | null, bran
  * schedule above in two newspaper-style columns: the first terms page's
  * columns begin below whatever already printed, later pages run edge to
  * edge. The point is brevity — a policy document is two pages at most, not a booklet.
+ * For tobacco insurance, allow up to 2.5 pages.
  */
 function drawTermsPages(doc: jsPDF, product: { name?: string; category?: string }, startY: number) {
   const pageWidth = doc.internal.pageSize.getWidth()
@@ -309,68 +310,76 @@ function drawTermsPages(doc: jsPDF, product: { name?: string; category?: string 
   const xOf = (c: number) => MARGIN + c * (colW + GAP)
   const bottom = pageHeight - 16
   const PAGE_TOP = 20
-  const LH = 3.1
+  const LH = 2.9 // Smaller line height for tighter fit
 
   let col = 0
   let y = startY
   let colTop = startY
+  let totalPages = 1
+
   const ensure = (need: number) => {
     if (y + need <= bottom) return
     if (col === 0) { col = 1; y = colTop }
-    else { doc.addPage(); col = 0; y = PAGE_TOP; colTop = PAGE_TOP }
+    else {
+      doc.addPage()
+      col = 0
+      y = PAGE_TOP
+      colTop = PAGE_TOP
+      totalPages++
+    }
   }
   const heading = (text: string) => {
     const lines = doc.splitTextToSize(text, colW)
-    ensure(lines.length * 4 + 3)
+    ensure(lines.length * 3.5 + 2)
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(8)
+    doc.setFontSize(7.5) // Smaller font for headings
     doc.setTextColor(...NAVY)
     doc.text(lines, xOf(col), y)
-    y += lines.length * 4 + 1
+    y += lines.length * 3.5 + 0.8
   }
   const para = (text: string) => {
     const lines = doc.splitTextToSize(text, colW - 2)
-    ensure(lines.length * LH + 1)
+    ensure(lines.length * LH + 0.8)
     doc.setFont('helvetica', 'normal')
-    doc.setFontSize(6.8)
+    doc.setFontSize(6.5) // Smaller font for paragraphs
     doc.setTextColor(...TEXT)
     doc.text(lines, xOf(col) + 1.5, y)
-    y += lines.length * LH + 1.4
+    y += lines.length * LH + 1.2
   }
 
   heading('TERMS AND CONDITIONS')
-  y += 1
+  y += 0.5
   const allTerms = termsPagesFor(product)
   for (let i = 0; i < allTerms.length; i++) {
     const terms = allTerms[i]
     // Add product title heading when there are multiple terms (e.g., tobacco + funeral)
     if (allTerms.length > 1 && terms.productTitle) {
-      ensure(8)
+      ensure(6)
       doc.setFont('helvetica', 'bold')
-      doc.setFontSize(9)
+      doc.setFontSize(8.5)
       doc.setTextColor(...BRAND_RED)
       doc.text(terms.productTitle.toUpperCase(), xOf(col), y)
-      y += 6
+      y += 5
       doc.setTextColor(...TEXT)
     }
     if (terms.sections) {
       for (const section of terms.sections) {
         heading(section.heading)
         section.paragraphs.forEach(para)
-        y += 1.5
+        y += 1
       }
     } else {
       heading(terms.exclusionsHeading)
       para(terms.exclusionsIntro)
       terms.exclusions.forEach((e, idx) => para(`${idx + 1}. ${e}`))
-      y += 1.5
+      y += 1
     }
     // Add separator between multiple terms sections
     if (i < allTerms.length - 1) {
-      ensure(6)
+      ensure(5)
       doc.setDrawColor(220, 226, 240)
       doc.line(xOf(col), y, xOf(col) + colW, y)
-      y += 4
+      y += 3
     }
   }
 
@@ -378,16 +387,16 @@ function drawTermsPages(doc: jsPDF, product: { name?: string; category?: string 
   // full name, date of signature and signature fields.
   heading('SIGNATURE')
   para('I confirm that I have read, understood and agree to the Policy Terms and Conditions and the Major Exclusions set out in this document.')
-  ensure(24)
+  ensure(20)
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(7.5)
+  doc.setFontSize(7)
   doc.setTextColor(...TEXT)
   doc.text('Signee Full Name: __________________________', xOf(col) + 1.5, y)
-  y += 7
+  y += 6
   doc.text('Date of Signature: ____________________', xOf(col) + 1.5, y)
-  y += 7
+  y += 6
   doc.text('Signature: ______________________________', xOf(col) + 1.5, y)
-  y += 7
+  y += 6
 }
 
 const BRAND_BLUE: [number, number, number] = [65, 105, 225]
@@ -653,7 +662,7 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
 
   // ── POLICY CONDITIONS — the plain-language summary the client reads
   // first. It is a breakdown, not a contract — the exclusion schedules
-  // appended at the end always govern.
+  // appended at the end always govern. This section goes on page 1.
   const conditions: string[] = []
   if (isFieldToFloor) {
     conditions.push('This policy covers the policyholder and one spouse only for the funeral benefit.')
@@ -691,9 +700,13 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   doc.text(`Copyright © ${COMPANY_NAME}. All rights reserved.`, 14, y)
   y += 8
 
+  // Add new page for Terms and Conditions - page 2 is for terms only
+  doc.addPage()
+  const termsStartY = 20
+
   // The product's Terms and Conditions are part of the contract — they
   // flow on from here, whatever the product.
-  drawTermsPages(doc, { name: policy.productName, category }, y)
+  drawTermsPages(doc, { name: policy.productName, category }, termsStartY)
 
   return doc
 }
