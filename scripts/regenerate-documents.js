@@ -14,7 +14,7 @@ async function regenerateDocuments(options = {}) {
     status = null,        // 'active', 'lapsed', etc.
     startDate = null,     // ISO date string
     endDate = null,       // ISO date string
-    dryRun = true,        // Set to false to actually regenerate
+    dryRun = false,       // Set to false to actually regenerate
     token = null,         // Auth token from localStorage OR service role key
   } = options
 

@@ -1,4 +1,5 @@
 {
+  "name": "tariqifyims-motions",
   "rewrites": [
     { "source": "/api/analyze-assessment-photo", "destination": "/api/ai?action=analyze-assessment-photo" },
     { "source": "/api/score-claim-fraud", "destination": "/api/ai?action=score-claim-fraud" },
