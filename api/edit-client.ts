@@ -86,7 +86,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .single()
 
   if (updateError || !updated) {
-    return res.status(500).json({ error: updateError?.message ?? 'Failed to update client.' })
+    console.error('Client update error:', updateError)
+    console.error('Update row:', row)
+    console.error('Client ID:', clientId)
+    return res.status(500).json({ error: updateError?.message ?? 'Failed to update client.', details: updateError })
   }
 
   // Log the audit entry
