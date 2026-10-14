@@ -101,10 +101,24 @@ export default function Clients({ showToast }: Props) {
 
   const handleEdit = async (updated: Client) => {
     const { data: { session } } = await supabase.auth.getSession()
+    const current = clients.find(c => c.id === updated.id)
+    if (!current) return
+
+    // Only send fields that actually changed
+    const updates: Record<string, unknown> = {}
+    if (updated.name !== current.name) updates.name = updated.name
+    if (updated.email !== current.email) updates.email = updated.email
+    if (updated.phone !== current.phone) updates.phone = updated.phone
+    if (updated.address !== current.address) updates.address = updated.address
+    if (updated.occupation !== current.occupation) updates.occupation = updated.occupation
+    if (updated.gender !== current.gender) updates.gender = updated.gender
+    if (updated.status !== current.status) updates.status = updated.status
+    if (updated.dob !== current.dob) updates.dob = updated.dob
+
     const res = await fetch('/api/edit-client', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}) },
-      body: JSON.stringify({ clientId: updated.id, updates: updated }),
+      body: JSON.stringify({ clientId: updated.id, updates }),
     })
     const body = await res.json().catch(() => ({}))
     if (!res.ok) { showToast('error', body.error ?? 'Failed to update client.'); return }

@@ -298,8 +298,7 @@ function drawLetterhead(doc: jsPDF, pageWidth: number, logo: string | null, bran
  * there is no shared General Conditions section). It flows on from the
  * schedule above in two newspaper-style columns: the first terms page's
  * columns begin below whatever already printed, later pages run edge to
- * edge. The point is brevity — a policy document is two pages at most
- * (three for tobacco's two schedules), not a booklet.
+ * edge. The point is brevity — a policy document is two pages at most, not a booklet.
  */
 function drawTermsPages(doc: jsPDF, product: { name?: string; category?: string }, startY: number) {
   const pageWidth = doc.internal.pageSize.getWidth()
@@ -341,19 +340,38 @@ function drawTermsPages(doc: jsPDF, product: { name?: string; category?: string 
 
   heading('TERMS AND CONDITIONS')
   y += 1
-  for (const terms of termsPagesFor(product)) {
+  const allTerms = termsPagesFor(product)
+  for (let i = 0; i < allTerms.length; i++) {
+    const terms = allTerms[i]
+    // Add product title heading when there are multiple terms (e.g., tobacco + funeral)
+    if (allTerms.length > 1 && terms.productTitle) {
+      ensure(8)
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(9)
+      doc.setTextColor(...BRAND_RED)
+      doc.text(terms.productTitle.toUpperCase(), xOf(col), y)
+      y += 6
+      doc.setTextColor(...TEXT)
+    }
     if (terms.sections) {
       for (const section of terms.sections) {
         heading(section.heading)
         section.paragraphs.forEach(para)
         y += 1.5
       }
-      continue
+    } else {
+      heading(terms.exclusionsHeading)
+      para(terms.exclusionsIntro)
+      terms.exclusions.forEach((e, idx) => para(`${idx + 1}. ${e}`))
+      y += 1.5
     }
-    heading(terms.exclusionsHeading)
-    para(terms.exclusionsIntro)
-    terms.exclusions.forEach((e, i) => para(`${i + 1}. ${e}`))
-    y += 1.5
+    // Add separator between multiple terms sections
+    if (i < allTerms.length - 1) {
+      ensure(6)
+      doc.setDrawColor(220, 226, 240)
+      doc.line(xOf(col), y, xOf(col) + colW, y)
+      y += 4
+    }
   }
 
   // Execution block — every issued policy document ends with the signee's
@@ -655,7 +673,7 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
       conditions.push(`This policy covers the policyholder and the ${policy.dependants.length} dependant${policy.dependants.length === 1 ? '' : 's'} named above only.`)
     }
   }
-  conditions.push('The Terms and Conditions and exclusion schedules on the final pages form part of this policy.')
+  conditions.push('Familiarize Yourself With The Following Terms and Conditions')
   const condLines = conditions.flatMap(c => doc.splitTextToSize(`• ${c}`, pageWidth - 32) as string[])
   ensureRoom(16 + condLines.length * 4.4)
   sectionBand('POLICY CONDITIONS')

@@ -56,6 +56,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     row.agent_id = updates.agentId
     changes.agentId = { old: current.agent_id, new: updates.agentId }
   }
+  if (updates.agentName !== undefined && updates.agentName !== current.agent_name) {
+    row.agent_name = updates.agentName
+    changes.agentName = { old: current.agent_name, new: updates.agentName }
+  }
   if (updates.growerNumber !== undefined && updates.growerNumber !== current.grower_number) {
     row.grower_number = updates.growerNumber
     changes.growerNumber = { old: current.grower_number, new: updates.growerNumber }
@@ -81,8 +85,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     changes.endDate = { old: current.end_date, new: updates.endDate }
   }
   if (updates.dependants !== undefined) {
-    row.dependants = updates.dependants
-    changes.dependants = { old: current.dependants, new: updates.dependants }
+    // Ensure dependants is always a valid array
+    const dependantsArray = Array.isArray(updates.dependants) ? updates.dependants : []
+    row.dependants = dependantsArray
+    changes.dependants = { old: current.dependants, new: dependantsArray }
   }
 
   if (Object.keys(row).length === 0) {
@@ -98,7 +104,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .single()
 
   if (updateError || !updated) {
-    return res.status(500).json({ error: updateError?.message ?? 'Failed to update policy.' })
+    console.error('Policy update error:', JSON.stringify({ policyId, row, updateError }, null, 2))
+    return res.status(500).json({ error: updateError?.message ?? 'Failed to update policy.', details: updateError })
   }
 
   // Log the audit entry

@@ -65,22 +65,29 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
     : []
 
   const handleSave = () => {
-    const agent = staff.find(s => s.id === agentId)
-    onSave({
-      ...policy,
-      status,
-      paymentMethod,
-      nextPaymentDate: nextPaymentDate || undefined,
-      agentId: agentId || undefined,
-      agentName: agent?.name ?? (agentId ? policy.agentName : undefined),
-      growerNumber: isAgriculture ? (growerNumber || undefined) : policy.growerNumber,
-      contractor: isAgriculture ? (contractor.trim() || undefined) : policy.contractor,
-      hectarage: isAgriculture ? (hectarage ? Number(hectarage) : undefined) : policy.hectarage,
-      premium: premium ? Number(premium) : policy.premium,
-      coverAmount: coverAmount ? Number(coverAmount) : policy.coverAmount,
-      endDate: endDate || policy.endDate,
-      dependants,
-    })
+    // Only send fields that actually changed - don't spread the entire policy object
+    const updates: Partial<Policy> = {}
+
+    if (status !== policy.status) updates.status = status
+    if (paymentMethod !== policy.paymentMethod) updates.paymentMethod = paymentMethod
+    if (nextPaymentDate !== policy.nextPaymentDate) updates.nextPaymentDate = nextPaymentDate || undefined
+    if (agentId !== policy.agentId) updates.agentId = agentId || undefined
+
+    if (isAgriculture) {
+      if (growerNumber !== policy.growerNumber) updates.growerNumber = growerNumber || undefined
+      if (contractor.trim() !== policy.contractor) updates.contractor = contractor.trim() || undefined
+      if (hectarage ? Number(hectarage) : undefined !== policy.hectarage) updates.hectarage = hectarage ? Number(hectarage) : undefined
+    }
+
+    if (premium ? Number(premium) : undefined !== policy.premium) updates.premium = premium ? Number(premium) : undefined
+    if (coverAmount ? Number(coverAmount) : undefined !== policy.coverAmount) updates.coverAmount = coverAmount ? Number(coverAmount) : undefined
+    if (endDate !== policy.endDate) updates.endDate = endDate || policy.endDate
+    if (JSON.stringify(dependants) !== JSON.stringify(policy.dependants)) updates.dependants = dependants
+
+    // Include id so the handler knows which policy to update
+    updates.id = policy.id
+
+    onSave(updates as Policy)
   }
 
   return (

@@ -65,15 +65,12 @@ const FUNERAL: PolicyTerms = {
   exclusionsHeading: 'Funeral Cash Plan Major Exclusions',
   exclusionsIntro: 'The Insurer will not be liable in respect of any claim for death which is directly or indirectly caused by, arising from, contributed to by, connected with or resulting from any of the following:',
   exclusions: [
-    'All claims occurring within 3 months of commencement or reinstatement of the policy',
-    'All claims arising from a lapsed policy or a closed policy',
+    'All claims occurring within the waiting period (3 months below 70 and 6 months above 70 years) of commencement or reinstatement of the policy.',
     'War, invasion by a foreign country, acts of foreign enemies, hostilities (whether war is declared or not), civil war, labour disturbances, active participation in strikes or the activities of locked-out workers, rebellion, revolution insurrection or military or usurped power, or the Insured Person engaging in military duty or military exercises with any armed force of any country or international authority.',
     'Suicide, while sane or insane.',
     'Engaging in (or practicing for or taking part in training peculiar to) underwater activities necessitating the use of artificial breathing apparatus, climbing or mountaineering necessitating the use of ropes or guides, potholing, parachuting, hang-gliding, winter sports involving snow and ice.',
     'The actions of any Insured Person(s) or the Insured Person(s)\u2019 personal representatives contrary to the law, criminal or other acts of the law.',
     'Epidemics as defined and declared by the World Health Organisation standards.',
-    'Where the funeral cash plan has not been paid, the rider policy will not be honoured.',
-    'All exclusions which apply to the funeral cash plan, also does apply to the rider policy.',
   ],
 }
 
@@ -199,14 +196,71 @@ const LEGAL: PolicyTerms = {
 }
 
 const TOBACCO: PolicyTerms = {
-  productTitle: 'Tobacco Insurance (Field to Floor)',
+  productTitle: 'Tobacco (Small Scale Crop Insurance)',
   exclusionsHeading: 'Small Scale Tobacco Major Exclusions',
-  exclusionsIntro: 'The Insurer will not be liable in respect of any claim for death which is directly or indirectly caused by, arising from, contributed to by, connected with or resulting from any of the following:',
+  exclusionsIntro: 'The Insurer will not be liable in respect of any claim for crop damage which is directly or indirectly caused by, arising from, contributed to by, connected with or resulting from any of the following:',
+  sections: [
+    { heading: 'Preamble', paragraphs: [
+      'WHEREAS the Insured named in the Schedules hereto (hereinafter called the "Insured") has applied to Motions Microinsurance Company (Private) Limited as mentioned on the schedule hereto (hereinafter called the "Insurer/Motions or the Company") for a policy of Field to Floor Tobacco insurance. In consideration of the Insured having actually paid the premium for the period of insurance or signed the TIMB stop order form, the Insurer will indemnify or compensate the Insured against loss or damage as described herein up to the Limit of Liability as stated in the Schedule hereto after receiving the premiums from the grower\u2019s contractor.',
+    ]},
+    { heading: 'Currency', paragraphs: [
+      'The product will be insured in USD or any currency in which the farmer will sell their produce in.',
+    ]},
+    { heading: 'Claims Notification, Process and Settlement', paragraphs: [
+      'The claim must be lodged as soon as possible after a loss has occurred and within 24 hours. The farmer will notify Motions through online, office calls or visits or through various channels as will be availed. Motions will appoint a loss adjustor or assessor within 24 hours of receipt of claim notification. Claim assessment record will be kept and a second assessment will be done within two to three weeks of loss if necessary. The final assessment will then produce a report detailing how much of the crop has been damaged and estimated payout. Actual payout will be decided after the selling of the crop and claims will be payable then.',
+    ]},
+    { heading: 'Policy Cover', paragraphs: [
+      'The policy will cover field-to-floor, wind storms, hail Storms, barn fire and transit Risks.',
+    ]},
+    { heading: 'Insurance Period and Cancellation', paragraphs: [
+      'The period commencing from the date of acceptance (subject to the delay period, where applicable), or crop emergence, whichever is the later, until the expiry date and as more specifically stated on the proposal form. Eligibility for this insurance shall be subject to the farmer duly completing a proposal form and having received acknowledgment from the Insurer. The Insurer shall not be liable to repay the premium or any part thereof if the insurance be terminated by the farmer before its expiry.',
+    ]},
+    { heading: 'Determination of Loss or Damage', paragraphs: [
+      'No person, other than the farmer or his representative, may attend an assessment without the approval of the assessor(s). An assessment of any loss or damage may be deferred at the discretion of the assessor(s) until the extent of loss or damage can be determined. Assessments are only finally accepted when they have been received by the Insurer and found to be in order, provided that all assessments are subject to inspection and revision by assessor(s) instructed by the Insurer.',
+    ]},
+    { heading: 'Compulsory Excess', paragraphs: [
+      'The farmer shall be responsible for the compulsory 15% excess of each loss incurred as related to the sum Insured as stated in the policy schedule in respect of each hectare lost or damaged.',
+    ]},
+    { heading: 'Cover for Replanted Crops', paragraphs: [
+      'If the farmer replants an area after he has destroyed the original area on which a claim has already been made, then he must insure that total replanted area by completing a new application form and all terms and conditions.',
+    ]},
+    { heading: 'Exclusions', paragraphs: [
+      'The Insurer will not be liable in respect of any claim for crop damage which is directly or indirectly caused by, arising from, contributed to by, connected with or resulting from any of the following:',
+      '1. Damages or claims arising from arson, fraudulent activities',
+      '2. Claims arising from war, invasion by a foreign country, acts of foreign enemies, hostilities (whether war is declared or not), civil war, labour disturbances, strikes or the activities of locked-out workers, rebellion, revolution insurrection or military or usurped power.',
+      '3. The actions of any Insured Person(s) and personal representatives contrary to the law, criminal or other acts of the law.',
+      '4. Acts of God',
+      '5. Loss of or damage to crops in seed beds',
+      '6. Nonpayment of premium.',
+      '7. If at the time of application for insurance the crop is not the farmer\u2019s bona fide property or there is no insurable interest',
+      '8. If at the time of application for insurance the farmer has made a false statement in any manner regarding his crop.',
+      '9. If the farmer fails or refuses to give all possible assistance in the investigation of any claim or fails to disclose any relevant information or otherwise makes a false or incorrect statement or declaration relating to the crop or an investigation concerned therewith.',
+      '10. Loss or damage due to neglect, malpractice, or failure to follow established good farming practices.',
+      '11. Loss or damage directly or indirectly due to drought, waterlogging, diseases, animals (domestic or wild), insects, and pests.',
+      '12. Loss or damage due to failure of the farmer to harvest matured crops.',
+      '13. Loss of or damage to any crop prior to the Insurer accepting the risk.',
+      '14. Consequential loss or damage of any kind or description which include downgrading of the crop due to whatever cause.',
+      '15. Loss or damage to the crop if the farmer fails to insure his total planted area.',
+      '16. The compulsory excess as stated in the schedule',
+    ]},
+  ],
   exclusions: [
     'Damages or claims arising from arson, fraudulent activities',
-    'Claims arising from war, invasion by a foreign country, acts of foreign enemies, hostilities (whether war is declared or not), civil war, labour disturbances, active participation in strikes or the activities of locked-out workers, rebellion, revolution insurrection or military or usurped power.',
-    'The actions of any Insured Person(s) or the Insured Person(s)\u2019 personal representatives contrary to the law, criminal or other acts of the law.',
+    'Claims arising from war, invasion by a foreign country, acts of foreign enemies, hostilities (whether war is declared or not), civil war, labour disturbances, strikes or the activities of locked-out workers, rebellion, revolution insurrection or military or usurped power.',
+    'The actions of any Insured Person(s) and personal representatives contrary to the law, criminal or other acts of the law.',
     'Acts of God',
+    'Loss of or damage to crops in seed beds',
+    'Nonpayment of premium.',
+    'If at the time of application for insurance the crop is not the farmer\u2019s bona fide property or there is no insurable interest',
+    'If at the time of application for insurance the farmer has made a false statement in any manner regarding his crop.',
+    'If the farmer fails or refuses to give all possible assistance in the investigation of any claim or fails to disclose any relevant information or otherwise makes a false or incorrect statement or declaration relating to the crop or an investigation concerned therewith.',
+    'Loss or damage due to neglect, malpractice, or failure to follow established good farming practices.',
+    'Loss or damage directly or indirectly due to drought, waterlogging, diseases, animals (domestic or wild), insects, and pests.',
+    'Loss or damage due to failure of the farmer to harvest matured crops.',
+    'Loss of or damage to any crop prior to the Insurer accepting the risk.',
+    'Consequential loss or damage of any kind or description which include downgrading of the crop due to whatever cause.',
+    'Loss or damage to the crop if the farmer fails to insure his total planted area.',
+    'The compulsory excess as stated in the schedule',
   ],
 }
 
