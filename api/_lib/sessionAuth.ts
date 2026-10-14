@@ -24,14 +24,15 @@ export function serviceClient(): SupabaseClient | null {
   return createClient(supabaseUrl, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } })
 }
 
-export async function requireSession(req: VercelRequest, admin: SupabaseClient): Promise<boolean> {
+export async function requireSession(req: VercelRequest, admin: SupabaseClient): Promise<{ user: { id: string } } | null> {
   const authHeader = req.headers.authorization
   const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined
-  if (!token) return false
+  if (!token) return null
   const { data: { user }, error } = await admin.auth.getUser(token)
-  if (error || !user) return false
+  if (error || !user) return null
   // A deactivated account's JWT still verifies until it expires -- the
   // profile's active flag is the real answer.
   const { data: profile } = await admin.from('profiles').select('active').eq('id', user.id).maybeSingle()
-  return profile?.active === true
+  if (profile?.active !== true) return null
+  return { user: { id: user.id } }
 }
