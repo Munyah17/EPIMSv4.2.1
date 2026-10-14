@@ -9,8 +9,6 @@ import { serviceClient } from './_lib/supabase'
 import { requireSession } from './_lib/sessionAuth'
 import { auditLog } from './_lib/audit'
 import { getPolicyReportPdfBase64 } from '../src/lib/exportUtils'
-import { uploadDocument } from '../src/lib/storage'
-import { supabase } from '../src/lib/supabase'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -98,26 +96,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const pdfBase64 = await getPolicyReportPdfBase64(policy, client, category)
       
       if (!dryRun) {
-        // Convert base64 to File
+        // Convert base64 to buffer and upload directly to Supabase storage
         const pdfBuffer = Buffer.from(pdfBase64, 'base64')
-        const file = new File([pdfBuffer], `${policy.policy_number}-Policy-Report.pdf`, { type: 'application/pdf' })
-        
-        // Upload to storage
-        const uploadResult = await uploadDocument('policies', policy.id, file)
-        if (uploadResult.error) {
+        const filename = `${policy.policy_number}-Policy-Report.pdf`
+        const storagePath = `${policy.id}/${filename}`
+
+        const { error: uploadError } = await admin.storage
+          .from('policies')
+          .upload(storagePath, pdfBuffer, {
+            contentType: 'application/pdf',
+            upsert: true
+          })
+
+        if (uploadError) {
           results.failed++
           results.errors.push({
             policyId: policy.id,
             policyNumber: policy.policy_number,
-            error: uploadResult.error,
+            error: uploadError.message,
           })
           continue
         }
 
         // Update policy documents array
         const currentDocs = policy.documents || []
-        const updatedDocs = [...currentDocs, uploadResult.data!.path]
-        
+        const updatedDocs = [...currentDocs, `policies/${storagePath}`]
+
         const { error: updateError } = await admin
           .from('policies')
           .update({ documents: updatedDocs })
