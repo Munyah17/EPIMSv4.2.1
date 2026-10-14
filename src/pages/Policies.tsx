@@ -3,6 +3,7 @@ import type { ToastMessage, Policy, PolicyStatus, CautionFlag, Client } from '..
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
+import { supabase } from '../lib/supabase'
 import { exportPolicyReport, getPolicyReportPdfBase64, exportToExcel, exportToCsv, exportReportToPdf } from '../lib/exportUtils'
 import { treatyRows, TREATY_HEADERS } from '../lib/treatyReport'
 import { toIsoDate } from '../lib/dateUtils'
@@ -219,10 +220,16 @@ export default function Policies({ showToast, initialCategory }: Props) {
   }
 
   const handleEdit = async (updated: Policy) => {
-    const { data, error } = await db.policies.update(updated.id, updated)
-    if (error || !data) { showToast('error', 'Failed to update policy.'); return }
-    setPolicies(prev => prev.map(p => p.id === data.id ? data : p))
-    showToast('success', `Policy ${data.policyNumber} updated.`)
+    const { data: { session } } = await supabase.auth.getSession()
+    const res = await fetch('/api/edit-policy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+      body: JSON.stringify({ policyId: updated.id, updates: updated }),
+    })
+    const body = await res.json().catch(() => ({}))
+    if (!res.ok) { showToast('error', body.error ?? 'Failed to update policy.'); return }
+    setPolicies(prev => prev.map(p => p.id === body.data.id ? body.data : p))
+    showToast('success', `Policy ${body.data.policyNumber} updated.`)
     setEditPolicy(null)
   }
 

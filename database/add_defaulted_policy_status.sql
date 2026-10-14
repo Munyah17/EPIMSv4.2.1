@@ -9,3 +9,4 @@ ALTER TABLE public.policies DROP CONSTRAINT IF EXISTS policies_status_check;
 ALTER TABLE public.policies ADD CONSTRAINT policies_status_check CHECK (
   status IN ('active','waiting_period','lapsed','cancelled','pending','expired','defaulted')
 );
+

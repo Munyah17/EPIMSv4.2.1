@@ -4,6 +4,7 @@ import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
 import { useAuth } from '../contexts/AuthContext'
+import { supabase } from '../lib/supabase'
 import { notifyClientRegistered, notifyRegistrationFailed, ADMIN_ALERT_NUMBERS } from '../lib/signupNotifications'
 import { notifyPhone, serverReachable } from '../lib/notify'
 import { recordActivity } from '../lib/activityLog'
@@ -99,10 +100,16 @@ export default function Clients({ showToast }: Props) {
   }
 
   const handleEdit = async (updated: Client) => {
-    const { data, error } = await db.clients.update(updated.id, updated)
-    if (error || !data) { showToast('error', error ?? 'Failed to update client.'); return }
-    setClients(prev => prev.map(c => c.id === data.id ? data : c))
-    showToast('success', `Client ${data.name} updated.`)
+    const { data: { session } } = await supabase.auth.getSession()
+    const res = await fetch('/api/edit-client', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}) },
+      body: JSON.stringify({ clientId: updated.id, updates: updated }),
+    })
+    const body = await res.json().catch(() => ({}))
+    if (!res.ok) { showToast('error', body.error ?? 'Failed to update client.'); return }
+    setClients(prev => prev.map(c => c.id === body.data.id ? body.data : c))
+    showToast('success', `Client ${body.data.name} updated.`)
     setEditClient(null)
   }
 
