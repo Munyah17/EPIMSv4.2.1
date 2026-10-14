@@ -53,9 +53,11 @@ export default function RegisterClientModal({ onClose, onSave, existingClients }
   const handleSave = () => {
     setAttempted(true)
     if (missing.length > 0) return
+    // Ensure phone is not empty (database requires NOT NULL)
+    const phoneValue = phone.trim() || ''
     const client: Client = {
       id: `c${Date.now()}`,
-      name, email, phone, nationalId, dob, address, occupation,
+      name, email, phone: phoneValue, nationalId, dob, address, occupation,
       gender: gender === 'other' ? genderOther.trim() || 'other' : gender || undefined,
       agentId: agentId || undefined,
       createdAt: toIsoDate(new Date()),

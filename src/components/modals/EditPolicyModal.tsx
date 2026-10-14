@@ -69,6 +69,7 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
     const updates: Partial<Policy> = {}
 
     if (status !== policy.status) updates.status = status
+    // payment_method is NOT NULL in database - never send undefined
     if (paymentMethod !== policy.paymentMethod) updates.paymentMethod = paymentMethod
     if (nextPaymentDate !== policy.nextPaymentDate) updates.nextPaymentDate = nextPaymentDate || undefined
     if (agentId !== policy.agentId) updates.agentId = agentId || undefined
@@ -79,8 +80,10 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
       if (hectarage ? Number(hectarage) : undefined !== policy.hectarage) updates.hectarage = hectarage ? Number(hectarage) : undefined
     }
 
-    if (premium ? Number(premium) : undefined !== policy.premium) updates.premium = premium ? Number(premium) : undefined
-    if (coverAmount ? Number(coverAmount) : undefined !== policy.coverAmount) updates.coverAmount = coverAmount ? Number(coverAmount) : undefined
+    // premium and cover_amount are NOT NULL in database - never send undefined
+    if (premium ? Number(premium) : undefined !== policy.premium) updates.premium = premium ? Number(premium) : policy.premium
+    if (coverAmount ? Number(coverAmount) : undefined !== policy.coverAmount) updates.coverAmount = coverAmount ? Number(coverAmount) : policy.coverAmount
+    // end_date is NOT NULL in database - never send undefined
     if (endDate !== policy.endDate) updates.endDate = endDate || policy.endDate
     if (JSON.stringify(dependants) !== JSON.stringify(policy.dependants)) updates.dependants = dependants
 

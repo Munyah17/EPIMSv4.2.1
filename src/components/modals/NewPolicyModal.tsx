@@ -517,7 +517,6 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
       createdAt: toIsoDate(new Date()),
       nextPaymentDate: toIsoDate(new Date(new Date(startDate).setMonth(new Date(startDate).getMonth() + (product!.category === 'agriculture' ? 12 : 1)))),
       agentId: agentId || undefined,
-      agentName: staff.find(s => s.id === agentId)?.name,
       source,
       hasChronicIllness: isMedical ? hasChronic ?? undefined : undefined,
       chronicIllnessDetails: isMedical && hasChronic ? chronicDetails.trim() : undefined,
