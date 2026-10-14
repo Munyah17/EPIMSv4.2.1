@@ -189,7 +189,7 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
             <label>End Date</label>
             <DateInput value={endDate} onChange={setEndDate} />
           </div>
-          {!isAgriculture && policy.coverScope === 'individual' && (
+          {!isAgriculture && (
             <div style={{ marginTop: '1rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                 <label>Dependants</label>
