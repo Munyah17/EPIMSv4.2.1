@@ -232,7 +232,6 @@ export default function Policies({ showToast, initialCategory }: Props) {
     if (updated.paymentMethod !== undefined) updates.paymentMethod = updated.paymentMethod
     if (updated.nextPaymentDate !== undefined) updates.nextPaymentDate = updated.nextPaymentDate
     if (updated.agentId !== undefined) updates.agentId = updated.agentId
-    if (updated.agentName !== undefined) updates.agentName = updated.agentName
     if (updated.growerNumber !== undefined) updates.growerNumber = updated.growerNumber
     if (updated.contractor !== undefined) updates.contractor = updated.contractor
     if (updated.hectarage !== undefined) updates.hectarage = updated.hectarage

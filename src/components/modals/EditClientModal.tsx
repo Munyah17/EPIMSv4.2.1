@@ -35,7 +35,9 @@ export default function EditClientModal({ client, onClose, onSave, onAssignPolic
   const handleSave = () => {
     setAttempted(true)
     if (missing.length > 0) return
-    onSave({ ...client, name: name.trim(), email, phone, address, occupation, status, dob, gender: gender === 'other' ? genderOther.trim() || 'other' : gender || undefined })
+    // Ensure phone is not empty string (database requires NOT NULL)
+    const phoneValue = phone.trim() || client.phone
+    onSave({ ...client, name: name.trim(), email, phone: phoneValue, address, occupation, status, dob, gender: gender === 'other' ? genderOther.trim() || 'other' : gender || undefined })
   }
 
   return (

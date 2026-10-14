@@ -56,10 +56,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     row.agent_id = updates.agentId
     changes.agentId = { old: current.agent_id, new: updates.agentId }
   }
-  if (updates.agentName !== undefined && updates.agentName !== current.agent_name) {
-    row.agent_name = updates.agentName
-    changes.agentName = { old: current.agent_name, new: updates.agentName }
-  }
   if (updates.growerNumber !== undefined && updates.growerNumber !== current.grower_number) {
     row.grower_number = updates.growerNumber
     changes.growerNumber = { old: current.grower_number, new: updates.growerNumber }
