@@ -39,7 +39,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const admin = serviceClient()
     if (!admin) return res.status(503).json({ error: 'Server not configured for photo uploads.' })
-    if (!(await requireSession(req, admin))) return res.status(401).json({ error: 'Sign-in required.' })
+
+    const session = await requireSession(req, admin)
+    if (!session) return res.status(401).json({ error: 'Sign-in required.' })
 
     const { memberNumber, confirm, updatedBy } = req.body ?? {}
     if (typeof memberNumber !== 'string' || !/^[A-Z0-9]+-\d{2}$/.test(memberNumber)) {

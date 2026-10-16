@@ -65,30 +65,40 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
     : []
 
   const handleSave = () => {
-    // Only send fields that actually changed - don't spread the entire policy object
-    const updates: Partial<Policy> = {}
+    // Only send fields that actually changed. Comparisons have to be
+    // grouped: `a ? b : c !== d` reads c !== d only when a is empty, so a
+    // filled premium was treated as "changed" on every save.
+    const updates: Partial<Policy> = { id: policy.id }
 
     if (status !== policy.status) updates.status = status
-    // payment_method is NOT NULL in database - never send undefined
-    if (paymentMethod !== policy.paymentMethod) updates.paymentMethod = paymentMethod
-    if (nextPaymentDate !== policy.nextPaymentDate) updates.nextPaymentDate = nextPaymentDate || undefined
-    if (agentId !== policy.agentId) updates.agentId = agentId || undefined
+    if (paymentMethod && paymentMethod !== policy.paymentMethod) updates.paymentMethod = paymentMethod
+
+    const nextPay = nextPaymentDate.trim()
+    if (nextPay !== (policy.nextPaymentDate ?? '')) updates.nextPaymentDate = nextPay
+
+    const nextAgent = agentId.trim()
+    if (nextAgent !== (policy.agentId ?? '')) updates.agentId = nextAgent
 
     if (isAgriculture) {
-      if (growerNumber !== policy.growerNumber) updates.growerNumber = growerNumber || undefined
-      if (contractor.trim() !== policy.contractor) updates.contractor = contractor.trim() || undefined
-      if (hectarage ? Number(hectarage) : undefined !== policy.hectarage) updates.hectarage = hectarage ? Number(hectarage) : undefined
+      if (growerNumber.trim() !== (policy.growerNumber ?? '')) updates.growerNumber = growerNumber.trim()
+      if (contractor.trim() !== (policy.contractor ?? '')) updates.contractor = contractor.trim()
+      const nextHa = hectarage === '' ? undefined : Number(hectarage)
+      if (nextHa !== policy.hectarage && !(nextHa === undefined && policy.hectarage == null)) {
+        updates.hectarage = nextHa
+      }
     }
 
-    // premium and cover_amount are NOT NULL in database - never send undefined
-    if (premium ? Number(premium) : undefined !== policy.premium) updates.premium = premium ? Number(premium) : policy.premium
-    if (coverAmount ? Number(coverAmount) : undefined !== policy.coverAmount) updates.coverAmount = coverAmount ? Number(coverAmount) : policy.coverAmount
-    // end_date is NOT NULL in database - never send undefined
-    if (endDate !== policy.endDate) updates.endDate = endDate || policy.endDate
-    if (JSON.stringify(dependants) !== JSON.stringify(policy.dependants)) updates.dependants = dependants
-
-    // Include id so the handler knows which policy to update
-    updates.id = policy.id
+    const nextPremium = Number(premium)
+    if (premium.trim() !== '' && Number.isFinite(nextPremium) && nextPremium !== Number(policy.premium)) {
+      updates.premium = nextPremium
+    }
+    const nextCover = Number(coverAmount)
+    if (coverAmount.trim() !== '' && Number.isFinite(nextCover) && nextCover !== Number(policy.coverAmount)) {
+      updates.coverAmount = nextCover
+    }
+    const nextEnd = endDate.trim()
+    if (nextEnd && nextEnd !== (policy.endDate ?? '')) updates.endDate = nextEnd
+    if (JSON.stringify(dependants) !== JSON.stringify(policy.dependants ?? [])) updates.dependants = dependants
 
     onSave(updates as Policy)
   }

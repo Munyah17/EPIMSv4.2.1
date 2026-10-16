@@ -17,6 +17,7 @@ import type {
   TicketStatus, TicketPriority, LeadStatus, FraudCaseStatus, CustomRole,
   ClaimAssessment, PolicyAssessment, AssessmentPhoto, CropType, FraudSignalRule, HeroSlide,
   PolicyCard, Group, GroupMember, Invoice, InvoiceStatus, AgentProfile,
+  MarketingContact, MarketingTemplate, MarketingCampaign, CampaignRecipient,
 } from '../types'
 import { STAFF_ROLES } from '../types'
 
@@ -63,6 +64,25 @@ async function sb<T>(
  * Reads still fall back to the local cache — showing the last known data
  * beats showing nothing — but a write now surfaces the real reason.
  */
+/** PostgREST's "no rows" error is what RLS looks like when an update is
+ *  refused. Say that, instead of the raw coerce message. */
+function explainWriteError(error: string | null): string | null {
+  if (!error) return error
+  if (/cannot coerce|0 rows|no\) rows returned|PGRST116/i.test(error)) {
+    return 'The database did not save this change. Your account may not be allowed to edit this record, or it was removed.'
+  }
+  if (/invalid input syntax for type uuid/i.test(error)) {
+    return 'That agent could not be saved. Pick an agent from the list, or leave the field unassigned.'
+  }
+  if (/invalid input syntax for type date/i.test(error)) {
+    return 'One of the dates is not a real date. Check the payment date and the end date, then try again.'
+  }
+  if (/invalid input syntax for type numeric/i.test(error)) {
+    return 'Premium and cover amount must be numbers.'
+  }
+  return error
+}
+
 function writeFailed(table: string, error: string | null): { data: null; error: string } {
   health.record({ ts: Date.now(), type: 'write', table, success: false, duration: 0, source: 'supabase', detail: error ?? undefined })
   window.dispatchEvent(new CustomEvent(DB_FALLBACK_EVENT, { detail: { table, type: 'write', error } }))
@@ -664,18 +684,33 @@ export const policies = {
     const row: Record<string, unknown> = {}
     if (updates.status)                              row.status             = updates.status
     if (updates.paymentMethod)                       row.payment_method     = updates.paymentMethod
-    if (updates.insurer !== undefined)               row.insurer            = updates.insurer ?? null
-    if (updates.growerNumber !== undefined)          row.grower_number      = updates.growerNumber ?? null
-    if (updates.contractor !== undefined)            row.contractor         = updates.contractor ?? null
-    if (updates.hectarage !== undefined)             row.hectarage          = updates.hectarage ?? null
+    if (updates.insurer !== undefined)               row.insurer            = updates.insurer || null
+    if (updates.growerNumber !== undefined)          row.grower_number      = updates.growerNumber || null
+    if (updates.contractor !== undefined)            row.contractor         = updates.contractor || null
+    if ('hectarage' in updates)                      row.hectarage          = updates.hectarage ?? null
     if (updates.gpsLat !== undefined)                row.gps_lat            = updates.gpsLat ?? null
     if (updates.gpsLng !== undefined)                row.gps_lng            = updates.gpsLng ?? null
-    if (updates.nextPaymentDate !== undefined)        row.next_payment_date  = updates.nextPaymentDate ?? null
-    if (updates.dependants)                          row.dependants         = updates.dependants
-    if (updates.premium !== undefined)               row.premium            = updates.premium
-    if (updates.coverAmount !== undefined)           row.cover_amount       = updates.coverAmount
-    if (updates.endDate !== undefined)               row.end_date           = updates.endDate
-    if (updates.agentId !== undefined)               row.agent_id           = updates.agentId ?? null
+    // Blank date must become NULL. An empty string is not a date, and
+    // Postgres rejects the whole update with a syntax error.
+    if (updates.nextPaymentDate !== undefined)       row.next_payment_date  = updates.nextPaymentDate || null
+    if (updates.dependants !== undefined)            row.dependants         = updates.dependants ?? []
+    if (updates.premium !== undefined) {
+      const premium = Number(updates.premium)
+      if (!Number.isFinite(premium)) return { data: null, error: 'Premium must be a number.' }
+      row.premium = premium
+    }
+    if (updates.coverAmount !== undefined) {
+      const cover = Number(updates.coverAmount)
+      if (!Number.isFinite(cover)) return { data: null, error: 'Cover amount must be a number.' }
+      row.cover_amount = cover
+    }
+    if (updates.endDate !== undefined) {
+      if (!updates.endDate) return { data: null, error: 'A policy must have an end date.' }
+      row.end_date = updates.endDate
+    }
+    // A cleared agent used to be sent as "" and Postgres rejected the
+    // update because agent_id is a uuid.
+    if (updates.agentId !== undefined)               row.agent_id           = updates.agentId || null
     if (updates.source)                              row.source             = updates.source
     const policySelect_ = await policySelect()
     if (schemaFlags.get('policies.group_id')?.ok) {
@@ -683,11 +718,12 @@ export const policies = {
       if (updates.coverScope)                        row.cover_scope        = updates.coverScope
       if (updates.teamActivity !== undefined)        row.team_activity      = updates.teamActivity ?? null
     }
+    if (Object.keys(row).length === 0) return { data: null, error: 'No changes to save.' }
     const { ok, data, error } = await sb('policies', 'write',
       () => supabase.from('policies').update(row).eq('id', id).select(policySelect_).single(),
     )
     if (ok && data) return { data: toPolicy(data), error: null }
-    return writeFailed('policies', error)
+    return writeFailed('policies', explainWriteError(error))
   },
 
   /** What is standing in the way of deleting this policy. Reminders,
@@ -813,18 +849,23 @@ export const clients = {
 
   async update(id: string, updates: Partial<Client>) {
     const row: Record<string, unknown> = {}
-    if (updates.name       !== undefined) row.name       = updates.name
-    if (updates.email      !== undefined) row.email      = updates.email
-    if (updates.phone      !== undefined) row.phone      = updates.phone
+    if (updates.name       !== undefined) row.name       = updates.name.trim()
+    if (updates.email      !== undefined) row.email      = updates.email.trim() || null
+    if (updates.phone      !== undefined) {
+      const phone = updates.phone.trim()
+      if (!phone) return { data: null, error: 'Phone number is required.' }
+      row.phone = phone
+    }
     if (updates.nationalId !== undefined) row.national_id = updates.nationalId
     if (updates.dob        !== undefined) row.dob        = updates.dob || null
-    if (updates.gender     !== undefined) row.gender     = updates.gender ?? null
+    if (updates.gender     !== undefined && await hasColumn('clients', 'gender')) row.gender = updates.gender || null
     if (updates.address    !== undefined) row.address    = updates.address
-    if (updates.occupation !== undefined) row.occupation = updates.occupation
-    if (updates.insurer    !== undefined) row.insurer    = updates.insurer ?? null
+    if (updates.occupation !== undefined) row.occupation = updates.occupation || null
+    if (updates.insurer    !== undefined) row.insurer    = updates.insurer || null
     if (updates.insurerProvisional !== undefined) row.insurer_provisional = updates.insurerProvisional
-    if (updates.agentId    !== undefined) row.agent_id   = updates.agentId ?? null
+    if (updates.agentId    !== undefined) row.agent_id   = updates.agentId || null
     if (updates.status     !== undefined) row.status     = updates.status
+    if (Object.keys(row).length === 0) return { data: null, error: 'No changes to save.' }
     const { ok, data, error } = await sb('clients', 'write',
       () => supabase.from('clients').update(row).eq('id', id).select().single(),
     )
@@ -832,7 +873,7 @@ export const clients = {
     if (error && /duplicate key/i.test(error) && /national_id/i.test(error)) {
       return writeFailed('clients', 'That national ID already belongs to another client — check for a duplicate registration first.')
     }
-    return writeFailed('clients', error)
+    return writeFailed('clients', explainWriteError(error))
   },
 
   /**
@@ -3122,6 +3163,374 @@ export const invoices = {
   },
 }
 
+// ── MARKETING MODULE ────────────────────────────────────────────────
+
+function toMarketingContact(r: Record<string, unknown>): MarketingContact {
+  return {
+    id: r.id as string,
+    name: r.name as string,
+    phone: r.phone as string,
+    normalizedPhone: r.normalized_phone as string,
+    email: (r.email as string | null) ?? undefined,
+    insuranceInterest: (r.insurance_interest as string | null) ?? undefined,
+    source: (r.source as string | null) ?? undefined,
+    marketingPermission: r.marketing_permission as boolean,
+    optedOut: r.opted_out as boolean,
+    optedOutAt: (r.opted_out_at as string | null) ?? undefined,
+    optOutReason: (r.opt_out_reason as string | null) ?? undefined,
+    optOutChannel: (r.opt_out_channel as 'sms' | 'email' | null) ?? undefined,
+    leadId: (r.lead_id as string | null) ?? undefined,
+    notes: (r.notes as string | null) ?? undefined,
+    createdBy: (r.created_by as string | null) ?? undefined,
+    createdByName: ((r.creator as { name?: string } | null | undefined)?.name as string | null) ?? undefined,
+    createdAt: r.created_at as string,
+    updatedAt: r.updated_at as string,
+  }
+}
+
+function toMarketingTemplate(r: Record<string, unknown>): MarketingTemplate {
+  return {
+    id: r.id as string,
+    name: r.name as string,
+    title: (r.title as string | null) ?? undefined,
+    description: r.description as string,
+    category: (r.category as string | null) ?? undefined,
+    active: r.active as boolean,
+    createdBy: (r.created_by as string | null) ?? undefined,
+    createdByName: ((r.creator as { name?: string } | null | undefined)?.name as string | null) ?? undefined,
+    createdAt: r.created_at as string,
+    updatedAt: r.updated_at as string,
+  }
+}
+
+function toMarketingCampaign(r: Record<string, unknown>): MarketingCampaign {
+  return {
+    id: r.id as string,
+    name: r.name as string,
+    title: (r.title as string | null) ?? undefined,
+    description: r.description as string,
+    channel: r.channel as MarketingCampaign['channel'],
+    recipientCount: r.recipient_count as number,
+    smsSegmentCount: r.sms_segment_count as number,
+    estimatedSmsCost: r.estimated_sms_cost != null ? Number(r.estimated_sms_cost) : undefined,
+    status: r.status as MarketingCampaign['status'],
+    scheduledFor: (r.scheduled_for as string | null) ?? undefined,
+    sentAt: (r.sent_at as string | null) ?? undefined,
+    createdBy: (r.created_by as string | null) ?? undefined,
+    createdByName: ((r.creator as { name?: string } | null | undefined)?.name as string | null) ?? undefined,
+    createdAt: r.created_at as string,
+    updatedAt: r.updated_at as string,
+  }
+}
+
+function toCampaignRecipient(r: Record<string, unknown>): CampaignRecipient {
+  return {
+    id: r.id as string,
+    campaignId: r.campaign_id as string,
+    contactId: r.contact_id as string,
+    contactName: ((r.contacts as { name?: string } | null | undefined)?.name as string | null) ?? undefined,
+    phone: (r.phone as string | null) ?? undefined,
+    email: (r.email as string | null) ?? undefined,
+    smsStatus: (r.sms_status as CampaignRecipient['smsStatus'] | null) ?? undefined,
+    emailStatus: (r.email_status as CampaignRecipient['emailStatus'] | null) ?? undefined,
+    smsMessageId: (r.sms_message_id as string | null) ?? undefined,
+    emailMessageId: (r.email_message_id as string | null) ?? undefined,
+    errorMessage: (r.error_message as string | null) ?? undefined,
+    sentAt: (r.sent_at as string | null) ?? undefined,
+    deliveredAt: (r.delivered_at as string | null) ?? undefined,
+    createdAt: r.created_at as string,
+  }
+}
+
+/** Zimbabwe MSISDN normalization for marketing contacts */
+function normalizeMsisdn(raw: string): string {
+  let digits = raw.replace(/\D/g, '')
+  if (digits.startsWith('0')) digits = '263' + digits.slice(1)
+  else if (digits.startsWith('2630')) digits = '263' + digits.slice(4)
+  else if (!digits.startsWith('263')) digits = '263' + digits
+  return digits
+}
+
+const CONTACT_SELECT = `
+  id, name, phone, normalized_phone, email, insurance_interest, source,
+  marketing_permission, opted_out, opted_out_at, opt_out_reason, opt_out_channel,
+  lead_id, notes, created_by, created_at, updated_at,
+  creator:profiles!created_by(id, name)
+`
+
+const TEMPLATE_SELECT = `
+  id, name, title, description, category, active, created_by, created_at, updated_at,
+  creator:profiles!created_by(id, name)
+`
+
+const CAMPAIGN_SELECT = `
+  id, name, title, description, channel, recipient_count, sms_segment_count,
+  estimated_sms_cost, status, scheduled_for, sent_at, created_by, created_at, updated_at,
+  creator:profiles!created_by(id, name)
+`
+
+const RECIPIENT_SELECT = `
+  id, campaign_id, contact_id, phone, email, sms_status, email_status,
+  sms_message_id, email_message_id, error_message, sent_at, delivered_at, created_at,
+  contacts!contact_id(name)
+`
+
+export const marketingContacts = {
+  async list() {
+    const { ok, data, error } = await sb('marketing_contacts', 'read',
+      () => supabase.from('marketing_contacts').select(CONTACT_SELECT).order('created_at', { ascending: false }),
+      d => Array.isArray(d),
+    )
+    if (ok && data) return { data: (data as unknown[]).map((r: unknown) => toMarketingContact(r as Record<string, unknown>)), error: null }
+    return { data: [], error }
+  },
+
+  async get(id: string) {
+    const { ok, data, error } = await sb('marketing_contacts', 'read',
+      () => supabase.from('marketing_contacts').select(CONTACT_SELECT).eq('id', id).single(),
+    )
+    if (ok && data) return { data: toMarketingContact(data as Record<string, unknown>), error: null }
+    return { data: null, error: error ?? 'Contact not found.' }
+  },
+
+  async create(contact: Omit<MarketingContact, 'id' | 'createdByName' | 'createdAt' | 'updatedAt' | 'normalizedPhone'>) {
+    const normalized = normalizeMsisdn(contact.phone)
+    const { data: { session } } = await supabase.auth.getSession()
+    const row = {
+      name: contact.name,
+      phone: contact.phone,
+      normalized_phone: normalized,
+      email: contact.email ?? null,
+      insurance_interest: contact.insuranceInterest ?? null,
+      source: contact.source ?? null,
+      marketing_permission: contact.marketingPermission,
+      opted_out: contact.optedOut,
+      opted_out_at: contact.optedOutAt ?? null,
+      opt_out_reason: contact.optOutReason ?? null,
+      opt_out_channel: contact.optOutChannel ?? null,
+      lead_id: contact.leadId ?? null,
+      notes: contact.notes ?? null,
+      created_by: session?.user?.id ?? null,
+    }
+    const { data, error } = await supabase.from('marketing_contacts').insert(row).select(CONTACT_SELECT).single()
+    if (!error && data) return { data: toMarketingContact(data), error: null }
+    if (error?.code === '23505') return { data: null, error: 'A contact with this phone number already exists.' }
+    return writeFailed('marketing_contacts', error?.message ?? null)
+  },
+
+  async update(id: string, updates: Partial<MarketingContact>) {
+    const row: Record<string, unknown> = {}
+    if (updates.name) row.name = updates.name
+    if (updates.phone) { row.phone = updates.phone; row.normalized_phone = normalizeMsisdn(updates.phone) }
+    if (updates.email !== undefined) row.email = updates.email || null
+    if (updates.insuranceInterest !== undefined) row.insurance_interest = updates.insuranceInterest || null
+    if (updates.source !== undefined) row.source = updates.source || null
+    if (updates.marketingPermission !== undefined) row.marketing_permission = updates.marketingPermission
+    if (updates.optedOut !== undefined) row.opted_out = updates.optedOut
+    if (updates.optedOutAt !== undefined) row.opted_out_at = updates.optedOutAt || null
+    if (updates.optOutReason !== undefined) row.opt_out_reason = updates.optOutReason || null
+    if (updates.optOutChannel !== undefined) row.opt_out_channel = updates.optOutChannel || null
+    if (updates.leadId !== undefined) row.lead_id = updates.leadId || null
+    if (updates.notes !== undefined) row.notes = updates.notes || null
+
+    const { data, error } = await supabase.from('marketing_contacts').update(row).eq('id', id).select(CONTACT_SELECT).single()
+    if (!error && data) return { data: toMarketingContact(data), error: null }
+    if (error?.code === '23505') return { data: null, error: 'A contact with this phone number already exists.' }
+    return writeFailed('marketing_contacts', error?.message ?? null)
+  },
+
+  async delete(id: string) {
+    const { error } = await supabase.from('marketing_contacts').delete().eq('id', id)
+    return { error: error?.message ?? null }
+  },
+
+  async importCSV(contacts: Array<{ name: string; phone: string; email?: string; insuranceInterest?: string; source?: string }>) {
+    const { data: { session } } = await supabase.auth.getSession()
+    const results = { imported: 0, duplicates: 0, errors: 0 }
+    const errors: string[] = []
+
+    for (const contact of contacts) {
+      const normalized = normalizeMsisdn(contact.phone)
+      const row = {
+        name: contact.name,
+        phone: contact.phone,
+        normalized_phone: normalized,
+        email: contact.email || null,
+        insurance_interest: contact.insuranceInterest || null,
+        source: contact.source || null,
+        marketing_permission: true,
+        opted_out: false,
+        created_by: session?.user?.id ?? null,
+      }
+
+      const { error } = await supabase.from('marketing_contacts').insert(row)
+      if (!error) {
+        results.imported++
+      } else if (error.code === '23505') {
+        results.duplicates++
+      } else {
+        results.errors++
+        errors.push(`${contact.name}: ${error.message}`)
+      }
+    }
+
+    return { results, errors }
+  },
+}
+
+export const marketingTemplates = {
+  async list() {
+    const { ok, data, error } = await sb('marketing_templates', 'read',
+      () => supabase.from('marketing_templates').select(TEMPLATE_SELECT).order('created_at', { ascending: false }),
+      d => Array.isArray(d),
+    )
+    if (ok && data) return { data: (data as unknown[]).map((r: unknown) => toMarketingTemplate(r as Record<string, unknown>)), error: null }
+    return { data: [], error }
+  },
+
+  async get(id: string) {
+    const { ok, data, error } = await sb('marketing_templates', 'read',
+      () => supabase.from('marketing_templates').select(TEMPLATE_SELECT).eq('id', id).single(),
+    )
+    if (ok && data) return { data: toMarketingTemplate(data as Record<string, unknown>), error: null }
+    return { data: null, error: error ?? 'Template not found.' }
+  },
+
+  async create(template: Omit<MarketingTemplate, 'id' | 'createdByName' | 'createdAt' | 'updatedAt'>) {
+    const { data: { session } } = await supabase.auth.getSession()
+    const row = {
+      name: template.name,
+      title: template.title || null,
+      description: template.description,
+      category: template.category || null,
+      active: template.active,
+      created_by: session?.user?.id ?? null,
+    }
+    const { data, error } = await supabase.from('marketing_templates').insert(row).select(TEMPLATE_SELECT).single()
+    if (!error && data) return { data: toMarketingTemplate(data), error: null }
+    return writeFailed('marketing_templates', error?.message ?? null)
+  },
+
+  async update(id: string, updates: Partial<MarketingTemplate>) {
+    const row: Record<string, unknown> = {}
+    if (updates.name) row.name = updates.name
+    if (updates.title !== undefined) row.title = updates.title || null
+    if (updates.description) row.description = updates.description
+    if (updates.category !== undefined) row.category = updates.category || null
+    if (updates.active !== undefined) row.active = updates.active
+
+    const { data, error } = await supabase.from('marketing_templates').update(row).eq('id', id).select(TEMPLATE_SELECT).single()
+    if (!error && data) return { data: toMarketingTemplate(data), error: null }
+    return writeFailed('marketing_templates', error?.message ?? null)
+  },
+
+  async delete(id: string) {
+    const { error } = await supabase.from('marketing_templates').delete().eq('id', id)
+    return { error: error?.message ?? null }
+  },
+}
+
+export const marketingCampaigns = {
+  async list() {
+    const { ok, data, error } = await sb('marketing_campaigns', 'read',
+      () => supabase.from('marketing_campaigns').select(CAMPAIGN_SELECT).order('created_at', { ascending: false }),
+      d => Array.isArray(d),
+    )
+    if (ok && data) return { data: (data as unknown[]).map((r: unknown) => toMarketingCampaign(r as Record<string, unknown>)), error: null }
+    return { data: [], error }
+  },
+
+  async get(id: string) {
+    const { ok, data, error } = await sb('marketing_campaigns', 'read',
+      () => supabase.from('marketing_campaigns').select(CAMPAIGN_SELECT).eq('id', id).single(),
+    )
+    if (ok && data) return { data: toMarketingCampaign(data as Record<string, unknown>), error: null }
+    return { data: null, error: error ?? 'Campaign not found.' }
+  },
+
+  async create(campaign: Omit<MarketingCampaign, 'id' | 'createdByName' | 'createdAt' | 'updatedAt'>) {
+    const { data: { session } } = await supabase.auth.getSession()
+    const row = {
+      name: campaign.name,
+      title: campaign.title || null,
+      description: campaign.description,
+      channel: campaign.channel,
+      recipient_count: campaign.recipientCount,
+      sms_segment_count: campaign.smsSegmentCount,
+      estimated_sms_cost: campaign.estimatedSmsCost || null,
+      status: campaign.status,
+      scheduled_for: campaign.scheduledFor || null,
+      created_by: session?.user?.id ?? null,
+    }
+    const { data, error } = await supabase.from('marketing_campaigns').insert(row).select(CAMPAIGN_SELECT).single()
+    if (!error && data) return { data: toMarketingCampaign(data), error: null }
+    return writeFailed('marketing_campaigns', error?.message ?? null)
+  },
+
+  async update(id: string, updates: Partial<MarketingCampaign>) {
+    const row: Record<string, unknown> = {}
+    if (updates.name) row.name = updates.name
+    if (updates.title !== undefined) row.title = updates.title || null
+    if (updates.description) row.description = updates.description
+    if (updates.channel) row.channel = updates.channel
+    if (updates.recipientCount !== undefined) row.recipient_count = updates.recipientCount
+    if (updates.smsSegmentCount !== undefined) row.sms_segment_count = updates.smsSegmentCount
+    if (updates.estimatedSmsCost !== undefined) row.estimated_sms_cost = updates.estimatedSmsCost || null
+    if (updates.status) row.status = updates.status
+    if (updates.scheduledFor !== undefined) row.scheduled_for = updates.scheduledFor || null
+    if (updates.sentAt !== undefined) row.sent_at = updates.sentAt || null
+
+    const { data, error } = await supabase.from('marketing_campaigns').update(row).eq('id', id).select(CAMPAIGN_SELECT).single()
+    if (!error && data) return { data: toMarketingCampaign(data), error: null }
+    return writeFailed('marketing_campaigns', error?.message ?? null)
+  },
+
+  async delete(id: string) {
+    const { error } = await supabase.from('marketing_campaigns').delete().eq('id', id)
+    return { error: error?.message ?? null }
+  },
+
+  async getRecipients(campaignId: string) {
+    const { ok, data, error } = await sb('marketing_campaign_recipients', 'read',
+      () => supabase.from('marketing_campaign_recipients').select(RECIPIENT_SELECT).eq('campaign_id', campaignId),
+      d => Array.isArray(d),
+    )
+    if (ok && data) return { data: (data as unknown[]).map((r: unknown) => toCampaignRecipient(r as Record<string, unknown>)), error: null }
+    return { data: [], error }
+  },
+}
+
+export const campaignRecipients = {
+  async create(recipients: Array<{ campaignId: string; contactId: string; phone?: string; email?: string }>) {
+    const rows = recipients.map(r => ({
+      campaign_id: r.campaignId,
+      contact_id: r.contactId,
+      phone: r.phone || null,
+      email: r.email || null,
+      sms_status: 'pending',
+      email_status: 'pending',
+    }))
+    const { data, error } = await supabase.from('marketing_campaign_recipients').insert(rows).select()
+    if (!error && data) return { data: (data as unknown[]).map((r: unknown) => toCampaignRecipient(r as Record<string, unknown>)), error: null }
+    return { data: [], error: error?.message ?? null }
+  },
+
+  async updateStatus(id: string, updates: { smsStatus?: CampaignRecipient['smsStatus']; emailStatus?: CampaignRecipient['emailStatus']; messageId?: string; errorMessage?: string; sentAt?: string; deliveredAt?: string }) {
+    const row: Record<string, unknown> = {}
+    if (updates.smsStatus) row.sms_status = updates.smsStatus
+    if (updates.emailStatus) row.email_status = updates.emailStatus
+    if (updates.messageId && updates.smsStatus) row.sms_message_id = updates.messageId
+    if (updates.messageId && updates.emailStatus) row.email_message_id = updates.messageId
+    if (updates.errorMessage) row.error_message = updates.errorMessage
+    if (updates.sentAt) row.sent_at = updates.sentAt
+    if (updates.deliveredAt) row.delivered_at = updates.deliveredAt
+
+    const { data, error } = await supabase.from('marketing_campaign_recipients').update(row).eq('id', id).select(RECIPIENT_SELECT).single()
+    if (!error && data) return { data: toCampaignRecipient(data), error: null }
+    return { data: null, error: error?.message ?? null }
+  },
+}
+
 // ── EXPORT ────────────────────────────────────────────────────────
 export const db = {
   policies, clients, products, claims, payments,
@@ -3130,5 +3539,6 @@ export const db = {
   customRoles, claimAssessments, policyAssessments, photoHashes, cropTypes, fraudSignalRules, heroSlides,
   policyCards, groups, groupMembers, agentProfiles,
   dashboardStats, sidebarCounts, notificationLog, invoices,
+  marketingContacts, marketingTemplates, marketingCampaigns, campaignRecipients,
   subscribeToTable,
 }

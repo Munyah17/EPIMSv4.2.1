@@ -220,41 +220,56 @@ export default function Policies({ showToast, initialCategory }: Props) {
   }
 
   const handleEdit = async (updated: Policy) => {
-    const { data: { session } } = await supabase.auth.getSession()
     const current = policies.find(p => p.id === updated.id)
     if (!current) return
 
-    // The modal now sends only changed fields - extract those and send directly
-    const updates: Record<string, unknown> = {}
-    
-    // Only include fields that are present in the updated object
-    if (updated.status !== undefined) updates.status = updated.status
-    if (updated.paymentMethod !== undefined) updates.paymentMethod = updated.paymentMethod
-    if (updated.nextPaymentDate !== undefined) updates.nextPaymentDate = updated.nextPaymentDate
-    if (updated.agentId !== undefined) updates.agentId = updated.agentId
-    if (updated.growerNumber !== undefined) updates.growerNumber = updated.growerNumber
-    if (updated.contractor !== undefined) updates.contractor = updated.contractor
-    if (updated.hectarage !== undefined) updates.hectarage = updated.hectarage
-    if (updated.premium !== undefined) updates.premium = updated.premium
-    if (updated.coverAmount !== undefined) updates.coverAmount = updated.coverAmount
-    if (updated.endDate !== undefined) updates.endDate = updated.endDate
-    if (updated.dependants !== undefined) updates.dependants = updated.dependants
-
-    const res = await fetch('/api/edit-policy', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}) },
-      body: JSON.stringify({ policyId: updated.id, updates }),
-    })
-    const body = await res.json().catch(() => ({}))
-    if (!res.ok) {
-      console.error('Policy edit failed:', body)
-      showToast('error', body.error ?? 'Failed to update policy.')
-      if (body.details) console.error('Error details:', body.details)
+    // The modal sends only the fields that changed. Saving used to POST
+    // /api/edit-policy, which crashes on load, so every save came back as
+    // "Failed to update policy." Write the row the same way approve does.
+    const updates: Partial<Policy> = { ...updated }
+    delete updates.id
+    if (Object.keys(updates).length === 0) {
+      showToast('info', 'No changes to save.')
+      setEditPolicy(null)
       return
     }
-    setPolicies(prev => prev.map(p => p.id === body.data.id ? body.data : p))
-    showToast('success', `Policy ${body.data.policyNumber} updated.`)
+
+    const { data, error } = await db.policies.update(updated.id, updates)
+    if (error || !data) {
+      showToast('error', error ?? 'Failed to update policy.')
+      return
+    }
+    setPolicies(prev => prev.map(p => p.id === data.id ? {
+      ...p,
+      ...data,
+      clientName: data.clientName || p.clientName,
+      productName: data.productName || p.productName,
+      agentName: data.agentId ? (data.agentName || p.agentName) : undefined,
+    } : p))
+    showToast('success', `Policy ${data.policyNumber || current.policyNumber} updated.`)
     setEditPolicy(null)
+    void recordActivity({
+      action: 'policy.updated',
+      actor: { id: user?.id, name: user?.name ?? 'Unknown', role: user?.role ?? 'unknown' },
+      entityType: 'policy',
+      entityId: current.id,
+      entityLabel: current.policyNumber,
+      detail: Object.keys(updates).join(', '),
+    })
+    if (user?.id) {
+      const changes = Object.fromEntries(Object.keys(updates).map(key => [key, {
+        old: current[key as keyof Policy],
+        new: updates[key as keyof typeof updates],
+      }]))
+      void supabase.from('audit_log').insert({
+        operator_id: user.id,
+        entity_type: 'policy',
+        entity_id: current.id,
+        action: `Edited policy: ${Object.keys(updates).join(', ')}`,
+        changes,
+        source: 'web',
+      })
+    }
   }
 
   const handleApprove = async (policy: Policy) => {

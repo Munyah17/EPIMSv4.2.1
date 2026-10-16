@@ -100,31 +100,47 @@ export default function Clients({ showToast }: Props) {
   }
 
   const handleEdit = async (updated: Client) => {
-    const { data: { session } } = await supabase.auth.getSession()
     const current = clients.find(c => c.id === updated.id)
     if (!current) return
 
-    // Only send fields that actually changed
-    const updates: Record<string, unknown> = {}
+    // Only send fields that actually changed. The edit screen used to POST
+    // /api/edit-client, which crashes before it reaches the database, so
+    // every save came back as "Failed to update client."
+    const updates: Partial<Client> = {}
     if (updated.name !== current.name) updates.name = updated.name
     if (updated.email !== current.email) updates.email = updated.email
     if (updated.phone !== current.phone) updates.phone = updated.phone
     if (updated.address !== current.address) updates.address = updated.address
     if (updated.occupation !== current.occupation) updates.occupation = updated.occupation
-    if (updated.gender !== current.gender) updates.gender = updated.gender
+    if ((updated.gender ?? '') !== (current.gender ?? '')) updates.gender = updated.gender ?? ''
     if (updated.status !== current.status) updates.status = updated.status
-    if (updated.dob !== current.dob) updates.dob = updated.dob
+    if ((updated.dob ?? '') !== (current.dob ?? '')) updates.dob = updated.dob
 
-    const res = await fetch('/api/edit-client', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}) },
-      body: JSON.stringify({ clientId: updated.id, updates }),
-    })
-    const body = await res.json().catch(() => ({}))
-    if (!res.ok) { showToast('error', body.error ?? 'Failed to update client.'); return }
-    setClients(prev => prev.map(c => c.id === body.data.id ? body.data : c))
-    showToast('success', `Client ${body.data.name} updated.`)
+    if (Object.keys(updates).length === 0) {
+      showToast('info', 'No changes to save.')
+      setEditClient(null)
+      return
+    }
+
+    const { data, error } = await db.clients.update(updated.id, updates)
+    if (error || !data) { showToast('error', error ?? 'Failed to update client.'); return }
+    setClients(prev => prev.map(c => c.id === data.id ? { ...data, policyCount: c.policyCount } : c))
+    showToast('success', `Client ${data.name} updated.`)
     setEditClient(null)
+    if (user?.id) {
+      const changes = Object.fromEntries(Object.keys(updates).map(key => [key, {
+        old: current[key as keyof Client],
+        new: updates[key as keyof Client],
+      }]))
+      void supabase.from('audit_log').insert({
+        operator_id: user.id,
+        entity_type: 'client',
+        entity_id: updated.id,
+        action: `Edited client: ${Object.keys(updates).join(', ')}`,
+        changes,
+        source: 'web',
+      })
+    }
   }
 
   const handleAssignPolicy = async (policy: Policy) => {

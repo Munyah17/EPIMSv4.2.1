@@ -28,6 +28,8 @@ const PANEL_TITLES: Record<ActivePanel, string> = {
   live_chat: 'Live Chat',
   fraud: 'Fraud Alert',
   integrations: 'Integrations',
+  marketing_contacts: 'Marketing Database',
+  campaign_composer: 'Campaign Composer',
   system_health: 'System Health',
   settings: 'Settings',
   developer_api: 'Developers and API',

@@ -5,8 +5,7 @@
  */
 
 import { VercelRequest, VercelResponse } from '@vercel/node'
-import { serviceClient } from './_lib/supabase'
-import { requireSession } from './_lib/sessionAuth'
+import { serviceClient, requireSession } from './_lib/sessionAuth'
 import { auditLog } from './_lib/audit'
 import { getPolicyReportPdfBase64 } from '../src/lib/exportUtils'
 

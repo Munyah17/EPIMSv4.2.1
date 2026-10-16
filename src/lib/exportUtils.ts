@@ -118,7 +118,7 @@ export async function exportReportToPdf(
   doc.setFontSize(13)
   doc.setTextColor(...NAVY)
   doc.text(title.toUpperCase(), 14, y)
-  y += 5.5
+  y += 2.5
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(8.5)
   doc.setTextColor(...MUTED)
@@ -308,9 +308,9 @@ function drawTermsPages(doc: jsPDF, product: { name?: string; category?: string 
   const GAP = 6
   const colW = (pageWidth - MARGIN * 2 - GAP) / 2
   const xOf = (c: number) => MARGIN + c * (colW + GAP)
-  const bottom = pageHeight - 16
-  const PAGE_TOP = 20
-  const LH = 2.9 // Smaller line height for tighter fit
+  const bottom = pageHeight - 2
+  const PAGE_TOP = 4
+  const LH = 2.7 // Smaller line height for tighter fit
 
   let col = 0
   let y = startY
@@ -330,56 +330,56 @@ function drawTermsPages(doc: jsPDF, product: { name?: string; category?: string 
   }
   const heading = (text: string) => {
     const lines = doc.splitTextToSize(text, colW)
-    ensure(lines.length * 3.5 + 2)
+    ensure(lines.length * 3 + 1.5)
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(7.5) // Smaller font for headings
+    doc.setFontSize(7) // Smaller font for headings
     doc.setTextColor(...NAVY)
     doc.text(lines, xOf(col), y)
-    y += lines.length * 3.5 + 0.8
+    y += lines.length * 3 + 0.5
   }
   const para = (text: string) => {
     const lines = doc.splitTextToSize(text, colW - 2)
-    ensure(lines.length * LH + 0.8)
+    ensure(lines.length * LH + 0.5)
     doc.setFont('helvetica', 'normal')
-    doc.setFontSize(6.5) // Smaller font for paragraphs
+    doc.setFontSize(6) // Smaller font for paragraphs
     doc.setTextColor(...TEXT)
     doc.text(lines, xOf(col) + 1.5, y)
-    y += lines.length * LH + 1.2
+    y += lines.length * LH + 0.8
   }
 
   heading('TERMS AND CONDITIONS')
-  y += 0.5
+  y += 0.3
   const allTerms = termsPagesFor(product)
   for (let i = 0; i < allTerms.length; i++) {
     const terms = allTerms[i]
     // Add product title heading when there are multiple terms (e.g., tobacco + funeral)
     if (allTerms.length > 1 && terms.productTitle) {
-      ensure(6)
+      ensure(4)
       doc.setFont('helvetica', 'bold')
-      doc.setFontSize(8.5)
+      doc.setFontSize(7.5)
       doc.setTextColor(...BRAND_RED)
       doc.text(terms.productTitle.toUpperCase(), xOf(col), y)
-      y += 5
+      y += 1.5
       doc.setTextColor(...TEXT)
     }
     if (terms.sections) {
       for (const section of terms.sections) {
         heading(section.heading)
         section.paragraphs.forEach(para)
-        y += 1
+        y += 0.5
       }
     } else {
       heading(terms.exclusionsHeading)
       para(terms.exclusionsIntro)
       terms.exclusions.forEach((e, idx) => para(`${idx + 1}. ${e}`))
-      y += 1
+      y += 0.5
     }
     // Add separator between multiple terms sections
     if (i < allTerms.length - 1) {
-      ensure(5)
+      ensure(3)
       doc.setDrawColor(220, 226, 240)
       doc.line(xOf(col), y, xOf(col) + colW, y)
-      y += 3
+      y += 1.5
     }
   }
 
@@ -387,16 +387,16 @@ function drawTermsPages(doc: jsPDF, product: { name?: string; category?: string 
   // full name, date of signature and signature fields.
   heading('SIGNATURE')
   para('I confirm that I have read, understood and agree to the Policy Terms and Conditions and the Major Exclusions set out in this document.')
-  ensure(20)
+  ensure(16)
   doc.setFont('helvetica', 'normal')
-  doc.setFontSize(7)
+  doc.setFontSize(6.5)
   doc.setTextColor(...TEXT)
   doc.text('Signee Full Name: __________________________', xOf(col) + 1.5, y)
-  y += 6
+  y += 5
   doc.text('Date of Signature: ____________________', xOf(col) + 1.5, y)
-  y += 6
+  y += 5
   doc.text('Signature: ______________________________', xOf(col) + 1.5, y)
-  y += 6
+  y += 5
 }
 
 const BRAND_BLUE: [number, number, number] = [65, 105, 225]
@@ -426,13 +426,13 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   const cfg = getNotifSettings()
 
   const ensureRoom = (need: number) => {
-    if (y + need > pageHeight - 16) { doc.addPage(); y = 20 }
+    if (y + need > pageHeight - 2) { doc.addPage(); y = 4 }
   }
 
   drawLetterhead(doc, pageWidth, MOTIONS_LOGO_PNG_BASE64, COMPANY_NAME, cfg)
 
-  let y = 28
-  doc.setFontSize(9.5)
+  let y = 18
+  doc.setFontSize(7)
   doc.setTextColor(...TEXT)
   // Agriculture policyholders are identified by name AND grower number
   // together ("Harold Muwi - 2344566") -- it's their identity to the
@@ -453,24 +453,25 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   // Identity block — each detail on its own line: run together on one
   // line the grower/contractor/hectarage string wrapped awkwardly.
   doc.text(up(client.name), 14, y)
-  y += 4.5
-  doc.setFontSize(8.5)
+  y += 2
+  doc.setFontSize(6.5)
   doc.setTextColor(...MUTED)
-  if (isAgriculture && policy.growerNumber) { doc.text(`Grower No: ${up(policy.growerNumber)}`, 14, y); y += 4.2 }
-  if (isAgriculture && policy.contractor) { doc.text(`Contractor: ${up(policy.contractor)}`, 14, y); y += 4.2 }
-  if (isAgriculture && policy.hectarage != null) { doc.text(`Hectarage: ${policy.hectarage} ha`, 14, y); y += 4.2 }
+  if (isAgriculture && policy.growerNumber) { doc.text(`Grower No: ${up(policy.growerNumber)}`, 14, y); y += 2 }
+  if (isAgriculture && policy.contractor) { doc.text(`Contractor: ${up(policy.contractor)}`, 14, y); y += 2 }
+  if (isAgriculture && policy.hectarage != null) { doc.text(`Hectarage: ${policy.hectarage} ha`, 14, y); y += 2 }
   // The agent who wrote the business belongs on the document — it's the
   // person the policyholder claims to, not an internal note.
   // The agent/field officer who sourced the business belongs on the
   // document; the staff member who captured it is internal attribution —
   // view modal and records only, not the client's copy.
-  if (policy.agentName) { doc.text(`Field Officer: ${up(policy.agentName)}`, 14, y); y += 4.2 }
-  y += 1
+  // Field Officer is only shown for Tobacco Insurance (Small Scale Agriculture)
+  if (isFieldToFloor && policy.agentName) { doc.text(`Field Officer: ${up(policy.agentName)}`, 14, y); y += 2 }
+  y += 0.1
   doc.text(`Generated ${formatDate(new Date())}`, 14, y)
-  y += 4.5
+  y += 1
   doc.text(`Commencement Date: ${isFieldToFloor ? TOBACCO_SEASON.start : formatDate(policy.startDate)}`, 14, y)
   doc.setTextColor(...TEXT)
-  y += 7
+  y += 1
 
   // Premiums are per head everywhere except agriculture, so the figure on
   // an official document is the whole policy's — the policyholder plus
@@ -482,22 +483,22 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
     startY: y,
     head: [['Amount Paid', 'Payment Method', 'Payment Date', 'Expiration Date']],
     body: [[money(billedPremium), up(policy.paymentMethod), formatDate(policy.lastPaymentDate), isFieldToFloor ? TOBACCO_SEASON.end : formatDate(policy.nextPaymentDate)]],
-    styles: { fontSize: 9, lineColor: [220, 226, 240], lineWidth: 0.2 },
+    styles: { fontSize: 8, lineColor: [220, 226, 240], lineWidth: 0.12, cellPadding: 0.8 },
     headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold' },
     theme: 'grid',
     margin: { left: 14, right: 14 },
   })
-  y = (doc as any).lastAutoTable.finalY + 8
+  y = (doc as any).lastAutoTable.finalY + 1
 
   const sectionBand = (title: string) => {
-    ensureRoom(14)
+    ensureRoom(4)
     doc.setFillColor(...NAVY)
-    doc.rect(14, y, pageWidth - 28, 8, 'F')
-    doc.setFontSize(10)
+    doc.rect(14, y, pageWidth - 28, 3.5, 'F')
+    doc.setFontSize(7)
     doc.setTextColor(255, 255, 255)
-    doc.text(title, 14 + (pageWidth - 28) / 2, y + 5.5, { align: 'center' })
+    doc.text(title, 14 + (pageWidth - 28) / 2, y + 3, { align: 'center' })
     doc.setTextColor(...TEXT)
-    y += 12
+    y += 4
   }
 
   sectionBand('POLICY INFORMATION')
@@ -508,24 +509,24 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
       holderMemberNumber(policy.policyNumber), up(policy.productName), money(policy.premium),
       money(policy.coverAmount), 'USD', policySourceLabel(policy.source), policy.status.toUpperCase(),
     ]],
-    styles: { fontSize: 8.5, lineColor: [220, 226, 240], lineWidth: 0.2 },
+    styles: { fontSize: 7.5, lineColor: [220, 226, 240], lineWidth: 0.12, cellPadding: 0.8 },
     headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold' },
     theme: 'grid',
     margin: { left: 14, right: 14 },
   })
-  y = (doc as any).lastAutoTable.finalY + 8
+  y = (doc as any).lastAutoTable.finalY + 1
 
   sectionBand('PERSONAL INFORMATION')
   autoTable(doc, {
     startY: y,
     head: [['Full Name', 'National ID', 'Mobile Number', 'Date of Birth', 'Registration Date']],
     body: [[up(client.name), up(client.nationalId), client.phone, formatDate(client.dob), formatDate(client.createdAt)]],
-    styles: { fontSize: 8.5, lineColor: [220, 226, 240], lineWidth: 0.2 },
+    styles: { fontSize: 7.5, lineColor: [220, 226, 240], lineWidth: 0.12, cellPadding: 0.8 },
     headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold' },
     theme: 'grid',
     margin: { left: 14, right: 14 },
   })
-  y = (doc as any).lastAutoTable.finalY + 8
+  y = (doc as any).lastAutoTable.finalY + 1
 
   // Organisation policies name the insured organisation — and, for team
   // cover, the activity/season the roster is insured for. PERSONAL
@@ -541,12 +542,12 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
         ...(policy.coverScope === 'team' ? [up(policy.teamActivity) || '—'] : []),
         policy.coverScope === 'corporate' ? 'Corporate — employees covered' : policy.coverScope === 'team' ? 'Team — activity cover, immediate' : 'Group — members covered',
       ]],
-      styles: { fontSize: 8.5, lineColor: [220, 226, 240], lineWidth: 0.2 },
+      styles: { fontSize: 7.5, lineColor: [220, 226, 240], lineWidth: 0.12, cellPadding: 0.8 },
       headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold' },
       theme: 'grid',
       margin: { left: 14, right: 14 },
     })
-    y = (doc as any).lastAutoTable.finalY + 8
+    y = (doc as any).lastAutoTable.finalY + 1
   }
 
   // The covered-people band wears the scope's vocabulary: a corporate
@@ -569,7 +570,7 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
       14, y,
     )
     doc.setTextColor(...TEXT)
-    y += 8
+    y += 1.5
   } else {
     policy.dependants.forEach((d, i) => {
       ensureRoom(22)
@@ -581,7 +582,7 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
       )
       doc.text(header, 18, y)
       doc.setTextColor(...TEXT)
-      y += header.length * 4 + 2
+      y += header.length * 3.5 + 1.5
       autoTable(doc, {
         startY: y,
         head: [['Policy Package', premiumHeading, 'Cover', 'Currency', 'Status']],
@@ -590,19 +591,19 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
           money(d.premium ?? policy.premium),
           money(d.coverAmount ?? policy.coverAmount), 'USD', policy.status.toUpperCase(),
         ]],
-        styles: { fontSize: 8.5, lineColor: [220, 226, 240], lineWidth: 0.2 },
+        styles: { fontSize: 7.5, lineColor: [220, 226, 240], lineWidth: 0.12, cellPadding: 0.8 },
         headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold' },
         theme: 'grid',
         margin: { left: 14, right: 14 },
       })
-      y = (doc as any).lastAutoTable.finalY + 6
+      y = (doc as any).lastAutoTable.finalY + 1
     })
 
     // Everyone on the policy is charged, so the document says what the
     // policy actually costs rather than leaving the client to add it up.
     if (heads > 1) {
-      ensureRoom(14)
-      doc.setFontSize(9)
+      ensureRoom(12)
+      doc.setFontSize(8.5)
       doc.setFont('helvetica', 'bold')
       doc.setTextColor(...TEXT)
       doc.text(
@@ -610,7 +611,7 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
         pageWidth - 14, y, { align: 'right' },
       )
       doc.setFont('helvetica', 'normal')
-      y += 8
+      y += 1.5
     }
   }
 
@@ -620,29 +621,29 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
       // figure scales with the sum insured except Funeral, which is a
       // flat $500 grower benefit at every tier.
       const cover = fieldToFloorCover(policy.coverAmount)
-      ensureRoom(24 + cover.length * 7)
+      ensureRoom(20 + cover.length * 6)
       sectionBand('COVER PROVIDED (FIELD TO FLOOR)')
       autoTable(doc, {
         startY: y,
         head: [['Cover', 'Benefit']],
         body: cover.map(c => [c.peril, money(c.benefit)]),
-        styles: { fontSize: 9, lineColor: [220, 226, 240], lineWidth: 0.2 },
+        styles: { fontSize: 8, lineColor: [220, 226, 240], lineWidth: 0.12, cellPadding: 0.8 },
         headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold' },
         columnStyles: { 1: { halign: 'right' } },
         theme: 'grid',
         margin: { left: 14, right: 14 },
       })
-      y = (doc as any).lastAutoTable.finalY + 8
+      y = (doc as any).lastAutoTable.finalY + 1
     } else {
-      ensureRoom(20 + AGRICULTURE_COVER.length * 5.5)
+      ensureRoom(18 + AGRICULTURE_COVER.length * 4.5)
       sectionBand('COVER PROVIDED')
       doc.setFillColor(...BRAND_RED)
-      doc.setFontSize(9.5)
+      doc.setFontSize(8)
       AGRICULTURE_COVER.forEach((peril, i) => {
-        doc.circle(15.5, y + i * 5.5 - 1.3, 0.9, 'F')
-        doc.text(peril, 19, y + i * 5.5)
+        doc.circle(15.5, y + i * 4.5 - 1.3, 0.9, 'F')
+        doc.text(peril, 19, y + i * 4.5)
       })
-      y += AGRICULTURE_COVER.length * 5.5 + 4
+      y += AGRICULTURE_COVER.length * 3.5
     }
   }
 
@@ -652,12 +653,12 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   // carry a deductible their policy does not have.
   if (isAgriculture) {
     const excessLines = doc.splitTextToSize(policy.excess || DEFAULT_POLICY_EXCESS, pageWidth - 32)
-    ensureRoom(14 + excessLines.length * 4.5)
+    ensureRoom(12 + excessLines.length * 4)
     sectionBand('POLICY EXCESS')
-    doc.setFontSize(9)
+    doc.setFontSize(8)
     doc.setTextColor(...TEXT)
     doc.text(excessLines, 14, y)
-    y += excessLines.length * 4.5 + 4
+    y += excessLines.length * 2.5
   }
 
   // ── POLICY CONDITIONS — the plain-language summary the client reads
@@ -684,25 +685,24 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   }
   conditions.push('Familiarize Yourself With The Following Terms and Conditions')
   const condLines = conditions.flatMap(c => doc.splitTextToSize(`• ${c}`, pageWidth - 32) as string[])
-  ensureRoom(16 + condLines.length * 4.4)
+  ensureRoom(14 + condLines.length * 4)
   sectionBand('POLICY CONDITIONS')
-  doc.setFontSize(8.5)
+  doc.setFontSize(8)
   doc.setTextColor(...TEXT)
   doc.text(condLines, 14, y)
-  y += condLines.length * 4.4 + 4
+  y += condLines.length * 3
 
-  ensureRoom(14)
+  // Copyright line always on page 1 - no ensureRoom check
   doc.setDrawColor(220, 226, 240)
   doc.line(14, y, pageWidth - 14, y)
-  y += 6
-  doc.setFontSize(7.5)
+  y += 0.8
+  doc.setFontSize(6)
   doc.setTextColor(...MUTED)
   doc.text(`Copyright © ${COMPANY_NAME}. All rights reserved.`, 14, y)
-  y += 8
 
   // Add new page for Terms and Conditions - page 2 is for terms only
   doc.addPage()
-  const termsStartY = 20
+  const termsStartY = 3
 
   // The product's Terms and Conditions are part of the contract — they
   // flow on from here, whatever the product.
@@ -774,7 +774,7 @@ export async function exportClaimAssessmentReport(
     doc.setTextColor(...TEXT)
     y += 6
   }
-  y += 3
+  y += 2
 
   const sectionHeading = (n: number, title: string) => {
     doc.setFontSize(12)
@@ -858,7 +858,7 @@ export async function exportClaimAssessmentReport(
         } catch { /* skip if the image can't be decoded into the PDF */ }
       }
       doc.setTextColor(...TEXT)
-      y += 58
+      y += 28
     }
   }
 
@@ -907,14 +907,14 @@ export async function exportPolicyAssessmentReport(
   doc.setFontSize(9.5)
   doc.setTextColor(...TEXT)
   doc.text(assessment.subjectType === 'vehicle' ? 'VEHICLE PRE-LOSS ASSESSMENT REPORT' : 'AGRICULTURE PRE-LOSS ASSESSMENT REPORT', 14, y)
-  y += 5
+  y += 2
   doc.setFontSize(8)
   doc.setTextColor(...MUTED)
   doc.text(`Policy ${policyNumber}`, 14, y)
   y += 4.5
   doc.text(`Generated ${formatDate(new Date())}`, 14, y)
   doc.setTextColor(...TEXT)
-  y += 8
+  y += 2
 
   const pageHeightForFlow = doc.internal.pageSize.getHeight()
   const ensureRoom = (need: number) => {
@@ -1018,7 +1018,7 @@ export async function exportPolicyAssessmentReport(
         } catch { /* skip if the image can't be decoded into the PDF */ }
       }
       doc.setTextColor(...TEXT)
-      y += 58
+      y += 28
     }
   }
 

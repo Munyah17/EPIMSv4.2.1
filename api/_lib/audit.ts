@@ -8,7 +8,7 @@
  * captures who, what, when, before/after values, and context.
  */
 
-import { serviceClient } from './supabase'
+import { serviceClient } from './sessionAuth'
 
 export interface AuditLogEntry {
   /** The login profile of the person making the change. */

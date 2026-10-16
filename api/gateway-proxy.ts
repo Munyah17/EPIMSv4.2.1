@@ -113,7 +113,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Our own serverless callers (the public website's provisioning pipeline)
   // authenticate with the shared machine secret instead of a user session.
   const admin = serviceClient()
-  if (!admin) return res.status(500).json({ error: 'Server is not configured.' })
+  if (!admin) return res.status(500).json({ error: 'Server is not configured: SUPABASE_SERVICE_ROLE_KEY environment variable is missing on Vercel. This is a one-time setup issue, not related to user sessions.' })
   const machineSecret = process.env.NOTIFY_SECRET || process.env.CRON_SECRET
   const isMachine = !!machineSecret && req.headers.authorization === `Bearer ${machineSecret}`
   if (!isMachine && !(await requireSession(req, admin))) {

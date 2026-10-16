@@ -5,8 +5,7 @@
  */
 
 import { VercelRequest, VercelResponse } from '@vercel/node'
-import { serviceClient } from './_lib/supabase'
-import { requireSession } from './_lib/sessionAuth'
+import { serviceClient, requireSession } from './_lib/sessionAuth'
 import { auditLog } from './_lib/audit'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

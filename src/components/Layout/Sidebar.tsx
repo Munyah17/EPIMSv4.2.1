@@ -92,7 +92,16 @@ const STAFF_SECTIONS: NavSection[] = [
       { id: 'clients', label: 'Clients Management', icon: '👥' },
       { id: 'groups', label: 'Group Teams Insurance', icon: '🏢' },
       { id: 'member_cards', label: 'Membership IDs', icon: '🪪', roles: ['super_admin', 'admin', 'policy_admin', 'claims_officer', 'finance'] },
-      { id: 'leads', label: 'Leads & Marketing', icon: '🎯', badge: 'AI' },
+      {
+        groupId: 'leads_marketing',
+        label: 'Leads & Marketing',
+        icon: '🎯',
+        items: [
+          { id: 'leads', label: 'Sales Leads', icon: '🎯', badge: 'AI' },
+          { id: 'marketing_contacts', label: 'Marketing Contacts', icon: '👥' },
+          { id: 'campaign_composer', label: 'Campaign Composer', icon: '📢' },
+        ],
+      },
     ],
   },
   {

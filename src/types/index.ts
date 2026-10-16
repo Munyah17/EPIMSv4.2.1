@@ -828,3 +828,80 @@ export interface PolicyAssessment {
   syncStatus: AssessmentSyncStatus
   createdAt: string
 }
+
+// ── Marketing Module Types ─────────────────────────────────────────
+
+export type MarketingChannel = 'sms' | 'email' | 'both'
+
+export type CampaignStatus = 'draft' | 'scheduled' | 'sending' | 'completed' | 'cancelled'
+
+export type MessageStatus = 'pending' | 'queued' | 'sent' | 'delivered' | 'failed' | 'opted_out'
+
+export interface MarketingContact {
+  id: string
+  name: string
+  phone: string
+  normalizedPhone: string
+  email?: string
+  insuranceInterest?: string
+  source?: string
+  marketingPermission: boolean
+  optedOut: boolean
+  optedOutAt?: string
+  optOutReason?: string
+  optOutChannel?: 'sms' | 'email'
+  leadId?: string
+  notes?: string
+  createdBy?: string
+  createdByName?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface MarketingTemplate {
+  id: string
+  name: string
+  title?: string
+  description: string
+  category?: string
+  active: boolean
+  createdBy?: string
+  createdByName?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface MarketingCampaign {
+  id: string
+  name: string
+  title?: string
+  description: string
+  channel: MarketingChannel
+  recipientCount: number
+  smsSegmentCount: number
+  estimatedSmsCost?: number
+  status: CampaignStatus
+  scheduledFor?: string
+  sentAt?: string
+  createdBy?: string
+  createdByName?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CampaignRecipient {
+  id: string
+  campaignId: string
+  contactId: string
+  contactName?: string
+  phone?: string
+  email?: string
+  smsStatus?: MessageStatus
+  emailStatus?: MessageStatus
+  smsMessageId?: string
+  emailMessageId?: string
+  errorMessage?: string
+  sentAt?: string
+  deliveredAt?: string
+  createdAt: string
+}
