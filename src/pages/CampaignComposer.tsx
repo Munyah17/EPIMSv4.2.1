@@ -251,7 +251,7 @@ export default function CampaignComposer({ showToast }: Props) {
 
               <div style={{ padding: '16px' }}>
 
-              <div className="form-group">
+              <div className="form-group" style={{ marginBottom: 16 }}>
                 <label>Campaign Name *</label>
                 <input
                   className="form-control"
@@ -261,7 +261,7 @@ export default function CampaignComposer({ showToast }: Props) {
                 />
               </div>
 
-              <div className="form-group">
+              <div className="form-group" style={{ marginBottom: 16 }}>
                 <label>Title (optional)</label>
                 <input
                   className="form-control"
@@ -271,7 +271,7 @@ export default function CampaignComposer({ showToast }: Props) {
                 />
               </div>
 
-              <div className="form-group">
+              <div className="form-group" style={{ marginBottom: 16 }}>
                 <label>Message Description *</label>
                 <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>
                   Use {`{name}`} to personalize with recipient's first name
@@ -288,7 +288,7 @@ export default function CampaignComposer({ showToast }: Props) {
                 </div>
               </div>
 
-              <div className="mass-sms-quick-templates">
+              <div className="mass-sms-quick-templates" style={{ marginBottom: 16 }}>
                 <span style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 6, display: 'block' }}>Quick templates:</span>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   {templates.slice(0, 4).map((t) => (
