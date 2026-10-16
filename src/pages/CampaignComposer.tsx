@@ -21,6 +21,7 @@ export default function CampaignComposer({ showToast }: Props) {
   const [campaigns, setCampaigns] = useState<MarketingCampaign[]>([])
   const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set())
   const [search, setSearch] = useState('')
+  const [showTemplateModal, setShowTemplateModal] = useState(false)
 
   // Campaign form state
   const [campaignName, setCampaignName] = useState('')
@@ -205,7 +206,12 @@ export default function CampaignComposer({ showToast }: Props) {
                   className="form-control" 
                   value={channel} 
                   onChange={e => setChannel(e.target.value as MarketingChannel)}
-                  style={{ backgroundColor: 'var(--input-bg)', color: 'var(--text)' }}
+                  style={{ 
+                    backgroundColor: 'var(--input-bg)', 
+                    color: 'var(--text)',
+                    minHeight: '38px',
+                    padding: '8px 12px'
+                  }}
                 >
                   <option value="sms">SMS Only</option>
                   <option value="email">Email Only</option>
@@ -331,6 +337,7 @@ export default function CampaignComposer({ showToast }: Props) {
         <div className="card">
           <div className="card-header">
             <span className="card-title">Message Templates</span>
+            <button className="btn btn-primary btn-sm" onClick={() => setShowTemplateModal(true)}>+ Create Template</button>
           </div>
           <div className="tbl-scroll">
             <table className="table">
@@ -407,6 +414,90 @@ export default function CampaignComposer({ showToast }: Props) {
           </div>
         </div>
       )}
+
+      {showTemplateModal && (
+        <TemplateModal
+          onClose={() => setShowTemplateModal(false)}
+          onSave={async (template) => {
+            const { data, error } = await db.marketingTemplates.create(template)
+            if (error || !data) {
+              showToast('error', 'Failed to create template.')
+              return
+            }
+            const { data: updated } = await db.marketingTemplates.list()
+            if (updated) setTemplates(updated.filter(t => t.active))
+            setShowTemplateModal(false)
+            showToast('success', 'Template created successfully.')
+          }}
+          showToast={showToast}
+        />
+      )}
+    </div>
+  )
+}
+
+// ── TEMPLATE MODAL ───────────────────────────────────────────────────
+
+interface TemplateModalProps {
+  onClose: () => void
+  onSave: (template: Omit<MarketingTemplate, 'id' | 'createdByName' | 'createdAt' | 'updatedAt'>) => void
+  showToast: (type: ToastMessage['type'], message: string) => void
+}
+
+function TemplateModal({ onClose, onSave, showToast }: TemplateModalProps) {
+  const [name, setName] = useState('')
+  const [title, setTitle] = useState('')
+  const [description, setDescription] = useState('')
+  const [category, setCategory] = useState('')
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!name.trim() || !description.trim()) {
+      showToast('warning', 'Name and description are required.')
+      return
+    }
+    await onSave({
+      name: name.trim(),
+      title: title.trim() || undefined,
+      description: description.trim(),
+      category: category.trim() || undefined,
+      active: true,
+    })
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 600 }}>
+        <div className="modal-header">
+          <h3>Create Template</h3>
+          <button className="btn btn-ghost btn-sm" onClick={onClose}>✕</button>
+        </div>
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label>Name *</label>
+            <input className="form-control" value={name} onChange={e => setName(e.target.value)} required />
+          </div>
+          <div className="form-group">
+            <label>Title (optional)</label>
+            <input className="form-control" value={title} onChange={e => setTitle(e.target.value)} />
+          </div>
+          <div className="form-group">
+            <label>Category</label>
+            <input className="form-control" value={category} onChange={e => setCategory(e.target.value)} placeholder="e.g., welcome, promotion, reminder" />
+          </div>
+          <div className="form-group">
+            <label>Description *</label>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>
+              Use {`{name}`} to personalize with recipient's first name
+            </div>
+            <textarea className="form-control" rows={6} value={description} onChange={e => setDescription(e.target.value)} required />
+          </div>
+          <div className="modal-footer">
+            <button type="button" className="btn btn-outline" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn btn-primary">Create Template</button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }
