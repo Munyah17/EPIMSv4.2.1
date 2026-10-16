@@ -9,6 +9,7 @@
     { "source": "/api/create-api-developer", "destination": "/api/api-partners?action=create-developer" },
     { "source": "/api/create-api-key", "destination": "/api/api-partners?action=create-key" },
     { "source": "/api/v1/:path*", "destination": "/api/v1?path=:path*" },
+    { "source": "/api/gateway-proxy", "destination": "/api/gateway-proxy" },
     { "source": "/((?!api/).*)", "destination": "/index.html" }
   ],
   "crons": [
