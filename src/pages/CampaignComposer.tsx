@@ -207,10 +207,12 @@ export default function CampaignComposer({ showToast }: Props) {
                   value={channel} 
                   onChange={e => setChannel(e.target.value as MarketingChannel)}
                   style={{ 
-                    backgroundColor: 'var(--input-bg)', 
-                    color: 'var(--text)',
-                    minHeight: '38px',
-                    padding: '8px 12px'
+                    backgroundColor: '#ffffff', 
+                    color: '#000000',
+                    minHeight: '40px',
+                    padding: '10px 12px',
+                    border: '1px solid #d1d5db',
+                    borderRadius: '4px'
                   }}
                 >
                   <option value="sms">SMS Only</option>
