@@ -117,7 +117,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const machineSecret = process.env.NOTIFY_SECRET || process.env.CRON_SECRET
   const isMachine = !!machineSecret && req.headers.authorization === `Bearer ${machineSecret}`
   if (!isMachine && !(await requireSession(req, admin))) {
-    return res.status(401).json({ error: 'Sign-in required.' })
+    return res.status(401).json({ error: 'Please log in to send SMS messages. Your session may have expired - try refreshing the page.' })
   }
 
   const proxyReq: ProxyRequestBody = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body ?? {})

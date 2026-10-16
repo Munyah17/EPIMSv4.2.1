@@ -210,18 +210,18 @@ export default function SystemHealthPage({ showToast }: Props) {
         || `Motions: SMS gateway test — working as of ${new Date().toLocaleTimeString()}. Sent by ${user?.name ?? 'staff'} from System Health.`
       const result = await sendSms(to, body)
       if (result.success) {
-        showToast('success', `Test SMS delivered to ${to} — Afrosoft confirmed it. The SMS system is working end-to-end.`)
+        showToast('success', `Test SMS delivered to ${to} — SMS system is working correctly.`)
         return
       }
       // The send failed — ask the gateway directly whether it's even alive
       // before blaming anything, so the answer names the source.
       const ping = await pingSmsGateway()
       if (!ping.up && ping.source === 'afrosoft') {
-        showToast('error', `⚠ AFROSOFT IS DOWN — the SMS provider cannot deliver text messages right now. This is NOT our system. (${ping.detail})`)
+        showToast('error', `⚠ SMS provider (Afrosoft) is currently down. Text messages cannot be sent right now. Please try again later or contact support if this continues.`)
       } else if (!ping.up) {
-        showToast('error', `⚠ The problem is on OUR side, not Afrosoft's — the gateway is reachable but our service failed. (${ping.detail})`)
+        showToast('error', `⚠ Your login session may have expired. Please refresh the page and try again. If the problem persists, contact support.`)
       } else {
-        showToast('error', `Afrosoft is UP and answering, but this send still failed — likely the message or the number itself. (${result.error ?? 'no detail'})`)
+        showToast('error', `SMS provider is working, but the message failed to send. Please check the phone number format and try again.`)
       }
     } finally {
       setTestSending(false)
