@@ -98,7 +98,7 @@ const STAFF_SECTIONS: NavSection[] = [
         icon: '🎯',
         items: [
           { id: 'leads', label: 'Sales Leads', icon: '🎯', badge: 'AI' },
-          { id: 'marketing_contacts', label: 'Marketing Contacts', icon: '👥' },
+          { id: 'marketing_contacts', label: 'Marketing Database', icon: '👥' },
           { id: 'campaign_composer', label: 'Campaign Composer', icon: '📢' },
         ],
       },

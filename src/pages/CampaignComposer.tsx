@@ -11,7 +11,7 @@ interface Props {
   setActivePanel: (panel: ActivePanel) => void
 }
 
-const MAX_SMS_CHARS = 160
+const MAX_SMS_CHARS = 5000
 
 export default function CampaignComposer({ showToast }: Props) {
   const { hasPermission } = useAuth()
@@ -201,7 +201,12 @@ export default function CampaignComposer({ showToast }: Props) {
                 </div>
               </div>
               <div className="form-row" style={{ marginBottom: 10 }}>
-                <select className="form-control" value={channel} onChange={e => setChannel(e.target.value as MarketingChannel)}>
+                <select 
+                  className="form-control" 
+                  value={channel} 
+                  onChange={e => setChannel(e.target.value as MarketingChannel)}
+                  style={{ backgroundColor: 'var(--input-bg)', color: 'var(--text)' }}
+                >
                   <option value="sms">SMS Only</option>
                   <option value="email">Email Only</option>
                   <option value="both">SMS + Email</option>
@@ -244,6 +249,8 @@ export default function CampaignComposer({ showToast }: Props) {
                 <span className="card-title">Campaign Details</span>
               </div>
 
+              <div style={{ padding: '16px' }}>
+
               <div className="form-group">
                 <label>Campaign Name *</label>
                 <input
@@ -271,13 +278,13 @@ export default function CampaignComposer({ showToast }: Props) {
                 </div>
                 <textarea
                   className="form-control"
-                  rows={6}
+                  rows={8}
                   placeholder="Dear {name}, we have a special offer for you..."
                   value={description}
                   onChange={e => setDescription(e.target.value)}
                 />
                 <div style={{ fontSize: 11, color: description.length > MAX_SMS_CHARS ? 'var(--danger)' : 'var(--muted)', marginTop: 4 }}>
-                  {description.length}/{MAX_SMS_CHARS} chars · {smsSegments} SMS segment{smsSegments !== 1 ? 's' : ''}
+                  {description.length}/{MAX_SMS_CHARS} chars
                 </div>
               </div>
 
@@ -290,6 +297,8 @@ export default function CampaignComposer({ showToast }: Props) {
                     </button>
                   ))}
                 </div>
+              </div>
+
               </div>
 
               <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
@@ -330,6 +339,7 @@ export default function CampaignComposer({ showToast }: Props) {
                   <th>Name</th>
                   <th>Title</th>
                   <th>Category</th>
+                  <th>Created By</th>
                   <th>Description Preview</th>
                   <th>Actions</th>
                 </tr>
@@ -340,6 +350,7 @@ export default function CampaignComposer({ showToast }: Props) {
                     <td><strong>{t.name}</strong></td>
                     <td>{t.title || '—'}</td>
                     <td><span className="pill pill-active">{t.category || 'general'}</span></td>
+                    <td>{t.createdByName || '—'}</td>
                     <td style={{ maxWidth: 300 }}>{t.description.slice(0, 100)}{t.description.length > 100 ? '...' : ''}</td>
                     <td>
                       <button className="btn btn-ghost btn-sm" onClick={() => { handleUseTemplate(t); setTab('compose'); }}>
@@ -349,7 +360,7 @@ export default function CampaignComposer({ showToast }: Props) {
                   </tr>
                 ))}
                 {templates.length === 0 && (
-                  <tr><td colSpan={5} className="td-empty">No templates found.</td></tr>
+                  <tr><td colSpan={6} className="td-empty">No templates found.</td></tr>
                 )}
               </tbody>
             </table>
