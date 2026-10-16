@@ -77,6 +77,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch (e) {
     // Surface the real message instead of Vercel's bare 500 — the caller's
     // toast shows it and the log keeps the stack.
+    console.error('[member-photo] Error:', e)
     return res.status(500).json({ error: e instanceof Error ? e.message : String(e) })
   }
 }
