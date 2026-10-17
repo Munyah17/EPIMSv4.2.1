@@ -103,7 +103,6 @@ async function sendViaAfrosoft(mobiles: string, message: string) {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  console.log('[gateway-proxy] Request received:', req.method, req.url)
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
