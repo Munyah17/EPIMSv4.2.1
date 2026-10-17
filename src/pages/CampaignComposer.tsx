@@ -201,13 +201,13 @@ export default function CampaignComposer({ showToast }: Props) {
                   <button className="btn btn-ghost btn-sm" onClick={deselectAll}>None</button>
                 </div>
               </div>
-              <div className="form-row" style={{ marginBottom: 10, display: 'flex', gap: '10px' }}>
+              <div className="form-row" style={{ marginBottom: 10, display: 'flex', gap: '10px', alignItems: 'stretch' }}>
                 <select 
                   className="form-control" 
                   value={channel} 
                   onChange={e => setChannel(e.target.value as MarketingChannel)}
                   style={{ 
-                    width: '140px',
+                    width: '120px',
                     flexShrink: 0,
                     backgroundColor: '#ffffff', 
                     color: '#000000',
@@ -226,6 +226,7 @@ export default function CampaignComposer({ showToast }: Props) {
                   placeholder="Search contacts…"
                   value={search}
                   onChange={e => setSearch(e.target.value)}
+                  style={{ flex: 1, minWidth: 0 }}
                 />
               </div>
               <div className="mass-sms-client-list">
