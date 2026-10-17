@@ -201,12 +201,14 @@ export default function CampaignComposer({ showToast }: Props) {
                   <button className="btn btn-ghost btn-sm" onClick={deselectAll}>None</button>
                 </div>
               </div>
-              <div className="form-row" style={{ marginBottom: 10 }}>
+              <div className="form-row" style={{ marginBottom: 10, display: 'flex', gap: '10px' }}>
                 <select 
                   className="form-control" 
                   value={channel} 
                   onChange={e => setChannel(e.target.value as MarketingChannel)}
                   style={{ 
+                    width: '140px',
+                    flexShrink: 0,
                     backgroundColor: '#ffffff', 
                     color: '#000000',
                     minHeight: '40px',
