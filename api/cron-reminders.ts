@@ -269,7 +269,18 @@ async function reconcileBook(admin: SupabaseClient): Promise<{ orphanedClients: 
     const paymentList = payments && payments.length > 0
       ? `\n  Recent payments (${payments.length}): ${payments.map(p => `${p.currency} ${Number(p.amount).toFixed(2)} (${p.status}) - ${p.reference}`).join(', ')}`
       : ''
-    const clientDetails = `Client: ${c.name}\n  ID: ${c.id_number ?? 'not provided'}\n  Phone: ${c.phone ?? 'not provided'}\n  Email: ${c.email ?? 'not provided'}\n  Gender: ${c.gender ?? 'not provided'}\n  DOB: ${c.dob ?? 'not provided'}\n  Address: ${c.address ?? 'not provided'}, ${c.city ?? 'not provided'}\n  Registered: ${new Date(c.created_at).toLocaleDateString('en-GB')}${depList}${paymentList}\n  Status: NO POLICY WRITTEN — investigate before close of day`
+    // Determine likely cause based on payment history
+    let likelyCause = 'Unknown - investigate registration flow'
+    if (payments && payments.length > 0) {
+      const hasCompleted = payments.some(p => p.status === 'completed')
+      const hasFailed = payments.some(p => p.status === 'failed')
+      if (hasCompleted) likelyCause = 'Payment completed but policy not issued - possible system error or activation failure'
+      else if (hasFailed) likelyCause = 'Payment failed - client may have abandoned registration'
+      else likelyCause = 'Payment pending - gateway issue or client cancelled'
+    } else {
+      likelyCause = 'No payment recorded - registration incomplete or abandoned'
+    }
+    const clientDetails = `Client: ${c.name}\n  ID: ${c.id_number ?? 'not provided'}\n  Phone: ${c.phone ?? 'not provided'}\n  Email: ${c.email ?? 'not provided'}\n  Gender: ${c.gender ?? 'not provided'}\n  DOB: ${c.dob ?? 'not provided'}\n  Address: ${c.address ?? 'not provided'}, ${c.city ?? 'not provided'}\n  Registered: ${new Date(c.created_at).toLocaleDateString('en-GB')}${depList}${paymentList}\n  Status: NO POLICY WRITTEN\n  Likely cause: ${likelyCause}\n  Action: Investigate before close of day`
     findings.push({ kind: 'orphaned_client', ref: c.id, line: clientDetails })
   }
 
