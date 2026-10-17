@@ -254,12 +254,23 @@ async function reconcileBook(admin: SupabaseClient): Promise<{ orphanedClients: 
   const findings: { kind: string; ref: string; line: string }[] = []
 
   // 1. Client registered >24h ago with no policy at all.
-  const { data: clients } = await admin.from('clients').select('id, name, phone, email, created_at').lt('created_at', cutoff)
+  const { data: clients } = await admin.from('clients').select('id, name, phone, email, id_number, gender, dob, address, city, created_at').lt('created_at', cutoff)
   const { data: policyClientIds } = await admin.from('policies').select('client_id')
   const covered = new Set((policyClientIds ?? []).map(p => p.client_id))
   for (const c of clients ?? []) {
     if (covered.has(c.id)) continue
-    findings.push({ kind: 'orphaned_client', ref: c.id, line: `Client ${c.name} (${c.phone ?? 'no phone'}, ${c.email ?? 'no email'}, registered ${new Date(c.created_at).toLocaleDateString('en-GB')}) has NO policy — money may have been taken with no cover written.` })
+    // Fetch any pending dependants for this client
+    const { data: deps } = await admin.from('dependants').select('name, relationship, dob, id_number').eq('client_id', c.id)
+    const depList = deps && deps.length > 0 
+      ? `\n  Dependants (${deps.length}): ${deps.map(d => `${d.name} (${d.relationship})`).join(', ')}` 
+      : ''
+    // Fetch any payments made by this client (to show if money was taken)
+    const { data: payments } = await admin.from('payments').select('reference, amount, currency, status, created_at').eq('client_id', c.id).order('created_at', { ascending: false }).limit(5)
+    const paymentList = payments && payments.length > 0
+      ? `\n  Recent payments (${payments.length}): ${payments.map(p => `${p.currency} ${Number(p.amount).toFixed(2)} (${p.status}) - ${p.reference}`).join(', ')}`
+      : ''
+    const clientDetails = `Client: ${c.name}\n  ID: ${c.id_number ?? 'not provided'}\n  Phone: ${c.phone ?? 'not provided'}\n  Email: ${c.email ?? 'not provided'}\n  Gender: ${c.gender ?? 'not provided'}\n  DOB: ${c.dob ?? 'not provided'}\n  Address: ${c.address ?? 'not provided'}, ${c.city ?? 'not provided'}\n  Registered: ${new Date(c.created_at).toLocaleDateString('en-GB')}${depList}${paymentList}\n  Status: NO POLICY WRITTEN — investigate before close of day`
+    findings.push({ kind: 'orphaned_client', ref: c.id, line: clientDetails })
   }
 
   // 2. Paynow transaction initiated >24h ago, never confirmed or failed.
