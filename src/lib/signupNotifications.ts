@@ -19,16 +19,16 @@ import { isTobaccoFieldToFloor, fieldToFloorCover, fieldToFloorCoverLine } from 
  * temporarily unreachable.
  */
 
-/** Office lines that receive a text on every new registration. */
-export const ADMIN_ALERT_NUMBERS = [
-  '+263780086175',
-  '+263780086176',
-  '+263780086177',
-  '+263780086178',
-]
-
 function money(amount: number): string {
   return `$${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+/** Get phone numbers configured for a specific event type */
+function getSmsRecipientsForEvent(event: 'registration' | 'payment' | 'claim' | 'system'): string[] {
+  const cfg = getNotifSettings()
+  return cfg.smsRecipients
+    .filter(r => r.phone && r.events.includes(event))
+    .map(r => r.phone)
 }
 
 /**
@@ -42,7 +42,7 @@ function money(amount: number): string {
 export async function notifyRegistrationFailed(what: string, detail: string): Promise<void> {
   const cfg = getNotifSettings()
   const alert = `${COMPANY_NAME}: ${what} FAILED. ${detail}`
-  const recipients = [...new Set([...ADMIN_ALERT_NUMBERS, cfg.superAdminPhone].filter(Boolean))] as string[]
+  const recipients = getSmsRecipientsForEvent('registration')
   for (const number of recipients) {
     notifyPhone(number, alert, 'registration')
   }
@@ -83,7 +83,7 @@ Please note this registration does not itself put any cover in place. One of our
   }
 
   const alert = `${COMPANY_NAME}: New client registered. ${client.name}, ${client.phone || 'no phone'}${registeredBy ? `, by ${registeredBy}` : ''}. No policy yet.`
-  const recipients = [...new Set([...ADMIN_ALERT_NUMBERS, cfg.superAdminPhone].filter(Boolean))] as string[]
+  const recipients = getSmsRecipientsForEvent('registration')
   for (const number of recipients) {
     notifyPhone(number, alert, 'registration')
   }
@@ -117,7 +117,7 @@ export async function notifyGroupRegistered(group: Group): Promise<void> {
   }
 
   const alert = `${COMPANY_NAME}: New organisation registered. ${group.name} (${kind}), contact ${group.contactName || 'none'} ${group.contactPhone || ''}.`
-  const recipients = [...new Set([...ADMIN_ALERT_NUMBERS, cfg.superAdminPhone].filter(Boolean))] as string[]
+  const recipients = getSmsRecipientsForEvent('registration')
   for (const number of recipients) {
     notifyPhone(number, alert, 'registration')
   }
@@ -194,7 +194,7 @@ Keep this email for your records. If any detail above is wrong, contact us and w
   const alert = `${COMPANY_NAME}: New policy ${policy.policyNumber} registered. ${client.name}, ${policy.productName}, ${coverSms}, premium ${premium}. Payment: ${policy.paymentMethod}. Contact ${client.phone || 'not given'}.`
   // Deduplicated in case the configured super-admin line is already one of
   // the office numbers -- nobody wants the same alert twice.
-  const recipients = [...new Set([...ADMIN_ALERT_NUMBERS, cfg.superAdminPhone].filter(Boolean))] as string[]
+  const recipients = [...new Set(getSmsRecipientsForEvent('registration'))]
   for (const number of recipients) {
     notifyPhone(number, alert, 'registration', policy.policyNumber)
   }
@@ -233,7 +233,6 @@ ${policy.agentName ? `Registered by:  ${policy.agentName}` : 'Registered through
  * mistake an insurer cannot afford to make by SMS.
  */
 export async function notifyPaymentReceived(payment: Payment, client: { phone?: string } | null | undefined, productCategory?: string): Promise<void> {
-  const cfg = getNotifSettings()
   const amount = money(payment.amount)
 
   // The farmer never hands over money -- the association settles the
@@ -249,7 +248,7 @@ export async function notifyPaymentReceived(payment: Payment, client: { phone?: 
   }
 
   const alert = `${COMPANY_NAME}: Payment received. ${payment.clientName}, policy ${payment.policyNumber}, ${amount} via ${payment.method}. Ref ${payment.reference}.`
-  const recipients = [...new Set([...ADMIN_ALERT_NUMBERS, cfg.superAdminPhone].filter(Boolean))] as string[]
+  const recipients = [...new Set(getSmsRecipientsForEvent('payment'))]
   for (const number of recipients) {
     notifyPhone(number, alert, 'payment', payment.policyNumber)
   }
@@ -280,7 +279,7 @@ export async function notifyPaymentFailed(payment: { policyNumber: string; clien
   }
 
   const alert = `${COMPANY_NAME}: Payment FAILED. ${payment.clientName}, policy ${payment.policyNumber}, ${amount}${payment.method ? ` via ${payment.method}` : ''}.`
-  const recipients = [...new Set([...ADMIN_ALERT_NUMBERS, cfg.superAdminPhone].filter(Boolean))] as string[]
+  const recipients = [...new Set(getSmsRecipientsForEvent('payment'))]
   for (const number of recipients) {
     notifyPhone(number, alert, 'payment', payment.policyNumber)
   }

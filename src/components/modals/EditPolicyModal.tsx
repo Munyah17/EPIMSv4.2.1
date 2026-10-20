@@ -25,6 +25,9 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
   const [dependants, setDependants] = useState<Dependant[]>(policy.dependants ?? [])
   const [staff, setStaff] = useState<AppUser[]>([])
   const [products, setProducts] = useState<Product[]>([])
+  const [clients, setClients] = useState<{ id: string; name: string }[]>([])
+  const [clientId, setClientId] = useState(policy.clientId ?? '')
+  const [productId, setProductId] = useState(policy.productId ?? '')
   const [isAgriculture, setIsAgriculture] = useState(false)
   const [isMedical, setIsMedical] = useState(false)
 
@@ -35,6 +38,9 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
       const category = data?.find(p => p.id === policy.productId)?.category
       setIsAgriculture(category === 'agriculture')
       setIsMedical(category === 'health')
+    })
+    db.clients.list().then(({ data }) => {
+      if (data) setClients(data.map(c => ({ id: c.id, name: c.name })))
     })
   }, [policy.productId])
 
@@ -79,6 +85,12 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
     const nextAgent = agentId.trim()
     if (nextAgent !== (policy.agentId ?? '')) updates.agentId = nextAgent
 
+    const nextClient = clientId.trim()
+    if (nextClient !== (policy.clientId ?? '')) updates.clientId = nextClient
+
+    const nextProduct = productId.trim()
+    if (nextProduct !== (policy.productId ?? '')) updates.productId = nextProduct
+
     if (isAgriculture) {
       if (growerNumber.trim() !== (policy.growerNumber ?? '')) updates.growerNumber = growerNumber.trim()
       if (contractor.trim() !== (policy.contractor ?? '')) updates.contractor = contractor.trim()
@@ -113,11 +125,17 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
         <div className="modal-body">
           <div className="form-group">
             <label>Client</label>
-            <input className="form-control" value={policy.clientName} disabled style={{ opacity: 0.6 }} />
+            <select className="form-control" value={clientId} onChange={e => setClientId(e.target.value)}>
+              <option value="">Select client...</option>
+              {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
           </div>
           <div className="form-group">
             <label>Product</label>
-            <input className="form-control" value={policy.productName} disabled style={{ opacity: 0.6 }} />
+            <select className="form-control" value={productId} onChange={e => setProductId(e.target.value)}>
+              <option value="">Select product...</option>
+              {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
           </div>
           <div className="form-row">
             <div className="form-group">

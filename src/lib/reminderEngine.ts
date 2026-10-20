@@ -32,12 +32,19 @@ import { MAILBOXES } from './mailboxes'
 import { sendEmail, getNotifSettings } from './mailService'
 import { notifyPhone } from './notify'
 import { NETONE_SUSPENDED } from './claimNotifications'
-import { ADMIN_ALERT_NUMBERS } from './signupNotifications'
 import { policyBillablePremium } from './premium'
 import { formatDate, toIsoDate } from './dateUtils'
 import { COMPANY_NAME } from './company'
 
 const CHECK_KEY = 'tqfy_reminder_last_check'
+
+/** Get phone numbers configured for a specific event type */
+function getSmsRecipientsForEvent(event: 'registration' | 'payment' | 'claim' | 'system'): string[] {
+  const cfg = getNotifSettings()
+  return cfg.smsRecipients
+    .filter(r => r.phone && r.events.includes(event))
+    .map(r => r.phone)
+}
 
 /** Where a reminder email sends someone to actually pay -- the client
  *  portal, logged in, is the only place "pay this policy online" already
@@ -201,7 +208,7 @@ async function dispatchReminder(policy: Policy, client: Client | undefined, type
     // The office hears about every lapse the same way it hears about
     // every other money event in the system -- the four fixed lines, not
     // just whoever happens to have Billing & Reminders open.
-    const recipients = [...new Set([...ADMIN_ALERT_NUMBERS, cfg.superAdminPhone].filter(Boolean))] as string[]
+    const recipients = [...new Set(getSmsRecipientsForEvent('system'))]
     for (const number of recipients) {
       notifyPhone(number, `${COMPANY_NAME}: Policy ${policy.policyNumber} LAPSED. ${policy.clientName}, $${amountDue(policy).toFixed(2)} unpaid past the grace deadline.`, 'renewal', policy.policyNumber)
     }

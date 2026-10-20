@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { ToastMessage } from '../types'
 import type { ActivePanel } from '../App'
-import { getNotifSettings, saveNotifSettings, DEFAULT_NOTIF_SETTINGS } from '../lib/mailService'
+import { getNotifSettings, saveNotifSettings, DEFAULT_NOTIF_SETTINGS, type SmsRecipient } from '../lib/mailService'
 import type { NotifSettings } from '../lib/mailService'
 import { db } from '../lib/db'
 import { useAuth } from '../contexts/AuthContext'
@@ -17,7 +17,7 @@ export default function NotificationSettings({ showToast }: Props) {
   const [settings, setSettings] = useState<NotifSettings>(() => getNotifSettings())
   const [saving, setSaving] = useState(false)
 
-  const update = (key: keyof NotifSettings, value: string | boolean) => {
+  const update = (key: keyof NotifSettings, value: string | boolean | SmsRecipient[]) => {
     if (!canEdit) return
     setSettings(prev => ({ ...prev, [key]: value }))
   }
@@ -159,23 +159,92 @@ export default function NotificationSettings({ showToast }: Props) {
           </div>
         </div>
 
-        {/* Claims escalation */}
+        {/* SMS recipients by event type */}
         <div className="card">
           <div className="card-header">
-            <span className="card-title">🔔 Claims Escalation</span>
+            <span className="card-title">� SMS Recipients</span>
           </div>
           <p className="notif-settings-desc">
-            Receives an SMS at every stage of the claims pipeline (intake, assessment, final decision), in addition to the client and whichever staff member is picking the claim up next.
+            Add phone numbers and select which notification types they receive. Blank numbers are ignored.
           </p>
-          <div className="form-group">
-            <label>Super Admin Phone (SMS)</label>
-            <input
-              className="form-control"
-              value={settings.superAdminPhone}
-              onChange={e => update('superAdminPhone', e.target.value)}
-              placeholder="+263..."
-            />
+          <div style={{ marginBottom: 12 }}>
+            <button className="btn btn-outline btn-sm" onClick={() => {
+              const newRecipient: SmsRecipient = {
+                id: Date.now().toString(),
+                phone: '',
+                events: []
+              }
+              update('smsRecipients', [...settings.smsRecipients, newRecipient])
+            }}>
+              + Add Recipient
+            </button>
           </div>
+          {settings.smsRecipients.map((recipient, index) => (
+            <div key={recipient.id} style={{ 
+              padding: '12px', 
+              border: '1px solid var(--border)', 
+              borderRadius: 8, 
+              marginBottom: 8,
+              background: index % 2 === 0 ? 'var(--bg-alt)' : 'transparent'
+            }}>
+              <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ fontSize: 12, marginBottom: 4, display: 'block' }}>Phone Number</label>
+                  <input
+                    className="form-control"
+                    value={recipient.phone}
+                    onChange={e => {
+                      const updated = [...settings.smsRecipients]
+                      updated[index] = { ...recipient, phone: e.target.value }
+                      update('smsRecipients', updated)
+                    }}
+                    placeholder="+263..."
+                  />
+                </div>
+                <div style={{ display: 'flex', alignItems: 'flex-end' }}>
+                  <button 
+                    className="btn btn-danger btn-sm"
+                    onClick={() => {
+                      const updated = settings.smsRecipients.filter((_, i) => i !== index)
+                      update('smsRecipients', updated)
+                    }}
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: 12, marginBottom: 4, display: 'block' }}>Notification Types</label>
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+                  {[
+                    { key: 'registration', label: 'Registrations' },
+                    { key: 'payment', label: 'Payments' },
+                    { key: 'claim', label: 'Claims' },
+                    { key: 'system', label: 'System Alerts' }
+                  ].map(event => (
+                    <label key={event.key} className="checkbox-label" style={{ fontSize: 13 }}>
+                      <input
+                        type="checkbox"
+                        checked={recipient.events.includes(event.key as any)}
+                        onChange={e => {
+                          const updated = [...settings.smsRecipients]
+                          const events = e.target.checked
+                            ? [...recipient.events, event.key as any]
+                            : recipient.events.filter(e => e !== event.key)
+                          updated[index] = { ...recipient, events }
+                          update('smsRecipients', updated)
+                        }}
+                      />
+                      {event.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+          ))}
+          {settings.smsRecipients.length === 0 && (
+            <div className="empty-state" style={{ padding: '20px 0' }}>No SMS recipients configured.</div>
+          )}
         </div>
 
         {/* Sender config */}

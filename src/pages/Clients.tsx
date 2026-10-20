@@ -5,8 +5,9 @@ import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
-import { notifyClientRegistered, notifyRegistrationFailed, ADMIN_ALERT_NUMBERS } from '../lib/signupNotifications'
+import { notifyClientRegistered, notifyRegistrationFailed } from '../lib/signupNotifications'
 import { notifyPhone, serverReachable } from '../lib/notify'
+import { getNotifSettings } from '../lib/mailService'
 import { recordActivity } from '../lib/activityLog'
 import { COMPANY_NAME } from '../lib/company'
 import { searchMembers } from '../lib/memberNumbers'
@@ -115,6 +116,7 @@ export default function Clients({ showToast }: Props) {
     if ((updated.gender ?? '') !== (current.gender ?? '')) updates.gender = updated.gender ?? ''
     if (updated.status !== current.status) updates.status = updated.status
     if ((updated.dob ?? '') !== (current.dob ?? '')) updates.dob = updated.dob
+    if ((updated.nationalId ?? '') !== (current.nationalId ?? '')) updates.nationalId = updated.nationalId
 
     if (Object.keys(updates).length === 0) {
       showToast('info', 'No changes to save.')
@@ -210,7 +212,11 @@ export default function Clients({ showToast }: Props) {
         detail: `${policy.clientName}, ${policy.productName}`, severity: 'warning',
       })
       showToast('success', `Policy ${policy.policyNumber} deleted.`)
-      for (const number of ADMIN_ALERT_NUMBERS) {
+      const cfg = getNotifSettings()
+      const recipients = cfg.smsRecipients
+        .filter((r: { phone?: string; events: string[] }) => r.phone && r.events.includes('system'))
+        .map((r: { phone: string }) => r.phone)
+      for (const number of recipients) {
         notifyPhone(number, `${COMPANY_NAME}: Policy ${policy.policyNumber} (${policy.clientName}) was DELETED by ${user?.name ?? 'a staff member'}.`, 'system', policy.policyNumber)
       }
       return
@@ -230,13 +236,18 @@ export default function Clients({ showToast }: Props) {
       detail: `${policy.clientName}, ${policy.productName}. Also removed ${attached}. Reason: ${reason.trim()}`,
       severity: 'warning',
     })
+
     const { error } = await db.policies.remove(policy.id, { force: true })
     setDeletingPolicyId(null)
     if (error) { showToast('error', error); return }
     setBlockedPolicies(prev => prev.filter(p => p.id !== policy.id))
-    showToast('success', `Policy ${policy.policyNumber} and its ${attached} deleted.`)
-    for (const number of ADMIN_ALERT_NUMBERS) {
-      notifyPhone(number, `${COMPANY_NAME}: Policy ${policy.policyNumber} (${policy.clientName}) was DELETED by ${user?.name ?? 'a staff member'}, along with ${attached}.`, 'system', policy.policyNumber)
+    showToast('success', `Policy ${policy.policyNumber} deleted.`)
+    const cfg = getNotifSettings()
+    const recipients = cfg.smsRecipients
+      .filter((r: { phone?: string; events: string[] }) => r.phone && r.events.includes('system'))
+      .map((r: { phone: string }) => r.phone)
+    for (const number of recipients) {
+      notifyPhone(number, `${COMPANY_NAME}: Policy ${policy.policyNumber} (${policy.clientName}) was DELETED by ${user?.name ?? 'a staff member'}. Reason: ${reason.trim()}`, 'system', policy.policyNumber)
     }
   }
 

@@ -21,6 +21,7 @@ export default function EditClientModal({ client, onClose, onSave, onAssignPolic
   const [genderOther, setGenderOther] = useState(client.gender && client.gender !== 'male' && client.gender !== 'female' ? client.gender : '')
   const [status, setStatus] = useState(client.status)
   const [dob, setDob] = useState(client.dob ?? '')
+  const [nationalId, setNationalId] = useState(client.nationalId ?? '')
 
 
   const [attempted, setAttempted] = useState(false)
@@ -37,7 +38,7 @@ export default function EditClientModal({ client, onClose, onSave, onAssignPolic
     if (missing.length > 0) return
     // Ensure phone is not empty string (database requires NOT NULL)
     const phoneValue = phone.trim() || client.phone
-    onSave({ ...client, name: name.trim(), email, phone: phoneValue, address, occupation, status, dob, gender: gender === 'other' ? genderOther.trim() || 'other' : gender || undefined })
+    onSave({ ...client, name: name.trim(), email, phone: phoneValue, address, occupation, status, dob, nationalId: nationalId.trim(), gender: gender === 'other' ? genderOther.trim() || 'other' : gender || undefined })
   }
 
   return (
@@ -66,7 +67,7 @@ export default function EditClientModal({ client, onClose, onSave, onAssignPolic
             </div>
             <div className="form-group">
               <label>National ID</label>
-              <input className="form-control" value={client.nationalId} disabled style={{ opacity: 0.6 }} />
+              <input className="form-control" value={nationalId} onChange={e => setNationalId(e.target.value)} placeholder="16-digit ID number" />
             </div>
           </div>
           <div className="form-row">

@@ -3,6 +3,13 @@ import { db } from './db'
 import { supabase } from './supabase'
 import { reportOutcome } from './notify'
 
+export interface SmsRecipient {
+  id: string
+  phone: string
+  /** Which notification types this number receives */
+  events: ('registration' | 'payment' | 'claim' | 'system')[]
+}
+
 export interface NotifSettings {
   insurerName: string
   insurerEmail: string
@@ -17,10 +24,8 @@ export interface NotifSettings {
   replyTo: string
   smsEnabled: boolean
   signature: string
-  /** Receives an SMS at every claims-workflow stage transition (intake,
-   *  assessment, final decision) — set once by Super Admin, on top of the
-   *  client and whichever staff member is picking the claim up next. */
-  superAdminPhone: string
+  /** Configurable SMS recipients with event type filtering */
+  smsRecipients: SmsRecipient[]
   /** Shown in the Policy Report/Certificate PDF header (Head Office block)
    *  — confirmed real values, editable from Settings -> Notifications if
    *  the office ever moves. */
@@ -45,16 +50,28 @@ export const DEFAULT_NOTIF_SETTINGS: NotifSettings = {
   replyTo: 'admin@motions.co.zw',
   smsEnabled: false,
   signature: 'Regards,\nMotions Microinsurance\n+263 780 086 175\nwww.motions.co.zw',
-  superAdminPhone: '',
+  smsRecipients: [
+    { id: '1', phone: '+263780086175', events: ['registration'] },
+    { id: '2', phone: '+263780086176', events: ['payment'] },
+    { id: '3', phone: '+263780086178', events: ['claim'] },
+  ],
   companyAddress: '24 Midlothian Avenue, Eastlea, Harare, Zimbabwe',
-  companyPhone: '+263 780 086 175 / +263 780 086 176 / +263 780 086 177 / +263 780 086 178',
+  companyPhone: '+263 780 086 175 / +263 780 086 176 / +263 780 086 177',
   companyEmail: 'info@motions.co.zw',
 }
 
 export function getNotifSettings(): NotifSettings {
   try {
     const raw = localStorage.getItem('tqfy_notif_settings')
-    if (raw) return { ...DEFAULT_NOTIF_SETTINGS, ...JSON.parse(raw) }
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      // Merge smsRecipients to preserve existing ones if new structure
+      return {
+        ...DEFAULT_NOTIF_SETTINGS,
+        ...parsed,
+        smsRecipients: parsed.smsRecipients || DEFAULT_NOTIF_SETTINGS.smsRecipients,
+      }
+    }
   } catch { /**/ }
   return { ...DEFAULT_NOTIF_SETTINGS }
 }

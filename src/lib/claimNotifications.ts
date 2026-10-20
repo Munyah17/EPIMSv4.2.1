@@ -4,11 +4,18 @@ import { db } from './db'
 import { MAILBOXES } from './mailboxes'
 import { notifyPhone } from './notify'
 import { COMPANY_NAME } from './company'
-import { ADMIN_ALERT_NUMBERS } from './signupNotifications'
 
 /** NetOne distribution partnership is suspended for now — flip this back
  *  once it resumes rather than re-wiring the notification pipeline. */
 export const NETONE_SUSPENDED = true
+
+/** Get phone numbers configured for a specific event type */
+function getSmsRecipientsForEvent(event: 'registration' | 'payment' | 'claim' | 'system'): string[] {
+  const cfg = getNotifSettings()
+  return cfg.smsRecipients
+    .filter(r => r.phone && r.events.includes(event))
+    .map(r => r.phone)
+}
 
 async function getClientContact(claim: Claim): Promise<{ email: string; phone: string }> {
   const { data } = await db.clients.list()
@@ -115,13 +122,9 @@ interface StaffContact { email?: string; phone?: string; name: string }
  *  is picking the claim up next. */
 const CLAIMS_ESCALATION_CC_EMAIL = 'info@motions.co.zw'
 
-/** The four fixed office lines, plus the configured Super Admin number if
- *  it isn't already one of them — the same set every other event in the
- *  system (a new client, a new policy, a payment) alerts, so a claim is
- *  never the one thing the office doesn't hear about by text. */
+/** Get phone numbers configured for claims notifications */
 function notifyOffice(claim: Claim, stageMessage: string) {
-  const cfg = getNotifSettings()
-  const recipients = [...new Set([...ADMIN_ALERT_NUMBERS, cfg.superAdminPhone].filter(Boolean))] as string[]
+  const recipients = [...new Set(getSmsRecipientsForEvent('claim'))]
   for (const number of recipients) {
     notifyPhone(number, `${COMPANY_NAME}: Claim ${claim.claimNumber}: ${stageMessage}`, 'claim', claim.claimNumber)
   }

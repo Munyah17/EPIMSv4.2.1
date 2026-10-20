@@ -3,14 +3,20 @@ import { sendEmail, getNotifSettings } from './mailService'
 import { MAILBOXES } from './mailboxes'
 import { notifyPhone } from './notify'
 import { COMPANY_NAME } from './company'
-import { ADMIN_ALERT_NUMBERS } from './signupNotifications'
+
+/** Get phone numbers configured for a specific event type */
+function getSmsRecipientsForEvent(event: 'registration' | 'payment' | 'claim' | 'system'): string[] {
+  const cfg = getNotifSettings()
+  return cfg.smsRecipients
+    .filter(r => r.phone && r.events.includes(event))
+    .map(r => r.phone)
+}
 
 /** The four fixed office lines, plus the configured Super Admin number if it
  *  isn't already one of them -- the same set every other event in the
  *  system alerts. */
 function notifyOffice(message: string, ref?: string) {
-  const cfg = getNotifSettings()
-  const recipients = [...new Set([...ADMIN_ALERT_NUMBERS, cfg.superAdminPhone].filter(Boolean))] as string[]
+  const recipients = [...new Set(getSmsRecipientsForEvent('system'))]
   for (const number of recipients) {
     notifyPhone(number, `${COMPANY_NAME}: ${message}`, 'ticket', ref)
   }

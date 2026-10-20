@@ -482,7 +482,7 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   autoTable(doc, {
     startY: y,
     head: [['Amount Paid', 'Payment Method', 'Payment Date', 'Expiration Date']],
-    body: [[money(billedPremium), up(policy.paymentMethod), formatDate(policy.lastPaymentDate), isFieldToFloor ? TOBACCO_SEASON.end : formatDate(policy.nextPaymentDate)]],
+    body: [[money(billedPremium), up(policy.paymentMethod), formatDate(policy.nextPaymentDate), isFieldToFloor ? TOBACCO_SEASON.end : formatDate(policy.endDate)]],
     styles: { fontSize: 8, lineColor: [220, 226, 240], lineWidth: 0.12, cellPadding: 0.8 },
     headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold' },
     theme: 'grid',

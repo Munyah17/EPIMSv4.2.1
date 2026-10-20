@@ -85,6 +85,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     row.dependants = dependantsArray
     changes.dependants = { old: current.dependants, new: dependantsArray }
   }
+  if (updates.clientId !== undefined && updates.clientId !== current.client_id) {
+    row.client_id = updates.clientId
+    changes.clientId = { old: current.client_id, new: updates.clientId }
+  }
+  if (updates.productId !== undefined && updates.productId !== current.product_id) {
+    row.product_id = updates.productId
+    changes.productId = { old: current.product_id, new: updates.productId }
+  }
 
   if (Object.keys(row).length === 0) {
     return res.status(400).json({ error: 'No changes detected.' })

@@ -7,8 +7,9 @@ import { supabase } from '../lib/supabase'
 import { exportPolicyReport, getPolicyReportPdfBase64, exportToExcel, exportToCsv, exportReportToPdf } from '../lib/exportUtils'
 import { treatyRows, TREATY_HEADERS } from '../lib/treatyReport'
 import { toIsoDate } from '../lib/dateUtils'
-import { notifyPolicyRegistered, notifyRegistrationFailed, ADMIN_ALERT_NUMBERS } from '../lib/signupNotifications'
+import { notifyPolicyRegistered, notifyRegistrationFailed } from '../lib/signupNotifications'
 import { notifyPhone } from '../lib/notify'
+import { getNotifSettings } from '../lib/mailService'
 import { COMPANY_NAME } from '../lib/company'
 import { recordActivity } from '../lib/activityLog'
 import { sendSystemEmail } from '../lib/mailService'
@@ -353,7 +354,11 @@ export default function Policies({ showToast, initialCategory }: Props) {
         detail: `${policy.clientName}, ${policy.productName}`, severity: 'warning',
       })
       showToast('success', `Policy ${policy.policyNumber} deleted.`)
-      for (const number of ADMIN_ALERT_NUMBERS) {
+      const cfg = getNotifSettings()
+      const recipients = cfg.smsRecipients
+        .filter((r: { phone?: string; events: string[] }) => r.phone && r.events.includes('system'))
+        .map((r: { phone: string }) => r.phone)
+      for (const number of recipients) {
         notifyPhone(number, `${COMPANY_NAME}: Policy ${policy.policyNumber} (${policy.clientName}) was DELETED by ${user?.name ?? 'a staff member'}.`, 'system', policy.policyNumber)
       }
       return
@@ -378,9 +383,13 @@ export default function Policies({ showToast, initialCategory }: Props) {
     const { error } = await db.policies.remove(policy.id, { force: true })
     if (error) { showToast('error', error); return }
     setPolicies(prev => prev.filter(p => p.id !== policy.id))
-    showToast('success', `Policy ${policy.policyNumber} and its ${attached} deleted. Recorded in the activity log.`)
-    for (const number of ADMIN_ALERT_NUMBERS) {
-      notifyPhone(number, `${COMPANY_NAME}: Policy ${policy.policyNumber} (${policy.clientName}) was DELETED by ${user?.name ?? 'a staff member'}, along with ${attached}.`, 'system', policy.policyNumber)
+    showToast('success', `Policy ${policy.policyNumber} deleted.`)
+    const cfg = getNotifSettings()
+    const recipients = cfg.smsRecipients
+      .filter((r: { phone?: string; events: string[] }) => r.phone && r.events.includes('system'))
+      .map((r: { phone: string }) => r.phone)
+    for (const number of recipients) {
+      notifyPhone(number, `${COMPANY_NAME}: Policy ${policy.policyNumber} (${policy.clientName}) was DELETED by ${user?.name ?? 'a staff member'}. Reason: ${reason.trim()}`, 'system', policy.policyNumber)
     }
   }
 

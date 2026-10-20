@@ -71,6 +71,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     row.dob = updates.dob
     changes.dob = { old: current.dob, new: updates.dob }
   }
+  if (updates.nationalId !== undefined && updates.nationalId !== current.nationalId) {
+    row.national_id = updates.nationalId
+    changes.nationalId = { old: current.nationalId, new: updates.nationalId }
+  }
 
   if (Object.keys(row).length === 0) {
     return res.status(400).json({ error: 'No changes detected.' })
