@@ -325,13 +325,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // OUR payment confirmation — distinct from anything Paynow texted the
     // payer — goes to the client and the office on all three channels.
     const client = (policy as unknown as { clients?: { name: string; email: string | null; phone: string | null } | null }).clients ?? null
+    const policyNumber = (policy as unknown as { policy_number: string }).policy_number
     if (category !== 'agriculture') {
       const amount = `$${confirmedAmount.toFixed(2)}`
       await dispatchNotification(admin, {
-        event: 'payment', ref: policy.policy_number, client,
-        smsText: `Motions: Payment received. ${amount} via Paynow for policy ${policy.policy_number}. Reference ${reference}. Thank you.`,
-        emailSubject: `Payment received: policy ${policy.policy_number}`,
-        emailText: `Dear ${client?.name ?? 'Client'},\n\nWe have received your payment.\n\nAmount:    ${amount}\nPolicy:    ${policy.policy_number}\nMethod:    Paynow\nReference: ${reference}\n\nThank you for keeping your cover up to date.\n\nRegards,\nMotions Microinsurance`,
+        event: 'payment', ref: policyNumber, client,
+        smsText: `Motions: Payment received. ${amount} via Paynow for policy ${policyNumber}. Reference ${reference}. Thank you.`,
+        emailSubject: `Payment received: policy ${policyNumber}`,
+        emailText: `Dear ${client?.name ?? 'Client'},\n\nWe have received your payment.\n\nAmount:    ${amount}\nPolicy:    ${policyNumber}\nMethod:    Paynow\nReference: ${reference}\n\nThank you for keeping your cover up to date.\n\nRegards,\nMotions Microinsurance`,
       }).catch(e => console.error('paynow-webhook: payment notify failed', e))
     }
   }
