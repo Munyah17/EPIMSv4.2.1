@@ -40,7 +40,10 @@ CREATE INDEX IF NOT EXISTS idx_pending_policies_reference ON public.pending_poli
 ALTER TABLE public.pending_policies ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.pending_policies FORCE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "pending_policies_select_staff" ON public.pending_policies;
 CREATE POLICY "pending_policies_select_staff" ON public.pending_policies FOR SELECT TO authenticated USING (is_staff());
+
+DROP POLICY IF EXISTS "pending_policies_write_service" ON public.pending_policies;
 CREATE POLICY "pending_policies_write_service" ON public.pending_policies FOR ALL TO authenticated
   USING (current_user_role() = 'super_admin')
   WITH CHECK (current_user_role() = 'super_admin');
