@@ -50,9 +50,9 @@ ${ticket.description}${cfg.signature ? `\n\n---\n${cfg.signature}` : ''}`,
     })
   }
   if (client.phone) {
-    notifyPhone(client.phone, `${COMPANY_NAME}: Your support ticket ${ticket.ticketNumber} has been received. We'll be in touch.`, 'ticket', ticket.ticketNumber)
+    notifyPhone(client.phone, `${COMPANY_NAME}: Ticket ${ticket.ticketNumber} received. We'll respond.`, 'ticket', ticket.ticketNumber)
   }
-  notifyOffice(`New support ticket ${ticket.ticketNumber} from ${ticket.clientName}: "${ticket.subject}".`, ticket.ticketNumber)
+  notifyOffice(`New ticket ${ticket.ticketNumber} from ${ticket.clientName}: "${ticket.subject}"`, ticket.ticketNumber)
 }
 
 /** Staff posted a reply -- only the client needs telling; the staff member
@@ -76,7 +76,7 @@ Log in or reply to this email to continue the conversation.${cfg.signature ? `\n
     })
   }
   if (client.phone) {
-    notifyPhone(client.phone, `${COMPANY_NAME}: You have a new response on ticket ${ticket.ticketNumber}. Check your email for details.`, 'ticket', ticket.ticketNumber)
+    notifyPhone(client.phone, `${COMPANY_NAME}: New response on ticket ${ticket.ticketNumber}. Check email.`, 'ticket', ticket.ticketNumber)
   }
 }
 
@@ -102,6 +102,6 @@ If this did not fully resolve your issue, contact us and we will reopen it.${cfg
     })
   }
   if (client.phone) {
-    notifyPhone(client.phone, `${COMPANY_NAME}: Your support ticket ${ticket.ticketNumber} has been closed. Contact us if this isn't fully resolved.`, 'ticket', ticket.ticketNumber)
+    notifyPhone(client.phone, `${COMPANY_NAME}: Ticket ${ticket.ticketNumber} closed. Contact us if unresolved.`, 'ticket', ticket.ticketNumber)
   }
 }

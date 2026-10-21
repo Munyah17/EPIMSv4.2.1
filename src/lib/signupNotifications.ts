@@ -102,7 +102,7 @@ export async function notifyGroupRegistered(group: Group): Promise<void> {
   // The organisation's own numbers — org line and the representative's.
   const orgNumbers = [...new Set([group.orgPhone, group.contactPhone].filter(Boolean))] as string[]
   const contactPhoneShort = group.contactPhone ? group.contactPhone.replace(/[^0-9]/g, '') : ''
-  const msg = `${group.name} (${kind}) registered. Contact: ${group.contactName || 'N/A'}${contactPhoneShort ? ` ${contactPhoneShort}` : ''}. Keep this.`
+  const msg = `${group.name} (${kind}) reg. ${group.contactName || 'N/A'}${contactPhoneShort ? ` ${contactPhoneShort}` : ''}. Keep this.`
   for (const number of orgNumbers) {
     notifyPhone(number, msg, 'registration')
   }
@@ -146,12 +146,20 @@ export async function notifyPolicyRegistered(policy: Policy, client: Client): Pr
   // the policy document prints — product, cover breakdown, premium,
   // method, dates — so the SMS alone is proof of cover.
   if (client.phone) {
-    const statusLine = policy.status === 'waiting_period' ? 'Waiting period' : 'Active'
-    notifyPhone(
-      client.phone,
-      `${COMPANY_NAME}: ${policy.policyNumber} confirmed. ${client.name}, ${policy.productName}, ${fieldToFloor ? fieldToFloorCoverLine(policy.coverAmount) : cover}. ${premium}/${period}. ${policy.paymentMethod}. ${policy.startDate}. ${statusLine}. Keep this.`,
-      'registration', policy.policyNumber,
-    )
+    if (fieldToFloor) {
+      // Tobacco insurance: specific format per Afrosoft 159-char limit
+      notifyPhone(
+        client.phone,
+        `${client.name.toUpperCase()} ${policy.policyNumber} registered. Field To Floor- ${fieldToFloorCoverLine(policy.coverAmount)}. ${policy.paymentMethod} ${premium}. ${client.phone.replace(/[^0-9]/g, '')}`,
+        'registration', policy.policyNumber,
+      )
+    } else {
+      notifyPhone(
+        client.phone,
+        `${COMPANY_NAME}: ${policy.policyNumber} confirmed. ${client.name}, ${policy.productName}, ${cover}. ${premium}/${period}. ${policy.paymentMethod}. Keep this.`,
+        'registration', policy.policyNumber,
+      )
+    }
   }
 
   if (client.email) {
@@ -184,7 +192,7 @@ Keep this email for your records. If any detail above is wrong, contact us and w
   // policy announced as "$2,000" to the office but per-peril to the
   // grower is how "the document says $500" disputes start.
   const phoneShort = client.phone ? client.phone.replace(/[^0-9]/g, '') : ''
-  const alert = `${client.name} ${policy.policyNumber} registered. ${policy.productName} ${coverSms}. ${policy.paymentMethod} ${premium}. ${phoneShort}`
+  const alert = `${client.name} ${policy.policyNumber} reg. ${policy.productName} ${coverSms}. ${policy.paymentMethod} ${premium}. ${phoneShort}`
   // Deduplicated in case the configured super-admin line is already one of
   // the office numbers -- nobody wants the same alert twice.
   const recipients = [...new Set(getSmsRecipientsForEvent('registration'))]
@@ -235,12 +243,12 @@ export async function notifyPaymentReceived(payment: Payment, client: { phone?: 
   if (productCategory !== 'agriculture' && client?.phone) {
     notifyPhone(
       client.phone,
-      `${COMPANY_NAME}: ${payment.policyNumber} paid. ${amount} via ${payment.method}. Ref ${payment.reference}. Thank you.`,
+      `${COMPANY_NAME}: ${payment.policyNumber} paid. ${amount} via ${payment.method}. Ref ${payment.reference}.`,
       'payment', payment.policyNumber,
     )
   }
 
-  const alert = `${COMPANY_NAME}: ${payment.policyNumber} paid. ${payment.clientName}, ${amount} via ${payment.method}. Ref ${payment.reference}.`
+  const alert = `${COMPANY_NAME}: ${payment.policyNumber} paid. ${payment.clientName}, ${amount} via ${payment.method}. Ref ${payment.reference}`
   const recipients = [...new Set(getSmsRecipientsForEvent('payment'))]
   for (const number of recipients) {
     notifyPhone(number, alert, 'payment', payment.policyNumber)
@@ -258,7 +266,7 @@ export async function notifyPaymentFailed(payment: { policyNumber: string; clien
   if (productCategory !== 'agriculture' && client?.phone) {
     notifyPhone(
       client.phone,
-      `${COMPANY_NAME}: ${payment.policyNumber} payment failed (${amount}). Try again or contact us.`,
+      `${COMPANY_NAME}: ${payment.policyNumber} payment failed (${amount}). Try again.`,
       'payment', payment.policyNumber,
     )
   }
@@ -271,7 +279,7 @@ export async function notifyPaymentFailed(payment: { policyNumber: string; clien
     }).catch(() => { /**/ })
   }
 
-  const alert = `${COMPANY_NAME}: ${payment.policyNumber} payment FAILED. ${payment.clientName}, ${amount}${payment.method ? ` via ${payment.method}` : ''}.`
+  const alert = `${COMPANY_NAME}: ${payment.policyNumber} payment FAILED. ${payment.clientName}, ${amount}${payment.method ? ` via ${payment.method}` : ''}`
   const recipients = [...new Set(getSmsRecipientsForEvent('payment'))]
   for (const number of recipients) {
     notifyPhone(number, alert, 'payment', payment.policyNumber)

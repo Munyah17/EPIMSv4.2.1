@@ -330,7 +330,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const amount = `$${confirmedAmount.toFixed(2)}`
       await dispatchNotification(admin, {
         event: 'payment', ref: policyNumber, client,
-        smsText: `Motions: Payment received. ${amount} via Paynow for policy ${policyNumber}. Reference ${reference}. Thank you.`,
+        smsText: `Motions: Payment received. ${amount} via Paynow for policy ${policyNumber}. Ref ${reference}.`,
         emailSubject: `Payment received: policy ${policyNumber}`,
         emailText: `Dear ${client?.name ?? 'Client'},\n\nWe have received your payment.\n\nAmount:    ${amount}\nPolicy:    ${policyNumber}\nMethod:    Paynow\nReference: ${reference}\n\nThank you for keeping your cover up to date.\n\nRegards,\nMotions Microinsurance`,
       }).catch(e => console.error('paynow-webhook: payment notify failed', e))
