@@ -49,6 +49,7 @@ CREATE POLICY "pending_policies_write_service" ON public.pending_policies FOR AL
   WITH CHECK (current_user_role() = 'super_admin');
 
 -- Auto-update updated_at
+DROP TRIGGER IF EXISTS pending_policies_updated_at ON public.pending_policies;
 CREATE TRIGGER pending_policies_updated_at BEFORE UPDATE ON public.pending_policies
   FOR EACH ROW EXECUTE PROCEDURE public.set_updated_at();
 
