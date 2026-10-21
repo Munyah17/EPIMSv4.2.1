@@ -150,13 +150,13 @@ export async function notifyPolicyRegistered(policy: Policy, client: Client): Pr
       // Tobacco insurance: specific format per Afrosoft 159-char limit
       notifyPhone(
         client.phone,
-        `${client.name.toUpperCase()} ${policy.policyNumber} registered. Field To Floor- ${fieldToFloorCoverLine(policy.coverAmount)}. ${policy.paymentMethod} ${premium}. ${client.phone.replace(/[^0-9]/g, '')}`,
+        `${client.name.toUpperCase()} ${policy.policyNumber} reg. Field To Floor: ${fieldToFloorCoverLine(policy.coverAmount)}. ${policy.paymentMethod} ${premium}. ${client.phone.replace(/[^0-9]/g, '')}`,
         'registration', policy.policyNumber,
       )
     } else {
       notifyPhone(
         client.phone,
-        `${COMPANY_NAME}: ${policy.policyNumber} confirmed. ${client.name}, ${policy.productName}, ${cover}. ${premium}/${period}. ${policy.paymentMethod}. Keep this.`,
+        `${COMPANY_NAME}: ${policy.policyNumber} reg. ${client.name}, ${policy.productName}. ${cover}. ${premium}/${period}. ${policy.paymentMethod}.`,
         'registration', policy.policyNumber,
       )
     }
@@ -192,7 +192,7 @@ Keep this email for your records. If any detail above is wrong, contact us and w
   // policy announced as "$2,000" to the office but per-peril to the
   // grower is how "the document says $500" disputes start.
   const phoneShort = client.phone ? client.phone.replace(/[^0-9]/g, '') : ''
-  const alert = `${client.name} ${policy.policyNumber} reg. ${policy.productName} ${coverSms}. ${policy.paymentMethod} ${premium}. ${phoneShort}`
+  const alert = `${client.name} ${policy.policyNumber} reg. ${policy.productName}. ${coverSms}. ${policy.paymentMethod} ${premium}. ${phoneShort}`
   // Deduplicated in case the configured super-admin line is already one of
   // the office numbers -- nobody wants the same alert twice.
   const recipients = [...new Set(getSmsRecipientsForEvent('registration'))]
@@ -243,12 +243,12 @@ export async function notifyPaymentReceived(payment: Payment, client: { phone?: 
   if (productCategory !== 'agriculture' && client?.phone) {
     notifyPhone(
       client.phone,
-      `${COMPANY_NAME}: ${payment.policyNumber} paid. ${amount} via ${payment.method}. Ref ${payment.reference}.`,
+      `${COMPANY_NAME}: ${payment.policyNumber} paid. ${amount} via ${payment.method}. Ref ${payment.reference}`,
       'payment', payment.policyNumber,
     )
   }
 
-  const alert = `${COMPANY_NAME}: ${payment.policyNumber} paid. ${payment.clientName}, ${amount} via ${payment.method}. Ref ${payment.reference}`
+  const alert = `${COMPANY_NAME}: ${payment.policyNumber} paid. ${payment.clientName}. ${amount} via ${payment.method}. Ref ${payment.reference}`
   const recipients = [...new Set(getSmsRecipientsForEvent('payment'))]
   for (const number of recipients) {
     notifyPhone(number, alert, 'payment', payment.policyNumber)
@@ -266,7 +266,7 @@ export async function notifyPaymentFailed(payment: { policyNumber: string; clien
   if (productCategory !== 'agriculture' && client?.phone) {
     notifyPhone(
       client.phone,
-      `${COMPANY_NAME}: ${payment.policyNumber} payment failed (${amount}). Try again.`,
+      `${COMPANY_NAME}: ${payment.policyNumber} payment failed. ${amount}. Try again.`,
       'payment', payment.policyNumber,
     )
   }
@@ -279,7 +279,7 @@ export async function notifyPaymentFailed(payment: { policyNumber: string; clien
     }).catch(() => { /**/ })
   }
 
-  const alert = `${COMPANY_NAME}: ${payment.policyNumber} payment FAILED. ${payment.clientName}, ${amount}${payment.method ? ` via ${payment.method}` : ''}`
+  const alert = `${COMPANY_NAME}: ${payment.policyNumber} payment FAILED. ${payment.clientName}. ${amount}${payment.method ? ` via ${payment.method}` : ''}`
   const recipients = [...new Set(getSmsRecipientsForEvent('payment'))]
   for (const number of recipients) {
     notifyPhone(number, alert, 'payment', payment.policyNumber)

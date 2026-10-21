@@ -181,8 +181,8 @@ async function dispatchReminder(policy: Policy, client: Client | undefined, type
   // Every stage texts the client — a reminder that only ever arrives by
   // email is easy to miss.
   const smsBody = type === 'lapse'
-    ? `${COMPANY_NAME}: Policy ${policy.policyNumber} LAPSED. Due ${formatDate(dueDate)} unpaid. Pay $${amountDue(policy).toFixed(2)} to reinstate.`
-    : `${COMPANY_NAME}: Premium $${amountDue(policy).toFixed(2)} due ${policy.policyNumber} by ${formatDate(dueDate)}. Pay now.`
+    ? `${COMPANY_NAME}: Policy ${policy.policyNumber} LAPSED. Due ${formatDate(dueDate)}. Pay $${amountDue(policy).toFixed(2)} to reinstate.`
+    : `${COMPANY_NAME}: Premium $${amountDue(policy).toFixed(2)} due ${policy.policyNumber} by ${formatDate(dueDate)}. Pay.`
   if (clientPhone) {
     notifyPhone(clientPhone, smsBody, 'renewal', policy.policyNumber)
   }
@@ -210,7 +210,7 @@ async function dispatchReminder(policy: Policy, client: Client | undefined, type
     // just whoever happens to have Billing & Reminders open.
     const recipients = [...new Set(getSmsRecipientsForEvent('system'))]
     for (const number of recipients) {
-      notifyPhone(number, `${COMPANY_NAME}: ${policy.policyNumber} LAPSED. ${policy.clientName}, $${amountDue(policy).toFixed(2)} unpaid`, 'renewal', policy.policyNumber)
+      notifyPhone(number, `${COMPANY_NAME}: ${policy.policyNumber} LAPSED. ${policy.clientName}. $${amountDue(policy).toFixed(2)} unpaid`, 'renewal', policy.policyNumber)
     }
   }
 
