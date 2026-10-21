@@ -51,9 +51,7 @@ export const DEFAULT_NOTIF_SETTINGS: NotifSettings = {
   smsEnabled: false,
   signature: 'Regards,\nMotions Microinsurance\n+263 780 086 175\nwww.motions.co.zw',
   smsRecipients: [
-    { id: '1', phone: '+263780086175', events: ['registration'] },
-    { id: '2', phone: '+263780086176', events: ['payment'] },
-    { id: '3', phone: '+263780086178', events: ['claim'] },
+    { id: '1', phone: '+263780086178', events: ['registration', 'payment', 'claim', 'system'] },
   ],
   companyAddress: '24 Midlothian Avenue, Eastlea, Harare, Zimbabwe',
   companyPhone: '+263 780 086 175 / +263 780 086 176 / +263 780 086 177',

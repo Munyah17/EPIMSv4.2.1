@@ -181,8 +181,8 @@ async function dispatchReminder(policy: Policy, client: Client | undefined, type
   // Every stage texts the client — a reminder that only ever arrives by
   // email is easy to miss.
   const smsBody = type === 'lapse'
-    ? `${COMPANY_NAME}: Your policy ${policy.policyNumber} has LAPSED — the premium due ${formatDate(dueDate)} was not paid by the grace deadline. Pay $${amountDue(policy).toFixed(2)} to reinstate your cover.`
-    : `${COMPANY_NAME}: Your premium of $${amountDue(policy).toFixed(2)} for policy ${policy.policyNumber} is due on ${formatDate(dueDate)}. Pay by ${formatDate(dueDate)} to keep your cover.`
+    ? `${COMPANY_NAME}: Policy ${policy.policyNumber} LAPSED. Premium due ${formatDate(dueDate)} unpaid. Pay $${amountDue(policy).toFixed(2)} to reinstate.`
+    : `${COMPANY_NAME}: Premium $${amountDue(policy).toFixed(2)} due ${policy.policyNumber} by ${formatDate(dueDate)}. Pay to keep cover.`
   if (clientPhone) {
     notifyPhone(clientPhone, smsBody, 'renewal', policy.policyNumber)
   }
@@ -210,7 +210,7 @@ async function dispatchReminder(policy: Policy, client: Client | undefined, type
     // just whoever happens to have Billing & Reminders open.
     const recipients = [...new Set(getSmsRecipientsForEvent('system'))]
     for (const number of recipients) {
-      notifyPhone(number, `${COMPANY_NAME}: Policy ${policy.policyNumber} LAPSED. ${policy.clientName}, $${amountDue(policy).toFixed(2)} unpaid past the grace deadline.`, 'renewal', policy.policyNumber)
+      notifyPhone(number, `${COMPANY_NAME}: ${policy.policyNumber} LAPSED. ${policy.clientName}, $${amountDue(policy).toFixed(2)} unpaid.`, 'renewal', policy.policyNumber)
     }
   }
 

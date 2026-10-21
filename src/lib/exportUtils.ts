@@ -483,22 +483,22 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
     startY: y,
     head: [['Amount Paid', 'Payment Method', 'Payment Date', 'Expiration Date']],
     body: [[money(billedPremium), up(policy.paymentMethod), formatDate(policy.nextPaymentDate), isFieldToFloor ? TOBACCO_SEASON.end : formatDate(policy.endDate)]],
-    styles: { fontSize: 8, lineColor: [220, 226, 240], lineWidth: 0.12, cellPadding: 0.8 },
+    styles: { fontSize: 8.5, lineColor: [220, 226, 240], lineWidth: 0.15, cellPadding: 1.2 },
     headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold' },
     theme: 'grid',
     margin: { left: 14, right: 14 },
   })
-  y = (doc as any).lastAutoTable.finalY + 1
+  y = (doc as any).lastAutoTable.finalY + 2
 
   const sectionBand = (title: string) => {
-    ensureRoom(4)
+    ensureRoom(5)
     doc.setFillColor(...NAVY)
-    doc.rect(14, y, pageWidth - 28, 3.5, 'F')
-    doc.setFontSize(7)
+    doc.rect(14, y, pageWidth - 28, 4, 'F')
+    doc.setFontSize(7.5)
     doc.setTextColor(255, 255, 255)
     doc.text(title, 14 + (pageWidth - 28) / 2, y + 3, { align: 'center' })
     doc.setTextColor(...TEXT)
-    y += 4
+    y += 5
   }
 
   sectionBand('POLICY INFORMATION')
@@ -509,24 +509,24 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
       holderMemberNumber(policy.policyNumber), up(policy.productName), money(policy.premium),
       money(policy.coverAmount), 'USD', policySourceLabel(policy.source), policy.status.toUpperCase(),
     ]],
-    styles: { fontSize: 7.5, lineColor: [220, 226, 240], lineWidth: 0.12, cellPadding: 0.8 },
+    styles: { fontSize: 8, lineColor: [220, 226, 240], lineWidth: 0.15, cellPadding: 1.2 },
     headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold' },
     theme: 'grid',
     margin: { left: 14, right: 14 },
   })
-  y = (doc as any).lastAutoTable.finalY + 1
+  y = (doc as any).lastAutoTable.finalY + 2
 
   sectionBand('PERSONAL INFORMATION')
   autoTable(doc, {
     startY: y,
     head: [['Full Name', 'National ID', 'Mobile Number', 'Date of Birth', 'Registration Date']],
     body: [[up(client.name), up(client.nationalId), client.phone, formatDate(client.dob), formatDate(client.createdAt)]],
-    styles: { fontSize: 7.5, lineColor: [220, 226, 240], lineWidth: 0.12, cellPadding: 0.8 },
+    styles: { fontSize: 8, lineColor: [220, 226, 240], lineWidth: 0.15, cellPadding: 1.2 },
     headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold' },
     theme: 'grid',
     margin: { left: 14, right: 14 },
   })
-  y = (doc as any).lastAutoTable.finalY + 1
+  y = (doc as any).lastAutoTable.finalY + 2
 
   // Organisation policies name the insured organisation — and, for team
   // cover, the activity/season the roster is insured for. PERSONAL
@@ -542,12 +542,12 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
         ...(policy.coverScope === 'team' ? [up(policy.teamActivity) || '—'] : []),
         policy.coverScope === 'corporate' ? 'Corporate — employees covered' : policy.coverScope === 'team' ? 'Team — activity cover, immediate' : 'Group — members covered',
       ]],
-      styles: { fontSize: 7.5, lineColor: [220, 226, 240], lineWidth: 0.12, cellPadding: 0.8 },
+      styles: { fontSize: 8, lineColor: [220, 226, 240], lineWidth: 0.15, cellPadding: 1.2 },
       headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold' },
       theme: 'grid',
       margin: { left: 14, right: 14 },
     })
-    y = (doc as any).lastAutoTable.finalY + 1
+    y = (doc as any).lastAutoTable.finalY + 2
   }
 
   // The covered-people band wears the scope's vocabulary: a corporate
@@ -573,7 +573,7 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
     y += 1.5
   } else {
     policy.dependants.forEach((d, i) => {
-      ensureRoom(22)
+      ensureRoom(28)
       doc.setFontSize(8)
       doc.setTextColor(...NAVY)
       const header = doc.splitTextToSize(
@@ -582,7 +582,7 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
       )
       doc.text(header, 18, y)
       doc.setTextColor(...TEXT)
-      y += header.length * 3.5 + 1.5
+      y += header.length * 3.8 + 2
       autoTable(doc, {
         startY: y,
         head: [['Policy Package', premiumHeading, 'Cover', 'Currency', 'Status']],
@@ -591,12 +591,12 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
           money(d.premium ?? policy.premium),
           money(d.coverAmount ?? policy.coverAmount), 'USD', policy.status.toUpperCase(),
         ]],
-        styles: { fontSize: 7.5, lineColor: [220, 226, 240], lineWidth: 0.12, cellPadding: 0.8 },
+        styles: { fontSize: 8, lineColor: [220, 226, 240], lineWidth: 0.15, cellPadding: 1.2 },
         headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold' },
         theme: 'grid',
         margin: { left: 14, right: 14 },
       })
-      y = (doc as any).lastAutoTable.finalY + 1
+      y = (doc as any).lastAutoTable.finalY + 2
     })
 
     // Everyone on the policy is charged, so the document says what the
@@ -627,13 +627,13 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
         startY: y,
         head: [['Cover', 'Benefit']],
         body: cover.map(c => [c.peril, money(c.benefit)]),
-        styles: { fontSize: 8, lineColor: [220, 226, 240], lineWidth: 0.12, cellPadding: 0.8 },
+        styles: { fontSize: 8.5, lineColor: [220, 226, 240], lineWidth: 0.15, cellPadding: 1.2 },
         headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold' },
         columnStyles: { 1: { halign: 'right' } },
         theme: 'grid',
         margin: { left: 14, right: 14 },
       })
-      y = (doc as any).lastAutoTable.finalY + 1
+      y = (doc as any).lastAutoTable.finalY + 2
     } else {
       ensureRoom(18 + AGRICULTURE_COVER.length * 4.5)
       sectionBand('COVER PROVIDED')
@@ -685,18 +685,18 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   }
   conditions.push('Familiarize Yourself With The Following Terms and Conditions')
   const condLines = conditions.flatMap(c => doc.splitTextToSize(`• ${c}`, pageWidth - 32) as string[])
-  ensureRoom(14 + condLines.length * 4)
+  ensureRoom(16 + condLines.length * 4.5)
   sectionBand('POLICY CONDITIONS')
-  doc.setFontSize(8)
+  doc.setFontSize(8.5)
   doc.setTextColor(...TEXT)
   doc.text(condLines, 14, y)
-  y += condLines.length * 3
+  y += condLines.length * 3.5
 
   // Copyright line always on page 1 - no ensureRoom check
   doc.setDrawColor(220, 226, 240)
   doc.line(14, y, pageWidth - 14, y)
-  y += 0.8
-  doc.setFontSize(6)
+  y += 1
+  doc.setFontSize(6.5)
   doc.setTextColor(...MUTED)
   doc.text(`Copyright © ${COMPANY_NAME}. All rights reserved.`, 14, y)
 

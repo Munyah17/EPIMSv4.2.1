@@ -60,7 +60,7 @@ export async function notifyClientRegistered(client: Client, registeredBy?: stri
   if (client.phone) {
     notifyPhone(
       client.phone,
-      `${COMPANY_NAME}: Welcome ${client.name.split(' ')[0]}, your details are registered with us. An agent will be in touch to arrange cover.`,
+      `${COMPANY_NAME}: Welcome ${client.name.split(' ')[0]}, registered. Agent will contact you.`,
       'registration',
     )
   }
@@ -82,7 +82,8 @@ Please note this registration does not itself put any cover in place. One of our
     }).catch(() => { /**/ })
   }
 
-  const alert = `${COMPANY_NAME}: New client registered. ${client.name}, ${client.phone || 'no phone'}${registeredBy ? `, by ${registeredBy}` : ''}. No policy yet.`
+  const phoneShort = client.phone ? client.phone.replace(/[^0-9]/g, '') : ''
+  const alert = `${client.name} registered${phoneShort ? ` ${phoneShort}` : ''}${registeredBy ? ` by ${registeredBy}` : ''}. No policy.`
   const recipients = getSmsRecipientsForEvent('registration')
   for (const number of recipients) {
     notifyPhone(number, alert, 'registration')
@@ -100,8 +101,8 @@ export async function notifyGroupRegistered(group: Group): Promise<void> {
 
   // The organisation's own numbers — org line and the representative's.
   const orgNumbers = [...new Set([group.orgPhone, group.contactPhone].filter(Boolean))] as string[]
-  const msg = `${COMPANY_NAME}: ${group.name} is registered as a group client (${kind}).` +
-    ` We will manage roster, invoicing and policy updates through ${group.contactName || 'this contact'}${group.contactPhone ? ` on ${group.contactPhone}` : ''}. Keep this SMS.`
+  const contactPhoneShort = group.contactPhone ? group.contactPhone.replace(/[^0-9]/g, '') : ''
+  const msg = `${group.name} (${kind}) registered. Contact: ${group.contactName || 'N/A'}${contactPhoneShort ? ` ${contactPhoneShort}` : ''}. Keep this.`
   for (const number of orgNumbers) {
     notifyPhone(number, msg, 'registration')
   }
@@ -116,7 +117,8 @@ export async function notifyGroupRegistered(group: Group): Promise<void> {
     }).catch(() => { /**/ })
   }
 
-  const alert = `${COMPANY_NAME}: New organisation registered. ${group.name} (${kind}), contact ${group.contactName || 'none'} ${group.contactPhone || ''}.`
+  const contactPhoneShort = group.contactPhone ? group.contactPhone.replace(/[^0-9]/g, '') : ''
+  const alert = `${group.name} (${kind}) registered. ${group.contactName || ''}${contactPhoneShort ? ` ${contactPhoneShort}` : ''}`
   const recipients = getSmsRecipientsForEvent('registration')
   for (const number of recipients) {
     notifyPhone(number, alert, 'registration')
@@ -145,19 +147,10 @@ export async function notifyPolicyRegistered(policy: Policy, client: Client): Pr
   // the policy document prints — product, cover breakdown, premium,
   // method, dates — so the SMS alone is proof of cover.
   if (client.phone) {
-    const statusLine = policy.status === 'waiting_period'
-      ? 'Waiting period — we will confirm when cover is active.'
-      : 'Cover active.'
+    const statusLine = policy.status === 'waiting_period' ? 'Waiting period' : 'Active'
     notifyPhone(
       client.phone,
-      `${COMPANY_NAME}: Policy ${policy.policyNumber} confirmed.\n` +
-      `Holder:   ${client.name}\n` +
-      `Product:  ${policy.productName}\n` +
-      `${fieldToFloor ? `Cover:    ${fieldToFloorCoverLine(policy.coverAmount)}` : `Cover:    ${cover}`}\n` +
-      `Premium:  ${premium} via ${policy.paymentMethod}\n` +
-      `Start:    ${policy.startDate}\n` +
-      `Status:   ${statusLine}\n` +
-      `Terms & Conditions apply — see your policy document. Keep this SMS.`,
+      `${COMPANY_NAME}: ${policy.policyNumber} confirmed. ${client.name}, ${policy.productName}, ${fieldToFloor ? fieldToFloorCoverLine(policy.coverAmount) : cover}. ${premium}/${period}. ${policy.paymentMethod}. ${policy.startDate}. ${statusLine}. Keep this.`,
       'registration', policy.policyNumber,
     )
   }
@@ -191,7 +184,8 @@ Keep this email for your records. If any detail above is wrong, contact us and w
   // The office alert quotes the same figure the client read — a tobacco
   // policy announced as "$2,000" to the office but per-peril to the
   // grower is how "the document says $500" disputes start.
-  const alert = `${COMPANY_NAME}: New policy ${policy.policyNumber} registered. ${client.name}, ${policy.productName}, ${coverSms}, premium ${premium}. Payment: ${policy.paymentMethod}. Contact ${client.phone || 'not given'}.`
+  const phoneShort = client.phone ? client.phone.replace(/[^0-9]/g, '') : ''
+  const alert = `${client.name} ${policy.policyNumber} registered. ${policy.productName} ${coverSms}. ${policy.paymentMethod} ${premium}. ${phoneShort}`
   // Deduplicated in case the configured super-admin line is already one of
   // the office numbers -- nobody wants the same alert twice.
   const recipients = [...new Set(getSmsRecipientsForEvent('registration'))]
@@ -242,12 +236,12 @@ export async function notifyPaymentReceived(payment: Payment, client: { phone?: 
   if (productCategory !== 'agriculture' && client?.phone) {
     notifyPhone(
       client.phone,
-      `${COMPANY_NAME}: Payment received. ${amount} via ${payment.method} for policy ${payment.policyNumber}. Reference ${payment.reference}. Thank you.`,
+      `${COMPANY_NAME}: ${payment.policyNumber} paid. ${amount} via ${payment.method}. Ref ${payment.reference}. Thank you.`,
       'payment', payment.policyNumber,
     )
   }
 
-  const alert = `${COMPANY_NAME}: Payment received. ${payment.clientName}, policy ${payment.policyNumber}, ${amount} via ${payment.method}. Ref ${payment.reference}.`
+  const alert = `${COMPANY_NAME}: ${payment.policyNumber} paid. ${payment.clientName}, ${amount} via ${payment.method}. Ref ${payment.reference}.`
   const recipients = [...new Set(getSmsRecipientsForEvent('payment'))]
   for (const number of recipients) {
     notifyPhone(number, alert, 'payment', payment.policyNumber)
@@ -265,7 +259,7 @@ export async function notifyPaymentFailed(payment: { policyNumber: string; clien
   if (productCategory !== 'agriculture' && client?.phone) {
     notifyPhone(
       client.phone,
-      `${COMPANY_NAME}: Your payment of ${amount} for policy ${payment.policyNumber} could not be completed. Please try again or contact us.`,
+      `${COMPANY_NAME}: ${payment.policyNumber} payment failed (${amount}). Try again or contact us.`,
       'payment', payment.policyNumber,
     )
   }
@@ -278,7 +272,7 @@ export async function notifyPaymentFailed(payment: { policyNumber: string; clien
     }).catch(() => { /**/ })
   }
 
-  const alert = `${COMPANY_NAME}: Payment FAILED. ${payment.clientName}, policy ${payment.policyNumber}, ${amount}${payment.method ? ` via ${payment.method}` : ''}.`
+  const alert = `${COMPANY_NAME}: ${payment.policyNumber} payment FAILED. ${payment.clientName}, ${amount}${payment.method ? ` via ${payment.method}` : ''}.`
   const recipients = [...new Set(getSmsRecipientsForEvent('payment'))]
   for (const number of recipients) {
     notifyPhone(number, alert, 'payment', payment.policyNumber)
