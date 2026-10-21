@@ -252,20 +252,18 @@ tbody tr:hover td{background:var(--surface)}
   .sidebar-close-btn{display:flex!important}
   .sidebar-overlay{display:block!important}
 
-  /* Topbar */
-  .topbar{padding:0 14px!important;height:52px!important}
+  /* Topbar - minimal: hamburger left, avatar right only */
+  .topbar{padding:0 14px!important;height:52px!important;justify-content:space-between}
+  .topbar-left{display:none}
+  .topbar-right{display:none}
+  .menu-toggle{display:flex!important;align-items:center;justify-content:center;width:38px;height:38px;flex-shrink:0;padding:0!important}
+  .topbar-avatar{display:flex!important;width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#5B7FE8,#4169E1);align-items:center;justify-content:center;font-size:13px;font-weight:700;color:white;cursor:pointer}
+  .topbar-profile{display:none}
+  .topbar-refresh{display:none}
+  .topbar-date{display:none}
+  .topbar-title{display:none}
   .topbar-user-info{display:none}
   .topbar-chevron{display:none}
-  .menu-toggle{display:flex!important;align-items:center;justify-content:center;width:38px;height:38px;flex-shrink:0;padding:0!important}
-  /* The refresh button's label is ~160px of the ~320px a phone gives the
-     header — that's what pushed the title and hamburger off-screen.
-     Icon-only on mobile; the text returns on desktop. */
-  .topbar-refresh{padding:6px 9px!important;font-size:0!important;gap:0!important}
-  .topbar-refresh span{font-size:14px!important}
-  .topbar-date{display:none!important}
-  .topbar-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:44vw}
-  .topbar-left{gap:8px!important}
-  .topbar-profile{gap:0!important;padding:5px!important}
 
   /* Content area */
   .content-area{padding:12px 12px 80px!important}
@@ -377,6 +375,10 @@ tbody tr:hover td{background:var(--surface)}
 .menu-toggle{background:transparent;border:none;cursor:pointer;font-size:20px;padding:5px;border-radius:6px;color:var(--text);line-height:1;display:none}
 .menu-toggle:hover{background:var(--surface2)}
 @media(max-width:768px){.menu-toggle{display:block}}
+
+/* Mobile-only avatar button */
+.mobile-avatar-btn{display:none;width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#5B7FE8,#4169E1);align-items:center;justify-content:center;font-size:13px;font-weight:700;color:white;cursor:pointer;border:none;padding:0;flex-shrink:0}
+@media(max-width:768px){.mobile-avatar-btn{display:flex}}
 
 /* Profile dropdown */
 .dropdown-backdrop{position:fixed;inset:0;z-index:598}

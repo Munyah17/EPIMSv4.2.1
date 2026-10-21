@@ -106,6 +106,15 @@ export default function TopBar({ activePanel, onMenuToggle, showToast }: TopBarP
             <span className="topbar-chevron">{showDropdown ? '▲' : '▼'}</span>
           </div>
 
+          {/* Mobile-only avatar button */}
+          <button
+            className="mobile-avatar-btn"
+            onClick={() => setShowDropdown(o => !o)}
+            aria-label="Profile menu"
+          >
+            {user?.name.charAt(0)}
+          </button>
+
           {showDropdown && (
             <>
               <div className="dropdown-backdrop" onClick={() => setShowDropdown(false)} />
