@@ -16,6 +16,10 @@
     {
       "path": "/api/cron-reminders",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cleanup-pending-policies",
+      "schedule": "0 */6 * * *"
     }
   ]
 }

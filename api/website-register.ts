@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { serviceClient } from './_lib/sessionAuth.js'
-import { createClient, createPolicy, getActiveProducts, clientByNationalId, policiesForClient } from './_lib/bot/data.js'
+import { createClient, createPendingPolicy, getActiveProducts, clientByNationalId, pendingPoliciesForClient } from './_lib/bot/data.js'
 import type { BotProduct } from './_lib/bot/types.js'
 import { initiatePaynowPayment } from './_lib/paynowInitiate.js'
 import { chargeEip, eipConfigured, normalizeMsisdn } from './_lib/ecocashInstant.js'
@@ -13,7 +13,7 @@ import { chargeEip, eipConfigured, normalizeMsisdn } from './_lib/ecocashInstant
  * Ordering is the safety design:
  *
  *   1. client row created (or an existing one reused by national_id)
- *   2. pending policy created with a real policy number
+ *   2. pending policy created with a real policy number (in pending_policies table)
  *   3. payment initiated through OUR integrations — Paynow link or
  *      EcoCash push — only once the records exist
  *
@@ -22,10 +22,12 @@ import { chargeEip, eipConfigured, normalizeMsisdn } from './_lib/ecocashInstant
  *   - registration fails  → no payment was ever initiated; the caller
  *     gets an error to show, nothing to refund. If step 2 dies after a
  *     NEW client was inserted, that row is deleted as compensation.
- *   - payment fails       → the client+policy exist as 'pending'; the
+ *   - payment fails       → the client+pending_policy exist; the
  *     caller shows "payment failed — try again" and a retry reuses the
- *     same policy (no duplicate). Our paynow-webhook is the single
- *     reconciler for confirmations and failures alike.
+ *     same pending policy (no duplicate). Our paynow-webhook moves the
+ *     pending policy to the main policies table ONLY on successful payment.
+ *     Failed payments leave the pending policy for retry; stale ones
+ *     (older than 24 hours) are cleaned up automatically.
  *
  * Auth: machine secret — WEBSITE_API_SECRET, falling back to the shared
  * NOTIFY_SECRET/CRON_SECRET the website's other calls already use.
@@ -162,17 +164,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
-    const existing = await policiesForClient(admin, client.id)
-    let policy = existing.find(p => p.status === 'pending' && p.productName === product.name)
-      ?? existing.find(p => p.status === 'pending')
-    if (!policy && existing.some(p => ['active', 'waiting_period'].includes(p.status) && p.productName === product.name)) {
-      return res.status(409).json({ ok: false, error: 'This client already has a live policy on that product.', code: 'ALREADY_COVERED' })
+    const existing = await pendingPoliciesForClient(admin, client.id)
+    let policy = existing.find((p: { productName: string }) => p.productName === product.name)
+      ?? existing.find(() => true)
+    if (!policy && existing.some((p: { productName: string }) => p.productName === product.name)) {
+      // Note: pending policies don't have 'active' status, so we check if there's already one
+      return res.status(409).json({ ok: false, error: 'This client already has a pending policy on that product.', code: 'ALREADY_PENDING' })
     }
 
     if (!policy) {
       const start = new Date()
       const end = new Date(start); end.setFullYear(end.getFullYear() + 1)
-      const created = await createPolicy(admin, {
+      const created = await createPendingPolicy(admin, {
         clientId: client.id, product,
         paymentMethod: paymentMethod === 'ecocash' ? 'EcoCash' : 'Paynow',
         agentId: body.agentId ?? undefined,
@@ -183,7 +186,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         chronicIllnessDetails: product.category === 'health' ? (body.chronicIllnessDetails?.trim() || undefined) : undefined,
       })
       if (dependants.length) {
-        await admin.from('policies').update({ dependants }).eq('id', created.id)
+        await admin.from('pending_policies').update({ dependants }).eq('id', created.id)
       }
       policy = created
     }

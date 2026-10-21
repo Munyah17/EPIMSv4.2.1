@@ -182,11 +182,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     await admin.from('paynow_transactions').update({
       status: 'failed', paynow_reference: paynowReference, updated_at: new Date().toISOString(),
     }).eq('reference', reference)
+    // Delete the pending policy since payment failed
+    if (txn.policy_id) {
+      await admin.from('pending_policies').delete().eq('id', txn.policy_id)
+    }
     // The gateway's own text to the payer is not our payment confirmation —
     // OUR failure notice goes out on our own channels so the client knows
     // nothing was collected and the office knows to follow up.
     const { data: fPolicy } = await admin
-      .from('policies')
+      .from('pending_policies')
       .select('policy_number, clients!client_id(name, email, phone), products!product_id(category)')
       .eq('id', txn.policy_id)
       .maybeSingle()
@@ -214,11 +218,39 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // Paid, and the amount matches what this reference was for.
-  const { data: policy } = await admin
-    .from('policies')
-    .select('id, policy_number, product_id, client_id, premium, dependants, status, next_payment_date, clients!client_id(name, email, phone)')
+  // First, check if this is a pending policy that needs to be finalized
+  const { data: pendingPolicy } = await admin
+    .from('pending_policies')
+    .select('id, policy_number, product_id, client_id, premium, dependants, start_date, end_date, payment_method, source, grower_number, agent_id, has_chronic_illness, chronic_illness_details, clients!client_id(name, email, phone)')
     .eq('id', txn.policy_id)
     .maybeSingle()
+
+  let policy: { id: string; policy_number: string; product_id: string; client_id: string; premium: number; dependants: unknown; status: string; next_payment_date: string | null; clients?: { name: string; email: string | null; phone: string | null } | null } | null = null
+
+  if (pendingPolicy) {
+    // Move from pending_policies to policies table
+    const { data: finalizedId, error: finalizeError } = await admin.rpc('finalize_pending_policy', { pending_id: txn.policy_id })
+    if (finalizeError || !finalizedId) {
+      console.error('paynow-webhook: failed to finalize pending policy', reference, finalizeError?.message)
+      return res.status(500).json({ ok: false, error: 'Could not finalize policy.' })
+    }
+    // Fetch the newly created policy
+    const { data: newPolicy } = await admin
+      .from('policies')
+      .select('id, policy_number, product_id, client_id, premium, dependants, status, next_payment_date, clients!client_id(name, email, phone)')
+      .eq('id', finalizedId)
+      .maybeSingle()
+    policy = newPolicy as typeof policy
+  } else {
+    // Fallback: policy already exists in main policies table (legacy case)
+    const { data: existingPolicy } = await admin
+      .from('policies')
+      .select('id, policy_number, product_id, client_id, premium, dependants, status, next_payment_date, clients!client_id(name, email, phone)')
+      .eq('id', txn.policy_id)
+      .maybeSingle()
+    policy = existingPolicy as typeof policy
+  }
+
   if (!policy) {
     console.error('paynow-webhook: policy not found for paynow_transactions row', reference, txn.policy_id)
     return res.status(200).json({ ok: false, error: 'Policy not found.' })

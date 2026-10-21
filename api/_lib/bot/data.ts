@@ -184,6 +184,48 @@ export async function createPolicy(admin: SupabaseClient, p: {
   }
 }
 
+/** Create a policy in the pending_policies table - used for website signups
+ *  where payment must be confirmed before the policy is finalized. */
+export async function createPendingPolicy(admin: SupabaseClient, p: {
+  clientId: string; product: BotProduct; paymentMethod: string; agentId?: string; startDate: string; endDate: string
+  /** Channel stamp — 'motions_website', etc. */
+  source?: string
+  /** Medical declaration — required by the caller for health-category products. */
+  hasChronicIllness?: boolean; chronicIllnessDetails?: string
+}): Promise<BotPolicy> {
+  const policyNumber = await nextPolicyNumber(admin, p.product)
+  const { data, error } = await admin.from('pending_policies').insert({
+    policy_number: policyNumber, client_id: p.clientId, product_id: p.product.id,
+    premium: p.product.premium, cover_amount: p.product.coverAmount,
+    start_date: p.startDate, end_date: p.endDate,
+    dependants: [], payment_method: p.paymentMethod,
+    agent_id: p.agentId ?? null, source: p.source ?? 'motions_website',
+    has_chronic_illness: p.hasChronicIllness ?? null,
+    chronic_illness_details: p.chronicIllnessDetails ?? null,
+  }).select('id, policy_number, premium, cover_amount, dependants, products(name)').single()
+  if (error) throw new Error(`Could not save the pending policy: ${error.message}`)
+  return {
+    id: data.id as string, policyNumber: data.policy_number as string,
+    productName: (data.products as { name?: string } | null)?.name ?? '',
+    premium: Number(data.premium), coverAmount: Number(data.cover_amount),
+    status: 'pending', dependants: [],
+  }
+}
+
+/** Check for existing pending policies for a client */
+export async function pendingPoliciesForClient(admin: SupabaseClient, clientId: string): Promise<BotPolicy[]> {
+  const { data } = await admin.from('pending_policies')
+    .select('id, policy_number, premium, cover_amount, dependants, products(name)')
+    .eq('client_id', clientId)
+  return (data ?? []).map(r => ({
+    id: r.id as string, policyNumber: r.policy_number as string,
+    productName: (r.products as { name?: string } | null)?.name ?? '',
+    premium: Number(r.premium), coverAmount: Number(r.cover_amount),
+    status: 'pending',
+    dependants: Array.isArray(r.dependants) ? r.dependants as BotPolicy['dependants'] : [],
+  }))
+}
+
 /** Append a dependant to a policy's JSONB dependants array. */
 export async function addDependant(admin: SupabaseClient, policyId: string, dependant: Record<string, unknown>): Promise<void> {
   const { data: pol } = await admin.from('policies').select('dependants').eq('id', policyId).single()
