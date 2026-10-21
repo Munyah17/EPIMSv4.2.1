@@ -117,7 +117,6 @@ export async function notifyGroupRegistered(group: Group): Promise<void> {
     }).catch(() => { /**/ })
   }
 
-  const contactPhoneShort = group.contactPhone ? group.contactPhone.replace(/[^0-9]/g, '') : ''
   const alert = `${group.name} (${kind}) registered. ${group.contactName || ''}${contactPhoneShort ? ` ${contactPhoneShort}` : ''}`
   const recipients = getSmsRecipientsForEvent('registration')
   for (const number of recipients) {
