@@ -1,24 +1,28 @@
 import type { Ticket } from '../types'
-import { sendSms } from './smsService'
-import { sendEmail, getNotifSettings } from './mailService'
+import { sendEmail, getNotifSettings, DEFAULT_NOTIF_SETTINGS } from './mailService'
 import { MAILBOXES } from './mailboxes'
+import { notifyPhone } from './notify'
 import { COMPANY_NAME } from './company'
+import { db } from './db'
 
-/** Get phone numbers configured for a specific event type */
-function getSmsRecipientsForEvent(event: 'registration' | 'payment' | 'claim' | 'system'): string[] {
-  const cfg = getNotifSettings()
+/** Get phone numbers configured for a specific event type.
+ *  Fetches from database to ensure newly added recipients are immediately available. */
+async function getSmsRecipientsForEvent(event: 'registration' | 'payment' | 'claim' | 'system'): Promise<string[]> {
+  // Try to get latest settings from database first
+  const remote = await db.settings.get<any>('notif_settings')
+  const cfg = remote ? { ...DEFAULT_NOTIF_SETTINGS, ...remote } : getNotifSettings()
   return cfg.smsRecipients
-    .filter(r => r.phone && r.events.includes(event))
-    .map(r => r.phone)
+    .filter((r: any) => r.phone && r.events.includes(event))
+    .map((r: any) => r.phone)
 }
 
 /** The four fixed office lines, plus the configured Super Admin number if it
  *  isn't already one of them -- the same set every other event in the
  *  system alerts. */
-async function notifyOffice(message: string) {
-  const recipients = [...new Set(getSmsRecipientsForEvent('system'))]
+async function notifyOffice(message: string, ref?: string) {
+  const recipients = [...new Set(await getSmsRecipientsForEvent('system'))]
   for (const number of recipients) {
-    await sendSms(number, `${COMPANY_NAME}: ${message}`)
+    notifyPhone(number, `${COMPANY_NAME}: ${message}`, 'ticket', ref)
   }
 }
 
@@ -50,9 +54,9 @@ ${ticket.description}${cfg.signature ? `\n\n---\n${cfg.signature}` : ''}`,
     })
   }
   if (client.phone) {
-    await sendSms(client.phone, `${COMPANY_NAME}: Ticket ${ticket.ticketNumber} received. We'll respond.`)
+    notifyPhone(client.phone, `${COMPANY_NAME}: Ticket ${ticket.ticketNumber} received. We'll respond.`, 'ticket', ticket.ticketNumber)
   }
-  notifyOffice(`New ticket ${ticket.ticketNumber} from ${ticket.clientName}: "${ticket.subject}"`)
+  await notifyOffice(`New ticket ${ticket.ticketNumber} from ${ticket.clientName}: "${ticket.subject}"`, ticket.ticketNumber)
 }
 
 /** Staff posted a reply -- only the client needs telling; the staff member
@@ -76,7 +80,7 @@ Log in or reply to this email to continue the conversation.${cfg.signature ? `\n
     })
   }
   if (client.phone) {
-    await sendSms(client.phone, `${COMPANY_NAME}: New response on ticket ${ticket.ticketNumber}. Check email.`)
+    notifyPhone(client.phone, `${COMPANY_NAME}: New response on ticket ${ticket.ticketNumber}. Check email.`, 'ticket', ticket.ticketNumber)
   }
 }
 
@@ -102,6 +106,6 @@ If this did not fully resolve your issue, contact us and we will reopen it.${cfg
     })
   }
   if (client.phone) {
-    await sendSms(client.phone, `${COMPANY_NAME}: Ticket ${ticket.ticketNumber} closed. Contact us if unresolved.`)
+    notifyPhone(client.phone, `${COMPANY_NAME}: Ticket ${ticket.ticketNumber} closed. Contact us if unresolved.`, 'ticket', ticket.ticketNumber)
   }
 }

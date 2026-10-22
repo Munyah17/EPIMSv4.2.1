@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import type { Policy, Dependant, Client, Product, AppUser, Group, GroupMember, GroupType, CoverScope } from '../../types'
+import type { Policy, Dependant, Client, Product, AppUser, Group, GroupType, CoverScope } from '../../types'
 import { MANUAL_PAYMENT_METHODS } from '../../types'
 import { db } from '../../lib/db'
 import { useAuth } from '../../contexts/AuthContext'
@@ -12,6 +12,7 @@ import { nextPolicyNumber } from '../../lib/policyNumbers'
 import { POLICY_SOURCES, DEFAULT_POLICY_SOURCE } from '../../lib/policySources'
 import { notifyGroupRegistered } from '../../lib/signupNotifications'
 import { serverReachable } from '../../lib/notify'
+import { uploadDocument } from '../../lib/storage'
 import ValidationSummary, { MissingField, invalidClass, fieldId, isMissing } from '../ui/ValidationSummary'
 
 interface Props {
@@ -111,6 +112,11 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   const [products, setProducts] = useState<Product[]>([])
   const [productsLoading, setProductsLoading] = useState(true)
   const [staff, setStaff] = useState<AppUser[]>([])
+  // Proof of Payment (PoP) fields - optional for cash, transfers, Ecocash Merchant
+  const [popDescription, setPopDescription] = useState('')
+  const [popFile, setPopFile] = useState<File | null>(null)
+  const [popUploading, setPopUploading] = useState(false)
+  const [popUrl, setPopUrl] = useState('')
   const product = products.find(p => p.id === productId)
   const isMedical = product?.category === 'health'
 
@@ -265,6 +271,27 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
     setCoverScope(scope)
     // Sensible org-type default for the inline registration form.
     setOrgType(scope === 'corporate' ? 'company' : scope === 'team' ? 'sports' : 'other')
+  }
+
+  const handlePopFileUpload = async (file: File) => {
+    if (!file) return
+    setPopUploading(true)
+    try {
+      // Upload to temporary location, will be moved to policy folder after policy creation
+      const { data, error } = await uploadDocument('policies', 'temp', file)
+      if (error) {
+        showToast?.('error', `Failed to upload PoP: ${error}`)
+        setPopFile(null)
+      } else if (data) {
+        setPopUrl(data.path)
+        setPopFile(file)
+      }
+    } catch (e) {
+      showToast?.('error', `Failed to upload PoP: ${e instanceof Error ? e.message : String(e)}`)
+      setPopFile(null)
+    } finally {
+      setPopUploading(false)
+    }
   }
 
   const clearClientFields = () => {
@@ -817,6 +844,45 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                   ))}
                 </select>
               </div>
+              {/* Proof of Payment (PoP) - optional for cash, transfers, Ecocash Merchant */}
+              {(paymentMethod === 'Cash' || paymentMethod === 'Bank Transfer' || paymentMethod === 'EcoCash') && (
+                <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: 12, marginTop: 8, background: 'var(--surface)' }}>
+                  <label style={{ fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--muted)' }}>
+                    Proof of Payment (optional)
+                  </label>
+                  <div className="form-group" style={{ marginTop: 8, marginBottom: 0 }}>
+                    <label style={{ fontSize: 12 }}>Description / Transaction Code</label>
+                    <textarea
+                      className="form-control"
+                      rows={2}
+                      placeholder="Paste transaction code, reference number, or any other payment details..."
+                      value={popDescription}
+                      onChange={e => setPopDescription(e.target.value)}
+                    />
+                  </div>
+                  <div className="form-group" style={{ marginTop: 8, marginBottom: 0 }}>
+                    <label style={{ fontSize: 12 }}>Upload PoP Document</label>
+                    <input
+                      type="file"
+                      accept=".pdf,.jpg,.jpeg,.png,.csv,.xlsx,.xls,.doc,.docx,.webp,.txt"
+                      onChange={e => {
+                        const file = e.target.files?.[0]
+                        if (file) handlePopFileUpload(file)
+                      }}
+                      disabled={popUploading}
+                    />
+                    {popUploading && <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>Uploading...</p>}
+                    {popFile && (
+                      <p style={{ fontSize: 11, color: 'var(--success)', marginTop: 4 }}>
+                        ✓ {popFile.name} uploaded
+                      </p>
+                    )}
+                    <p style={{ fontSize: 10, color: 'var(--muted)', marginTop: 4 }}>
+                      Accepted: PDF, JPG, PNG, CSV, Excel, Word, WebP, TXT
+                    </p>
+                  </div>
+                </div>
+              )}
               {/* On agriculture the agent above is the Field Officer —
                   same agent_id, picked once in the grower block; a second
                   picker here would just duplicate the same value. */}

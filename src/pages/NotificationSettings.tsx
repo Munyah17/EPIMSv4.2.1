@@ -16,6 +16,7 @@ export default function NotificationSettings({ showToast }: Props) {
   const canEdit = user?.role === 'super_admin' || user?.role === 'admin'
   const [settings, setSettings] = useState<NotifSettings>(() => getNotifSettings())
   const [saving, setSaving] = useState(false)
+  const [savingSms, setSavingSms] = useState(false)
 
   const update = (key: keyof NotifSettings, value: string | boolean | SmsRecipient[]) => {
     if (!canEdit) return
@@ -30,6 +31,16 @@ export default function NotificationSettings({ showToast }: Props) {
     if (error) { showToast('error', `Failed to save: ${error}`); return }
     saveNotifSettings(settings)
     showToast('success', 'Notification settings saved, now shared with every staff member.')
+  }
+
+  const handleSaveSmsRecipients = async () => {
+    if (!canEdit) return
+    setSavingSms(true)
+    const { error } = await db.settings.set('notif_settings', settings)
+    setSavingSms(false)
+    if (error) { showToast('error', `Failed to save SMS recipients: ${error}`); return }
+    saveNotifSettings(settings)
+    showToast('success', 'SMS recipients saved and now active for all notification events.')
   }
 
   const handleReset = async () => {
@@ -162,7 +173,15 @@ export default function NotificationSettings({ showToast }: Props) {
         {/* SMS recipients by event type */}
         <div className="card">
           <div className="card-header">
-            <span className="card-title">� SMS Recipients</span>
+            <span className="card-title">📱 SMS Recipients</span>
+            <button 
+              className="btn btn-primary btn-sm" 
+              onClick={handleSaveSmsRecipients} 
+              disabled={savingSms || !canEdit}
+              style={{ marginLeft: 'auto' }}
+            >
+              {savingSms ? 'Saving…' : 'Save Changes'}
+            </button>
           </div>
           <p className="notif-settings-desc">
             Add phone numbers and select which notification types they receive. Blank numbers are ignored.

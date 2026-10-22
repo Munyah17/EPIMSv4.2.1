@@ -148,6 +148,13 @@ async function callAfrosoft(
     })
     if (!res.ok) {
       const err = await res.json().catch(() => ({}))
+      // HTTP 404 on localhost means the API endpoint doesn't exist (Vercel serverless function)
+      if (res.status === 404 && window.location.hostname === 'localhost') {
+        return {
+          ok: false,
+          error: 'SMS gateway API is not available on localhost. Use the deployed site to send real SMS messages. On localhost, SMS will be simulated (logged but not sent).'
+        }
+      }
       return { ok: false, error: (err as { error?: string })?.error ?? `Gateway proxy error (HTTP ${res.status})` }
     }
 
@@ -161,7 +168,7 @@ async function callAfrosoft(
     } catch {
       return {
         ok: false,
-        error: 'The SMS service is not reachable at /api/gateway-proxy — it returned a page instead of a response. Use the deployed site, or run the dev server with API functions enabled.',
+        error: 'The SMS service is not reachable at /api/gateway-proxy — it returned a page instead of a response. Use the deployed site to send real SMS messages. On localhost, SMS will be simulated (logged but not sent).',
       }
     }
     const { status, ok, body } = envelope
@@ -327,6 +334,16 @@ export function isGatewayFlaggedDown(): boolean {
 }
 
 export async function pingSmsGateway(): Promise<GatewayPing> {
+  // On localhost, the API endpoint doesn't exist (Vercel serverless function)
+  // Return a clear message instead of treating it as a gateway failure
+  if (window.location.hostname === 'localhost') {
+    return {
+      up: false,
+      source: 'us',
+      detail: 'SMS gateway API is not available on localhost. Use the deployed site to send real SMS messages. On localhost, SMS will be simulated (logged but not sent).'
+    }
+  }
+
   try {
     const { data: { session } } = await supabase.auth.getSession()
     const res = await fetch('/api/gateway-proxy', {

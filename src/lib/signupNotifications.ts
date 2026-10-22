@@ -23,12 +23,15 @@ function money(amount: number): string {
   return `$${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
 
-/** Get phone numbers configured for a specific event type */
-function getSmsRecipientsForEvent(event: 'registration' | 'payment' | 'claim' | 'system'): string[] {
-  const cfg = getNotifSettings()
+/** Get phone numbers configured for a specific event type.
+ *  Fetches from database to ensure newly added recipients are immediately available. */
+async function getSmsRecipientsForEvent(event: 'registration' | 'payment' | 'claim' | 'system'): Promise<string[]> {
+  // Try to get latest settings from database first
+  const remote = await db.settings.get<any>('notif_settings')
+  const cfg = remote ? { ...DEFAULT_NOTIF_SETTINGS, ...remote } : getNotifSettings()
   return cfg.smsRecipients
-    .filter(r => r.phone && r.events.includes(event))
-    .map(r => r.phone)
+    .filter((r: any) => r.phone && r.events.includes(event))
+    .map((r: any) => r.phone)
 }
 
 /**
@@ -42,7 +45,7 @@ function getSmsRecipientsForEvent(event: 'registration' | 'payment' | 'claim' | 
 export async function notifyRegistrationFailed(what: string, detail: string): Promise<void> {
   const cfg = getNotifSettings()
   const alert = `${COMPANY_NAME}: ${what} FAILED. ${detail}`
-  const recipients = getSmsRecipientsForEvent('registration')
+  const recipients = await getSmsRecipientsForEvent('registration')
   for (const number of recipients) {
     await sendSms(number, alert)
   }
@@ -83,7 +86,7 @@ Please note this registration does not itself put any cover in place. One of our
 
   const phoneShort = client.phone ? client.phone.replace(/[^0-9]/g, '') : ''
   const alert = `${client.name} registered${phoneShort ? ` ${phoneShort}` : ''}${registeredBy ? ` by ${registeredBy}` : ''}. No policy.`
-  const recipients = getSmsRecipientsForEvent('registration')
+  const recipients = await getSmsRecipientsForEvent('registration')
   for (const number of recipients) {
     await sendSms(number, alert)
   }
@@ -117,7 +120,7 @@ export async function notifyGroupRegistered(group: Group): Promise<void> {
   }
 
   const alert = `${group.name} (${kind}) registered. ${group.contactName || ''}${contactPhoneShort ? ` ${contactPhoneShort}` : ''}`
-  const recipients = getSmsRecipientsForEvent('registration')
+  const recipients = await getSmsRecipientsForEvent('registration')
   for (const number of recipients) {
     await sendSms(number, alert)
   }
@@ -192,7 +195,7 @@ Keep this email for your records. If any detail above is wrong, contact us and w
   const alert = `${client.name} ${policy.policyNumber} reg. ${policy.productName}. ${coverSms}. ${policy.paymentMethod} ${premium}. ${phoneShort}`
   // Deduplicated in case the configured super-admin line is already one of
   // the office numbers -- nobody wants the same alert twice.
-  const recipients = [...new Set(getSmsRecipientsForEvent('registration'))]
+  const recipients = [...new Set(await getSmsRecipientsForEvent('registration'))]
   for (const number of recipients) {
     await sendSms(number, alert)
   }
@@ -245,7 +248,7 @@ export async function notifyPaymentReceived(payment: Payment, client: { phone?: 
   }
 
   const alert = `${COMPANY_NAME}: ${payment.policyNumber} paid. ${payment.clientName}. ${amount} via ${payment.method}. Ref ${payment.reference}`
-  const recipients = [...new Set(getSmsRecipientsForEvent('payment'))]
+  const recipients = [...new Set(await getSmsRecipientsForEvent('payment'))]
   for (const number of recipients) {
     await sendSms(number, alert)
   }
@@ -275,7 +278,7 @@ export async function notifyPaymentFailed(payment: { policyNumber: string; clien
   }
 
   const alert = `${COMPANY_NAME}: ${payment.policyNumber} payment FAILED. ${payment.clientName}. ${amount}${payment.method ? ` via ${payment.method}` : ''}`
-  const recipients = [...new Set(getSmsRecipientsForEvent('payment'))]
+  const recipients = [...new Set(await getSmsRecipientsForEvent('payment'))]
   for (const number of recipients) {
     await sendSms(number, alert)
   }
