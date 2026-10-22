@@ -1,8 +1,8 @@
 import type { Claim, ClaimStatus } from '../types'
+import { sendSms } from './smsService'
 import { sendEmail, getNotifSettings } from './mailService'
 import { db } from './db'
 import { MAILBOXES } from './mailboxes'
-import { notifyPhone } from './notify'
 import { COMPANY_NAME } from './company'
 
 /** NetOne distribution partnership is suspended for now — flip this back
@@ -67,7 +67,7 @@ Please retain this email for your records. All parties will be copied on further
     void sendEmail({ to: client.email, cc, subject, body: clientBody, linkedTo: claim.id, folder: 'claims', from: MAILBOXES.claims })
   }
   if (client.phone) {
-    notifyPhone(client.phone, `${COMPANY_NAME}: Claim ${claim.claimNumber} submitted. We'll notify.`, 'claim', claim.claimNumber)
+    await sendSms(client.phone, `${COMPANY_NAME}: Claim ${claim.claimNumber} submitted. We'll notify.`)
   }
   notifyOffice(claim, `submitted by ${claim.clientName}, $${claim.amount.toLocaleString()}, awaiting intake`)
 }
@@ -123,10 +123,10 @@ interface StaffContact { email?: string; phone?: string; name: string }
 const CLAIMS_ESCALATION_CC_EMAIL = 'info@motions.co.zw'
 
 /** Get phone numbers configured for claims notifications */
-function notifyOffice(claim: Claim, stageMessage: string) {
+async function notifyOffice(claim: Claim, stageMessage: string) {
   const recipients = [...new Set(getSmsRecipientsForEvent('claim'))]
   for (const number of recipients) {
-    notifyPhone(number, `${COMPANY_NAME}: Claim ${claim.claimNumber}: ${stageMessage}`, 'claim', claim.claimNumber)
+    await sendSms(number, `${COMPANY_NAME}: Claim ${claim.claimNumber}: ${stageMessage}`)
   }
 }
 
@@ -142,7 +142,7 @@ export async function notifyClaimIntakeAccepted(claim: Claim, processor: StaffCo
       body: `Dear ${claim.clientName},\n\nYour claim ${claim.claimNumber} has been received and accepted for processing.${claimSummaryBlock(claim)}\n\nIt is now with our claims processing team for assessment.${signature(cfg.signature)}`,
     })
   }
-  if (client.phone) notifyPhone(client.phone, `${COMPANY_NAME}: Claim ${claim.claimNumber} received. Processing.`, 'claim', claim.claimNumber)
+  if (client.phone) await sendSms(client.phone, `${COMPANY_NAME}: Claim ${claim.claimNumber} received. Processing.`)
 
   if (processor.email) {
     void sendEmail({
@@ -150,7 +150,7 @@ export async function notifyClaimIntakeAccepted(claim: Claim, processor: StaffCo
       body: `${claim.claimNumber} has been accepted at intake and assigned to you for assessment.${claimSummaryBlock(claim)}\n\nLog in to TariqifyIMS to review.${signature(cfg.signature)}`,
     })
   }
-  if (processor.phone) notifyPhone(processor.phone, `${COMPANY_NAME}: Claim ${claim.claimNumber} assigned. Assess.`, 'claim', claim.claimNumber)
+  if (processor.phone) await sendSms(processor.phone, `${COMPANY_NAME}: Claim ${claim.claimNumber} assigned. Assess.`)
 }
 
 export async function notifyClaimIntakeRejected(claim: Claim): Promise<void> {
@@ -164,7 +164,7 @@ export async function notifyClaimIntakeRejected(claim: Claim): Promise<void> {
       body: `Dear ${claim.clientName},\n\nWe were unable to accept your claim ${claim.claimNumber} for processing.${claimSummaryBlock(claim)}\n\nPlease contact us if you believe this is in error.${signature(cfg.signature)}`,
     })
   }
-  if (client.phone) notifyPhone(client.phone, `${COMPANY_NAME}: Claim ${claim.claimNumber} rejected. Contact us.`, 'claim', claim.claimNumber)
+  if (client.phone) await sendSms(client.phone, `${COMPANY_NAME}: Claim ${claim.claimNumber} rejected. Contact us.`)
 }
 
 export async function notifyClaimEscalated(claim: Claim, reviewer: StaffContact): Promise<void> {
@@ -179,7 +179,7 @@ export async function notifyClaimEscalated(claim: Claim, reviewer: StaffContact)
       body: `Dear ${claim.clientName},\n\nYour claim ${claim.claimNumber} has completed assessment and is now with our final reviewer for a decision.${claimSummaryBlock(claim)}${signature(cfg.signature)}`,
     })
   }
-  if (client.phone) notifyPhone(client.phone, `${COMPANY_NAME}: Claim ${claim.claimNumber} with reviewer.`, 'claim', claim.claimNumber)
+  if (client.phone) await sendSms(client.phone, `${COMPANY_NAME}: Claim ${claim.claimNumber} with reviewer.`)
 
   if (reviewer.email) {
     void sendEmail({
@@ -187,7 +187,7 @@ export async function notifyClaimEscalated(claim: Claim, reviewer: StaffContact)
       body: `${claim.claimNumber} has been assessed and escalated to you for a final decision.${claimSummaryBlock(claim)}${claim.assessmentNotes ? `\n\nAssessment notes:\n${claim.assessmentNotes}` : ''}\n\nLog in to TariqifyIMS to approve or decline.${signature(cfg.signature)}`,
     })
   }
-  if (reviewer.phone) notifyPhone(reviewer.phone, `${COMPANY_NAME}: Claim ${claim.claimNumber} needs decision. Decide.`, 'claim', claim.claimNumber)
+  if (reviewer.phone) await sendSms(reviewer.phone, `${COMPANY_NAME}: Claim ${claim.claimNumber} needs decision. Decide.`)
 }
 
 export async function notifyClaimFinalDecision(claim: Claim): Promise<void> {
@@ -204,7 +204,7 @@ export async function notifyClaimFinalDecision(claim: Claim): Promise<void> {
     })
   }
   if (client.phone) {
-    notifyPhone(client.phone, `${COMPANY_NAME}: Claim ${claim.claimNumber} ${approved ? 'APPROVED' : 'DECLINED'}.`, 'claim', claim.claimNumber)
+    await sendSms(client.phone, `${COMPANY_NAME}: Claim ${claim.claimNumber} ${approved ? 'APPROVED' : 'DECLINED'}.`)
   }
 }
 
@@ -237,7 +237,7 @@ Thank you for choosing our insurance services.${signature(cfg.signature)}`
     void sendEmail({ to: client.email, cc, subject, body: clientBody, linkedTo: claim.id, folder: 'claims', from: MAILBOXES.claims })
   }
   if (client.phone) {
-    notifyPhone(client.phone, `${COMPANY_NAME}: Claim ${claim.claimNumber} paid. $${claim.amount.toLocaleString()}.`, 'claim', claim.claimNumber)
+    await sendSms(client.phone, `${COMPANY_NAME}: Claim ${claim.claimNumber} paid. $${claim.amount.toLocaleString()}.`)
   }
   notifyOffice(claim, `paid, $${claim.amount.toLocaleString()} processed. Closed`)
 }

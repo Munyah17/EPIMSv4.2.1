@@ -1,5 +1,5 @@
 import type { Policy, Client, Payment, Group } from '../types'
-import { notifyPhone } from './notify'
+import { sendSms } from './smsService'
 import { sendEmail, getNotifSettings } from './mailService'
 import { MAILBOXES } from './mailboxes'
 import { premiumPeriodLabel } from './productUtils'
@@ -44,7 +44,7 @@ export async function notifyRegistrationFailed(what: string, detail: string): Pr
   const alert = `${COMPANY_NAME}: ${what} FAILED. ${detail}`
   const recipients = getSmsRecipientsForEvent('registration')
   for (const number of recipients) {
-    notifyPhone(number, alert, 'registration')
+    await sendSms(number, alert)
   }
   void sendEmail({
     to: cfg.insurerEmail,
@@ -58,10 +58,9 @@ export async function notifyClientRegistered(client: Client, registeredBy?: stri
   const cfg = getNotifSettings()
 
   if (client.phone) {
-    notifyPhone(
+    await sendSms(
       client.phone,
       `${COMPANY_NAME}: Welcome ${client.name.split(' ')[0]}, registered. Agent will contact you.`,
-      'registration',
     )
   }
 
@@ -86,7 +85,7 @@ Please note this registration does not itself put any cover in place. One of our
   const alert = `${client.name} registered${phoneShort ? ` ${phoneShort}` : ''}${registeredBy ? ` by ${registeredBy}` : ''}. No policy.`
   const recipients = getSmsRecipientsForEvent('registration')
   for (const number of recipients) {
-    notifyPhone(number, alert, 'registration')
+    await sendSms(number, alert)
   }
 }
 
@@ -104,7 +103,7 @@ export async function notifyGroupRegistered(group: Group): Promise<void> {
   const contactPhoneShort = group.contactPhone ? group.contactPhone.replace(/[^0-9]/g, '') : ''
   const msg = `${group.name} (${kind}) reg. ${group.contactName || 'N/A'}${contactPhoneShort ? ` ${contactPhoneShort}` : ''}. Keep this.`
   for (const number of orgNumbers) {
-    notifyPhone(number, msg, 'registration')
+    await sendSms(number, msg)
   }
 
   if (group.orgEmail || group.contactEmail) {
@@ -120,7 +119,7 @@ export async function notifyGroupRegistered(group: Group): Promise<void> {
   const alert = `${group.name} (${kind}) registered. ${group.contactName || ''}${contactPhoneShort ? ` ${contactPhoneShort}` : ''}`
   const recipients = getSmsRecipientsForEvent('registration')
   for (const number of recipients) {
-    notifyPhone(number, alert, 'registration')
+    await sendSms(number, alert)
   }
 }
 
@@ -148,16 +147,14 @@ export async function notifyPolicyRegistered(policy: Policy, client: Client): Pr
   if (client.phone) {
     if (fieldToFloor) {
       // Tobacco insurance: specific format per Afrosoft 159-char limit
-      notifyPhone(
+      await sendSms(
         client.phone,
         `${client.name.toUpperCase()} ${policy.policyNumber} reg. Field To Floor: ${fieldToFloorCoverLine(policy.coverAmount)}. ${policy.paymentMethod} ${premium}. ${client.phone.replace(/[^0-9]/g, '')}`,
-        'registration', policy.policyNumber,
       )
     } else {
-      notifyPhone(
+      await sendSms(
         client.phone,
         `${COMPANY_NAME}: ${policy.policyNumber} reg. ${client.name}, ${policy.productName}. ${cover}. ${premium}/${period}. ${policy.paymentMethod}.`,
-        'registration', policy.policyNumber,
       )
     }
   }
@@ -197,7 +194,7 @@ Keep this email for your records. If any detail above is wrong, contact us and w
   // the office numbers -- nobody wants the same alert twice.
   const recipients = [...new Set(getSmsRecipientsForEvent('registration'))]
   for (const number of recipients) {
-    notifyPhone(number, alert, 'registration', policy.policyNumber)
+    await sendSms(number, alert)
   }
 
   const insurerRecipient = cfg.insurerEmail
@@ -241,17 +238,16 @@ export async function notifyPaymentReceived(payment: Payment, client: { phone?: 
   // would announce a transaction the client was never part of. Office
   // alerts below still go out; staff need the receipt regardless.
   if (productCategory !== 'agriculture' && client?.phone) {
-    notifyPhone(
+    await sendSms(
       client.phone,
       `${COMPANY_NAME}: ${payment.policyNumber} paid. ${amount} via ${payment.method}. Ref ${payment.reference}`,
-      'payment', payment.policyNumber,
     )
   }
 
   const alert = `${COMPANY_NAME}: ${payment.policyNumber} paid. ${payment.clientName}. ${amount} via ${payment.method}. Ref ${payment.reference}`
   const recipients = [...new Set(getSmsRecipientsForEvent('payment'))]
   for (const number of recipients) {
-    notifyPhone(number, alert, 'payment', payment.policyNumber)
+    await sendSms(number, alert)
   }
 }
 
@@ -264,10 +260,9 @@ export async function notifyPaymentFailed(payment: { policyNumber: string; clien
   const amount = money(payment.amount)
 
   if (productCategory !== 'agriculture' && client?.phone) {
-    notifyPhone(
+    await sendSms(
       client.phone,
       `${COMPANY_NAME}: ${payment.policyNumber} payment failed. ${amount}. Try again.`,
-      'payment', payment.policyNumber,
     )
   }
   if (productCategory !== 'agriculture' && client?.email) {
@@ -282,7 +277,7 @@ export async function notifyPaymentFailed(payment: { policyNumber: string; clien
   const alert = `${COMPANY_NAME}: ${payment.policyNumber} payment FAILED. ${payment.clientName}. ${amount}${payment.method ? ` via ${payment.method}` : ''}`
   const recipients = [...new Set(getSmsRecipientsForEvent('payment'))]
   for (const number of recipients) {
-    notifyPhone(number, alert, 'payment', payment.policyNumber)
+    await sendSms(number, alert)
   }
   void sendEmail({
     to: cfg.insurerEmail,

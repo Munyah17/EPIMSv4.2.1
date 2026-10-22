@@ -30,7 +30,7 @@ import type { Policy, Client, Reminder } from '../types'
 import { db } from './db'
 import { MAILBOXES } from './mailboxes'
 import { sendEmail, getNotifSettings } from './mailService'
-import { notifyPhone } from './notify'
+import { sendSms } from './smsService'
 import { NETONE_SUSPENDED } from './claimNotifications'
 import { policyBillablePremium } from './premium'
 import { formatDate, toIsoDate } from './dateUtils'
@@ -184,7 +184,7 @@ async function dispatchReminder(policy: Policy, client: Client | undefined, type
     ? `${COMPANY_NAME}: Policy ${policy.policyNumber} LAPSED. Due ${formatDate(dueDate)}. Pay $${amountDue(policy).toFixed(2)} to reinstate.`
     : `${COMPANY_NAME}: Premium $${amountDue(policy).toFixed(2)} due ${policy.policyNumber} by ${formatDate(dueDate)}. Pay.`
   if (clientPhone) {
-    notifyPhone(clientPhone, smsBody, 'renewal', policy.policyNumber)
+    await sendSms(clientPhone, smsBody)
   }
 
   if (type === 'lapse') {
@@ -210,7 +210,7 @@ async function dispatchReminder(policy: Policy, client: Client | undefined, type
     // just whoever happens to have Billing & Reminders open.
     const recipients = [...new Set(getSmsRecipientsForEvent('system'))]
     for (const number of recipients) {
-      notifyPhone(number, `${COMPANY_NAME}: ${policy.policyNumber} LAPSED. ${policy.clientName}. $${amountDue(policy).toFixed(2)} unpaid`, 'renewal', policy.policyNumber)
+      await sendSms(number, `${COMPANY_NAME}: ${policy.policyNumber} LAPSED. ${policy.clientName}. $${amountDue(policy).toFixed(2)} unpaid`)
     }
   }
 
