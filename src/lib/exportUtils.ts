@@ -374,7 +374,9 @@ function drawTermsPages(doc: jsPDF, product: { name?: string; category?: string 
       doc.setFontSize(7.5)
       doc.setTextColor(...BRAND_RED)
       doc.text(terms.productTitle.toUpperCase(), xOf(col), y)
-      y += 1.5
+      // A full line's lead — 1.5mm put the following 'Preamble' heading on
+      // top of the product title.
+      y += 4
       doc.setTextColor(...TEXT)
     }
     if (terms.sections) {
@@ -457,6 +459,9 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   // the document prints the fixed season window regardless.
   const isFieldToFloor = isAgriculture && isTobaccoFieldToFloor(policy.productName)
   const premiumHeading = isAgriculture ? 'Annual Premium' : 'Monthly Premium'
+  // Agriculture documents run shorter than page 1 — wider gaps spread the
+  // sections so the sheet reads full instead of ending two-thirds down.
+  const sectionGap = isAgriculture ? 5 : 4
   // "Harold Muwi - 2344566 · Contractor: AgriCo" — the grower's identity
   // to the insurer is name + grower number + who holds their contract.
   // Captured data prints in capitals regardless of the case the capturer
@@ -481,11 +486,8 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   // Field Officer is only shown for Tobacco Insurance (Small Scale Agriculture)
   if (isFieldToFloor && policy.agentName) { doc.text(`Field Officer: ${up(policy.agentName)}`, 14, y); y += 3 }
   y += 1
-  doc.text(`Generated: ${formatDate(new Date())}`, 14, y)
-  y += 3
-  doc.text(`Commencement: ${isFieldToFloor ? TOBACCO_SEASON.start : formatDate(policy.startDate)}`, 14, y)
   doc.setTextColor(...TEXT)
-  y += 4
+  y += 3
 
   // Premiums are per head everywhere except agriculture, so the figure on
   // an official document is the whole policy's — the policyholder plus
@@ -495,14 +497,14 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
 
   autoTable(doc, {
     startY: y,
-    head: [['Amount Paid', 'Payment Method', 'Payment Date', 'Expiration Date']],
-    body: [[money(billedPremium), up(policy.paymentMethod), formatDate(policy.nextPaymentDate), isFieldToFloor ? TOBACCO_SEASON.end : formatDate(policy.endDate)]],
+    head: [['Amount Paid', 'Payment Method', isAgriculture ? 'Commencement Date' : 'Payment Date', 'Expiration Date']],
+    body: [[money(billedPremium), up(policy.paymentMethod), isAgriculture ? TOBACCO_SEASON.start : formatDate(policy.nextPaymentDate), isFieldToFloor ? TOBACCO_SEASON.end : formatDate(policy.endDate)]],
     styles: { fontSize: 9, lineColor: [220, 226, 240], lineWidth: 0.3, cellPadding: 2 },
     headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold', fontSize: 9.5 },
     theme: 'grid',
     margin: { left: 14, right: 14 },
   })
-  y = (doc as any).lastAutoTable.finalY + 4
+  y = (doc as any).lastAutoTable.finalY + sectionGap
 
   const sectionBand = (title: string) => {
     ensureRoom(7)
@@ -512,7 +514,10 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
     doc.setTextColor(255, 255, 255)
     doc.text(title, 14 + (pageWidth - 28) / 2, y + 3.5, { align: 'center' })
     doc.setTextColor(...TEXT)
-    y += 7
+    // Content under a band is drawn by baseline — 9pt glyphs reach ~2.4mm
+    // above their baseline, so anything closer than ~9mm to the band top
+    // climbs back inside the band. 9.5 keeps the first line clearly below.
+    y += 9.5
   }
 
   // Seven columns on A4 crushed the member number and "Currency" onto
@@ -540,7 +545,7 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
     body: [[money(policy.premium), money(policy.coverAmount), 'USD', policySourceLabel(policy.source)]],
     ...grid,
   })
-  y = (doc as any).lastAutoTable.finalY + 4
+  y = (doc as any).lastAutoTable.finalY + sectionGap
 
   sectionBand('PERSONAL INFORMATION')
   autoTable(doc, {
@@ -549,7 +554,7 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
     body: [[up(client.name), up(client.nationalId), client.phone, formatDate(client.dob), formatDate(client.createdAt)]],
     ...grid,
   })
-  y = (doc as any).lastAutoTable.finalY + 4
+  y = (doc as any).lastAutoTable.finalY + sectionGap
 
   // Organisation policies name the insured organisation — and, for team
   // cover, the activity/season the roster is insured for. PERSONAL
@@ -570,7 +575,7 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
       theme: 'grid',
       margin: { left: 14, right: 14 },
     })
-    y = (doc as any).lastAutoTable.finalY + 4
+    y = (doc as any).lastAutoTable.finalY + sectionGap
   }
 
   // The covered-people band wears the scope's vocabulary: a corporate
@@ -626,7 +631,7 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
         theme: 'grid',
         margin: { left: 14, right: 14 },
       })
-      y = (doc as any).lastAutoTable.finalY + 4
+      y = (doc as any).lastAutoTable.finalY + sectionGap
     })
 
     // Everyone on the policy is charged, so the document says what the
@@ -663,7 +668,7 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
         theme: 'grid',
         margin: { left: 14, right: 14 },
       })
-      y = (doc as any).lastAutoTable.finalY + 4
+      y = (doc as any).lastAutoTable.finalY + sectionGap
     } else {
       ensureRoom(20 + AGRICULTURE_COVER.length * 5)
       sectionBand('COVER PROVIDED')
@@ -726,13 +731,17 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
     y += condLead
   }
 
-  ensureRoom(8)
+  // Anchor the closing block to the foot of page 1 — drawn straight after
+  // the conditions it floated mid-sheet and left the bottom third blank.
+  // Only needs ~9mm; if the page is already full it flows just past the
+  // last line rather than stranding the copyright alone on a fresh page.
+  ensureRoom(10)
+  const footerY = Math.max(y + 5, pageHeight - 14)
   doc.setDrawColor(220, 226, 240)
-  doc.line(14, y, pageWidth - 14, y)
-  y += 3.5
+  doc.line(14, footerY, pageWidth - 14, footerY)
   doc.setFontSize(6.5)
   doc.setTextColor(...MUTED)
-  doc.text(`Copyright © ${COMPANY_NAME}. All rights reserved.`, 14, y)
+  doc.text(`Copyright © ${COMPANY_NAME}. All rights reserved.`, 14, footerY + 3.5)
 
   // Add new page for Terms and Conditions - page 2 is for terms only
   doc.addPage()
