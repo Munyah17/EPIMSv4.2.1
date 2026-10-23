@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { sendMailDirect } from './mailTransport.js'
+import { normalizeZwMobile, parseRecipientPhones, smsParts } from '../../src/lib/smsText.js'
 
 /**
  * One place every notification goes through.
@@ -42,16 +43,51 @@ export interface Delivery {
 // ── Zimbabwe numbers ────────────────────────────────────────────────
 
 export function normalizeMsisdn(raw: string): string {
-  let digits = raw.replace(/\D/g, '')
-  if (digits.startsWith('0')) digits = `263${digits.slice(1)}`
-  // Country code + trunk 0 kept ("+263 0712345678") — phonebook format;
-  // the 0 must drop or validation fails every such number.
-  else if (digits.startsWith('2630')) digits = `263${digits.slice(4)}`
-  else if (!digits.startsWith('263')) digits = `263${digits}`
-  return digits
+  return normalizeZwMobile(raw) ?? raw.replace(/\D/g, '')
 }
 function isValidMsisdn(raw: string): boolean {
-  return /^263[17]\d{8}$/.test(normalizeMsisdn(raw))
+  return normalizeZwMobile(raw) !== null
+}
+
+const SMS_EVENT: Record<string, 'registration' | 'payment' | 'claim' | 'system'> = {
+  registration: 'registration',
+  payment: 'payment',
+  renewal: 'payment',
+  claim: 'claim',
+  ticket: 'system',
+  system: 'system',
+  recon: 'system',
+}
+
+/** Office SMS lines for an event. The Settings → SMS Recipients list wins,
+ *  so adding or removing +263780086175 takes effect for website, cron and
+ *  counter sales alike. An empty list falls back to the four office lines. */
+async function officeSmsNumbers(admin: SupabaseClient | null, event: string): Promise<string[]> {
+  const bucket = SMS_EVENT[event] ?? 'system'
+  try {
+    if (admin) {
+      const { data } = await admin.from('app_settings').select('value').eq('key', 'notif_settings').maybeSingle()
+      const value = data?.value as { smsRecipients?: { phone?: string; events?: string[] }[] } | null
+      const list = value?.smsRecipients
+      // A saved list is the assignment, even when this event has nobody
+      // ticked. Falling back to every office line here would text a number
+      // an admin had just removed.
+      if (Array.isArray(list)) {
+        const seen = new Set<string>()
+        const out: string[] = []
+        for (const r of list) {
+          if (!Array.isArray(r?.events) || !r.events.includes(bucket)) continue
+          for (const n of parseRecipientPhones(r.phone ?? '')) {
+            if (seen.has(n)) continue
+            seen.add(n)
+            out.push(`+${n}`)
+          }
+        }
+        return out
+      }
+    }
+  } catch { /* fall through to the fixed lines */ }
+  return COMPANY_PHONES
 }
 
 // ── Channel senders ─────────────────────────────────────────────────
@@ -80,11 +116,7 @@ async function afrosoftOnce(msisdn: string, message: string): Promise<Delivery> 
   }
 }
 
-export async function sendSmsAfrosoft(to: string, message: string): Promise<Delivery> {
-  const msisdn = normalizeMsisdn(to)
-  if (!isValidMsisdn(to)) {
-    return { channel: 'sms', recipient: to, status: 'failed', detail: `Not a valid ZW mobile: ${to}` }
-  }
+async function sendOneSms(msisdn: string, message: string): Promise<Delivery> {
   const first = await afrosoftOnce(msisdn, message)
   if (first.status === 'sent') return first
   // A definitive Afrosoft refusal (200 with an error-code, or a named
@@ -100,6 +132,23 @@ export async function sendSmsAfrosoft(to: string, message: string): Promise<Deli
   return second.status === 'sent'
     ? { ...second, detail: `sent on retry — first attempt: ${first.detail ?? 'unknown'}` }
     : { ...second, detail: `failed twice — ${first.detail ?? '?'}; then ${second.detail ?? '?'}` }
+}
+
+export async function sendSmsAfrosoft(to: string, message: string): Promise<Delivery> {
+  const msisdn = normalizeMsisdn(to)
+  if (!isValidMsisdn(to)) {
+    return { channel: 'sms', recipient: to, status: 'failed', detail: `Not a valid ZW mobile: ${to}` }
+  }
+  const parts = smsParts(message)
+  if (parts.length === 0) {
+    return { channel: 'sms', recipient: msisdn, status: 'skipped', detail: 'Empty message.' }
+  }
+  let last: Delivery = { channel: 'sms', recipient: msisdn, status: 'failed', detail: 'Empty message.' }
+  for (const part of parts) {
+    last = await sendOneSms(msisdn, part)
+    if (last.status !== 'sent') return last
+  }
+  return last
 }
 
 export async function sendEmailDirect(to: string, subject: string, text: string): Promise<Delivery> {
@@ -168,9 +217,9 @@ async function alertOfficeOfFailure(admin: SupabaseClient | null, event: string,
   const emailFailed = failures.some(f => f.channel === 'email')
   if (emailFailed) {
     // Email is down — the office finds out by text, not by mailbox.
-    for (const phone of COMPANY_PHONES) {
+    for (const phone of await officeSmsNumbers(admin, 'system')) {
       await sendSmsAfrosoft(phone,
-        `Motions ALERT: ${event} notification failed (${summary}). Email service unreachable — check Integrations/Settings.`)
+        `ALERT: ${event} notification failed (${summary}). Email service unreachable — check Integrations/Settings.`)
         .then(d => logDelivery(admin, 'system', undefined, d))
     }
   }
@@ -217,15 +266,24 @@ export async function dispatchNotification(admin: SupabaseClient | null, job: No
   if (clientEmail) deliveries.push(sendEmailDirect(clientEmail, job.emailSubject, job.emailText))
   if (clientPhone) deliveries.push(sendWhatsAppCloud(clientPhone, waText))
 
-  // The office — the four fixed lines plus any staff the event names.
+  // The office — whoever Settings assigned to this event, plus any
+  // staff the event names. Brackets are two GSM units and were pushing
+  // the prefix past a single Econet segment, so the label is plain text.
   if (job.notifyOffice !== false) {
-    const officeSms = `${job.smsText.length > 140 ? job.smsText.slice(0, 140) : job.smsText}${job.ref ? ` [${job.ref}]` : ''}`
-    for (const phone of COMPANY_PHONES) {
-      deliveries.push(sendSmsAfrosoft(phone, `[${job.event.toUpperCase()}] ${officeSms}`))
-      deliveries.push(sendWhatsAppCloud(phone, `[${job.event.toUpperCase()}] ${waText}`))
+    const officeSms = `${job.smsText}${job.ref ? ` Ref ${job.ref}` : ''}`
+    const officeLines = await officeSmsNumbers(admin, job.event)
+    for (const phone of officeLines) {
+      deliveries.push(sendSmsAfrosoft(phone, `${job.event.toUpperCase()}: ${officeSms}`))
     }
+    for (const phone of COMPANY_PHONES) {
+      deliveries.push(sendWhatsAppCloud(phone, `${job.event.toUpperCase()}: ${waText}`))
+    }
+    const already = new Set(officeLines.map(p => normalizeZwMobile(p)))
     for (const phone of job.staffPhones ?? []) {
-      if (phone) deliveries.push(sendSmsAfrosoft(phone, `[${job.event.toUpperCase()}] ${officeSms}`))
+      const n = phone ? normalizeZwMobile(phone) : null
+      if (!n || already.has(n)) continue
+      already.add(n)
+      deliveries.push(sendSmsAfrosoft(phone, `${job.event.toUpperCase()}: ${officeSms}`))
     }
     deliveries.push(sendEmailDirect(COMPANY_EMAIL, `[${job.event.toUpperCase()}] ${job.emailSubject}`, job.emailText))
     for (const email of job.staffEmails ?? []) {

@@ -16,7 +16,7 @@ import { policyBillablePremium, billableHeadCount } from '../../lib/premium'
 import { recordActivity } from '../../lib/activityLog'
 import { notifyPaymentReceived, notifyPaymentFailed } from '../../lib/signupNotifications'
 import { notifyPhone } from '../../lib/notify'
-import { getNotifSettings } from '../../lib/mailService'
+import { getSmsRecipientsForEvent } from '../../lib/mailService'
 import { useAuth } from '../../contexts/AuthContext'
 import PhoneInput from '../ui/PhoneInput'
 import { generateTransactionId } from '../../lib/transactionId'
@@ -201,11 +201,7 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
       })
     }
     const alert = `Motions: PAYMENT AMOUNT MISMATCH. ${detail}`
-    const cfg = getNotifSettings()
-    const recipients = cfg.smsRecipients
-      .filter((r: { phone?: string; events: string[] }) => r.phone && r.events.includes('payment'))
-      .map((r: { phone: string }) => r.phone)
-    for (const number of recipients) {
+    for (const number of await getSmsRecipientsForEvent('payment')) {
       notifyPhone(number, alert, 'payment', policy?.policyNumber)
     }
   }

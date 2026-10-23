@@ -52,7 +52,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   const [paymentMethod, setPaymentMethod] = useState('OneMoney')
   // Cover starts on the 1st of the aligned month (see computeAssignedStartDate),
   // not the day it was captured — only Super Admin/Admin may override this.
-  const [startDate, setStartDate] = useState(computeAssignedStartDate())
+  const [startDate, setStartDate] = useState('')
   const canOverrideStartDate = user?.role === 'super_admin' || user?.role === 'admin'
   // Optional — a policy can carry zero dependants, so this starts empty
   // rather than seeding a mandatory first row.
@@ -378,6 +378,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   if (!clientDob) missing.push({ key: 'clientDob', label: 'Date of Birth' })
   else if (clientAge !== null && clientAge < 18) missing.push({ key: 'clientDob', label: 'Date of Birth', hint: 'The policyholder must be at least 18' })
   if (!productId) missing.push({ key: 'productId', label: 'Product' })
+  if (!startDate) missing.push({ key: 'startDate', label: 'Start Date' })
   // One live policy per client per product (DB partial unique index:
   // active | waiting_period). Warn before the save hits it — the staff
   // member picks another product, or lapses the old one first.
@@ -829,7 +830,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                   )}
                 </div>
               )}
-              <div className="form-group">
+              <div className="form-group" id={fieldId('startDate')} style={isMissing(missing, attempted, 'startDate') ? { outline: '1px solid var(--danger)', borderRadius: 7, outlineOffset: 2 } : undefined}>
                 <label>Start Date *</label>
                 <DateInput value={startDate} onChange={setStartDate} disabled={!canOverrideStartDate} className={!canOverrideStartDate ? 'date-input-disabled' : undefined} />
                 {!canOverrideStartDate && (

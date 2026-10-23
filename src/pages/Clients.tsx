@@ -7,7 +7,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
 import { notifyClientRegistered, notifyRegistrationFailed } from '../lib/signupNotifications'
 import { notifyPhone, serverReachable } from '../lib/notify'
-import { getNotifSettings } from '../lib/mailService'
+import { getSmsRecipientsForEvent } from '../lib/mailService'
 import { recordActivity } from '../lib/activityLog'
 import { COMPANY_NAME } from '../lib/company'
 import { searchMembers } from '../lib/memberNumbers'
@@ -212,11 +212,7 @@ export default function Clients({ showToast }: Props) {
         detail: `${policy.clientName}, ${policy.productName}`, severity: 'warning',
       })
       showToast('success', `Policy ${policy.policyNumber} deleted.`)
-      const cfg = getNotifSettings()
-      const recipients = cfg.smsRecipients
-        .filter((r: { phone?: string; events: string[] }) => r.phone && r.events.includes('system'))
-        .map((r: { phone: string }) => r.phone)
-      for (const number of recipients) {
+      for (const number of await getSmsRecipientsForEvent('system')) {
         notifyPhone(number, `${COMPANY_NAME}: Policy ${policy.policyNumber} (${policy.clientName}) was DELETED by ${user?.name ?? 'a staff member'}.`, 'system', policy.policyNumber)
       }
       return
@@ -242,11 +238,7 @@ export default function Clients({ showToast }: Props) {
     if (error) { showToast('error', error); return }
     setBlockedPolicies(prev => prev.filter(p => p.id !== policy.id))
     showToast('success', `Policy ${policy.policyNumber} deleted.`)
-    const cfg = getNotifSettings()
-    const recipients = cfg.smsRecipients
-      .filter((r: { phone?: string; events: string[] }) => r.phone && r.events.includes('system'))
-      .map((r: { phone: string }) => r.phone)
-    for (const number of recipients) {
+    for (const number of await getSmsRecipientsForEvent('system')) {
       notifyPhone(number, `${COMPANY_NAME}: Policy ${policy.policyNumber} (${policy.clientName}) was DELETED by ${user?.name ?? 'a staff member'}. Reason: ${reason.trim()}`, 'system', policy.policyNumber)
     }
   }

@@ -65,15 +65,10 @@ export interface BulkSmsResult {
   results: Array<{ phone: string; result: SmsResult }>
 }
 
-/** Zimbabwe MSISDN normalization: strips formatting, converts local 0-prefix to 263 country code. */
+/** Digits Afrosoft will accept. Invalid input comes back unchanged so the
+ *  error still names the number the user typed. */
 function normalizeMsisdn(raw: string): string {
-  let digits = raw.replace(/\D/g, '')
-  if (digits.startsWith('0')) digits = '263' + digits.slice(1)
-  // "+263 0712345678" — country code WITH the trunk 0 kept — is how
-  // phonebooks commonly store ZW numbers; the 0 must drop again.
-  else if (digits.startsWith('2630')) digits = '263' + digits.slice(4)
-  else if (!digits.startsWith('263')) digits = '263' + digits
-  return digits
+  return normalizeZwMobile(raw) ?? raw.replace(/\D/g, '')
 }
 
 /**
@@ -96,8 +91,7 @@ function msisdnKey(raw: string): string {
  * Failed: 9" looks like from the outside.
  */
 function isValidMsisdn(raw: string): boolean {
-  const digits = normalizeMsisdn(raw)
-  return /^263[17]\d{8}$/.test(digits)
+  return normalizeZwMobile(raw) !== null
 }
 
 interface AfrosoftResponse {
@@ -119,6 +113,7 @@ interface AfrosoftResponse {
  */
 import { supabase } from './supabase'
 import { health } from './health'
+import { normalizeZwMobile, smsParts } from './smsText'
 
 /** Push an SMS gateway result into System Health, and when it failed, make
  *  it loud — the notify-failed event (dashboard toast/banner) plus a
@@ -132,7 +127,7 @@ async function reportSmsResult(ok: boolean, detail: string | undefined, duration
   reportOutcome({ channel: 'sms', recipient: 'gateway', event: 'system', status: 'failed', detail })
 }
 
-async function callAfrosoft(
+async function callAfrosoftOnce(
   numbers: string[], message: string,
 ): Promise<{ ok: true; data: AfrosoftResponse } | { ok: false; error: string }> {
   const mobiles = numbers.map(normalizeMsisdn).join(',')
@@ -178,6 +173,23 @@ async function callAfrosoft(
   } catch (e) {
     return { ok: false, error: String(e) }
   }
+}
+
+/** Econet drops a concatenated or Unicode text, so a long alert is sent
+ *  as separate single-segment messages. A refused part stops the rest. */
+async function callAfrosoft(
+  numbers: string[], message: string,
+): Promise<{ ok: true; data: AfrosoftResponse } | { ok: false; error: string }> {
+  const parts = smsParts(message)
+  if (parts.length === 0) return { ok: false, error: 'Message was empty.' }
+  let last: { ok: true; data: AfrosoftResponse } | { ok: false; error: string } | null = null
+  for (const part of parts) {
+    last = await callAfrosoftOnce(numbers, part)
+    if (!last.ok) return last
+    const code = last.data.status?.['error-code']
+    if (code && code !== '000') return last
+  }
+  return last ?? { ok: false, error: 'Message was empty.' }
 }
 
 /**

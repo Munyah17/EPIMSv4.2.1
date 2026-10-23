@@ -2,6 +2,7 @@ import type { EmailMessage } from '../types'
 import { db } from './db'
 import { supabase } from './supabase'
 import { reportOutcome } from './notify'
+import { parseRecipientPhones } from './smsText'
 
 export interface SmsRecipient {
   id: string
@@ -50,8 +51,13 @@ export const DEFAULT_NOTIF_SETTINGS: NotifSettings = {
   replyTo: 'admin@motions.co.zw',
   smsEnabled: false,
   signature: 'Regards,\nMotions Microinsurance\n+263 780 086 175\nwww.motions.co.zw',
+  // The four office lines. +263780086175 is the main number, carried
+  // by the CEO — it has to be on every event unless an admin removes it.
   smsRecipients: [
-    { id: '1', phone: '+263780086178', events: ['registration', 'payment', 'claim', 'system'] },
+    { id: '1', phone: '+263780086175', events: ['registration', 'payment', 'claim', 'system'] },
+    { id: '2', phone: '+263780086176', events: ['registration', 'payment', 'claim', 'system'] },
+    { id: '3', phone: '+263780086177', events: ['registration', 'payment', 'claim', 'system'] },
+    { id: '4', phone: '+263780086178', events: ['registration', 'payment', 'claim', 'system'] },
   ],
   companyAddress: '24 Midlothian Avenue, Eastlea, Harare, Zimbabwe',
   companyPhone: '+263 780 086 175 / +263 780 086 176 / +263 780 086 177',
@@ -87,6 +93,35 @@ export function saveNotifSettings(settings: NotifSettings): void {
  *  cache so getNotifSettings() (synchronous, used all over the app) reflects
  *  whatever was last saved by a Super Admin rather than this browser's own
  *  possibly-stale localStorage copy. */
+/**
+ * Who should be texted for this event, from the shared settings (so the
+ * staff member who captures a client uses the list an admin saved, not
+ * whatever this browser happened to remember).
+ *
+ * Numbers are returned as +263XXXXXXXXX. A box with several numbers
+ * separated by "/" still delivers to each of them. A bad number is
+ * skipped; it does not drop the rest of the list.
+ */
+export async function getSmsRecipientsForEvent(event: SmsRecipient['events'][number]): Promise<string[]> {
+  let list = getNotifSettings().smsRecipients
+  try {
+    const remote = await db.settings.get<NotifSettings>('notif_settings')
+    if (remote?.smsRecipients) list = remote.smsRecipients
+  } catch { /* the local copy still sends */ }
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const r of list ?? []) {
+    const events = Array.isArray(r?.events) ? r.events : []
+    if (!events.includes(event)) continue
+    for (const n of parseRecipientPhones(r?.phone ?? '')) {
+      if (seen.has(n)) continue
+      seen.add(n)
+      out.push(`+${n}`)
+    }
+  }
+  return out
+}
+
 export async function initNotifSettings(): Promise<void> {
   const remote = await db.settings.get<NotifSettings>('notif_settings')
   if (remote) {

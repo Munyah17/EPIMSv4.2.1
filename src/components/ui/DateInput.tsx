@@ -6,6 +6,7 @@ interface Props {
   disabled?: boolean
   className?: string
   id?: string
+  placeholder?: string
 }
 
 // Native <input type="date"> renders in whatever locale the browser/OS is
@@ -29,11 +30,20 @@ function displayToIso(display: string): string | null {
   return `${y}-${mo}-${d}`
 }
 
-export default function DateInput({ value, onChange, disabled, className, id }: Props) {
+export default function DateInput({ value, onChange, disabled, className, id, placeholder }: Props) {
   const [text, setText] = useState(isoToDisplay(value))
   const pickerRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { setText(isoToDisplay(value)) }, [value])
+
+  // Generate placeholder with current date as guide if not provided
+  const defaultPlaceholder = (() => {
+    const today = new Date()
+    const day = String(today.getDate()).padStart(2, '0')
+    const month = String(today.getMonth() + 1).padStart(2, '0')
+    const year = today.getFullYear()
+    return `DD/MM/YYYY (e.g. ${day}/${month}/${year})`
+  })()
 
   const handleTextChange = (raw: string) => {
     const digits = raw.replace(/\D/g, '').slice(0, 8)
@@ -61,7 +71,7 @@ export default function DateInput({ value, onChange, disabled, className, id }: 
         type="text"
         inputMode="numeric"
         className="form-control date-input-text"
-        placeholder="DD/MM/YYYY"
+        placeholder={placeholder || defaultPlaceholder}
         value={text}
         onChange={e => handleTextChange(e.target.value)}
         disabled={disabled}

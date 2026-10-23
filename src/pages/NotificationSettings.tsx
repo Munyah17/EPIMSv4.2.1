@@ -3,6 +3,7 @@ import type { ToastMessage } from '../types'
 import type { ActivePanel } from '../App'
 import { getNotifSettings, saveNotifSettings, DEFAULT_NOTIF_SETTINGS, type SmsRecipient } from '../lib/mailService'
 import type { NotifSettings } from '../lib/mailService'
+import { parseRecipientPhones } from '../lib/smsText'
 import { db } from '../lib/db'
 import { useAuth } from '../contexts/AuthContext'
 
@@ -23,24 +24,69 @@ export default function NotificationSettings({ showToast }: Props) {
     setSettings(prev => ({ ...prev, [key]: value }))
   }
 
+  const patchRecipients = (fn: (list: SmsRecipient[]) => SmsRecipient[]) => {
+    if (!canEdit) return
+    setSettings(prev => ({ ...prev, smsRecipients: fn(prev.smsRecipients) }))
+  }
+
+  /** Store one canonical +263 number per line. A box with "175 / 176"
+   *  becomes two recipients so a slash-separated office line is not
+   *  rejected as a single invalid number. */
+  const normalizedRecipients = (list: SmsRecipient[]): { next: SmsRecipient[]; invalid: string[] } => {
+    const invalid: string[] = []
+    const next: SmsRecipient[] = []
+    const seen = new Set<string>()
+    for (const r of list) {
+      const raw = (r.phone ?? '').trim()
+      if (!raw) continue
+      const numbers = parseRecipientPhones(raw)
+      if (numbers.length === 0) { invalid.push(raw); continue }
+      for (const n of numbers) {
+        const phone = `+${n}`
+        if (seen.has(n)) {
+          const existing = next.find(x => x.phone === phone)
+          if (existing) existing.events = [...new Set([...existing.events, ...r.events])]
+          continue
+        }
+        seen.add(n)
+        next.push({ id: numbers.length > 1 ? `${r.id}-${n.slice(-4)}` : r.id, phone, events: [...r.events] })
+      }
+    }
+    return { next, invalid }
+  }
+
+  const persist = async (next: NotifSettings, what: string) => {
+    const { error } = await db.settings.set('notif_settings', next)
+    if (error) { showToast('error', `Failed to save ${what}: ${error}`); return false }
+    setSettings(next)
+    saveNotifSettings(next)
+    return true
+  }
+
   const handleSave = async () => {
     if (!canEdit) return
+    const { next, invalid } = normalizedRecipients(settings.smsRecipients)
+    if (invalid.length) {
+      showToast('error', `Not a Zimbabwe mobile: ${invalid.join(', ')}. Example: +263780086175.`)
+      return
+    }
     setSaving(true)
-    const { error } = await db.settings.set('notif_settings', settings)
+    const ok = await persist({ ...settings, smsRecipients: next }, 'settings')
     setSaving(false)
-    if (error) { showToast('error', `Failed to save: ${error}`); return }
-    saveNotifSettings(settings)
-    showToast('success', 'Notification settings saved, now shared with every staff member.')
+    if (ok) showToast('success', 'Notification settings saved, now shared with every staff member.')
   }
 
   const handleSaveSmsRecipients = async () => {
     if (!canEdit) return
+    const { next, invalid } = normalizedRecipients(settings.smsRecipients)
+    if (invalid.length) {
+      showToast('error', `Not a Zimbabwe mobile: ${invalid.join(', ')}. Example: +263780086175.`)
+      return
+    }
     setSavingSms(true)
-    const { error } = await db.settings.set('notif_settings', settings)
+    const ok = await persist({ ...settings, smsRecipients: next }, 'SMS recipients')
     setSavingSms(false)
-    if (error) { showToast('error', `Failed to save SMS recipients: ${error}`); return }
-    saveNotifSettings(settings)
-    showToast('success', 'SMS recipients saved and now active for all notification events.')
+    if (ok) showToast('success', 'SMS recipients saved and now active for all notification events.')
   }
 
   const handleReset = async () => {
@@ -184,16 +230,16 @@ export default function NotificationSettings({ showToast }: Props) {
             </button>
           </div>
           <p className="notif-settings-desc">
-            Add phone numbers and select which notification types they receive. Blank numbers are ignored.
+            Add a Zimbabwe mobile and tick the events it should receive. Nothing ticked means the number is saved but never texted. The main office line is +263780086175. Separate extra numbers in one box with /.
           </p>
           <div style={{ marginBottom: 12 }}>
             <button className="btn btn-outline btn-sm" onClick={() => {
               const newRecipient: SmsRecipient = {
                 id: Date.now().toString(),
                 phone: '',
-                events: []
+                events: ['registration', 'payment', 'claim', 'system'],
               }
-              update('smsRecipients', [...settings.smsRecipients, newRecipient])
+              patchRecipients(list => [...list, newRecipient])
             }}>
               + Add Recipient
             </button>
@@ -213,19 +259,22 @@ export default function NotificationSettings({ showToast }: Props) {
                     className="form-control"
                     value={recipient.phone}
                     onChange={e => {
-                      const updated = [...settings.smsRecipients]
-                      updated[index] = { ...recipient, phone: e.target.value }
-                      update('smsRecipients', updated)
+                      const phone = e.target.value
+                      patchRecipients(list => list.map((item, i) => i === index ? { ...item, phone } : item))
                     }}
-                    placeholder="+263..."
+                    placeholder="+263780086175"
                   />
+                  {recipient.phone.trim() && parseRecipientPhones(recipient.phone).length === 0 && (
+                    <p style={{ color: 'var(--danger)', fontSize: 12, margin: '4px 0 0' }}>
+                      Not a Zimbabwe mobile. Use +263780086175, or 0780086175.
+                    </p>
+                  )}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'flex-end' }}>
                   <button 
                     className="btn btn-danger btn-sm"
                     onClick={() => {
-                      const updated = settings.smsRecipients.filter((_, i) => i !== index)
-                      update('smsRecipients', updated)
+                      patchRecipients(list => list.filter((_, i) => i !== index))
                     }}
                   >
                     Remove
@@ -246,12 +295,15 @@ export default function NotificationSettings({ showToast }: Props) {
                         type="checkbox"
                         checked={recipient.events.includes(event.key as any)}
                         onChange={e => {
-                          const updated = [...settings.smsRecipients]
-                          const events = e.target.checked
-                            ? [...recipient.events, event.key as any]
-                            : recipient.events.filter(e => e !== event.key)
-                          updated[index] = { ...recipient, events }
-                          update('smsRecipients', updated)
+                          const on = e.target.checked
+                          const key = event.key as SmsRecipient['events'][number]
+                          patchRecipients(list => list.map((item, i) => {
+                            if (i !== index) return item
+                            const events = on
+                              ? [...item.events, key]
+                              : item.events.filter(ev => ev !== key)
+                            return { ...item, events }
+                          }))
                         }}
                       />
                       {event.label}

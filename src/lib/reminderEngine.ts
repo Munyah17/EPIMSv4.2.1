@@ -29,7 +29,7 @@
 import type { Policy, Client, Reminder } from '../types'
 import { db } from './db'
 import { MAILBOXES } from './mailboxes'
-import { sendEmail, getNotifSettings, DEFAULT_NOTIF_SETTINGS } from './mailService'
+import { sendEmail, getNotifSettings, getSmsRecipientsForEvent } from './mailService'
 import { notifyPhone } from './notify'
 import { NETONE_SUSPENDED } from './claimNotifications'
 import { policyBillablePremium } from './premium'
@@ -37,17 +37,6 @@ import { formatDate, toIsoDate } from './dateUtils'
 import { COMPANY_NAME } from './company'
 
 const CHECK_KEY = 'tqfy_reminder_last_check'
-
-/** Get phone numbers configured for a specific event type.
- *  Fetches from database to ensure newly added recipients are immediately available. */
-async function getSmsRecipientsForEvent(event: 'registration' | 'payment' | 'claim' | 'system'): Promise<string[]> {
-  // Try to get latest settings from database first
-  const remote = await db.settings.get<any>('notif_settings')
-  const cfg = remote ? { ...DEFAULT_NOTIF_SETTINGS, ...remote } : getNotifSettings()
-  return cfg.smsRecipients
-    .filter((r: any) => r.phone && r.events.includes(event))
-    .map((r: any) => r.phone)
-}
 
 /** Where a reminder email sends someone to actually pay -- the client
  *  portal, logged in, is the only place "pay this policy online" already
@@ -213,7 +202,7 @@ async function dispatchReminder(policy: Policy, client: Client | undefined, type
     // just whoever happens to have Billing & Reminders open.
     const recipients = [...new Set(await getSmsRecipientsForEvent('system'))]
     for (const number of recipients) {
-      notifyPhone(number, `${COMPANY_NAME}: ${policy.policyNumber} LAPSED. ${policy.clientName}. $${amountDue(policy).toFixed(2)} unpaid`, 'renewal', policy.policyNumber)
+      notifyPhone(number, `${policy.policyNumber} LAPSED. ${policy.clientName}. $${amountDue(policy).toFixed(2)} unpaid`, 'renewal', policy.policyNumber)
     }
   }
 

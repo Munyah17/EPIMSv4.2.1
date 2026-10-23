@@ -111,9 +111,7 @@ export async function exportReportToPdf(
   const pageHeight = doc.internal.pageSize.getHeight()
   const cfg = getNotifSettings()
 
-  drawLetterhead(doc, pageWidth, MOTIONS_LOGO_PNG_BASE64, COMPANY_NAME, cfg)
-
-  let y = 26
+  let y = drawLetterhead(doc, pageWidth, MOTIONS_LOGO_PNG_BASE64, COMPANY_NAME, cfg)
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(13)
   doc.setTextColor(...NAVY)
@@ -257,7 +255,11 @@ function money(amount: number): string {
  *  prints what's actually configured (Settings -> Notifications -> Company
  *  Details); a wrong address on an official document is worse than an
  *  absent one. */
-function drawLetterhead(doc: jsPDF, pageWidth: number, logo: string | null, brandName: string, cfg: ReturnType<typeof getNotifSettings>) {
+/** Draws the masthead and returns the y where body text can start.
+ *  Callers used to hard-code y = 26 or 32, which lands the title on top
+ *  of the Head Office phone block (three lines plus email). */
+function drawLetterhead(doc: jsPDF, pageWidth: number, logo: string | null, brandName: string, cfg: ReturnType<typeof getNotifSettings>): number {
+  const logoBottom = logo ? 28 : 22
   if (logo) {
     doc.addImage(logo, 'PNG', 14, 8, 20, 20)
   } else {
@@ -277,7 +279,7 @@ function drawLetterhead(doc: jsPDF, pageWidth: number, logo: string | null, bran
     ry += 4
   }
   if (cfg.companyAddress) {
-    const addrLines = doc.splitTextToSize(cfg.companyAddress, 70)
+    const addrLines = doc.splitTextToSize(cfg.companyAddress, 78)
     addrLines.forEach((line: string) => { doc.text(line, pageWidth - 14, ry, { align: 'right' }); ry += 4 })
   }
   if (cfg.companyPhone) {
@@ -289,7 +291,11 @@ function drawLetterhead(doc: jsPDF, pageWidth: number, logo: string | null, bran
       ry += 4
     })
   }
-  if (cfg.companyEmail) doc.text(`Email: ${cfg.companyEmail}`, pageWidth - 14, ry, { align: 'right' })
+  if (cfg.companyEmail) {
+    doc.text(`Email: ${cfg.companyEmail}`, pageWidth - 14, ry, { align: 'right' })
+    ry += 4
+  }
+  return Math.max(logoBottom, ry) + 4
 }
 /**
  * The terms document is part of the contract: the policy's own product
@@ -305,46 +311,55 @@ function drawTermsPages(doc: jsPDF, product: { name?: string; category?: string 
   const pageWidth = doc.internal.pageSize.getWidth()
   const pageHeight = doc.internal.pageSize.getHeight()
   const MARGIN = 14
-  const GAP = 6
+  const GAP = 8
   const colW = (pageWidth - MARGIN * 2 - GAP) / 2
   const xOf = (c: number) => MARGIN + c * (colW + GAP)
-  const bottom = pageHeight - 2
-  const PAGE_TOP = 4
-  const LH = 2.7 // Smaller line height for tighter fit
+  const bottom = pageHeight - 12
+  const PAGE_TOP = 12
 
   let col = 0
   let y = startY
   let colTop = startY
-  let totalPages = 1
 
+  // Points to millimetres, with the font that will actually be drawn.
+  // Wrapping at a smaller font and then drawing bold made headings run
+  // across the gutter into the other column.
+  const leadMm = () => (doc.getFontSize() * doc.getLineHeightFactor() * 25.4) / 72
   const ensure = (need: number) => {
     if (y + need <= bottom) return
-    if (col === 0) { col = 1; y = colTop }
-    else {
-      doc.addPage()
-      col = 0
-      y = PAGE_TOP
-      colTop = PAGE_TOP
-      totalPages++
+    if (col === 0) {
+      col = 1
+      y = colTop
+      if (y + need <= bottom) return
+    }
+    doc.addPage()
+    col = 0
+    y = PAGE_TOP
+    colTop = PAGE_TOP
+  }
+  const drawLines = (lines: string[], x: number) => {
+    const lead = leadMm()
+    ensure(lines.length * lead + 1)
+    for (const line of lines) {
+      doc.text(line, x, y)
+      y += lead
     }
   }
   const heading = (text: string) => {
-    const lines = doc.splitTextToSize(text, colW)
-    ensure(lines.length * 3 + 1.5)
     doc.setFont('helvetica', 'bold')
-    doc.setFontSize(7) // Smaller font for headings
+    doc.setFontSize(7.5)
     doc.setTextColor(...NAVY)
-    doc.text(lines, xOf(col), y)
-    y += lines.length * 3 + 0.5
+    const lines = doc.splitTextToSize(text, colW)
+    drawLines(lines, xOf(col))
+    y += 0.6
   }
   const para = (text: string) => {
-    const lines = doc.splitTextToSize(text, colW - 2)
-    ensure(lines.length * LH + 0.5)
     doc.setFont('helvetica', 'normal')
-    doc.setFontSize(6) // Smaller font for paragraphs
+    doc.setFontSize(7)
     doc.setTextColor(...TEXT)
-    doc.text(lines, xOf(col) + 1.5, y)
-    y += lines.length * LH + 0.8
+    const lines = doc.splitTextToSize(text, colW - 1)
+    drawLines(lines, xOf(col))
+    y += 1
   }
 
   heading('TERMS AND CONDITIONS')
@@ -429,9 +444,7 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
     if (y + need > pageHeight - 2) { doc.addPage(); y = 4 }
   }
 
-  drawLetterhead(doc, pageWidth, MOTIONS_LOGO_PNG_BASE64, COMPANY_NAME, cfg)
-
-  let y = 32
+  let y = drawLetterhead(doc, pageWidth, MOTIONS_LOGO_PNG_BASE64, COMPANY_NAME, cfg)
   doc.setFontSize(9)
   doc.setTextColor(...TEXT)
   // Agriculture policyholders are identified by name AND grower number
@@ -502,18 +515,30 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
     y += 7
   }
 
+  // Seven columns on A4 crushed the member number and "Currency" onto
+  // the cell borders, so the same facts print as two readable rows.
+  const grid = {
+    styles: { fontSize: 8, overflow: 'linebreak' as const, lineColor: [220, 226, 240] as [number, number, number], lineWidth: 0.3, cellPadding: 1.8 },
+    headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold' as const, fontSize: 8 },
+    theme: 'grid' as const,
+    margin: { left: 14, right: 14 },
+  }
   sectionBand('POLICY INFORMATION')
   autoTable(doc, {
     startY: y,
-    head: [['Member No.', 'Policy Package', premiumHeading, 'Cover', 'Currency', 'Issued Via', 'Status']],
+    head: [['Member No.', 'Policy Package', 'Status']],
     body: [[
-      holderMemberNumber(policy.policyNumber), up(policy.productName), money(policy.premium),
-      money(policy.coverAmount), 'USD', policySourceLabel(policy.source), policy.status.toUpperCase(),
+      holderMemberNumber(policy.policyNumber), up(policy.productName),
+      policy.status.replace(/_/g, ' ').toUpperCase(),
     ]],
-    styles: { fontSize: 9, lineColor: [220, 226, 240], lineWidth: 0.3, cellPadding: 2 },
-    headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold', fontSize: 9.5 },
-    theme: 'grid',
-    margin: { left: 14, right: 14 },
+    ...grid,
+  })
+  y = (doc as any).lastAutoTable.finalY + 2
+  autoTable(doc, {
+    startY: y,
+    head: [[premiumHeading, 'Cover', 'Currency', 'Issued Via']],
+    body: [[money(policy.premium), money(policy.coverAmount), 'USD', policySourceLabel(policy.source)]],
+    ...grid,
   })
   y = (doc as any).lastAutoTable.finalY + 4
 
@@ -522,10 +547,7 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
     startY: y,
     head: [['Full Name', 'National ID', 'Mobile Number', 'Date of Birth', 'Registration Date']],
     body: [[up(client.name), up(client.nationalId), client.phone, formatDate(client.dob), formatDate(client.createdAt)]],
-    styles: { fontSize: 9, lineColor: [220, 226, 240], lineWidth: 0.3, cellPadding: 2 },
-    headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold', fontSize: 9.5 },
-    theme: 'grid',
-    margin: { left: 14, right: 14 },
+    ...grid,
   })
   y = (doc as any).lastAutoTable.finalY + 4
 
@@ -575,15 +597,22 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
   } else {
     policy.dependants.forEach((d, i) => {
       ensureRoom(32)
-      doc.setFontSize(9)
+      doc.setFontSize(8)
       doc.setTextColor(...NAVY)
       const header = doc.splitTextToSize(
         `MEMBER NO: ${dependantMemberNumber(policy.policyNumber, i)}  |  FULL NAME: ${up(d.name)}  |  NATIONAL ID: ${up(d.nationalId) || '—'}  |  RELATIONSHIP: ${up(d.relationship)}  |  DATE OF BIRTH: ${formatDate(d.dob)}`,
         pageWidth - 32,
       )
-      doc.text(header, 18, y)
+      // Draw each line ourselves. Passing the array to doc.text() uses a
+      // leading that does not match a hand-rolled y step, so the table
+      // below was climbing back over the last line.
+      const headerLead = (doc.getFontSize() * doc.getLineHeightFactor() * 25.4) / 72
+      for (const line of header) {
+        doc.text(line, 18, y)
+        y += headerLead
+      }
       doc.setTextColor(...TEXT)
-      y += header.length * 4.5 + 3
+      y += 2
       autoTable(doc, {
         startY: y,
         head: [['Policy Package', premiumHeading, 'Cover', 'Currency', 'Status']],
@@ -644,7 +673,7 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
         doc.circle(15.5, y + i * 5 - 1.3, 0.9, 'F')
         doc.text(peril, 19, y + i * 5)
       })
-      y += AGRICULTURE_COVER.length * 4
+      y += AGRICULTURE_COVER.length * 5 + 2
     }
   }
 
@@ -685,18 +714,22 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
     }
   }
   conditions.push('Familiarize Yourself With The Following Terms and Conditions')
+  doc.setFontSize(9)
+  const condLead = (doc.getFontSize() * doc.getLineHeightFactor() * 25.4) / 72
   const condLines = conditions.flatMap(c => doc.splitTextToSize(`• ${c}`, pageWidth - 32) as string[])
-  ensureRoom(18 + condLines.length * 5)
+  ensureRoom(12 + condLines.length * condLead)
   sectionBand('POLICY CONDITIONS')
   doc.setFontSize(9)
   doc.setTextColor(...TEXT)
-  doc.text(condLines, 14, y)
-  y += condLines.length * 4
+  for (const line of condLines) {
+    doc.text(line, 14, y)
+    y += condLead
+  }
 
-  // Copyright line always on page 1 - no ensureRoom check
+  ensureRoom(8)
   doc.setDrawColor(220, 226, 240)
   doc.line(14, y, pageWidth - 14, y)
-  y += 1
+  y += 3.5
   doc.setFontSize(6.5)
   doc.setTextColor(...MUTED)
   doc.text(`Copyright © ${COMPANY_NAME}. All rights reserved.`, 14, y)
@@ -902,9 +935,7 @@ export async function exportPolicyAssessmentReport(
   const pageWidth = doc.internal.pageSize.getWidth()
   const cfg = getNotifSettings()
   
-  drawLetterhead(doc, pageWidth, MOTIONS_LOGO_PNG_BASE64, COMPANY_NAME, cfg)
-
-  let y = 28
+  let y = drawLetterhead(doc, pageWidth, MOTIONS_LOGO_PNG_BASE64, COMPANY_NAME, cfg)
   doc.setFontSize(9.5)
   doc.setTextColor(...TEXT)
   doc.text(assessment.subjectType === 'vehicle' ? 'VEHICLE PRE-LOSS ASSESSMENT REPORT' : 'AGRICULTURE PRE-LOSS ASSESSMENT REPORT', 14, y)

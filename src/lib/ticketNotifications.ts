@@ -1,20 +1,7 @@
 import type { Ticket } from '../types'
-import { sendEmail, getNotifSettings, DEFAULT_NOTIF_SETTINGS } from './mailService'
+import { sendEmail, getNotifSettings, getSmsRecipientsForEvent } from './mailService'
 import { MAILBOXES } from './mailboxes'
 import { notifyPhone } from './notify'
-import { COMPANY_NAME } from './company'
-import { db } from './db'
-
-/** Get phone numbers configured for a specific event type.
- *  Fetches from database to ensure newly added recipients are immediately available. */
-async function getSmsRecipientsForEvent(event: 'registration' | 'payment' | 'claim' | 'system'): Promise<string[]> {
-  // Try to get latest settings from database first
-  const remote = await db.settings.get<any>('notif_settings')
-  const cfg = remote ? { ...DEFAULT_NOTIF_SETTINGS, ...remote } : getNotifSettings()
-  return cfg.smsRecipients
-    .filter((r: any) => r.phone && r.events.includes(event))
-    .map((r: any) => r.phone)
-}
 
 /** The four fixed office lines, plus the configured Super Admin number if it
  *  isn't already one of them -- the same set every other event in the
@@ -22,7 +9,7 @@ async function getSmsRecipientsForEvent(event: 'registration' | 'payment' | 'cla
 async function notifyOffice(message: string, ref?: string) {
   const recipients = [...new Set(await getSmsRecipientsForEvent('system'))]
   for (const number of recipients) {
-    notifyPhone(number, `${COMPANY_NAME}: ${message}`, 'ticket', ref)
+    notifyPhone(number, message, 'ticket', ref)
   }
 }
 
@@ -54,7 +41,7 @@ ${ticket.description}${cfg.signature ? `\n\n---\n${cfg.signature}` : ''}`,
     })
   }
   if (client.phone) {
-    notifyPhone(client.phone, `${COMPANY_NAME}: Ticket ${ticket.ticketNumber} received. We'll respond.`, 'ticket', ticket.ticketNumber)
+    notifyPhone(client.phone, `Ticket ${ticket.ticketNumber} received. We'll respond.`, 'ticket', ticket.ticketNumber)
   }
   await notifyOffice(`New ticket ${ticket.ticketNumber} from ${ticket.clientName}: "${ticket.subject}"`, ticket.ticketNumber)
 }
@@ -80,7 +67,7 @@ Log in or reply to this email to continue the conversation.${cfg.signature ? `\n
     })
   }
   if (client.phone) {
-    notifyPhone(client.phone, `${COMPANY_NAME}: New response on ticket ${ticket.ticketNumber}. Check email.`, 'ticket', ticket.ticketNumber)
+    notifyPhone(client.phone, `New response on ticket ${ticket.ticketNumber}. Check email.`, 'ticket', ticket.ticketNumber)
   }
 }
 
@@ -106,6 +93,6 @@ If this did not fully resolve your issue, contact us and we will reopen it.${cfg
     })
   }
   if (client.phone) {
-    notifyPhone(client.phone, `${COMPANY_NAME}: Ticket ${ticket.ticketNumber} closed. Contact us if unresolved.`, 'ticket', ticket.ticketNumber)
+    notifyPhone(client.phone, `Ticket ${ticket.ticketNumber} closed. Contact us if unresolved.`, 'ticket', ticket.ticketNumber)
   }
 }
