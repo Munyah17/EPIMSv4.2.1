@@ -145,13 +145,19 @@ export default function SystemHealth({ aboveFab }: Props) {
               <div className="syshealth-row">
                 <span className="syshealth-row-label">SMS gateway</span>
                 <span className="syshealth-chip" style={{
-                  background: stats.smsOpsCount === 0 ? '#EEF2FB' : stats.smsLastOk ? '#D1FAE5' : '#FEE2E2',
-                  color: stats.smsOpsCount === 0 ? '#6B7280' : stats.smsLastOk ? '#065F46' : '#991B1B',
+                  background: stats.localMode ? '#FEF3C7' : stats.smsOpsCount === 0 ? '#EEF2FB' : stats.smsLastOk ? '#D1FAE5' : '#FEE2E2',
+                  color: stats.localMode ? '#92400E' : stats.smsOpsCount === 0 ? '#6B7280' : stats.smsLastOk ? '#065F46' : '#991B1B',
                 }}>
-                  {stats.smsOpsCount === 0 ? 'No sends yet' : stats.smsLastOk ? `OK — ${stats.smsSuccessPct}% sent` : `DOWN — last send failed`}
+                  {stats.localMode ? 'Simulated (localhost)' : stats.smsOpsCount === 0 ? 'No sends yet' : stats.smsLastOk ? `OK — ${stats.smsSuccessPct}% sent` : `DOWN — last send failed`}
                 </span>
               </div>
-              {stats.smsLastOk === false && stats.smsLastDetail && (
+              {stats.localMode && (
+                <div className="syshealth-row">
+                  <span className="syshealth-row-label" />
+                  <span className="syshealth-val" style={{ fontSize: 11, color: '#92400E' }}>SMS is logged but not sent on localhost</span>
+                </div>
+              )}
+              {stats.smsLastOk === false && stats.smsLastDetail && !stats.localMode && (
                 <div className="syshealth-row">
                   <span className="syshealth-row-label" />
                   <span className="syshealth-val" style={{ fontSize: 11, color: '#991B1B' }}>{stats.smsLastDetail}</span>

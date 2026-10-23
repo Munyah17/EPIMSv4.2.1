@@ -60,10 +60,15 @@ class HealthTracker {
 
     const writeOk = pct(writes)
     const readOk = pct(reads)
+    // Detect localhost by checking if we're running on localhost/127.0.0.1
+    const isLocalhost = typeof window !== 'undefined' &&
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+    // On localhost, SMS gateway is intentionally simulated (logged but not sent),
+    // so SMS failures should NOT affect overall health status
     const overall: 'healthy' | 'degraded' | 'offline' =
       !sbConnected ? 'degraded'
-      : writeOk < 50 || readOk < 50 || (smsOps.length > 0 && smsPct < 50) ? 'offline'
-      : writeOk < 90 || readOk < 90 || (smsOps.length > 0 && smsPct < 90) ? 'degraded'
+      : writeOk < 50 || readOk < 50 || (!isLocalhost && smsOps.length > 0 && smsPct < 50) ? 'offline'
+      : writeOk < 90 || readOk < 90 || (!isLocalhost && smsOps.length > 0 && smsPct < 90) ? 'degraded'
       : 'healthy'
 
     return {
