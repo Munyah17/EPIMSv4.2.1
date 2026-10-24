@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import type { Policy, Dependant, Client, Product, AppUser, Group, GroupType, CoverScope } from '../../types'
+import type { Policy, Dependant, Client, Product, AppUser, Group, GroupMember, GroupType, CoverScope } from '../../types'
 import { MANUAL_PAYMENT_METHODS } from '../../types'
 import { db } from '../../lib/db'
 import { useAuth } from '../../contexts/AuthContext'
@@ -116,7 +116,6 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   const [popDescription, setPopDescription] = useState('')
   const [popFile, setPopFile] = useState<File | null>(null)
   const [popUploading, setPopUploading] = useState(false)
-  const [popUrl, setPopUrl] = useState('')
   const product = products.find(p => p.id === productId)
   const isMedical = product?.category === 'health'
 
@@ -278,12 +277,11 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
     setPopUploading(true)
     try {
       // Upload to temporary location, will be moved to policy folder after policy creation
-      const { data, error } = await uploadDocument('policies', 'temp', file)
+      const { error } = await uploadDocument('policies', 'temp', file)
       if (error) {
         showToast?.('error', `Failed to upload PoP: ${error}`)
         setPopFile(null)
-      } else if (data) {
-        setPopUrl(data.path)
+      } else {
         setPopFile(file)
       }
     } catch (e) {
@@ -378,7 +376,10 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   if (!clientDob) missing.push({ key: 'clientDob', label: 'Date of Birth' })
   else if (clientAge !== null && clientAge < 18) missing.push({ key: 'clientDob', label: 'Date of Birth', hint: 'The policyholder must be at least 18' })
   if (!productId) missing.push({ key: 'productId', label: 'Product' })
-  if (!startDate) missing.push({ key: 'startDate', label: 'Start Date' })
+  // Staff without override rights can't edit this field — their cover
+  // auto-aligns to the 1st of the assigned month at save time
+  // (computeAssignedStartDate), so a blank field must not block them.
+  if (!startDate && canOverrideStartDate) missing.push({ key: 'startDate', label: 'Start Date' })
   // One live policy per client per product (DB partial unique index:
   // active | waiting_period). Warn before the save hits it — the staff
   // member picks another product, or lapses the old one first.
@@ -514,7 +515,10 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
     // product's sequence (FCP0001, HCP0042, ...) — short, and the prefix
     // alone says which cover it belongs to.
     const policyNumber = await nextPolicyNumber(product!)
-    const endDate = new Date(startDate)
+    // Non-admins never typed a date (the field is disabled) — assign the
+    // standard aligned date. Admins get whatever they chose.
+    const effectiveStartDate = startDate || computeAssignedStartDate()
+    const endDate = new Date(effectiveStartDate)
     endDate.setFullYear(endDate.getFullYear() + 1)
     const policy: Policy = {
       id: `pol${Date.now()}`,
@@ -525,7 +529,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
       productName: product!.name,
       premium: product!.premium,
       coverAmount: product!.coverAmount,
-      startDate,
+      startDate: effectiveStartDate,
       endDate: toIsoDate(endDate),
       // Every new policy starts in a waiting period, lifted to active after
       // 90 days — except agriculture, which has NO waiting period at all,
@@ -543,7 +547,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
       contractor: product!.category === 'agriculture' ? (contractor.trim() || undefined) : undefined,
       hectarage: product!.category === 'agriculture' ? (Number(hectarage) || undefined) : undefined,
       createdAt: toIsoDate(new Date()),
-      nextPaymentDate: toIsoDate(new Date(new Date(startDate).setMonth(new Date(startDate).getMonth() + (product!.category === 'agriculture' ? 12 : 1)))),
+      nextPaymentDate: toIsoDate(new Date(new Date(effectiveStartDate).setMonth(new Date(effectiveStartDate).getMonth() + (product!.category === 'agriculture' ? 12 : 1)))),
       agentId: agentId || undefined,
       source,
       hasChronicIllness: isMedical ? hasChronic ?? undefined : undefined,
