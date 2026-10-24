@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import type { Policy, Dependant, Client, Product, AppUser, Group, GroupMember, GroupType, CoverScope } from '../../types'
+import type { Policy, Payment, PaymentMethod, Dependant, Client, Product, AppUser, Group, GroupMember, GroupType, CoverScope } from '../../types'
 import { MANUAL_PAYMENT_METHODS } from '../../types'
 import { db } from '../../lib/db'
 import { useAuth } from '../../contexts/AuthContext'
@@ -13,11 +13,16 @@ import { POLICY_SOURCES, DEFAULT_POLICY_SOURCE } from '../../lib/policySources'
 import { notifyGroupRegistered } from '../../lib/signupNotifications'
 import { serverReachable } from '../../lib/notify'
 import { uploadDocument } from '../../lib/storage'
+import { generateTransactionId } from '../../lib/transactionId'
+import { policyBillablePremium } from '../../lib/premium'
 import ValidationSummary, { MissingField, invalidClass, fieldId, isMissing } from '../ui/ValidationSummary'
 
 interface Props {
   onClose: () => void
-  onSave: (policy: Policy) => void
+  /** Creates the policy and resolves to the created row — the modal needs
+   *  the real DB id afterwards to attach an initial payment + PoP. Null
+   *  (or a rejected promise) means the policy was not created. */
+  onSave: (policy: Policy) => Promise<Policy | null>
   showToast?: (type: 'success' | 'error' | 'warning' | 'info', message: string) => void
   /** Pre-selects and locks this client (e.g. "Assign Policy" from the
    *  Clients page for someone registered with no policy yet) — skips the
@@ -272,24 +277,49 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
     setOrgType(scope === 'corporate' ? 'company' : scope === 'team' ? 'sports' : 'other')
   }
 
-  const handlePopFileUpload = async (file: File) => {
+  // The file itself is only held — the upload happens inside doSave once
+  // the policy exists, so it lands under policies/<client-id>/… and gets
+  // referenced by the initial payment row. Uploading at pick time pushed
+  // every slip into policies/temp with nothing ever pointing at it.
+  const handlePopFileUpload = (file: File) => {
     if (!file) return
-    setPopUploading(true)
-    try {
-      // Upload to temporary location, will be moved to policy folder after policy creation
-      const { error } = await uploadDocument('policies', 'temp', file)
-      if (error) {
-        showToast?.('error', `Failed to upload PoP: ${error}`)
-        setPopFile(null)
-      } else {
-        setPopFile(file)
-      }
-    } catch (e) {
-      showToast?.('error', `Failed to upload PoP: ${e instanceof Error ? e.message : String(e)}`)
-      setPopFile(null)
-    } finally {
+    setPopFile(file)
+  }
+
+  /** A PoP handed over at registration is the first premium paid
+   *  off-system — record it as a completed payment exactly the way
+   *  RecordPaymentModal would, with the slip in payments.pop_url and the
+   *  capturer's note in payments.pop_description. Best-effort: the policy
+   *  is already saved, so a failed upload or insert warns rather than
+   *  rolling anything back. */
+  const recordInitialPayment = async (created: Policy) => {
+    let popUrl: string | undefined
+    if (popFile) {
+      setPopUploading(true)
+      const { data: doc, error: uploadError } = await uploadDocument('policies', created.clientId, popFile)
       setPopUploading(false)
+      if (uploadError || !doc) {
+        showToast?.('warning', `Policy created, but the proof of payment could not be uploaded (${uploadError ?? 'upload failed'}). Re-attach it from Payments.`)
+      } else {
+        popUrl = doc.path
+      }
     }
+    const reference = `PAY${new Date().toISOString().slice(0, 10).replace(/-/g, '')}${String(Date.now()).slice(-3)}`
+    const paymentRecord: Omit<Payment, 'id'> = {
+      reference,
+      transactionId: generateTransactionId({ clientName: created.clientName, method: paymentMethod }),
+      policyId: created.id,
+      policyNumber: created.policyNumber,
+      clientName: created.clientName,
+      amount: policyBillablePremium(created, product?.category) || created.premium,
+      method: paymentMethod as PaymentMethod,
+      status: 'completed',
+      date: toIsoDate(new Date()),
+      popUrl,
+      popDescription: popDescription.trim() || undefined,
+    }
+    const { error } = await db.payments.create(paymentRecord)
+    if (error) showToast?.('warning', `Policy created, but the initial payment could not be recorded: ${error}`)
   }
 
   const clearClientFields = () => {
@@ -553,7 +583,9 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
       hasChronicIllness: isMedical ? hasChronic ?? undefined : undefined,
       chronicIllnessDetails: isMedical && hasChronic ? chronicDetails.trim() : undefined,
     }
-    await Promise.resolve(onSave(policy))
+    const created = await Promise.resolve(onSave(policy))
+    if (!created) return
+    if (popFile || popDescription.trim()) await recordInitialPayment(created)
   }
 
   return (
@@ -874,12 +906,12 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                         const file = e.target.files?.[0]
                         if (file) handlePopFileUpload(file)
                       }}
-                      disabled={popUploading}
+                      disabled={saving}
                     />
                     {popUploading && <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>Uploading...</p>}
-                    {popFile && (
+                    {popFile && !popUploading && (
                       <p style={{ fontSize: 11, color: 'var(--success)', marginTop: 4 }}>
-                        ✓ {popFile.name} uploaded
+                        {popFile.name} selected — uploads with the policy
                       </p>
                     )}
                     <p style={{ fontSize: 10, color: 'var(--muted)', marginTop: 4 }}>

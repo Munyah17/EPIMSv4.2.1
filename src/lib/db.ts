@@ -127,10 +127,21 @@ const policySelect = async () => {
   if (groupCols) return POLICY_SELECT_GROUP + (capturedCol ? POLICY_SELECT_CAP : '')
   return POLICY_SELECT_BASE + (capturedCol ? POLICY_SELECT_CAP : '')
 }
-const paymentSelect = () => Promise.all([
-  hasColumn('payments', 'transaction_id'),
-  hasColumn('payments', 'pop_url'),
-]).then(([txn, pop]) => txn && pop ? PAYMENT_SELECT_BOTH : txn ? PAYMENT_SELECT_TXN : pop ? PAYMENT_SELECT_POP : PAYMENT_SELECT_BASE)
+/** Optional columns are probed (hasColumn) so the select survives an
+ *  env where a migration hasn't run — transaction_id, pop_url and
+ *  pop_description all came later than the base row. */
+const paymentSelect = async () => {
+  const extras = (await Promise.all([
+    hasColumn('payments', 'transaction_id'),
+    hasColumn('payments', 'pop_url'),
+    hasColumn('payments', 'pop_description'),
+  ]).then(([txn, pop, desc]) => [
+    txn ? 'transaction_id' : '',
+    pop ? 'pop_url' : '',
+    desc ? 'pop_description' : '',
+  ])).filter(Boolean).join(', ')
+  return extras ? PAYMENT_SELECT_BASE.replace('payment_date,', `payment_date, ${extras},`) : PAYMENT_SELECT_BASE
+}
 
 /** Dispatched whenever a read/write falls back to browser-local storage, so the UI can warn the user. */
 export const DB_FALLBACK_EVENT = 'ims:db-fallback'
@@ -347,6 +358,7 @@ function toPayment(r: any): Payment {
     recordedAt:    r.created_at ?? undefined,
     splitPayments: r.split_payments ?? undefined,
     popUrl:        r.pop_url ?? undefined,
+    popDescription: (r.pop_description as string | null) ?? undefined,
   }
 }
 
@@ -505,12 +517,6 @@ const PAYMENT_SELECT_BASE = `
     clients!client_id(name)
   )
 `
-/** Optional columns are probed (hasColumn) so the select survives an
- *  env where a migration hasn't run — transaction_id and pop_url both
- *  came later than the base row. */
-const PAYMENT_SELECT_TXN = PAYMENT_SELECT_BASE.replace('payment_date,', 'payment_date, transaction_id,')
-const PAYMENT_SELECT_POP = PAYMENT_SELECT_BASE.replace('payment_date,', 'payment_date, pop_url,')
-const PAYMENT_SELECT_BOTH = PAYMENT_SELECT_BASE.replace('payment_date,', 'payment_date, transaction_id, pop_url,')
 const TICKET_SELECT = `
   id, ticket_number, client_id, subject, description,
   status, priority, category, assigned_to, messages, created_at, updated_at,
@@ -1310,6 +1316,7 @@ export const payments = {
     const paymentSelect_ = await paymentSelect()
     if (schemaFlags.get('payments.transaction_id')?.ok) row.transaction_id = payment.transactionId ?? null
     if (schemaFlags.get('payments.pop_url')?.ok) row.pop_url = payment.popUrl ?? null
+    if (schemaFlags.get('payments.pop_description')?.ok) row.pop_description = payment.popDescription ?? null
     const { ok, data, error } = await sb('payments', 'write',
       () => supabase.from('payments').insert(row).select(paymentSelect_).single(),
     )
@@ -1353,6 +1360,9 @@ export const payments = {
     }
     if (schemaFlags.get('payments.pop_url')?.ok && updates.popUrl !== undefined) {
       row.pop_url = updates.popUrl ?? null
+    }
+    if (schemaFlags.get('payments.pop_description')?.ok && updates.popDescription !== undefined) {
+      row.pop_description = updates.popDescription ?? null
     }
     const { ok, data, error } = await sb('payments', 'write',
       () => supabase.from('payments').update(row).eq('id', id).select(paymentSelect_).single(),

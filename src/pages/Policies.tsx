@@ -178,14 +178,14 @@ export default function Policies({ showToast, initialCategory }: Props) {
     setExporting(false)
   }
 
-  const handleAdd = async (policy: Policy) => {
+  const handleAdd = async (policy: Policy): Promise<Policy | null> => {
     const { data, error } = await db.policies.create(policy)
     // Show the real reason: "failed to create" tells a user nothing when the
     // refusal is a duplicate they can actually do something about.
     if (error || !data) {
       showToast('error', error ?? 'Failed to create policy.')
       void notifyRegistrationFailed('Policy registration', `${policy.clientName} / ${policy.productName} — ${error ?? 'unknown error'}`)
-      return
+      return null
     }
     setPolicies(prev => [data, ...prev])
     showToast('success', `Policy ${data.policyNumber} created successfully.`)
@@ -218,6 +218,7 @@ export default function Policies({ showToast, initialCategory }: Props) {
     // WhatsApp delivery of this document isn't wired up yet — it needs a
     // WhatsApp Business API integration (Twilio or Meta Cloud API) with its
     // own account/credentials, which don't exist in this project yet.
+    return data
   }
 
   const handleEdit = async (updated: Policy) => {

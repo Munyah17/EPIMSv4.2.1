@@ -488,6 +488,10 @@ export interface Payment {
    *  bucket, policies/<client-id>/…). The group representative hands the
    *  office a bank slip / EcoCash screenshot; this is where it lives. */
   popUrl?: string
+  /** Free-text note captured with the PoP — transaction code, bank
+   *  reference, whatever the capturer typed. Needs
+   *  database/add_payment_pop_description.sql; not persisted before it. */
+  popDescription?: string
 }
 
 export type InvoiceStatus = 'issued' | 'paid' | 'cancelled'

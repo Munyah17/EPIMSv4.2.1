@@ -145,20 +145,21 @@ export default function Clients({ showToast }: Props) {
     }
   }
 
-  const handleAssignPolicy = async (policy: Policy) => {
+  const handleAssignPolicy = async (policy: Policy): Promise<Policy | null> => {
     if (!(await serverReachable())) {
       showToast('error', 'The server is unreachable right now — nothing was registered. Try again in a moment.')
-      return
+      return null
     }
     const { data, error } = await db.policies.create(policy)
     if (error || !data) {
       showToast('error', error ?? 'Failed to create policy.')
       void notifyRegistrationFailed('Policy registration', `${policy.clientName} / ${policy.productName} — ${error ?? 'unknown error'}`)
-      return
+      return null
     }
     setClients(prev => prev.map(c => c.id === data.clientId ? { ...c, policyCount: c.policyCount + 1 } : c))
     showToast('success', `Policy ${data.policyNumber} assigned to ${data.clientName}.`)
     setAssignPolicyClient(null)
+    return data
   }
 
   // When a client delete is refused because policies still reference them,
