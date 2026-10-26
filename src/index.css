@@ -1138,13 +1138,25 @@ textarea.form-control{resize:vertical;min-height:80px}
 .sh-metric-fill{height:100%;border-radius:3px;transition:width 0.5s ease}
 .sh-info-row{display:flex;align-items:center;justify-content:space-between;font-size:12px;color:var(--muted);padding:7px 0;border-bottom:1px solid var(--border)}
 .sh-info-row:last-child{border-bottom:none}
-.sh-log-table{overflow-y:auto;max-height:440px}
+.sh-log-table{overflow-y:auto;max-height:440px;color:var(--text)}
 .sh-log-header{display:grid;grid-template-columns:80px 48px 1fr 100px 70px 52px;gap:6px;padding:6px 0;font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.07em;border-bottom:2px solid var(--border);position:sticky;top:0;background:white}
 .sh-log-row{display:grid;grid-template-columns:80px 48px 1fr 100px 70px 52px;gap:6px;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px;align-items:center}
 .sh-log-row.sh-log-fail{background:rgba(220,38,38,0.04)}
 .sh-log-time{font-family:monospace;font-size:11px;color:var(--muted)}
 .sh-log-op{font-weight:700;font-size:11px;letter-spacing:0.04em}
-.sh-log-table{color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sh-log-cell-table{color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* Delivery log — the browsable notification_log view (filterable). */
+.dl-filters{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.dl-filters .form-control{font-size:12px;padding:6px 10px}
+.dl-head{display:grid;grid-template-columns:150px 74px 80px 1fr 110px;gap:6px;padding:6px 0;font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:0.07em;border-bottom:2px solid var(--border);position:sticky;top:0;background:white}
+.dl-row{display:grid;grid-template-columns:150px 74px 80px 1fr 110px;gap:6px;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px;align-items:center}
+.dl-row.dl-fail{background:rgba(220,38,38,0.04)}
+.dl-cell{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dl-detail{grid-column:1/-1;font-size:10px;color:var(--muted);padding-left:6px;white-space:normal;overflow-wrap:break-word}
+.dl-status-failed{color:var(--danger);font-weight:700}
+.dl-status-sent{color:var(--success);font-weight:700}
+.dl-status-queued,.dl-status-skipped{color:#D97706;font-weight:700}
 .sh-log-src{color:var(--muted);font-size:11px}
 .sh-log-ms{color:var(--muted);font-size:11px;text-align:right}
 .sh-log-ok{color:var(--success);font-weight:700}

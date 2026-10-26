@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { health } from '../lib/health'
 import type { DbOp } from '../lib/health'
-import { db } from '../lib/db'
+import { db, type NotificationFailure } from '../lib/db'
 import { sendSms, pingSmsGateway } from '../lib/smsService'
 import { supabase } from '../lib/supabase'
 import { runSystemCheck, type SystemCheckResult, type SystemCheckFix } from '../lib/aiService'
@@ -95,7 +95,15 @@ function MetricBar({ label, value, color }: { label: string; value: number; colo
 export default function SystemHealthPage({ showToast }: Props) {
   const { user } = useAuth()
   const [stats, setStats] = useState<Stats>(() => health.stats as Stats)
-  const [tab, setTab] = useState<'overview' | 'log'>('overview')
+  const [tab, setTab] = useState<'overview' | 'log' | 'delivery'>('overview')
+  const [dlRows, setDlRows] = useState<NotificationFailure[]>([])
+  const [dlLoading, setDlLoading] = useState(false)
+  const [dlLoadedOnce, setDlLoadedOnce] = useState(false)
+  const [dlChannel, setDlChannel] = useState('')
+  const [dlStatus, setDlStatus] = useState('')
+  const [dlText, setDlText] = useState('')
+  const [dlFrom, setDlFrom] = useState('')
+  const [dlTo, setDlTo] = useState('')
   const [ticker, setTicker] = useState(0)
   const [failedLogins, setFailedLogins] = useState<{ email: string; count: number; lastAttempt: string }[]>([])
   const [testNumber, setTestNumber] = useState('')
@@ -195,6 +203,26 @@ export default function SystemHealthPage({ showToast }: Props) {
   const handleReset = () => {
     health.reset()
     showToast('info', 'Health tracker stats cleared.')
+  }
+
+  /** Server-side delivery log — every notification attempt recorded in
+   *  notification_log, filterable by recipient/detail/date. This is the
+   *  log support uses to answer "the client never got the text" — it
+   *  keeps rows for every channel and status, not just this browser's
+   *  session ops. */
+  const loadDeliveryLog = async () => {
+    setDlLoading(true)
+    const rows = await db.notificationLog.search({
+      channel: dlChannel || undefined,
+      status: dlStatus || undefined,
+      text: dlText || undefined,
+      from: dlFrom ? new Date(`${dlFrom}T00:00:00`).toISOString() : undefined,
+      to: dlTo ? new Date(`${dlTo}T23:59:59.999`).toISOString() : undefined,
+      limit: 300,
+    })
+    setDlRows(rows)
+    setDlLoadedOnce(true)
+    setDlLoading(false)
   }
 
   /** Proof, not hope: a real Afrosoft round-trip on demand — and a
@@ -559,12 +587,79 @@ export default function SystemHealthPage({ showToast }: Props) {
               <button className={`tab${tab === 'log' ? ' active' : ''}`} onClick={() => setTab('log')}>
                 Full Log ({stats.totalOps})
               </button>
+              <button className={`tab${tab === 'delivery' ? ' active' : ''}`} onClick={() => { setTab('delivery'); if (!dlLoadedOnce) void loadDeliveryLog() }}>
+                Delivery Log
+              </button>
             </div>
             <button className="btn btn-ghost" onClick={handleReset} style={{ fontSize: 11, color: 'var(--muted)' }}>
               Clear
             </button>
           </div>
 
+          {tab === 'delivery' ? (
+            <>
+              {/* Filters: find a delivery by recipient/ref/detail text,
+                  channel, status, or a date window — then just scroll. */}
+              <div className="dl-filters">
+                <select className="form-control" style={{ width: 110 }} value={dlChannel} onChange={e => setDlChannel(e.target.value)}>
+                  <option value="">All channels</option>
+                  <option value="sms">SMS</option>
+                  <option value="email">Email</option>
+                  <option value="whatsapp">WhatsApp</option>
+                </select>
+                <select className="form-control" style={{ width: 110 }} value={dlStatus} onChange={e => setDlStatus(e.target.value)}>
+                  <option value="">All statuses</option>
+                  <option value="failed">Failed</option>
+                  <option value="sent">Sent</option>
+                  <option value="queued">Queued</option>
+                  <option value="skipped">Skipped</option>
+                </select>
+                <input className="form-control" style={{ flex: 1, minWidth: 180 }}
+                  placeholder="Search number, name, ref or error text…"
+                  value={dlText}
+                  onChange={e => setDlText(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') void loadDeliveryLog() }}
+                />
+                <input className="form-control" type="date" style={{ width: 140 }} value={dlFrom} onChange={e => setDlFrom(e.target.value)} title="From date" />
+                <input className="form-control" type="date" style={{ width: 140 }} value={dlTo} onChange={e => setDlTo(e.target.value)} title="To date" />
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => void loadDeliveryLog()} disabled={dlLoading}>
+                  {dlLoading ? 'Loading…' : 'Search'}
+                </button>
+              </div>
+              <div className="sh-log-table">
+                {dlRows.length === 0 ? (
+                  <div className="empty-state" style={{ padding: '32px 0' }}>
+                    {dlLoading ? 'Loading deliveries…' : dlLoadedOnce ? 'No deliveries match those filters.' : 'Press Search to load the delivery log.'}
+                  </div>
+                ) : (
+                  <>
+                    <div className="dl-head">
+                      <span>Date &amp; time</span>
+                      <span>Channel</span>
+                      <span>Status</span>
+                      <span>Recipient</span>
+                      <span>Ref</span>
+                    </div>
+                    {dlRows.map((r, i) => (
+                      <div key={`${r.at}-${r.recipient}-${i}`} className={`dl-row${r.status === 'failed' ? ' dl-fail' : ''}`}>
+                        <span className="sh-log-time">{new Date(r.at).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                        <span className="dl-cell">{r.channel}</span>
+                        <span className={`dl-status-${r.status ?? 'sent'}`}>{r.status ?? '—'}</span>
+                        <span className="dl-cell" title={r.recipient}>{r.recipient}</span>
+                        <span className="dl-cell" title={r.ref ?? ''}>{r.ref ?? '—'}</span>
+                        {(r.event || r.detail) && (
+                          <span className="dl-detail"><strong>{r.event}</strong>{r.detail ? ` — ${r.detail}` : ''}</span>
+                        )}
+                      </div>
+                    ))}
+                    <div style={{ fontSize: 11, color: 'var(--muted)', padding: '8px 0' }}>
+                      Showing {dlRows.length} entr{dlRows.length === 1 ? 'y' : 'ies'} (newest first{dlRows.length >= 300 ? ', capped at 300 — narrow the filters' : ''}).
+                    </div>
+                  </>
+                )}
+              </div>
+            </>
+          ) : (
           <div className="sh-log-table" ref={logRef}>
             {stats.recent.length === 0 ? (
               <div className="empty-state" style={{ padding: '32px 0' }}>No operations recorded yet; interact with the app to generate data.</div>
@@ -582,7 +677,7 @@ export default function SystemHealthPage({ showToast }: Props) {
                   <div key={op.id} className={`sh-log-row${op.success ? '' : ' sh-log-fail'}`}>
                     <span className="sh-log-time">{fmtTime(op.ts)}</span>
                     <span className="sh-log-op" style={{ color: OP_COLOR[op.type] }}>{op.type.toUpperCase()}</span>
-                    <span className="sh-log-table">{op.table}</span>
+                    <span className="sh-log-cell-table">{op.table}</span>
                     <span className="sh-log-src">{op.source === 'supabase' ? '☁ Supabase' : op.source === 'api' ? '⇄ API' : '💾 Local'}</span>
                     <span className="sh-log-ms">{op.duration}ms</span>
                     <span className={op.success ? 'sh-log-ok' : 'sh-log-fail-icon'}>
@@ -594,6 +689,7 @@ export default function SystemHealthPage({ showToast }: Props) {
               </>
             )}
           </div>
+          )}
         </div>
       </div>
     </div>

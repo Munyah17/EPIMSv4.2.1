@@ -26,8 +26,11 @@ import { normalizeZwMobile, parseRecipientPhones, smsParts } from '../../src/lib
  *              human until real credentials exist.
  */
 
-/** Office lines + mailbox copied on every lifecycle event. */
-export const COMPANY_PHONES = ['+263780086175', '+263780086176', '+263780086177', '+263780086178']
+/** Last-resort office lines — used ONLY until Settings → SMS Recipients
+ *  is first saved. Once an admin saves a list there (even an empty one),
+ *  it is the assignment and these numbers are never consulted again.
+ *  Matches the seed list Settings shows on first open. */
+export const DEFAULT_OFFICE_PHONES = ['+263780086175', '+263780086176', '+263780086177', '+263780086178']
 export const COMPANY_EMAIL = 'info@motions.co.zw'
 
 export type Channel = 'sms' | 'email' | 'whatsapp'
@@ -59,9 +62,12 @@ const SMS_EVENT: Record<string, 'registration' | 'payment' | 'claim' | 'system'>
   recon: 'system',
 }
 
-/** Office SMS lines for an event. The Settings → SMS Recipients list wins,
- *  so adding or removing +263780086175 takes effect for website, cron and
- *  counter sales alike. An empty list falls back to the four office lines. */
+/** Office lines for an event, resolved from Settings → SMS Recipients
+ *  (app_settings.notif_settings) and filtered to the event's bucket. The
+ *  saved list is the assignment — adding or removing a number takes effect
+ *  for website, cron and counter sales alike, and a saved list with nobody
+ *  ticked for this event means nobody is texted. Only when NO list has
+ *  ever been saved do the default office lines apply. */
 async function officeSmsNumbers(admin: SupabaseClient | null, event: string): Promise<string[]> {
   const bucket = SMS_EVENT[event] ?? 'system'
   try {
@@ -87,7 +93,7 @@ async function officeSmsNumbers(admin: SupabaseClient | null, event: string): Pr
       }
     }
   } catch { /* fall through to the fixed lines */ }
-  return COMPANY_PHONES
+  return DEFAULT_OFFICE_PHONES
 }
 
 // ── Channel senders ─────────────────────────────────────────────────
@@ -275,7 +281,10 @@ export async function dispatchNotification(admin: SupabaseClient | null, job: No
     for (const phone of officeLines) {
       deliveries.push(sendSmsAfrosoft(phone, `${job.event.toUpperCase()}: ${officeSms}`))
     }
-    for (const phone of COMPANY_PHONES) {
+    // WhatsApp follows the SAME assignment as SMS — the Settings → SMS
+    // Recipients list governs every office channel, not just texts, so a
+    // number removed there stops getting WhatsApp copies too.
+    for (const phone of officeLines) {
       deliveries.push(sendWhatsAppCloud(phone, `${job.event.toUpperCase()}: ${waText}`))
     }
     const already = new Set(officeLines.map(p => normalizeZwMobile(p)))

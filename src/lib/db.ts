@@ -2535,6 +2535,7 @@ export interface NotificationFailure {
   ref: string | null
   detail: string | null
   at: string
+  status?: string
 }
 
 export const notificationLog = {
@@ -2569,6 +2570,46 @@ export const notificationLog = {
         .is('dismissed_at', null)
       return { error: error ? 'Could not clear the notifications.' : null }
     } catch { return { error: 'Could not clear the notifications.' } }
+  },
+
+  /** Browse the delivery log — every recorded notification attempt,
+   *  newest first, filterable by channel, status, a date window, and free
+   *  text across recipient/ref/detail/event (so "263780086175", "TOB0540"
+   *  or "502" all find their rows). This is the view support opens when a
+   *  client says a text never arrived. */
+  async search(opts: {
+    channel?: string
+    status?: string
+    text?: string
+    from?: string
+    to?: string
+    limit?: number
+  } = {}): Promise<NotificationFailure[]> {
+    try {
+      let q = supabase
+        .from('notification_log')
+        .select('event, channel, recipient, ref, detail, status, created_at')
+        .order('created_at', { ascending: false })
+        .limit(opts.limit ?? 300)
+      if (opts.channel) q = q.eq('channel', opts.channel)
+      if (opts.status) q = q.eq('status', opts.status)
+      if (opts.from) q = q.gte('created_at', opts.from)
+      if (opts.to) q = q.lte('created_at', opts.to)
+      const text = opts.text?.trim()
+      if (text) {
+        // PostgREST .or() commas split filters — strip them (and a couple
+        // of other syntax-significant chars) so a pasted number or ref
+        // can't corrupt the query.
+        const esc = text.replace(/[%,().]/g, ' ').replace(/\s+/g, ' ').trim()
+        if (esc) q = q.or(`recipient.ilike.%${esc}%,ref.ilike.%${esc}%,detail.ilike.%${esc}%,event.ilike.%${esc}%`)
+      }
+      const { data, error } = await q
+      if (error) return []
+      return (data ?? []).map(r => ({
+        event: r.event, channel: r.channel, recipient: r.recipient,
+        ref: r.ref, detail: r.detail, at: r.created_at, status: r.status,
+      }))
+    } catch { return [] }
   },
 
   /** WhatsApp messages parked for a staff member to send by hand — the
