@@ -132,7 +132,7 @@ interface AfrosoftResponse {
  */
 import { supabase } from './supabase'
 import { health, isDevOrigin } from './health'
-import { normalizeZwMobile, smsParts } from './smsText'
+import { normalizeZwMobile, smsParts, dedupeMessage } from './smsText'
 
 /** Push an SMS gateway result into System Health, and when it failed, make
  *  it loud — the notify-failed event (dashboard toast/banner) plus a
@@ -172,7 +172,7 @@ async function callAfrosoftOnce(
           error: `The SMS API is not deployed on ${window.location.hostname} — send texts from the live portal (portal.motions.co.zw).`
         }
       }
-      return { ok: false, error: (err as { error?: string })?.error ?? `Gateway proxy error (HTTP ${res.status})` }
+      return { ok: false, error: dedupeMessage((err as { error?: string })?.error ?? `Gateway proxy error (HTTP ${res.status})`) }
     }
 
     // A plain `vite` dev server has no serverless functions, so it answers
@@ -189,7 +189,7 @@ async function callAfrosoftOnce(
       }
     }
     const { status, ok, body } = envelope
-    if (!ok) return { ok: false, error: `Afrosoft HTTP ${status}: ${body.slice(0, 200)}` }
+    if (!ok) return { ok: false, error: `Afrosoft HTTP ${status}: ${dedupeMessage(body.slice(0, 200))}` }
     const data = JSON.parse(body) as AfrosoftResponse
     return { ok: true, data }
   } catch (e) {
@@ -236,7 +236,7 @@ async function sendViaNotify(to: string, message: string, ctx?: SmsContext): Pro
     })
     const body = await res.json().catch(() => ({})) as { ok?: boolean; delivery?: { status?: string; detail?: string } }
     if (body.ok && body.delivery?.status === 'sent') return { success: true }
-    return { success: false, error: body.delivery?.detail ?? `notify fallback failed (HTTP ${res.status})` }
+    return { success: false, error: dedupeMessage(body.delivery?.detail ?? `notify fallback failed (HTTP ${res.status})`) }
   } catch (e) {
     return { success: false, error: `notify fallback unreachable: ${e}` }
   }
@@ -254,8 +254,33 @@ export async function sendSms(to: string, message: string, ctx?: SmsContext): Pr
  * Send the same message to multiple recipients. Afrosoft accepts
  * comma-separated numbers in a single call.
  */
+
+/** Same message to the same recipients inside this window is one send —
+ *  a double-tap on a submit button, or two callers notifying the same
+ *  event, must not text the client twice. */
+const DUP_WINDOW_MS = 10_000
+const recentSends = new Map<string, { at: number; result: BulkSmsResult }>()
+
+function sendKey(numbers: string[], message: string): string {
+  return numbers.map(n => normalizeMsisdn(n)).sort().join(',') + '||' + message
+}
+
 export async function sendBulkSms(numbers: string[], message: string, ctx?: SmsContext): Promise<BulkSmsResult> {
   startOutboxPump()
+
+  const key = sendKey(numbers, message)
+  const recent = recentSends.get(key)
+  if (recent && Date.now() - recent.at < DUP_WINDOW_MS) return recent.result
+
+  const done = (r: BulkSmsResult): BulkSmsResult => {
+    // Only a genuinely sent batch is remembered — a failed one stays
+    // retryable, that's the whole point of the outbox.
+    if (r.sent > 0 || r.failed === 0) recentSends.set(key, { at: Date.now(), result: r })
+    // The map stays small, but sweep it anyway on each send.
+    for (const [k, v] of recentSends) if (Date.now() - v.at > DUP_WINDOW_MS) recentSends.delete(k)
+    return r
+  }
+
   // Bad numbers are separated out and reported individually, rather than
   // being sent and taking every other recipient down with them.
   const invalid = numbers.filter(n => !isValidMsisdn(n))
@@ -323,14 +348,14 @@ export async function sendBulkSms(numbers: string[], message: string, ctx?: SmsC
   const detail = result.data['sms-response-details']?.[0]
   const sentIds = new Map((detail?.['sent-sms-details'] ?? []).map(s => [msisdnKey(s['mobile-no'] ?? ''), s['message-id']]))
   const failedReasons = new Map(
-    (detail?.['failed-sms-details'] ?? []).flatMap(f => f.reasons ?? []).map(r => [msisdnKey(r['mobile-no'] ?? ''), r['failed-reason']]),
+    (detail?.['failed-sms-details'] ?? []).flatMap(f => f.reasons ?? []).map(r => [msisdnKey(r['mobile-no'] ?? ''), r['failed-reason'] ? dedupeMessage(r['failed-reason']) : undefined]),
   )
 
   // A per-number reason ("Blacklisted", "Number is not reachable") is what
   // someone can actually act on, so it always wins over the request-level
   // description, which only stands in when the gateway rejected the batch
   // outright and named no individual number.
-  const batchReason = result.data.status?.['error-description']
+  const batchReason = dedupeMessage(result.data.status?.['error-description'] ?? '')
     || (errorCode && errorCode !== '000' ? `Afrosoft error ${errorCode}` : undefined)
 
   const results = valid.map(phone => {

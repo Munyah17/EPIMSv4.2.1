@@ -130,7 +130,11 @@ function AppInner() {
   // any not-yet-persisted local state — including a just-added item.
   const showToast = useCallback((type: ToastMessage['type'], message: string) => {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2)}`
-    setToasts(prev => [...prev, { id, type, message }])
+    // A toast identical to one already on screen adds nothing — e.g. the
+    // same failure reported by the send path and the outcome watcher.
+    setToasts(prev => prev.some(t => t.type === type && t.message === message)
+      ? prev
+      : [...prev, { id, type, message }])
     // Stays up to 15s so it's actually readable — the user can also close
     // it early via the toast's own dismiss button (see Toast.tsx).
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 15000)

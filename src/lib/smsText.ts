@@ -87,6 +87,30 @@ export function smsEventLabel(event: string): string {
   return event === 'registration' ? 'REG' : event.toUpperCase()
 }
 
+/**
+ * Collapses upstream text that is one message repeated — providers
+ * concatenate status and narrative fields that often carry identical
+ * text, and the reply lands as "Something went wrong, please try
+ * again.Something went wrong, please try again." Shown verbatim that
+ * looks like a bug of ours; one copy says the same thing.
+ */
+export function dedupeMessage(raw: string): string {
+  const msg = String(raw ?? '').trim()
+  if (!msg) return msg
+  // Whole string = the same half twice, no separator ("X.X").
+  if (msg.length % 2 === 0) {
+    const half = msg.length / 2
+    if (msg.slice(0, half) === msg.slice(half)) return msg.slice(0, half).trim()
+  }
+  const sentences = msg.match(/[^.!?]+[.!?]+\s*/g)
+  if (!sentences || sentences.length < 2) return msg
+  // Every sentence identical ("X. X.").
+  if (sentences.every(s => s.trim() === sentences[0].trim())) return sentences[0].trim()
+  // Consecutive duplicates ("A. A. B." → "A. B.").
+  const kept = sentences.filter((s, i) => i === 0 || s.trim() !== sentences[i - 1].trim())
+  return kept.map(s => s.trim()).join(' ')
+}
+
 // ── The ONE client-facing message shape ─────────────────────────────
 //
 // Approved standard (verbatim example, variables swapped per record):

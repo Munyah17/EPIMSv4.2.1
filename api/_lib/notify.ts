@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { sendMailDirect } from './mailTransport.js'
 import { serviceClient } from './sessionAuth.js'
 import { canonicalizeSmsText } from './smsCanon.js'
-import { normalizeZwMobile, parseRecipientPhones, smsParts, smsEventLabel, DEFAULT_OFFICE_SMS } from '../../src/lib/smsText.js'
+import { normalizeZwMobile, parseRecipientPhones, smsParts, smsEventLabel, dedupeMessage, DEFAULT_OFFICE_SMS } from '../../src/lib/smsText.js'
 
 /**
  * One place every notification goes through.
@@ -114,9 +114,18 @@ async function afrosoftOnce(msisdn: string, message: string): Promise<Delivery> 
   try {
     const res = await fetch(`https://${domain}/client/api/sendmessage?${params.toString()}`)
     const body = await res.text()
-    // Afrosoft answers 200 even on refusal; the error-code is the verdict.
-    if (res.ok && /"error-code"\s*:\s*"000"/.test(body)) {
+    // Match tolerantly — key spelling, optional quotes — because a 200 we
+    // misread as a failure gets retried, and the retry is a REAL second SMS.
+    const errorCode = body.match(/"error-?code"\s*:\s*"?(\d{3})"?/i)?.[1]
+    if (res.ok && errorCode === '000') {
       return { channel: 'sms', recipient: msisdn, status: 'sent', detail: body.slice(0, 200) }
+    }
+    if (res.ok && !errorCode && !/error-description/i.test(body)) {
+      // HTTP 200 with no error-code in the body: Afrosoft accepted the
+      // request, the response format just isn't what the regex expected.
+      // Counting it as failed would resend a message that already went out —
+      // this is how clients got duplicate texts.
+      return { channel: 'sms', recipient: msisdn, status: 'sent', detail: `accepted by gateway (HTTP 200, no error-code in response): ${body.slice(0, 160)}` }
     }
     const desc = body.match(/"error-description"\s*:\s*"([^"]+)"/)?.[1]
     return { channel: 'sms', recipient: msisdn, status: 'failed', detail: desc ?? `Afrosoft HTTP ${res.status}: ${body.slice(0, 160)}` }
@@ -128,14 +137,14 @@ async function afrosoftOnce(msisdn: string, message: string): Promise<Delivery> 
 async function sendOneSms(msisdn: string, message: string): Promise<Delivery> {
   const first = await afrosoftOnce(msisdn, message)
   if (first.status === 'sent') return first
-  // A definitive Afrosoft refusal (200 with an error-code, or a named
-  // rejection like "Blacklisted") is not retried — retrying a refused
-  // number just burns credit. But transport failures — unreachable host,
-  // 5xx, a truncated body with no error-code — get one more shot after a
-  // pause, because a gateway hiccup must not be the difference between
-  // "client got the text" and "nobody knows it never sent".
-  const definitive = /error-code|error-description|Afrosoft HTTP 4\d\d/i.test(first.detail ?? '')
-  if (definitive) return first
+  // A definitive Afrosoft refusal (named rejection like "Blacklisted", a
+  // 4xx, a non-000 error-code) is not retried — retrying a refused number
+  // just burns credit. The ONLY thing worth a second shot is a transport
+  // failure — unreachable host or a 5xx — where the request may never
+  // have arrived. Everything else is ambiguous: resending risks the
+  // duplicate-text bug this used to cause.
+  const transportOnly = /Gateway unreachable|Afrosoft HTTP 5\d\d/i.test(first.detail ?? '')
+  if (!transportOnly) return first
   await new Promise(r => setTimeout(r, 1500))
   const second = await afrosoftOnce(msisdn, message)
   return second.status === 'sent'
