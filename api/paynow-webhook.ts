@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { Paynow } from 'paynow'
 import { createClient } from '@supabase/supabase-js'
 import { dispatchNotification } from './_lib/notify.js'
+import { paymentReceivedSms, paymentFailedSms, policyRegisteredSms } from '../src/lib/smsText.js'
 
 /**
  * Paynow's resultUrl callback -- a real webhook, not client-side polling.
@@ -200,7 +201,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const amount = `$${(txn.expected_amount ?? 0).toFixed(2)}`
       await dispatchNotification(admin, {
         event: 'payment', ref: fPolicy.policy_number, client: fClient,
-        smsText: `Motions: Your payment of ${amount} for policy ${fPolicy.policy_number} could not be completed. No money was collected — please try again or contact us.`,
+        smsText: paymentFailedSms({
+          clientName: fClient?.name ?? 'Client',
+          policyNumber: fPolicy.policy_number,
+          amount: Number(txn.expected_amount ?? 0),
+          method: 'Paynow',
+          clientPhone: fClient?.phone,
+        }),
         emailSubject: `Payment not completed: policy ${fPolicy.policy_number}`,
         emailText: `Dear ${fClient?.name ?? 'Client'},\n\nYour payment of ${amount} for policy ${fPolicy.policy_number} could not be completed (status: ${status}).\n\nNo money was collected. Please try again — via EcoCash, Paynow, ZIPIT, or at our offices — or contact us for help.\n\nRegards,\nMotions Microinsurance`,
       }).catch(e => console.error('paynow-webhook: failure notify failed', e))
@@ -225,7 +232,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .eq('id', txn.policy_id)
     .maybeSingle()
 
-  let policy: { id: string; policy_number: string; product_id: string; client_id: string; premium: number; dependants: unknown; status: string; next_payment_date: string | null; clients?: { name: string; email: string | null; phone: string | null } | null } | null = null
+  let policy: { id: string; policy_number: string; product_id: string; client_id: string; premium: number; cover_amount?: number; payment_method?: string; dependants: unknown; status: string; next_payment_date: string | null; clients?: { name: string; email: string | null; phone: string | null } | null; products?: { name: string; category: string } | null } | null = null
 
   if (pendingPolicy) {
     // Move from pending_policies to policies table
@@ -234,10 +241,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.error('paynow-webhook: failed to finalize pending policy', reference, finalizeError?.message)
       return res.status(500).json({ ok: false, error: 'Could not finalize policy.' })
     }
-    // Fetch the newly created policy
+    // Fetch the newly created policy (with product + client details for
+    // the registration text — this is the moment the cover actually exists).
     const { data: newPolicy } = await admin
       .from('policies')
-      .select('id, policy_number, product_id, client_id, premium, dependants, status, next_payment_date, clients!client_id(name, email, phone)')
+      .select('id, policy_number, product_id, client_id, premium, cover_amount, payment_method, dependants, status, next_payment_date, clients!client_id(name, email, phone), products!product_id(name, category)')
       .eq('id', finalizedId)
       .maybeSingle()
     policy = newPolicy as typeof policy
@@ -245,7 +253,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Fallback: policy already exists in main policies table (legacy case)
     const { data: existingPolicy } = await admin
       .from('policies')
-      .select('id, policy_number, product_id, client_id, premium, dependants, status, next_payment_date, clients!client_id(name, email, phone)')
+      .select('id, policy_number, product_id, client_id, premium, cover_amount, payment_method, dependants, status, next_payment_date, clients!client_id(name, email, phone), products!product_id(name, category)')
       .eq('id', txn.policy_id)
       .maybeSingle()
     policy = existingPolicy as typeof policy
@@ -328,9 +336,36 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const policyNumber = (policy as unknown as { policy_number: string }).policy_number
     if (category !== 'agriculture') {
       const amount = `$${confirmedAmount.toFixed(2)}`
+      if (pendingPolicy) {
+        // The policy only NOW exists — the client gets the standard
+        // registration text first (same as a counter sale), then the
+        // payment receipt.
+        await dispatchNotification(admin, {
+          event: 'registration', ref: policyNumber, client,
+          smsText: policyRegisteredSms({
+            clientName: client?.name ?? 'Client',
+            policyNumber,
+            productName: policy.products?.name ?? 'policy',
+            productCategory: category,
+            coverAmount: Number(policy.cover_amount ?? 0),
+            premium: Number(policy.premium ?? 0),
+            paymentMethod: policy.payment_method,
+            clientPhone: client?.phone,
+          }),
+          emailSubject: `Policy ${policyNumber} registered`,
+          emailText: `Dear ${client?.name ?? 'Client'},\n\nYour policy has been registered.\n\nPolicy Number:  ${policyNumber}\nProduct:        ${policy.products?.name ?? 'policy'}\nCover Amount:   $${Number(policy.cover_amount ?? 0).toLocaleString()}\nPremium:        $${Number(policy.premium ?? 0).toFixed(2)}\nStatus:         ${policy.status.replace('_', ' ').toUpperCase()}\n\nRegards,\nMotions Microinsurance`,
+        }).catch(e => console.error('paynow-webhook: registration notify failed', e))
+      }
       await dispatchNotification(admin, {
         event: 'payment', ref: policyNumber, client,
-        smsText: `Payment received. ${amount} via Paynow. Policy ${policyNumber}. Ref ${reference}.`,
+        smsText: paymentReceivedSms({
+          clientName: client?.name ?? 'Client',
+          policyNumber,
+          amount: confirmedAmount,
+          method: 'Paynow',
+          reference,
+          clientPhone: client?.phone,
+        }),
         emailSubject: `Payment received: policy ${policyNumber}`,
         emailText: `Dear ${client?.name ?? 'Client'},\n\nWe have received your payment.\n\nAmount:    ${amount}\nPolicy:    ${policyNumber}\nMethod:    Paynow\nReference: ${reference}\n\nThank you for keeping your cover up to date.\n\nRegards,\nMotions Microinsurance`,
       }).catch(e => console.error('paynow-webhook: payment notify failed', e))

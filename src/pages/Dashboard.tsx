@@ -135,6 +135,10 @@ export default function Dashboard({ showToast, setActivePanel }: Props) {
   const [aiCheck, setAiCheck] = useState<SystemCheckResult | null>(null)
   interface ReconAlert { kind: string; ref: string; label: string }
   const [reconAlerts, setReconAlerts] = useState<ReconAlert[]>([])
+  // Website manual payments (bank transfer / EcoCash merchant pay) waiting
+  // for a staff member to sight the money — nothing automated confirms them.
+  const [pendingVerifs, setPendingVerifs] = useState(0)
+  const canSeeVerifications = ['super_admin', 'admin', 'finance', 'policy_admin'].includes(user?.role ?? '')
   const [reconClearing, setReconClearing] = useState(false)
   // The reconciliation alerts from System Health, on the dashboard so
   // they're impossible to miss — admin/finance only, silently absent
@@ -178,6 +182,17 @@ export default function Dashboard({ showToast, setActivePanel }: Props) {
     const t = setInterval(() => { void load(); void loadRecon() }, 60000)
     return () => { cancelled = true; clearInterval(t) }
   }, [canSeeHealth])
+
+  useEffect(() => {
+    if (!canSeeVerifications) return
+    let cancelled = false
+    const loadVerifs = () => supabase.from('checkout_sessions').select('*', { count: 'exact', head: true })
+      .eq('status', 'pending_verification')
+      .then(r => { if (!cancelled) setPendingVerifs(r.count ?? 0) })
+    void loadVerifs()
+    const t = setInterval(loadVerifs, 60000)
+    return () => { cancelled = true; clearInterval(t) }
+  }, [canSeeVerifications])
 
   useEffect(() => {
     if (!isSuperAdmin) return
@@ -378,6 +393,15 @@ export default function Dashboard({ showToast, setActivePanel }: Props) {
                 }}>
                 {clearing ? 'Clearing…' : 'Clear'}
               </button>
+            </div>
+          )}
+
+          {pendingVerifs > 0 && (
+            <div className="info-banner info-banner-warning" style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
+              <span style={{ flex: 1 }}>
+                🧾 {pendingVerifs} website payment{pendingVerifs === 1 ? '' : 's'} (bank transfer / EcoCash merchant pay) await{pendingVerifs === 1 ? 's' : ''} manual verification — review the proof of payment before registering cover.
+              </span>
+              <button type="button" className="btn btn-primary btn-sm" onClick={() => setActivePanel('payment_verifications')}>Review</button>
             </div>
           )}
 

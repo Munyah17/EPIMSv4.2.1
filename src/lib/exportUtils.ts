@@ -224,25 +224,16 @@ const DEFAULT_POLICY_EXCESS = '15% of loss'
  */
 const TOBACCO_SEASON = { start: '15-NOV-2026', end: '31-AUG-2027' }
 
-export function isTobaccoFieldToFloor(productName: string): boolean {
-  const n = productName.toLowerCase()
-  return n.includes('tobacco') || n.includes('field to floor')
-}
+/** Same window in ISO — the stored policy start/end dates must match what
+ *  the document prints, so policy creation uses these, not the generic
+ *  aligned-month rule. */
+export const TOBACCO_SEASON_ISO = { start: '2026-11-15', end: '2027-08-31' }
 
-export function fieldToFloorCover(sumInsured: number): Array<{ peril: string; benefit: number }> {
-  const high = sumInsured >= 2000
-  return [
-    { peril: 'Barn Fire',  benefit: high ? 500 : 250 },
-    { peril: 'Hail Storm', benefit: high ? 500 : 250 },
-    { peril: 'Wind Storm', benefit: high ? 500 : 250 },
-    { peril: 'Funeral',    benefit: 500 },
-  ]
-}
-
-/** One line for SMS/WhatsApp: "Barn Fire $500 · Hail Storm $500 · …" */
-export function fieldToFloorCoverLine(sumInsured: number): string {
-  return fieldToFloorCover(sumInsured).map(c => `${c.peril} $${c.benefit}`).join(', ')
-}
+// Field-to-Floor helpers live in smsText.ts — the one file both the app
+// and the api/ serverless functions can import — so the SMS a client
+// receives quotes exactly the per-peril schedule this document prints.
+export { isTobaccoFieldToFloor, fieldToFloorCover, fieldToFloorCoverLine } from './smsText'
+import { isTobaccoFieldToFloor, fieldToFloorCover } from './smsText'
 
 /** Money on a printed policy document always carries thousands separators
  *  and exactly two decimals -- "$12,000.00", never "$12000". */

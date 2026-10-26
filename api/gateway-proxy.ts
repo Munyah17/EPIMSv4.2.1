@@ -41,8 +41,8 @@ interface ProxyRequestBody {
  * cannot be cleared by a stray click in a settings form.
  */
 /**
- * Liveness check against Afrosoft that does not spend an SMS: a balance
- * lookup through the same credentials. The response itself doesn't matter
+ * Liveness check against Afrosoft that does not spend an SMS: the real
+ * sendmessage endpoint with no message attached. The response itself doesn't matter
  * — ANY HTTP answer (even an auth rejection) proves the host is up; only
  * a connection failure, timeout, or 5xx counts as "Afrosoft is down".
  *
@@ -56,7 +56,11 @@ async function pingAfrosoft(): Promise<{ up: boolean; source: 'afrosoft' | 'conf
   if (!apiKey) {
     return { up: false, source: 'config', detail: 'AFROSOFT_SMS_API_KEY is not configured on the server — that is our setup, not Afrosoft.' }
   }
-  const url = `https://${domain}/client/api/getbalance?${new URLSearchParams({ apikey: apiKey })}`
+  // Probe the REAL send endpoint, minus a message — a missing-params
+  // error-code still proves the host and the auth path answer. (The old
+  // /client/api/getbalance path 404s on this domain, so the watch was
+  // reporting "up" against an endpoint that never existed.)
+  const url = `https://${domain}/client/api/sendmessage?${new URLSearchParams({ apikey: apiKey })}`
   try {
     const upstream = await fetch(url, { signal: AbortSignal.timeout(10000) })
     if (upstream.status >= 500) {

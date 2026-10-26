@@ -2,7 +2,7 @@ import type { EmailMessage } from '../types'
 import { db } from './db'
 import { supabase } from './supabase'
 import { reportOutcome } from './notify'
-import { parseRecipientPhones } from './smsText'
+import { parseRecipientPhones, DEFAULT_OFFICE_SMS } from './smsText'
 
 export interface SmsRecipient {
   id: string
@@ -53,12 +53,13 @@ export const DEFAULT_NOTIF_SETTINGS: NotifSettings = {
   signature: 'Regards,\nMotions Microinsurance\n+263 780 086 175\nwww.motions.co.zw',
   // The four office lines. +263780086175 is the main number, carried
   // by the CEO — it has to be on every event unless an admin removes it.
-  smsRecipients: [
-    { id: '1', phone: '+263780086175', events: ['registration', 'payment', 'claim', 'system'] },
-    { id: '2', phone: '+263780086176', events: ['registration', 'payment', 'claim', 'system'] },
-    { id: '3', phone: '+263780086177', events: ['registration', 'payment', 'claim', 'system'] },
-    { id: '4', phone: '+263780086178', events: ['registration', 'payment', 'claim', 'system'] },
-  ],
+  // Single copy lives in smsText.ts (DEFAULT_OFFICE_SMS) so the browser
+  // and the api/ functions seed from the same list.
+  smsRecipients: DEFAULT_OFFICE_SMS.map((phone, i) => ({
+    id: String(i + 1),
+    phone,
+    events: ['registration', 'payment', 'claim', 'system'],
+  })),
   companyAddress: '24 Midlothian Avenue, Eastlea, Harare, Zimbabwe',
   companyPhone: '+263 780 086 175 / +263 780 086 176 / +263 780 086 177',
   companyEmail: 'info@motions.co.zw',

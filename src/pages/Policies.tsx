@@ -8,6 +8,7 @@ import { exportPolicyReport, getPolicyReportPdfBase64, exportToExcel, exportToCs
 import { treatyRows, TREATY_HEADERS } from '../lib/treatyReport'
 import { toIsoDate } from '../lib/dateUtils'
 import { notifyPolicyRegistered, notifyRegistrationFailed } from '../lib/signupNotifications'
+import { invoiceIssuedSms } from '../lib/smsText'
 import { notifyPhone } from '../lib/notify'
 import { getSmsRecipientsForEvent } from '../lib/mailService'
 import { COMPANY_NAME } from '../lib/company'
@@ -49,6 +50,10 @@ export default function Policies({ showToast, initialCategory }: Props) {
   // tabs: different billing (monthly client debit vs org invoice),
   // different people to phone, different rows to reconcile.
   const [scopeFilter, setScopeFilter] = useState<'all' | 'individual' | 'group'>('all')
+  // Archive view lists 'expired' policies — cover terms that have ended
+  // (e.g. the tobacco book on 31 Aug). They keep every record and restore
+  // intact; the live book never shows them.
+  const [archiveView, setArchiveView] = useState(false)
   const categoryFilter = initialCategory && !initialCategory.startsWith('__') ? initialCategory : undefined
   const [showNew, setShowNew] = useState(false)
   const [viewPolicy, setViewPolicy] = useState<Policy | null>(null)
@@ -110,7 +115,9 @@ export default function Policies({ showToast, initialCategory }: Props) {
 
   const filtered = policies.filter(p => {
     const matchSearch = matchScore(p) >= 0
-    const matchStatus = statusFilter === 'all' || p.status === statusFilter
+    const matchStatus = archiveView
+      ? p.status === 'expired'
+      : (statusFilter === 'all' ? p.status !== 'expired' : p.status === statusFilter)
     const matchProduct = productFilter === 'all' || p.productName === productFilter
     const matchCategory = !categoryFilter || p.productCategory === categoryFilter
     const matchScope = scopeFilter === 'all' || (scopeFilter === 'group') === isGroupPolicy(p)
@@ -124,7 +131,8 @@ export default function Policies({ showToast, initialCategory }: Props) {
     .slice(0, 6)
 
   const statusCounts = {
-    all: policies.length,
+    all: policies.filter(p => p.status !== 'expired').length,
+    archived: policies.filter(p => p.status === 'expired').length,
     active: policies.filter(p => p.status === 'active').length,
     waiting_period: policies.filter(p => p.status === 'waiting_period').length,
     lapsed: policies.filter(p => p.status === 'lapsed').length,
@@ -196,8 +204,9 @@ export default function Policies({ showToast, initialCategory }: Props) {
     const { client, category } = await getReportContext(data)
 
     // Tell the new client they're covered, and the office that a policy
-    // landed. Never awaited: the policy already exists either way.
-    if (client) void notifyPolicyRegistered(data, client)
+    // landed. Never awaited: the policy already exists either way. A
+    // failed client lookup still fires the office alert (client null).
+    void notifyPolicyRegistered(data, client ?? null)
     if (category !== 'funeral' && client?.email) {
       try {
         const attachmentBase64 = await getPolicyReportPdfBase64(data, client, category)
@@ -301,6 +310,25 @@ export default function Policies({ showToast, initialCategory }: Props) {
     showToast('success', `Policy ${data.policyNumber} re-enabled (waiting period).`)
   }
 
+  /** Restoring an archived (expired) policy brings it back whole — same
+   *  client, dependants and payment history, no recapture. Agriculture
+   *  reactivates immediately; everything else re-enters waiting period.
+   *  The edit modal opens straight after so staff set the new term dates. */
+  const handleRestore = async (policy: Policy) => {
+    const { category } = await getReportContext(policy)
+    const nextStatus = category === 'agriculture' ? 'active' : 'waiting_period'
+    const { data, error } = await db.policies.update(policy.id, { status: nextStatus })
+    if (error || !data) { showToast('error', 'Failed to restore policy.'); return }
+    setPolicies(prev => prev.map(p => p.id === data.id ? data : p))
+    showToast('success', `Policy ${data.policyNumber} restored — update the cover dates for the new term.`)
+    void recordActivity({
+      action: 'policy.updated', actor: { id: user?.id, name: user?.name ?? 'Unknown', role: user?.role ?? 'unknown' },
+      entityType: 'policy', entityId: policy.id, entityLabel: policy.policyNumber,
+      detail: `Restored from archive (${policy.endDate} term ended)`,
+    })
+    setEditPolicy({ ...data })
+  }
+
   /** Manual monthly invoice for a group-cover policy — the same row the
    *  cron writes automatically on the first of the month; the unique
    *  (policy, period) key means generating twice just returns the first
@@ -321,7 +349,11 @@ export default function Policies({ showToast, initialCategory }: Props) {
     // same auto-SMS rule every billing event follows.
     const { data: client } = await db.clients.get(policy.clientId)
     const org = policy.groupName ?? policy.clientName
-    const msg = `${COMPANY_NAME}: Invoice ${data.invoiceNumber} issued for ${org} (${policy.policyNumber}) — $${data.amount.toFixed(2)} for ${data.heads} member(s), period ${period}, due ${data.dueDate}.`
+    const msg = invoiceIssuedSms({
+      orgName: org, policyNumber: policy.policyNumber, invoiceNumber: data.invoiceNumber,
+      amount: data.amount, heads: data.heads, period, dueDate: data.dueDate ? new Date(data.dueDate) : new Date(),
+      clientPhone: client?.phone,
+    })
     if (client?.phone) notifyPhone(client.phone, msg, 'payment', data.invoiceNumber)
     // The organisation's named contact person gets the reminder on their
     // own line — usually a different person from the account holder.
@@ -433,7 +465,6 @@ export default function Policies({ showToast, initialCategory }: Props) {
             <option value="defaulted">Paused / Defaulted ({statusCounts.defaulted})</option>
             <option value="pending">Pending ({statusCounts.pending})</option>
             <option value="cancelled">Cancelled ({statusCounts.cancelled})</option>
-            <option value="expired">Expired ({statusCounts.expired})</option>
           </select>
           <select className="filter-select" value={productFilter} onChange={e => setProductFilter(e.target.value)}>
             <option value="all">All Products</option>
@@ -461,7 +492,14 @@ export default function Policies({ showToast, initialCategory }: Props) {
             </>
           )}
         </div>
-        {hasPermission('policies.create') && (
+        <button
+          type="button"
+          className={`btn ${archiveView ? 'btn-primary' : 'btn-ghost'}`}
+          onClick={() => { setArchiveView(v => !v); setStatusFilter('all') }}
+        >
+          {archiveView ? '← Live Policies' : `Archive (${statusCounts.archived})`}
+        </button>
+        {hasPermission('policies.create') && !archiveView && (
           <button type="button" className="btn btn-primary" onClick={() => setShowNew(true)}>+ New Policy</button>
         )}
       </div>
@@ -470,9 +508,9 @@ export default function Policies({ showToast, initialCategory }: Props) {
           an empty group book is visible, not just absent. */}
       <div className="tab-row">
         {([
-          ['all', 'All Policies', policies.length],
-          ['individual', 'Individual', policies.filter(p => !isGroupPolicy(p)).length],
-          ['group', 'Group & Corporate', policies.filter(isGroupPolicy).length],
+          ['all', 'All Policies', statusCounts.all],
+          ['individual', 'Individual', policies.filter(p => p.status !== 'expired' && !isGroupPolicy(p)).length],
+          ['group', 'Group & Corporate', policies.filter(p => p.status !== 'expired' && isGroupPolicy(p)).length],
         ] as const).map(([key, label, count]) => (
           <button key={key} type="button" className={`tab-item${scopeFilter === key ? ' active' : ''}`} onClick={() => setScopeFilter(key)}>
             {label} ({count})
@@ -500,7 +538,7 @@ export default function Policies({ showToast, initialCategory }: Props) {
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={8} className="td-empty">No policies found.</td></tr>
+                <tr><td colSpan={8} className="td-empty">{archiveView ? 'No archived policies — expired cover terms land here.' : 'No policies found.'}</td></tr>
               ) : filtered.map(p => (
                 <tr key={p.id}>
                   <td><span className="mono">{p.policyNumber}</span></td>
@@ -530,6 +568,17 @@ export default function Policies({ showToast, initialCategory }: Props) {
                   <td>
                     <div className="action-btns">
                       <button type="button" className="btn btn-ghost btn-sm" onClick={() => setViewPolicy(p)}>View</button>
+                      {archiveView ? (
+                        <>
+                          {hasPermission('policies.edit') && (
+                            <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--success)' }} onClick={() => handleRestore(p)}>Restore</button>
+                          )}
+                          {hasPermission('policies.delete') && (
+                            <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => handleDelete(p)}>Delete</button>
+                          )}
+                        </>
+                      ) : (
+                      <>
                       {hasPermission('policies.edit') && (
                         <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditPolicy(p)}>Edit</button>
                       )}
@@ -548,6 +597,8 @@ export default function Policies({ showToast, initialCategory }: Props) {
                       )}
                       {hasPermission('policies.delete') && (
                         <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => handleDelete(p)}>Delete</button>
+                      )}
+                      </>
                       )}
                     </div>
                   </td>

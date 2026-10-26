@@ -31,10 +31,10 @@ import { db } from './db'
 import { MAILBOXES } from './mailboxes'
 import { sendEmail, getNotifSettings, getSmsRecipientsForEvent } from './mailService'
 import { notifyPhone } from './notify'
+import { premiumReminderSms, policyLapsedSms } from './smsText'
 import { NETONE_SUSPENDED } from './claimNotifications'
 import { policyBillablePremium } from './premium'
 import { formatDate, toIsoDate } from './dateUtils'
-import { COMPANY_NAME } from './company'
 
 const CHECK_KEY = 'tqfy_reminder_last_check'
 
@@ -171,10 +171,18 @@ async function dispatchReminder(policy: Policy, client: Client | undefined, type
   if (!NETONE_SUSPENDED && cfg.netoneEmail) void sendEmail({ to: cfg.netoneEmail, subject: staffSubject, body: staffBody, folder: 'inbox', from: MAILBOXES.noreply })
 
   // Every stage texts the client — a reminder that only ever arrives by
-  // email is easy to miss.
-  const smsBody = type === 'lapse'
-    ? `${COMPANY_NAME}: Policy ${policy.policyNumber} LAPSED. Due ${formatDate(dueDate)}. Pay $${amountDue(policy).toFixed(2)} to reinstate.`
-    : `${COMPANY_NAME}: Premium $${amountDue(policy).toFixed(2)} due ${policy.policyNumber} by ${formatDate(dueDate)}. Pay.`
+  // email is easy to miss. The text comes from the shared builders so it
+  // is byte-identical to what api/cron-reminders.ts would send for this
+  // same policy and stage — whichever engine fires first, the wording is
+  // the same.
+  const reminderInput = {
+    clientName: client?.name ?? policy.clientName,
+    policyNumber: policy.policyNumber,
+    amount: amountDue(policy),
+    dueDate,
+    clientPhone,
+  }
+  const smsBody = type === 'lapse' ? policyLapsedSms(reminderInput) : premiumReminderSms(reminderInput)
   if (clientPhone) {
     notifyPhone(clientPhone, smsBody, 'renewal', policy.policyNumber)
   }
@@ -202,7 +210,7 @@ async function dispatchReminder(policy: Policy, client: Client | undefined, type
     // just whoever happens to have Billing & Reminders open.
     const recipients = [...new Set(await getSmsRecipientsForEvent('system'))]
     for (const number of recipients) {
-      notifyPhone(number, `${policy.policyNumber} LAPSED. ${policy.clientName}. $${amountDue(policy).toFixed(2)} unpaid`, 'renewal', policy.policyNumber)
+      notifyPhone(number, `RENEWAL: ${smsBody}`, 'renewal', policy.policyNumber)
     }
   }
 
@@ -280,6 +288,21 @@ export async function checkWaitingPeriodElapsed() {
   }
 }
 
+/** Policies whose cover term has ended are swept to 'expired' — the
+ *  archive state. The active book then holds only live cover (e.g. the
+ *  whole tobacco book rolls off on 31 Aug when the season closes), while
+ *  an archived policy keeps every record — client, dependants, payments —
+ *  and can be restored from the Archive view if the client returns. */
+export async function archiveExpiredPolicies() {
+  const { data: allPolicies } = await db.policies.list()
+  const todayISO = toIsoDate(new Date())
+  for (const policy of allPolicies ?? []) {
+    if (!policy.endDate || policy.endDate >= todayISO) continue
+    if (!['active', 'waiting_period', 'lapsed', 'defaulted'].includes(policy.status)) continue
+    await db.policies.update(policy.id, { status: 'expired' })
+  }
+}
+
 export function getLastCheckTime(): string | null {
   return localStorage.getItem(CHECK_KEY)
 }
@@ -298,9 +321,11 @@ export function getUpcomingDueCount(): number {
 export function startReminderEngine(): () => void {
   void runReminderCheck()
   void checkWaitingPeriodElapsed()
+  void archiveExpiredPolicies()
   const interval = setInterval(() => {
     void runReminderCheck()
     void checkWaitingPeriodElapsed()
+    void archiveExpiredPolicies()
   }, 3600000) // every hour
   return () => clearInterval(interval)
 }

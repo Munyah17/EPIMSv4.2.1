@@ -2656,11 +2656,14 @@ export interface SidebarCounts {
   emailUnread: number
   ticketsOpen: number
   chatQueued: number
+  /** Website manual payments (bank transfer / merchant pay) awaiting
+   *  staff verification — the Payment Verifications badge. */
+  pendingVerifications: number
 }
 
 export const sidebarCounts = {
   async load(): Promise<SidebarCounts> {
-    const [pol, claimsRes, cli, rem, mail, tix, chatQ] = await Promise.all([
+    const [pol, claimsRes, cli, rem, mail, tix, chatQ, verifs] = await Promise.all([
       supabase.from('policies').select('*', { count: 'exact', head: true }),
       supabase.from('claims').select('*', { count: 'exact', head: true }).in('status', ['pending', 'under_review']),
       supabase.from('clients').select('*', { count: 'exact', head: true }).eq('status', 'active'),
@@ -2668,6 +2671,7 @@ export const sidebarCounts = {
       supabase.from('emails').select('*', { count: 'exact', head: true }).eq('folder', 'inbox').eq('read', false),
       supabase.from('tickets').select('*', { count: 'exact', head: true }).in('status', ['open', 'in_progress']),
       supabase.from('chat_sessions').select('*', { count: 'exact', head: true }).eq('status', 'queued'),
+      supabase.from('checkout_sessions').select('*', { count: 'exact', head: true }).eq('status', 'pending_verification'),
     ])
     return {
       policies: pol.count ?? 0,
@@ -2677,6 +2681,7 @@ export const sidebarCounts = {
       emailUnread: mail.count ?? 0,
       ticketsOpen: tix.count ?? 0,
       chatQueued: chatQ.count ?? 0,
+      pendingVerifications: verifs.count ?? 0,
     }
   },
 }

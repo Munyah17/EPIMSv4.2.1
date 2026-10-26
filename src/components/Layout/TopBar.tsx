@@ -16,6 +16,7 @@ const PANEL_TITLES: Record<ActivePanel, string> = {
   policies: 'Policies',
   claims: 'Claims',
   payments: 'Payments',
+  payment_verifications: 'Payment Verifications',
   products: 'Products',
   clients: 'Clients Management',
   groups: 'Group Teams Insurance',

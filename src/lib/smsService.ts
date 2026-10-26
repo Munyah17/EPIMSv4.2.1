@@ -187,7 +187,14 @@ async function callAfrosoft(
     last = await callAfrosoftOnce(numbers, part)
     if (!last.ok) return last
     const code = last.data.status?.['error-code']
-    if (code && code !== '000') return last
+    // A protocol-level refusal (error-code 003 IP not allowed, invalid
+    // sender id, insufficient balance) means NOTHING was sent even though
+    // the gateway answered 200. Returning it as a failure routes the send
+    // through the /api/notify fallback — a different Vercel egress IP —
+    // and lands the refusal in notification_log instead of dying silently.
+    if (code && code !== '000') {
+      return { ok: false, error: last.data.status?.['error-description'] ?? `Afrosoft error ${code}` }
+    }
   }
   return last ?? { ok: false, error: 'Message was empty.' }
 }
@@ -303,9 +310,36 @@ export async function sendBulkSms(numbers: string[], message: string): Promise<B
   })
 
   const all = [...results, ...invalidResults]
+  // A number the gateway refused ("Blacklisted", "not reachable") is a
+  // permanent failure for that handset — record it in notification_log so
+  // every staff member sees it on the dashboard, not only in this one
+  // browser's local history.
+  const refused = all.filter(r => !r.result.success)
+  if (refused.length) {
+    void import('./notify').then(({ reportOutcome }) => {
+      for (const r of refused) {
+        reportOutcome({ channel: 'sms', recipient: r.phone, event: 'system', status: 'failed', detail: r.result.error ?? 'Refused by gateway' })
+      }
+    }).catch(() => { /**/ })
+    // Small batches (office alerts — the sends that matter most) get one
+    // retry through /api/notify, which runs on a different Vercel egress
+    // IP — the route a per-key IP-whitelist refusal can still succeed on.
+    // Only numbers Afrosoft actually refused are retried, never a number
+    // that failed local validation.
+    if (valid.length <= 10) {
+      for (const r of results.filter(x => !x.result.success)) {
+        const d = await sendViaNotify(r.phone, message)
+        if (d.success) {
+          r.result = { success: true, messageId: undefined }
+          logSmsLocally(r.phone, message, 'sent', 'delivered via notify fallback after gateway refusal')
+        }
+      }
+    }
+  }
   // Gateway answered — that's an SMS-gateway success even if individual
   // numbers were refused (a blacklisted number isn't a dead gateway).
-  void reportSmsResult(true, results.some(r => !r.result.success) ? `${results.filter(r => !r.result.success).length} of ${valid.length} number(s) refused by gateway` : undefined, Date.now() - started)
+  const stillRefused = all.filter(r => !r.result.success).length
+  void reportSmsResult(true, stillRefused ? `${stillRefused} of ${all.length} number(s) refused by gateway` : undefined, Date.now() - started)
   return {
     sent: all.filter(r => r.result.success).length,
     failed: all.filter(r => !r.result.success).length,

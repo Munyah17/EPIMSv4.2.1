@@ -4,6 +4,8 @@ import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
 import { sendSms } from '../lib/smsService'
+import { policyBillablePremium } from '../lib/premium'
+import { premiumReminderSms, policyLapsedSms } from '../lib/smsText'
 import { sendSystemEmail } from '../lib/mailService'
 import { MAILBOXES } from '../lib/mailboxes'
 import { COMPANY_NAME } from '../lib/company'
@@ -65,14 +67,17 @@ export default function Reminders({ showToast }: Props) {
    *  SMS and/or email before the row is marked sent, and a delivery failure
    *  is reported rather than toasted away. Returns the channel that reached
    *  the client first, or null when nothing was delivered. */
-  const dispatchToClient = async (clientId: string, clientName: string, subject: string, body: string): Promise<'sms' | 'email' | null> => {
+  const dispatchToClient = async (clientId: string, clientName: string, subject: string, body: string, smsText?: string): Promise<'sms' | 'email' | null> => {
     const { data: client } = await db.clients.get(clientId)
     if (!client || (!client.phone && !client.email)) {
       showToast('warning', `No phone or email on file for ${clientName} — reminder not sent.`)
       return null
     }
     if (client.phone) {
-      try { if ((await sendSms(client.phone, `${COMPANY_NAME}: ${body}`)).success) return 'sms' } catch { /* fall through to email */ }
+      // smsText is the verbatim SMS (an engine-sent reminder re-sends its
+      // stored sms_body — the same message the client already received);
+      // the email-style body doubles as SMS only when none exists.
+      try { if ((await sendSms(client.phone, smsText ?? body)).success) return 'sms' } catch { /* fall through to email */ }
     }
     if (client.email) {
       const { delivered } = await sendSystemEmail({ from: MAILBOXES.noreply, to: client.email, subject, body })
@@ -94,7 +99,7 @@ export default function Reminders({ showToast }: Props) {
   }
 
   const dispatchReminder = async (r: Reminder): Promise<boolean> => {
-    const channel = await dispatchToClient(r.clientId, r.clientName, `${COMPANY_NAME} — policy reminder`, reminderMessage(r))
+    const channel = await dispatchToClient(r.clientId, r.clientName, `${COMPANY_NAME} — policy reminder`, reminderMessage(r), r.smsBody)
     if (!channel) return false
     await db.reminders.markSent(r.id, `${COMPANY_NAME}: ${reminderMessage(r)}`)
     return true
@@ -134,7 +139,10 @@ export default function Reminders({ showToast }: Props) {
       const body = p.status === 'lapsed' || p.status === 'defaulted'
         ? `Dear ${p.clientName}, your ${p.productName} policy ${p.policyNumber} has lapsed. Please contact us to reinstate your cover.`
         : `Dear ${p.clientName}, your ${p.productName} policy ${p.policyNumber} renews on ${formatDate(p.endDate)}. Please contact us to continue your cover.`
-      const channel = await dispatchToClient(p.clientId, p.clientName, `${COMPANY_NAME} — renewal reminder`, body)
+      const { data: c } = await db.clients.get(p.clientId)
+      const smsInput = { clientName: p.clientName, policyNumber: p.policyNumber, amount: policyBillablePremium(p), dueDate: new Date(p.endDate), clientPhone: c?.phone }
+      const smsText = p.status === 'lapsed' || p.status === 'defaulted' ? policyLapsedSms(smsInput) : premiumReminderSms(smsInput)
+      const channel = await dispatchToClient(p.clientId, p.clientName, `${COMPANY_NAME} — renewal reminder`, body, smsText)
       if (!channel) {
         showToast('error', `Renewal reminder for ${p.clientName} could not be delivered — nothing was sent.`)
         return
@@ -142,7 +150,7 @@ export default function Reminders({ showToast }: Props) {
       const { data } = await db.reminders.create({
         type: 'policy_renewal', clientId: p.clientId, clientName: p.clientName, policyId: p.id, policyNumber: p.policyNumber,
         dueDate: p.endDate, message: `[Manual] Renewal reminder sent to client: ${p.policyNumber} renews on ${formatDate(p.endDate)}`,
-        smsBody: `${COMPANY_NAME}: ${body}`,
+        smsBody: smsText,
         sent: true, channel,
       })
       if (data) setReminders(prev => [...prev, data])

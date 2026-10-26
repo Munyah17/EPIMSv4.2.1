@@ -55,6 +55,7 @@ const STAFF_SECTIONS: NavSection[] = [
       { id: 'dashboard', label: 'Dashboard', icon: '⊞' },
       { id: 'claims', label: 'Claims', icon: '📋' },
       { id: 'payments', label: 'Payments', icon: '💳' },
+      { id: 'payment_verifications', label: 'Payment Verifications', icon: '🧾', roles: ['super_admin', 'admin', 'finance', 'policy_admin'] },
       {
         groupId: 'policies',
         label: 'Policies',
@@ -148,6 +149,7 @@ const STAFF_SECTIONS: NavSection[] = [
 
 const BADGE_COUNT_KEYS: Partial<Record<ActivePanel, keyof SidebarCounts>> = {
   policies: 'policies',
+  payment_verifications: 'pendingVerifications',
   claims: 'claimsPending',
   clients: 'clients',
   reminders: 'remindersDue',

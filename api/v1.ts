@@ -3,6 +3,8 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
 import { generateTransactionId } from './_lib/transactionId'
 import { dispatchNotification } from './_lib/notify.js'
+import { isTobaccoProduct, TOBACCO_SEASON } from './_lib/policyTerm.js'
+import { clientRegisteredSms, policyRegisteredSms, paymentReceivedSms } from '../src/lib/smsText.js'
 
 /**
  * Public Developer API (/api/v1/...). External developers integrate this
@@ -431,7 +433,7 @@ async function createClient_(admin: SupabaseClient, body: Json, agentId: string)
     void dispatchNotification(admin, {
       event: 'registration',
       client: { name, phone, email: body.email ? String(body.email) : null },
-      smsText: `Motions: Welcome ${name.split(' ')[0]}, your details are registered with us. An agent will be in touch to arrange cover.`,
+      smsText: clientRegisteredSms(name, phone),
       emailSubject: 'Welcome to Motions Microinsurance',
       emailText: `Dear ${name},\n\nYour details have been registered with Motions Microinsurance.\n\nPlease note this registration does not itself put any cover in place. One of our agents will contact you to arrange a policy suited to you.\n\nRegards,\nMotions Microinsurance`,
     }).catch(e => console.error('v1.clients: registration notify failed', e))
@@ -528,7 +530,10 @@ async function createPolicy(admin: SupabaseClient, body: Json, dev: Record<strin
     }
   }
 
-  const startDate = body.startDate ? new Date(String(body.startDate)) : new Date()
+  // Tobacco Field-to-Floor is bound to the fixed season window — the
+  // caller's startDate (or its absence) is ignored, matching the portal.
+  const tobacco = isTobaccoProduct({ name: String(product.name ?? ''), category: String(product.category ?? '') })
+  const startDate = tobacco ? new Date(`${TOBACCO_SEASON.start}T00:00:00Z`) : (body.startDate ? new Date(String(body.startDate)) : new Date())
   if (Number.isNaN(startDate.getTime())) return { status: 400, body: { error: 'startDate is not a valid date.' } }
   // start_date feeds the 90-day waiting-period lift in cron-reminders, so a
   // wildly backdated one is not a typo — it is free cover. Bounded to what
@@ -536,11 +541,11 @@ async function createPolicy(admin: SupabaseClient, body: Json, dev: Record<strin
   // start coming up soon.
   const DAY_MS = 86400000
   const startMs = startDate.getTime()
-  if (startMs < Date.now() - 14 * DAY_MS || startMs > Date.now() + 60 * DAY_MS) {
+  if (!tobacco && (startMs < Date.now() - 14 * DAY_MS || startMs > Date.now() + 60 * DAY_MS)) {
     return { status: 400, body: { error: 'startDate must be within the last 14 days or the next 60 days.' } }
   }
-  const endDate = new Date(startDate)
-  endDate.setFullYear(endDate.getFullYear() + 1)
+  const endDate = tobacco ? new Date(`${TOBACCO_SEASON.end}T00:00:00Z`) : new Date(startDate)
+  if (!tobacco) endDate.setFullYear(endDate.getFullYear() + 1)
 
   const { data, error } = await admin.from('policies').insert({
     policy_number: await nextPolicyNumber(admin, product),
@@ -588,7 +593,16 @@ async function createPolicy(admin: SupabaseClient, body: Json, dev: Record<strin
     event: 'registration',
     ref: data.policy_number,
     client: contact ?? undefined,
-    smsText: `Motions: Policy ${data.policy_number} (${product.name}) is registered for you — cover $${Number(product.cover_amount).toLocaleString()}, premium $${Number(product.premium).toFixed(2)}/mo. It becomes live once approved.`,
+    smsText: policyRegisteredSms({
+      clientName: contact?.name ?? 'Client',
+      policyNumber: data.policy_number,
+      productName: product.name,
+      productCategory: product.category as string | undefined,
+      coverAmount: Number(product.cover_amount),
+      premium: Number(product.premium),
+      paymentMethod,
+      clientPhone: contact?.phone,
+    }),
     emailSubject: `Policy ${data.policy_number} registered`,
     emailText: `Dear ${contact?.name ?? 'Client'},\n\nYour policy has been registered through one of our agents.\n\nPolicy Number:  ${data.policy_number}\nProduct:        ${product.name}\nCover Amount:   $${Number(product.cover_amount).toLocaleString()}\nPremium:        $${Number(product.premium).toFixed(2)} per month\nStatus:         PENDING APPROVAL\n\nWe will confirm once it is active.\n\nRegards,\nMotions Microinsurance`,
   }).catch(e => console.error('v1.policies: registration notify failed', e))
@@ -794,7 +808,14 @@ async function recordPayment(admin: SupabaseClient, body: Json, agentId: string)
     const amountFmt = `$${amount.toFixed(2)}`
     void dispatchNotification(admin, {
       event: 'payment', ref: policyNumber, client,
-      smsText: `Motions: Payment received. ${amountFmt} via ${method} for policy ${policyNumber}. Reference ${paymentRow.reference}. Thank you.`,
+      smsText: paymentReceivedSms({
+        clientName: client?.name ?? 'Client',
+        policyNumber,
+        amount,
+        method,
+        reference: paymentRow.reference,
+        clientPhone: client?.phone,
+      }),
       emailSubject: `Payment received: policy ${policyNumber}`,
       emailText: `Dear ${client?.name ?? 'Client'},\n\nWe have received your payment.\n\nAmount:    ${amountFmt}\nPolicy:    ${policyNumber}\nMethod:    ${method}\nReference: ${paymentRow.reference}\n\nThank you for keeping your cover up to date.\n\nRegards,\nMotions Microinsurance`,
     }).catch(e => console.error('v1.payments: notify failed', e))

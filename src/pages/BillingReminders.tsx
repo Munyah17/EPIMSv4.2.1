@@ -8,7 +8,7 @@ import { getSmsLog } from '../lib/smsService'
 import { policyBillablePremium } from '../lib/premium'
 import { formatDate, formatDateTime } from '../lib/dateUtils'
 import { notifyPhone } from '../lib/notify'
-import { COMPANY_NAME } from '../lib/company'
+import { invoiceIssuedSms } from '../lib/smsText'
 import { useAuth } from '../contexts/AuthContext'
 
 interface Props {
@@ -109,8 +109,12 @@ export default function BillingReminders({ showToast }: Props) {
         if (error) failed++
         else if (created && data) {
           issued++
-          const msg = `${COMPANY_NAME}: Invoice ${data.invoiceNumber} issued for ${p.groupName ?? p.clientName} (${p.policyNumber}) — $${data.amount.toFixed(2)} for ${data.heads} member(s), period ${period}, due ${data.dueDate}.`
           const { data: client } = await db.clients.get(p.clientId)
+          const msg = invoiceIssuedSms({
+            orgName: p.groupName ?? p.clientName, policyNumber: p.policyNumber,
+            invoiceNumber: data.invoiceNumber, amount: data.amount, heads: data.heads,
+            period, dueDate: data.dueDate ? new Date(data.dueDate) : lastDayOfMonth(), clientPhone: client?.phone,
+          })
           if (client?.phone) notifyPhone(client.phone, msg, 'payment', data.invoiceNumber)
           // The group's named contact person gets the reminder too — the
           // account holder and the person who pays are often different.

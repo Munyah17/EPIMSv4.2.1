@@ -105,3 +105,163 @@ export function smsParts(raw: string): string[] {
   if (chunks.length <= 1) return chunks
   return chunks.map((chunk, i) => `(${i + 1}/${chunks.length}) ${chunk}`)
 }
+
+// ── The ONE client-facing message shape ─────────────────────────────
+//
+// Approved standard (verbatim example, variables swapped per record):
+//
+//   Demo User TOB0514 reg. Field To Floor Standard. cover (Field to
+//   Floor): Barn Fire $500, Hail Storm $500, Wind Storm $500, Funeral
+//   $500. Stop Order $105.00/yr. 263773909307
+//
+// Grammar: {clientName} {policyNumber} {event}. {details}. {method}
+// {premium}/{period}. {phoneDigits}
+//
+// Every channel — counter sale, Assign Policy, website checkout, partner
+// API, Paynow finalise, both reminder engines — builds its client text
+// through these builders so the message is byte-identical no matter who
+// captured it or where it came in. Nothing here imports app modules:
+// api/ serverless functions consume this file too.
+
+/** Field-to-Floor peril schedule — single source of truth. The printed
+ *  policy document (exportUtils) re-exports these rather than keeping a
+ *  second copy that could drift from what the SMS quotes. */
+export function isTobaccoFieldToFloor(productName: string): boolean {
+  const n = productName.toLowerCase()
+  return n.includes('tobacco') || n.includes('field to floor')
+}
+
+export function fieldToFloorCover(sumInsured: number): Array<{ peril: string; benefit: number }> {
+  const high = sumInsured >= 2000
+  return [
+    { peril: 'Barn Fire',  benefit: high ? 500 : 250 },
+    { peril: 'Hail Storm', benefit: high ? 500 : 250 },
+    { peril: 'Wind Storm', benefit: high ? 500 : 250 },
+    { peril: 'Funeral',    benefit: 500 },
+  ]
+}
+
+/** One line for SMS/WhatsApp: "Barn Fire $500, Hail Storm $500, …" */
+export function fieldToFloorCoverLine(sumInsured: number): string {
+  return fieldToFloorCover(sumInsured).map(c => `${c.peril} $${c.benefit}`).join(', ')
+}
+
+/** "$1,000.00" — two decimals, thousands separators. */
+function smsMoney(amount: number): string {
+  return `$${Number(amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+/** Client's number as bare digits ("263773909307") — the tail of every
+ *  standard message, matching the approved example. */
+function smsPhone(raw: string | null | undefined): string {
+  return normalizeZwMobile(raw ?? '') ?? String(raw ?? '').replace(/\D/g, '')
+}
+
+const SMS_MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC']
+/** House date format DD-MON-YYYY — same as src/lib/dateUtils.formatDate,
+ *  restated so this file stays import-free (api/ functions read it too). */
+export function smsDate(d: Date): string {
+  return `${String(d.getDate()).padStart(2, '0')}-${SMS_MONTHS[d.getMonth()]}-${d.getFullYear()}`
+}
+
+/**
+ * The standard office lines — the ONE copy in the whole system.
+ *
+ * Every notification path resolves its recipients from Settings → SMS
+ * Recipients (app_settings.notif_settings.smsRecipients). This constant is
+ * only ever the SEED: what Settings shows before an admin has saved
+ * anything, and the last-resort fallback when no saved list exists at
+ * all. Once the Settings row is saved, it is the assignment and this list
+ * is never consulted — a removed number stops being texted everywhere.
+ *
+ * Lives here because this is the single file both the app bundle and the
+ * api/ serverless functions can import — two copies used to exist (one
+ * per pipeline) and they could drift apart.
+ */
+export const DEFAULT_OFFICE_SMS = ['+263780086175', '+263780086176', '+263780086177', '+263780086178']
+
+export interface PolicyNoticeInput {
+  clientName: string
+  policyNumber: string
+  productName: string
+  productCategory?: string
+  coverAmount: number
+  premium: number
+  paymentMethod?: string | null
+  clientPhone?: string | null
+}
+
+/** THE policy-registered text — the approved standard, verbatim shape. */
+export function policyRegisteredSms(p: PolicyNoticeInput): string {
+  const cover = isTobaccoFieldToFloor(p.productName)
+    ? `cover (Field to Floor): ${fieldToFloorCoverLine(p.coverAmount)}`
+    : `cover ${smsMoney(p.coverAmount)}`
+  const period = p.productCategory === 'agriculture' ? '/yr' : '/mo'
+  const method = (p.paymentMethod ?? '').trim()
+  const phone = smsPhone(p.clientPhone)
+  return `${p.clientName} ${p.policyNumber} reg. ${p.productName}. ${cover}. ${method ? `${method} ` : ''}${smsMoney(p.premium)}${period}.${phone ? ` ${phone}` : ''}`
+}
+
+/** A client row exists but no policy yet — "reg.", never "covered". */
+export function clientRegisteredSms(clientName: string, clientPhone?: string | null): string {
+  const phone = smsPhone(clientPhone)
+  return `${clientName} reg. No policy yet. Agent will contact you.${phone ? ` ${phone}` : ''}`
+}
+
+/** An organisation registered for group cover. */
+export function groupRegisteredSms(groupName: string, kind: string, contactName?: string | null, contactPhone?: string | null): string {
+  const phone = smsPhone(contactPhone)
+  return `${groupName} reg. ${kind} cover. ${contactName || 'N/A'}${phone ? ` ${phone}` : ''}`
+}
+
+export interface PaymentNoticeInput {
+  clientName: string
+  policyNumber?: string | null
+  amount: number
+  method?: string | null
+  reference?: string | null
+  clientPhone?: string | null
+}
+
+/** Money confirmed in hand. */
+export function paymentReceivedSms(p: PaymentNoticeInput): string {
+  const method = (p.method ?? '').trim()
+  const ref = (p.reference ?? '').trim()
+  const phone = smsPhone(p.clientPhone)
+  const pol = (p.policyNumber ?? '').trim()
+  return `${p.clientName}${pol ? ` ${pol}` : ''} paid. ${smsMoney(p.amount)}${method ? ` via ${method}` : ''}.${ref ? ` Ref ${ref}.` : ''}${phone ? ` ${phone}` : ''}`
+}
+
+/** A payment attempt that collected nothing. */
+export function paymentFailedSms(p: PaymentNoticeInput): string {
+  const method = (p.method ?? '').trim()
+  const phone = smsPhone(p.clientPhone)
+  const pol = (p.policyNumber ?? '').trim()
+  return `${p.clientName}${pol ? ` ${pol}` : ''} payment failed. ${smsMoney(p.amount)}${method ? ` via ${method}` : ''}. Try again.${phone ? ` ${phone}` : ''}`
+}
+
+/** Monthly premium reminder (R1/R2/R3 — same text at every stage). */
+export function premiumReminderSms(p: { clientName: string; policyNumber: string; amount: number; dueDate: Date; clientPhone?: string | null }): string {
+  const phone = smsPhone(p.clientPhone)
+  return `${p.clientName} ${p.policyNumber} premium ${smsMoney(p.amount)} due ${smsDate(p.dueDate)}. Pay to keep cover.${phone ? ` ${phone}` : ''}`
+}
+
+/** The grace window closed unpaid — cover suspended until reinstated. */
+export function policyLapsedSms(p: { clientName: string; policyNumber: string; amount: number; dueDate: Date; clientPhone?: string | null }): string {
+  const phone = smsPhone(p.clientPhone)
+  return `${p.clientName} ${p.policyNumber} LAPSED. ${smsMoney(p.amount)} due ${smsDate(p.dueDate)} unpaid. Pay to reinstate.${phone ? ` ${phone}` : ''}`
+}
+
+/** A monthly group-cover invoice exists — billed to the organisation. */
+export function invoiceIssuedSms(p: { orgName: string; policyNumber: string; invoiceNumber: string; amount: number; heads: number; period: string; dueDate: Date; clientPhone?: string | null }): string {
+  const phone = smsPhone(p.clientPhone)
+  return `${p.orgName} ${p.policyNumber} invoice ${p.invoiceNumber} issued. ${smsMoney(p.amount)} for ${p.heads} member(s), period ${p.period}, due ${smsDate(p.dueDate)}.${phone ? ` ${phone}` : ''}`
+}
+
+/** The same grammar for events with no cover/premium to quote — a claim
+ *  or ticket stage. `{name} {ref} {event}. {detail}. {phone}` */
+export function noticeSms(clientName: string, ref: string, event: string, detail?: string, clientPhone?: string | null): string {
+  const phone = smsPhone(clientPhone)
+  const d = detail?.trim().replace(/\.+$/, '')
+  return `${clientName} ${ref} ${event}.${d ? ` ${d}.` : ''}${phone ? ` ${phone}` : ''}`
+}

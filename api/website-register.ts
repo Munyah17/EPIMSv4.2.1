@@ -4,6 +4,7 @@ import { createClient, createPendingPolicy, getActiveProducts, clientByNationalI
 import type { BotProduct } from './_lib/bot/types.js'
 import { initiatePaynowPayment } from './_lib/paynowInitiate.js'
 import { chargeEip, eipConfigured, normalizeMsisdn } from './_lib/ecocashInstant.js'
+import { policyTermDates } from './_lib/policyTerm.js'
 
 /**
  * POST /api/website-register — the motions.co.zw → portal bridge.
@@ -173,14 +174,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     if (!policy) {
-      const start = new Date()
-      const end = new Date(start); end.setFullYear(end.getFullYear() + 1)
+      const { start, end } = policyTermDates(product)
       const created = await createPendingPolicy(admin, {
         clientId: client.id, product,
         paymentMethod: paymentMethod === 'ecocash' ? 'EcoCash' : 'Paynow',
         agentId: body.agentId ?? undefined,
-        startDate: start.toISOString().split('T')[0],
-        endDate: end.toISOString().split('T')[0],
+        startDate: start,
+        endDate: end,
         source: 'motions_website',
         hasChronicIllness: product.category === 'health' ? body.hasChronicIllness === true : undefined,
         chronicIllnessDetails: product.category === 'health' ? (body.chronicIllnessDetails?.trim() || undefined) : undefined,

@@ -7,6 +7,7 @@ import PhoneInput from '../ui/PhoneInput'
 import DateInput from '../ui/DateInput'
 import { premiumPeriodLabel, HECTARAGE_OPTIONS, hectarageLabel } from '../../lib/productUtils'
 import { computeAssignedStartDate } from '../../lib/policyLifecycle'
+import { isTobaccoFieldToFloor, TOBACCO_SEASON_ISO } from '../../lib/exportUtils'
 import { toIsoDate } from '../../lib/dateUtils'
 import { nextPolicyNumber } from '../../lib/policyNumbers'
 import { POLICY_SOURCES, DEFAULT_POLICY_SOURCE } from '../../lib/policySources'
@@ -546,10 +547,14 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
     // alone says which cover it belongs to.
     const policyNumber = await nextPolicyNumber(product!)
     // Non-admins never typed a date (the field is disabled) — assign the
-    // standard aligned date. Admins get whatever they chose.
-    const effectiveStartDate = startDate || computeAssignedStartDate()
+    // standard aligned date. Admins get whatever they chose. Tobacco
+    // Field-to-Floor ignores both: cover runs with the fixed tobacco
+    // season, the same window the policy document prints.
+    const isTobacco = product!.category === 'agriculture' && isTobaccoFieldToFloor(product!.name)
+    const effectiveStartDate = isTobacco ? TOBACCO_SEASON_ISO.start : (startDate || computeAssignedStartDate())
     const endDate = new Date(effectiveStartDate)
     endDate.setFullYear(endDate.getFullYear() + 1)
+    const effectiveEndDate = isTobacco ? TOBACCO_SEASON_ISO.end : toIsoDate(endDate)
     const policy: Policy = {
       id: `pol${Date.now()}`,
       policyNumber,
@@ -560,7 +565,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
       premium: product!.premium,
       coverAmount: product!.coverAmount,
       startDate: effectiveStartDate,
-      endDate: toIsoDate(endDate),
+      endDate: effectiveEndDate,
       // Every new policy starts in a waiting period, lifted to active after
       // 90 days — except agriculture, which has NO waiting period at all,
       // and team cover, which is bound to a named activity/event and so
@@ -577,7 +582,9 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
       contractor: product!.category === 'agriculture' ? (contractor.trim() || undefined) : undefined,
       hectarage: product!.category === 'agriculture' ? (Number(hectarage) || undefined) : undefined,
       createdAt: toIsoDate(new Date()),
-      nextPaymentDate: toIsoDate(new Date(new Date(effectiveStartDate).setMonth(new Date(effectiveStartDate).getMonth() + (product!.category === 'agriculture' ? 12 : 1)))),
+      // Agriculture is stop-order insurance — the premium comes off the
+      // crop proceeds once, so there is no monthly billing date at all.
+      nextPaymentDate: product!.category === 'agriculture' ? undefined : toIsoDate(new Date(new Date(effectiveStartDate).setMonth(new Date(effectiveStartDate).getMonth() + 1))),
       agentId: agentId || undefined,
       source,
       hasChronicIllness: isMedical ? hasChronic ?? undefined : undefined,

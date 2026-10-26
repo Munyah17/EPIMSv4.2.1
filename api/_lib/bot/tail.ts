@@ -2,7 +2,8 @@ import type { Handler, Ctx } from './types.js'
 import { sendText, sendButtons } from './whatsapp.js'
 import { setState, patchNote, deleteSession } from './store.js'
 import { getActiveProducts, createClient, createPolicy, addDependant } from './data.js'
-import { isEcocashPhone, pickIndex, PAYMENT_METHODS, PORTAL_METHOD_NAMES, methodMenu, sendPaymentInstruction, datePlusOneYear } from './helpers.js'
+import { isEcocashPhone, pickIndex, PAYMENT_METHODS, PORTAL_METHOD_NAMES, methodMenu, sendPaymentInstruction } from './helpers.js'
+import { policyTermDates } from '../policyTerm.js'
 
 /**
  * The shared payment tail. Every flow in all three menus ends the same
@@ -96,7 +97,7 @@ export function makeTail(prefix: string): Record<string, Handler> {
         await deleteSession(admin, session)
         return sendText(phone, 'That product is no longer available — your session has been reset.')
       }
-      const { start, end } = datePlusOneYear()
+      const { start, end } = policyTermDates(product)
       const policy = await createPolicy(admin, {
         clientId: String(n.clientId), product,
         paymentMethod: PORTAL_METHOD_NAMES[Number(n.methodIndex)] ?? 'Paynow',

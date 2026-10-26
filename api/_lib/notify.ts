@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { sendMailDirect } from './mailTransport.js'
-import { normalizeZwMobile, parseRecipientPhones, smsParts } from '../../src/lib/smsText.js'
+import { normalizeZwMobile, parseRecipientPhones, smsParts, DEFAULT_OFFICE_SMS } from '../../src/lib/smsText.js'
 
 /**
  * One place every notification goes through.
@@ -29,8 +29,9 @@ import { normalizeZwMobile, parseRecipientPhones, smsParts } from '../../src/lib
 /** Last-resort office lines — used ONLY until Settings → SMS Recipients
  *  is first saved. Once an admin saves a list there (even an empty one),
  *  it is the assignment and these numbers are never consulted again.
- *  Matches the seed list Settings shows on first open. */
-export const DEFAULT_OFFICE_PHONES = ['+263780086175', '+263780086176', '+263780086177', '+263780086178']
+ *  The single copy lives in src/lib/smsText.ts alongside the message
+ *  builders, so client and server pipelines can never disagree. */
+export const DEFAULT_OFFICE_PHONES = DEFAULT_OFFICE_SMS
 export const COMPANY_EMAIL = 'info@motions.co.zw'
 
 export type Channel = 'sms' | 'email' | 'whatsapp'

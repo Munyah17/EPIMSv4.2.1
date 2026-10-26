@@ -2,7 +2,8 @@ import type { Handler } from '../types.js'
 import { sendText, sendButtons } from '../whatsapp.js'
 import { setState, patchNote, deleteSession } from '../store.js'
 import { getActiveProducts, createClient, createPolicy } from '../data.js'
-import { isFullName, isNationalId, isEmail, parseDob, isEcocashPhone, pickIndex, PAYMENT_METHODS, methodMenu, sendPaymentInstruction, datePlusOneYear } from '../helpers.js'
+import { isFullName, isNationalId, isEmail, parseDob, isEcocashPhone, pickIndex, PAYMENT_METHODS, methodMenu, sendPaymentInstruction } from '../helpers.js'
+import { policyTermDates } from '../../policyTerm.js'
 import { coverLabel } from '../../coverBreakdown.js'
 
 /**
@@ -193,7 +194,7 @@ const confirm: Handler = async ({ input, phone, session, admin, username }) => {
     email: n.email as string | undefined, dob: n.dob as string | undefined,
     gender: n.gender as string | undefined,
   })
-  const { start, end } = datePlusOneYear()
+  const { start, end } = policyTermDates(product)
   const policy = await createPolicy(admin, {
     clientId: client.id, product, paymentMethod: String(n.method ?? ''),
     startDate: start, endDate: end,

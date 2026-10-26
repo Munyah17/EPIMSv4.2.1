@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { dispatchNotification } from './_lib/notify.js'
+import { premiumReminderSms, policyLapsedSms, invoiceIssuedSms } from '../src/lib/smsText.js'
 
 /**
  * Billing reminders, run on the server.
@@ -124,11 +125,18 @@ function clientEmailBody(policy: PolicyRow, type: ReminderType, due: string, amo
   return `Dear ${name},\n\nThis is a reminder that your insurance premium of $${amount} for policy ${policy.policy_number} (${product}) is due on ${due}.\n\nPlease pay by ${due} to keep your cover. You can pay via EcoCash, Paynow, Zipit, or at any of our offices.\n\n${SIGNATURE}`
 }
 
-function clientSmsBody(policy: PolicyRow, type: ReminderType, due: string, amount: string): string {
-  if (type === 'lapse') {
-    return `Motions: Your policy ${policy.policy_number} has LAPSED — the premium due ${due} was not paid by the grace deadline. Pay $${amount} to reinstate your cover.`
+/** The ONE reminder text — built by the shared builders in smsText.ts so
+ *  the in-browser engine (src/lib/reminderEngine.ts) and this cron send a
+ *  client byte-identical wording whichever fires first. */
+function clientSmsBody(policy: PolicyRow, type: ReminderType, dueDate: Date): string {
+  const input = {
+    clientName: policy.clients?.name ?? 'Client',
+    policyNumber: policy.policy_number,
+    amount: billablePremium(policy),
+    dueDate,
+    clientPhone: policy.clients?.phone,
   }
-  return `Motions: Your premium of $${amount} for policy ${policy.policy_number} is due on ${due}. Pay by ${due} to keep your cover.`
+  return type === 'lapse' ? policyLapsedSms(input) : premiumReminderSms(input)
 }
 
 // ── One policy ─────────────────────────────────────────────────────
@@ -164,8 +172,8 @@ async function dispatch(
     event: 'renewal',
     ref: policy.policy_number,
     client: { name, phone: policy.clients?.phone, email: policy.clients?.email },
-    smsText: clientSmsBody(policy, type, dueLabel, amount),
-    whatsappText: clientSmsBody(policy, type, dueLabel, amount),
+    smsText: clientSmsBody(policy, type, dueDate),
+    whatsappText: clientSmsBody(policy, type, dueDate),
     emailSubject: type === 'lapse'
       ? `Notice: ${policy.policy_number} has LAPSED`
       : `Premium Reminder: ${policy.policy_number} due ${dueLabel}`,
@@ -208,7 +216,7 @@ async function dispatch(
     channel: 'email',
   }
   const { error: insErr } = await admin.from('reminders')
-    .insert({ ...reminderRow, sms_body: clientSmsBody(policy, type, dueLabel, amount) })
+    .insert({ ...reminderRow, sms_body: clientSmsBody(policy, type, dueDate) })
   if (insErr) {
     // sms_body missing (migration not run) — the dedup row still matters.
     await admin.from('reminders').insert(reminderRow)
@@ -233,6 +241,21 @@ async function liftWaitingPeriods(admin: SupabaseClient): Promise<number> {
     lifted++
   }
   return lifted
+}
+
+/** Cover terms that have ended are swept to 'expired' — the archive
+ *  state — so the active book only ever holds live cover (the whole
+ *  tobacco book rolls off on 31 Aug when the season closes). Records
+ *  stay intact and restorable from the Policies → Archive view. */
+async function expireEndedTerms(admin: SupabaseClient): Promise<number> {
+  const todayISO = new Date().toISOString().split('T')[0]
+  const { data } = await admin
+    .from('policies')
+    .update({ status: 'expired' })
+    .lt('end_date', todayISO)
+    .in('status', ['active', 'waiting_period', 'lapsed', 'defaulted'])
+    .select('id')
+  return data?.length ?? 0
 }
 
 // ── Reconciliation: money/registration happened, record didn't ──────
@@ -362,6 +385,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const zwHour = zw.getUTCHours()
 
   const lifted = await liftWaitingPeriods(admin)
+  const expired = await expireEndedTerms(admin)
   const invoiced = await issueMonthlyInvoices(admin, today)
   const recon = await reconcileBook(admin).catch(e => { console.error('cron-reminders: recon failed', e); return null })
 
@@ -369,11 +393,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     zwDay === 20 ? 'r1' : zwDay === 25 ? 'r2' : zwDay === 1 ? 'r3' : zwDay === 10 ? 'lapse' : null
 
   if (!type) {
-    return res.status(200).json({ ran: today.toISOString(), stage: null, note: 'No reminder stage falls on today.', waitingPeriodsLifted: lifted, invoices: invoiced, recon })
+    return res.status(200).json({ ran: today.toISOString(), stage: null, note: 'No reminder stage falls on today.', waitingPeriodsLifted: lifted, policiesExpired: expired, invoices: invoiced, recon })
   }
   // Reminders are client-facing — only ever inside 08:00–16:00 ZW.
   if (zwHour < 8 || zwHour >= 16) {
-    return res.status(200).json({ ran: today.toISOString(), stage: `${STAGE_TAG[type]} ${STAGE_LABEL[type]}`, note: `Outside the 08:00–16:00 send window (ZW ${String(zwHour).padStart(2, '0')}:00) — client texts suppressed; office jobs still ran.`, waitingPeriodsLifted: lifted, invoices: invoiced, recon })
+    return res.status(200).json({ ran: today.toISOString(), stage: `${STAGE_TAG[type]} ${STAGE_LABEL[type]}`, note: `Outside the 08:00–16:00 send window (ZW ${String(zwHour).padStart(2, '0')}:00) — client texts suppressed; office jobs still ran.`, waitingPeriodsLifted: lifted, policiesExpired: expired, invoices: invoiced, recon })
   }
 
   // What the reminder is about: on the 20th/25th the renewal due the 1st
@@ -418,6 +442,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     stage: `${STAGE_TAG[type]} ${STAGE_LABEL[type]}`,
     dueDate: dueDate.toISOString().split('T')[0],
     waitingPeriodsLifted: lifted,
+    policiesExpired: expired,
     invoices: invoiced,
     recon,
     ...stats,
@@ -504,7 +529,11 @@ async function issueMonthlyInvoices(admin: SupabaseClient, today: Date) {
       // The organisation hears about its bill on every channel — same rule
       // as every billing event: nothing financial is silent.
       const org = policy.groups?.name ?? policy.clients?.name ?? 'Client'
-      const sms = `Motions: Invoice ${invoiceNumber} issued for ${org} (${policy.policy_number}) — $${amount.toFixed(2)} for ${heads} member(s), period ${period}, due ${formatDate(lastDayOfMonth(today))}.`
+      const sms = invoiceIssuedSms({
+        orgName: org, policyNumber: policy.policy_number, invoiceNumber,
+        amount, heads, period, dueDate: lastDayOfMonth(today),
+        clientPhone: policy.clients?.phone,
+      })
       await dispatchNotification(admin, {
         event: 'payment',
         ref: invoiceNumber,

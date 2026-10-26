@@ -5,9 +5,11 @@ import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
-import { notifyClientRegistered, notifyRegistrationFailed } from '../lib/signupNotifications'
+import { notifyClientRegistered, notifyPolicyRegistered, notifyRegistrationFailed } from '../lib/signupNotifications'
 import { notifyPhone, serverReachable } from '../lib/notify'
-import { getSmsRecipientsForEvent } from '../lib/mailService'
+import { getSmsRecipientsForEvent, sendSystemEmail } from '../lib/mailService'
+import { getPolicyReportPdfBase64 } from '../lib/exportUtils'
+import { MAILBOXES } from '../lib/mailboxes'
 import { recordActivity } from '../lib/activityLog'
 import { COMPANY_NAME } from '../lib/company'
 import { searchMembers } from '../lib/memberNumbers'
@@ -159,6 +161,34 @@ export default function Clients({ showToast }: Props) {
     setClients(prev => prev.map(c => c.id === data.clientId ? { ...c, policyCount: c.policyCount + 1 } : c))
     showToast('success', `Policy ${data.policyNumber} assigned to ${data.clientName}.`)
     setAssignPolicyClient(null)
+
+    // Identical to Policies → New Policy: a policy captured here must
+    // text the client the same confirmation and alert the same office
+    // lines — the capture screen must not change who hears what.
+    const { data: client } = await db.clients.get(data.clientId)
+    void notifyPolicyRegistered(data, client ?? null)
+
+    // Same policy-document email the Policies path sends (skipped for
+    // funeral packages, which draw a different document).
+    const { data: allProducts } = await db.products.list()
+    const category = allProducts?.find(pr => pr.id === data.productId)?.category ?? ''
+    if (category !== 'funeral' && client?.email) {
+      try {
+        const attachmentBase64 = await getPolicyReportPdfBase64(data, client, category)
+        const result = await sendSystemEmail({
+          from: MAILBOXES.noreply,
+          to: client.email,
+          subject: `Your Policy ${data.policyNumber}: Documents Enclosed`,
+          body: `Dear ${client.name},\n\nThank you for choosing us. Your policy ${data.policyNumber} (${data.productName}) is now active. Your policy report is attached for your records.\n\nRegards,\nTariqify IMS`,
+          linkedTo: data.id,
+          attachmentBase64,
+          attachmentFilename: `${data.policyNumber}-Policy-Report.pdf`,
+        })
+        if (!result.delivered) showToast('warning', 'Policy created, but the document email could not be sent; check Settings → Notifications.')
+      } catch {
+        showToast('warning', 'Policy created, but the document email could not be sent.')
+      }
+    }
     return data
   }
 

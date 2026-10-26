@@ -4,7 +4,11 @@ import { sendEmail, getNotifSettings, getSmsRecipientsForEvent } from './mailSer
 import { MAILBOXES } from './mailboxes'
 import { premiumPeriodLabel } from './productUtils'
 import { COMPANY_NAME } from './company'
-import { isTobaccoFieldToFloor, fieldToFloorCover } from './exportUtils'
+import {
+  isTobaccoFieldToFloor, fieldToFloorCover,
+  clientRegisteredSms, groupRegisteredSms, policyRegisteredSms,
+  paymentReceivedSms, paymentFailedSms,
+} from './smsText'
 
 /**
  * Fires the moment a policy is registered, by whatever route -- an agent in
@@ -25,21 +29,13 @@ function money(amount: number): string {
 
 /** One office line failing must not swallow the rest — the CEO's number
  *  is often last in the list, and a throw on an earlier send used to
- *  stop it ever going out. */
-async function textOffice(numbers: string[], message: string): Promise<void> {
+ *  stop it ever going out. The EVENT prefix matches the envelope
+ *  api/_lib/notify.ts puts on office copies, so an alert reads the same
+ *  whichever pipeline sent it. */
+async function textOffice(numbers: string[], event: string, message: string): Promise<void> {
   for (const number of numbers) {
-    try { await sendSms(number, message) } catch { /* sendSms records the failure */ }
+    try { await sendSms(number, `${event}: ${message}`) } catch { /* sendSms records the failure */ }
   }
-}
-
-/** Field-to-Floor in one GSM segment. Listing every peril in full took
- *  the alert past 160 characters, and Econet (078, including the main
- *  office line) then delivered nothing. */
-function tobaccoCoverSms(sumInsured: number): string {
-  const rows = fieldToFloorCover(sumInsured)
-  const field = rows.find(r => r.peril === 'Barn Fire')?.benefit ?? 0
-  const funeral = rows.find(r => r.peril === 'Funeral')?.benefit ?? 500
-  return `F2F barn/hail/wind $${field}, funeral $${funeral}`
 }
 
 /**
@@ -53,7 +49,7 @@ function tobaccoCoverSms(sumInsured: number): string {
 export async function notifyRegistrationFailed(what: string, detail: string): Promise<void> {
   const cfg = getNotifSettings()
   const alert = `${what} FAILED. ${detail}`
-  await textOffice(await getSmsRecipientsForEvent('registration'), alert)
+  await textOffice(await getSmsRecipientsForEvent('registration'), 'REGISTRATION', alert)
   void sendEmail({
     to: cfg.insurerEmail,
     subject: `[Registration Failed] ${what}`,
@@ -64,12 +60,10 @@ export async function notifyRegistrationFailed(what: string, detail: string): Pr
 
 export async function notifyClientRegistered(client: Client, registeredBy?: string): Promise<void> {
   const cfg = getNotifSettings()
+  const text = clientRegisteredSms(client.name, client.phone)
 
   if (client.phone) {
-    await sendSms(
-      client.phone,
-      `Welcome ${client.name.split(' ')[0]}, registered. Agent will contact you.`,
-    )
+    await sendSms(client.phone, text)
   }
 
   if (client.email) {
@@ -89,9 +83,8 @@ Please note this registration does not itself put any cover in place. One of our
     }).catch(() => { /**/ })
   }
 
-  const phoneShort = client.phone ? client.phone.replace(/[^0-9]/g, '') : ''
-  const alert = `${client.name} registered${phoneShort ? ` ${phoneShort}` : ''}${registeredBy ? ` by ${registeredBy}` : ''}. No policy.`
-  await textOffice(await getSmsRecipientsForEvent('registration'), alert)
+  const alert = `${text}${registeredBy ? ` by ${registeredBy}` : ''}`
+  await textOffice(await getSmsRecipientsForEvent('registration'), 'REGISTRATION', alert)
 }
 
 /** An organisation registered for group/corporate cover — the company's
@@ -105,8 +98,7 @@ export async function notifyGroupRegistered(group: Group): Promise<void> {
 
   // The organisation's own numbers — org line and the representative's.
   const orgNumbers = [...new Set([group.orgPhone, group.contactPhone].filter(Boolean))] as string[]
-  const contactPhoneShort = group.contactPhone ? group.contactPhone.replace(/[^0-9]/g, '') : ''
-  const msg = `${group.name} (${kind}) reg. ${group.contactName || 'N/A'}${contactPhoneShort ? ` ${contactPhoneShort}` : ''}. Keep this.`
+  const msg = `${groupRegisteredSms(group.name, kind, group.contactName, group.contactPhone)}. Keep this.`
   for (const number of orgNumbers) {
     await sendSms(number, msg)
   }
@@ -121,11 +113,11 @@ export async function notifyGroupRegistered(group: Group): Promise<void> {
     }).catch(() => { /**/ })
   }
 
-  const alert = `${group.name} (${kind}) registered. ${group.contactName || ''}${contactPhoneShort ? ` ${contactPhoneShort}` : ''}`
-  await textOffice(await getSmsRecipientsForEvent('registration'), alert)
+  const alert = groupRegisteredSms(group.name, kind, group.contactName, group.contactPhone)
+  await textOffice(await getSmsRecipientsForEvent('registration'), 'REGISTRATION', alert)
 }
 
-export async function notifyPolicyRegistered(policy: Policy, client: Client): Promise<void> {
+export async function notifyPolicyRegistered(policy: Policy, client: Client | null): Promise<void> {
   const cfg = getNotifSettings()
   const period = premiumPeriodLabel(policy.productCategory ?? '')
   const cover = money(policy.coverAmount)
@@ -135,35 +127,35 @@ export async function notifyPolicyRegistered(policy: Policy, client: Client): Pr
   // sum insured — the grower needs to know Barn Fire pays $500, not that
   // the four heads add up to $2,000.
   const fieldToFloor = isTobaccoFieldToFloor(policy.productName)
-  const coverSms = fieldToFloor ? tobaccoCoverSms(policy.coverAmount) : cover
   const coverEmail = fieldToFloor
     ? `Cover Provided (Field to Floor):\n${fieldToFloorCover(policy.coverAmount).map(c => `  ${c.peril.padEnd(14)}${money(c.benefit)}`).join('\n')}`
     : `Cover Amount:   ${cover}`
 
   // ── The client ────────────────────────────────────────────────────
-  // A receipt-style breakdown, not a one-line summary: the same figures
-  // the policy document prints — product, cover breakdown, premium,
-  // method, dates — so the SMS alone is proof of cover.
-  if (client.phone) {
-    if (fieldToFloor) {
-      await sendSms(
-        client.phone,
-        `${client.name} ${policy.policyNumber} reg. ${tobaccoCoverSms(policy.coverAmount)}. ${policy.paymentMethod} ${premium}.`,
-      )
-    } else {
-      await sendSms(
-        client.phone,
-        `${policy.policyNumber} reg. ${client.name}, ${policy.productName}. ${cover}. ${premium}/${period}. ${policy.paymentMethod}.`,
-      )
-    }
+  // The ONE standard text — identical whichever screen or channel the
+  // policy came through. The client may be missing when the record
+  // lookup failed: the office still gets the alert either way.
+  const clientName = client?.name ?? policy.clientName
+  const text = policyRegisteredSms({
+    clientName,
+    policyNumber: policy.policyNumber,
+    productName: policy.productName,
+    productCategory: policy.productCategory,
+    coverAmount: policy.coverAmount,
+    premium: policy.premium,
+    paymentMethod: policy.paymentMethod,
+    clientPhone: client?.phone,
+  })
+  if (client?.phone) {
+    await sendSms(client.phone, text)
   }
 
-  if (client.email) {
+  if (client?.email) {
     void sendEmail({
       to: client.email,
       subject: `Policy ${policy.policyNumber} registered: welcome to ${COMPANY_NAME}`,
       from: MAILBOXES.noreply,
-      body: `Dear ${client.name},
+      body: `Dear ${clientName},
 
 Thank you for choosing ${COMPANY_NAME}. Your policy has been registered.
 
@@ -184,28 +176,25 @@ Keep this email for your records. If any detail above is wrong, contact us and w
   }
 
   // ── The office ─────────────────────────────────────────────────────
-  // The office alert quotes the same figure the client read — a tobacco
-  // policy announced as "$2,000" to the office but per-peril to the
-  // grower is how "the document says $500" disputes start.
-  const phoneShort = client.phone ? client.phone.replace(/\D/g, '') : ''
-  const productBit = fieldToFloor ? coverSms : policy.productName
-  const alert = `${client.name} ${policy.policyNumber} reg. ${productBit}. ${policy.paymentMethod} ${premium}. ${phoneShort}`
-  await textOffice(await getSmsRecipientsForEvent('registration'), alert)
+  // Same text the client received — the office reads exactly what the
+  // client got, so "the document says $500" disputes can't start from a
+  // differently-worded alert.
+  await textOffice(await getSmsRecipientsForEvent('registration'), 'REGISTRATION', text)
 
   const insurerRecipient = cfg.insurerEmail
 
   if (insurerRecipient) {
     void sendEmail({
       to: insurerRecipient,
-      subject: `[New Policy] ${policy.policyNumber}: ${client.name}`,
+      subject: `[New Policy] ${policy.policyNumber}: ${clientName}`,
       from: MAILBOXES.admin,
       body: `A new policy has been registered.
 
 Policy Number:  ${policy.policyNumber}
-Client:         ${client.name}
-National ID:    ${client.nationalId || 'not given'}
-Phone:          ${client.phone || 'not given'}
-Email:          ${client.email || 'not given'}
+Client:         ${clientName}
+National ID:    ${client?.nationalId || 'not given'}
+Phone:          ${client?.phone || 'not given'}
+Email:          ${client?.email || 'not given'}
 Product:        ${policy.productName}
 Cover Amount:   ${cover}
 Premium:        ${premium}
@@ -225,37 +214,44 @@ ${policy.agentName ? `Registered by:  ${policy.agentName}` : 'Registered through
  * and telling the client or the office otherwise is exactly the kind of
  * mistake an insurer cannot afford to make by SMS.
  */
-export async function notifyPaymentReceived(payment: Payment, client: { phone?: string } | null | undefined, productCategory?: string): Promise<void> {
-  const amount = money(payment.amount)
+export async function notifyPaymentReceived(payment: Payment, client: { phone?: string; name?: string } | null | undefined, productCategory?: string): Promise<void> {
+  const text = paymentReceivedSms({
+    clientName: client?.name ?? payment.clientName,
+    policyNumber: payment.policyNumber,
+    amount: payment.amount,
+    method: payment.method,
+    reference: payment.reference,
+    clientPhone: client?.phone,
+  })
 
   // The farmer never hands over money -- the association settles the
   // annual premium by stop order -- so a "we received your payment" text
   // would announce a transaction the client was never part of. Office
   // alerts below still go out; staff need the receipt regardless.
   if (productCategory !== 'agriculture' && client?.phone) {
-    await sendSms(
-      client.phone,
-      `${payment.policyNumber} paid. ${amount} via ${payment.method}. Ref ${payment.reference}`,
-    )
+    await sendSms(client.phone, text)
   }
 
-  const alert = `${payment.policyNumber} paid. ${payment.clientName}. ${amount} via ${payment.method}. Ref ${payment.reference}`
-  await textOffice(await getSmsRecipientsForEvent('payment'), alert)
+  await textOffice(await getSmsRecipientsForEvent('payment'), 'PAYMENT', text)
 }
 
 /** A payment that came back failed — a declined EcoCash prompt, a bounced
  *  Paynow transaction. The client hears it plainly (their bank's own
  *  message doesn't count as ours) and the office knows someone needs a
  *  follow-up call. */
-export async function notifyPaymentFailed(payment: { policyNumber: string; clientName: string; amount: number; method?: string; reference?: string }, client: { phone?: string; email?: string | null } | null | undefined, productCategory?: string): Promise<void> {
+export async function notifyPaymentFailed(payment: { policyNumber: string; clientName: string; amount: number; method?: string; reference?: string }, client: { phone?: string; email?: string | null; name?: string } | null | undefined, productCategory?: string): Promise<void> {
   const cfg = getNotifSettings()
   const amount = money(payment.amount)
+  const text = paymentFailedSms({
+    clientName: client?.name ?? payment.clientName,
+    policyNumber: payment.policyNumber,
+    amount: payment.amount,
+    method: payment.method,
+    clientPhone: client?.phone,
+  })
 
   if (productCategory !== 'agriculture' && client?.phone) {
-    await sendSms(
-      client.phone,
-      `${payment.policyNumber} payment failed. ${amount}. Try again.`,
-    )
+    await sendSms(client.phone, text)
   }
   if (productCategory !== 'agriculture' && client?.email) {
     void sendEmail({
@@ -266,8 +262,7 @@ export async function notifyPaymentFailed(payment: { policyNumber: string; clien
     }).catch(() => { /**/ })
   }
 
-  const alert = `${payment.policyNumber} payment FAILED. ${payment.clientName}. ${amount}${payment.method ? ` via ${payment.method}` : ''}`
-  await textOffice(await getSmsRecipientsForEvent('payment'), alert)
+  await textOffice(await getSmsRecipientsForEvent('payment'), 'PAYMENT', text)
   void sendEmail({
     to: cfg.insurerEmail,
     subject: `[Payment Failed] ${payment.policyNumber}: ${payment.clientName}`,
