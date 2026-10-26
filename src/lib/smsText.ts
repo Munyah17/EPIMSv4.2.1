@@ -68,51 +68,32 @@ export function gsmUnits(text: string): number {
   return n
 }
 
-function takeUnits(text: string, maxUnits: number): string {
-  let used = 0
-  let i = 0
-  for (; i < text.length; i++) {
-    const w = GSM_EXT.has(text[i]) ? 2 : 1
-    if (used + w > maxUnits) break
-    used += w
-  }
-  let cut = i
-  const slice = text.slice(0, i)
-  const space = slice.lastIndexOf(' ')
-  if (space > 20 && space > i - 30) cut = space
-  return text.slice(0, cut).trim()
-}
-
 /**
- * GSM-7 segments that each stand alone. Concatenated SMS is not reliable
- * on Econet, so a long alert goes out as "(1/2) …" and "(2/2) …" rather
- * than one rejected blob.
+ * ONE message, always. Splitting into "(1/2) …" "(2/2) …" was worse than
+ * the problem — staff got fragments they couldn't act on and clients got
+ * texts that read broken. A long text is sent whole: the gateway and the
+ * handset handle concatenation on their side, and the recipient sees a
+ * single message. (toGsm still strips characters Econet silently drops.)
  */
 export function smsParts(raw: string): string[] {
   const text = toGsm(raw)
-  if (!text) return []
-  if (gsmUnits(text) <= SMS_GSM_LIMIT) return [text]
+  return text ? [text] : []
+}
 
-  const budget = SMS_GSM_LIMIT - 6
-  const chunks: string[] = []
-  let rest = text
-  while (rest && chunks.length < 6) {
-    const chunk = takeUnits(rest, budget)
-    if (!chunk) break
-    chunks.push(chunk)
-    rest = rest.slice(chunk.length).trim()
-  }
-  if (chunks.length <= 1) return chunks
-  return chunks.map((chunk, i) => `(${i + 1}/${chunks.length}) ${chunk}`)
+/** Office-copy envelope label: 'registration' is the one long event name
+ *  — 'REG:' says the same thing without eating ten characters of the
+ *  message. Everything else is already short and goes out uppercase. */
+export function smsEventLabel(event: string): string {
+  return event === 'registration' ? 'REG' : event.toUpperCase()
 }
 
 // ── The ONE client-facing message shape ─────────────────────────────
 //
 // Approved standard (verbatim example, variables swapped per record):
 //
-//   Demo User TOB0514 reg. Field To Floor Standard. cover (Field to
-//   Floor): Barn Fire $500, Hail Storm $500, Wind Storm $500, Funeral
-//   $500. Stop Order $105.00/yr. 263773909307
+//   Demo User TOB0514 Reg. Field To Floor Standard. Cover: Barn Fire
+//   $500, Hail Storm $500, Wind Storm $500, Funeral $500. Stop Order
+//   $105/yr. 263773909307
 //
 // Grammar: {clientName} {policyNumber} {event}. {details}. {method}
 // {premium}/{period}. {phoneDigits}
@@ -146,9 +127,11 @@ export function fieldToFloorCoverLine(sumInsured: number): string {
   return fieldToFloorCover(sumInsured).map(c => `${c.peril} $${c.benefit}`).join(', ')
 }
 
-/** "$1,000.00" — two decimals, thousands separators. */
+/** "$105" / "$12.50" — whole amounts never carry ".00" (segment space is
+ *  precious), odd cents still show. */
 function smsMoney(amount: number): string {
-  return `$${Number(amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  const n = Number(amount || 0)
+  return `$${n.toLocaleString('en-US', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 })}`
 }
 
 /** Client's number as bare digits ("263773909307") — the tail of every
@@ -193,13 +176,15 @@ export interface PolicyNoticeInput {
 
 /** THE policy-registered text — the approved standard, verbatim shape. */
 export function policyRegisteredSms(p: PolicyNoticeInput): string {
+  // The product name already says "Field To Floor" — the cover label
+  // doesn't repeat it.
   const cover = isTobaccoFieldToFloor(p.productName)
-    ? `Cover (Field to Floor): ${fieldToFloorCoverLine(p.coverAmount)}`
+    ? `Cover: ${fieldToFloorCoverLine(p.coverAmount)}`
     : `Cover ${smsMoney(p.coverAmount)}`
   const period = p.productCategory === 'agriculture' ? '/yr' : '/mo'
   const method = (p.paymentMethod ?? '').trim()
   const phone = smsPhone(p.clientPhone)
-  return `${p.clientName} ${p.policyNumber}. ${p.productName}. ${cover}. ${method ? `${method} ` : ''}${smsMoney(p.premium)}${period}.${phone ? ` ${phone}` : ''}`
+  return `${p.clientName} ${p.policyNumber} Reg. ${p.productName}. ${cover}. ${method ? `${method} ` : ''}${smsMoney(p.premium)}${period}.${phone ? ` ${phone}` : ''}`
 }
 
 /** A client row exists but no policy yet — "reg.", never "covered". */

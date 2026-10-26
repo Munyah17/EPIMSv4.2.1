@@ -49,7 +49,7 @@ async function textOffice(numbers: string[], event: string, message: string, ctx
 export async function notifyRegistrationFailed(what: string, detail: string): Promise<void> {
   const cfg = getNotifSettings()
   const alert = `${what} FAILED. ${detail}`
-  await textOffice(await getSmsRecipientsForEvent('registration'), 'REGISTRATION', alert, { event: 'registration' })
+  await textOffice(await getSmsRecipientsForEvent('registration'), 'REG', alert, { event: 'registration' })
   void sendEmail({
     to: cfg.insurerEmail,
     subject: `[Registration Failed] ${what}`,
@@ -84,7 +84,7 @@ Please note this registration does not itself put any cover in place. One of our
   }
 
   const alert = `${text}${registeredBy ? ` by ${registeredBy}` : ''}`
-  await textOffice(await getSmsRecipientsForEvent('registration'), 'REGISTRATION', alert, { event: 'registration' })
+  await textOffice(await getSmsRecipientsForEvent('registration'), 'REG', alert, { event: 'registration' })
 }
 
 /** An organisation registered for group/corporate cover — the company's
@@ -114,7 +114,7 @@ export async function notifyGroupRegistered(group: Group): Promise<void> {
   }
 
   const alert = groupRegisteredSms(group.name, kind, group.contactName, group.contactPhone)
-  await textOffice(await getSmsRecipientsForEvent('registration'), 'REGISTRATION', alert, { event: 'registration', ref: group.name })
+  await textOffice(await getSmsRecipientsForEvent('registration'), 'REG', alert, { event: 'registration', ref: group.name })
 }
 
 export async function notifyPolicyRegistered(policy: Policy, client: Client | null): Promise<void> {
@@ -179,7 +179,7 @@ Keep this email for your records. If any detail above is wrong, contact us and w
   // Same text the client received — the office reads exactly what the
   // client got, so "the document says $500" disputes can't start from a
   // differently-worded alert.
-  await textOffice(await getSmsRecipientsForEvent('registration'), 'REGISTRATION', text, { event: 'registration', ref: policy.policyNumber })
+  await textOffice(await getSmsRecipientsForEvent('registration'), 'REG', text, { event: 'registration', ref: policy.policyNumber })
 
   const insurerRecipient = cfg.insurerEmail
 

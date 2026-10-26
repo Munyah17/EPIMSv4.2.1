@@ -17,15 +17,17 @@ import { policyRegisteredSms } from '../../src/lib/smsText.js'
  * the original text is sent. A stale-format text still beats none.
  */
 
-// "NAME TOB0576 reg. …" / "NAME TOB0576 registered. …". The canonical
-// format is "NAME TOB0576. Product." — a bare dot never matches, so
-// already-correct texts pass through untouched. Needs LETTERS+DIGITS so
-// "ACME FARM reg." (client/group registrations with no policy number)
-// can never false-positive.
+// "NAME TOB0576 reg./registered./Reg. …" — every registration-shaped
+// variant is rebuilt from the record. A text that is already canonical
+// rewrites to itself (a wasted lookup, not a wrong send) — matching
+// everything is what makes this immune to any bundle's wording. Needs
+// LETTERS+DIGITS so "ACME FARM reg." (client/group registrations with
+// no policy number) can never false-positive.
 const STALE_REGISTRATION = /\b([A-Z]{2,8}\d{3,})\s+reg(?:istered)?\./i
 
-// Office envelopes carry "REGISTRATION: " — keep whatever prefix the
-// caller used so office copies still announce themselves.
+// Office envelopes carry an event label — "REG: ", "PAYMENT: " etc.
+// Keep whatever prefix the caller used so office copies still announce
+// themselves.
 const ENVELOPE_PREFIX = /^\s*([A-Z]{3,14}):\s+/
 
 export async function canonicalizeSmsText(admin: SupabaseClient | null, message: string): Promise<string> {

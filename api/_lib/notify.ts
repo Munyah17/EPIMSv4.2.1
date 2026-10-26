@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { sendMailDirect } from './mailTransport.js'
 import { serviceClient } from './sessionAuth.js'
 import { canonicalizeSmsText } from './smsCanon.js'
-import { normalizeZwMobile, parseRecipientPhones, smsParts, DEFAULT_OFFICE_SMS } from '../../src/lib/smsText.js'
+import { normalizeZwMobile, parseRecipientPhones, smsParts, smsEventLabel, DEFAULT_OFFICE_SMS } from '../../src/lib/smsText.js'
 
 /**
  * One place every notification goes through.
@@ -289,20 +289,20 @@ export async function dispatchNotification(admin: SupabaseClient | null, job: No
     const officeSms = `${job.smsText}${job.ref ? ` Ref ${job.ref}` : ''}`
     const officeLines = await officeSmsNumbers(admin, job.event)
     for (const phone of officeLines) {
-      deliveries.push(sendSmsAfrosoft(phone, `${job.event.toUpperCase()}: ${officeSms}`))
+      deliveries.push(sendSmsAfrosoft(phone, `${smsEventLabel(job.event)}: ${officeSms}`))
     }
     // WhatsApp follows the SAME assignment as SMS — the Settings → SMS
     // Recipients list governs every office channel, not just texts, so a
     // number removed there stops getting WhatsApp copies too.
     for (const phone of officeLines) {
-      deliveries.push(sendWhatsAppCloud(phone, `${job.event.toUpperCase()}: ${waText}`))
+      deliveries.push(sendWhatsAppCloud(phone, `${smsEventLabel(job.event)}: ${waText}`))
     }
     const already = new Set(officeLines.map(p => normalizeZwMobile(p)))
     for (const phone of job.staffPhones ?? []) {
       const n = phone ? normalizeZwMobile(phone) : null
       if (!n || already.has(n)) continue
       already.add(n)
-      deliveries.push(sendSmsAfrosoft(phone, `${job.event.toUpperCase()}: ${officeSms}`))
+      deliveries.push(sendSmsAfrosoft(phone, `${smsEventLabel(job.event)}: ${officeSms}`))
     }
     deliveries.push(sendEmailDirect(COMPANY_EMAIL, `[${job.event.toUpperCase()}] ${job.emailSubject}`, job.emailText))
     for (const email of job.staffEmails ?? []) {
