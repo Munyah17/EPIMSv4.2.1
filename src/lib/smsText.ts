@@ -93,10 +93,13 @@ export function smsEventLabel(event: string): string {
 //
 //   Demo User TOB0514 Reg. Field To Floor Standard. Cover: Barn Fire
 //   $500, Hail Storm $500, Wind Storm $500, Funeral $500. Stop Order
-//   $105/yr. 263773909307
+//   $105/yr.
 //
 // Grammar: {clientName} {policyNumber} {event}. {details}. {method}
-// {premium}/{period}. {phoneDigits}
+// {premium}/{period}.
+//
+// No trailing phone number: the recipient is the owner of that number —
+// echoing it back costs twelve characters and tells them nothing.
 //
 // Every channel — counter sale, Assign Policy, website checkout, partner
 // API, Paynow finalise, both reminder engines — builds its client text
@@ -134,8 +137,10 @@ function smsMoney(amount: number): string {
   return `$${n.toLocaleString('en-US', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 })}`
 }
 
-/** Client's number as bare digits ("263773909307") — the tail of every
- *  standard message, matching the approved example. */
+/** Digits-only rendering of a number ("263773909307"). Used where the
+ *  number identifies someone OTHER than the recipient — e.g. the group
+ *  contact's line on the org's registration alert. Client texts never
+ *  carry the recipient's own number back at them. */
 function smsPhone(raw: string | null | undefined): string {
   return normalizeZwMobile(raw ?? '') ?? String(raw ?? '').replace(/\D/g, '')
 }
@@ -183,14 +188,12 @@ export function policyRegisteredSms(p: PolicyNoticeInput): string {
     : `Cover ${smsMoney(p.coverAmount)}`
   const period = p.productCategory === 'agriculture' ? '/yr' : '/mo'
   const method = (p.paymentMethod ?? '').trim()
-  const phone = smsPhone(p.clientPhone)
-  return `${p.clientName} ${p.policyNumber} Reg. ${p.productName}. ${cover}. ${method ? `${method} ` : ''}${smsMoney(p.premium)}${period}.${phone ? ` ${phone}` : ''}`
+  return `${p.clientName} ${p.policyNumber} Reg. ${p.productName}. ${cover}. ${method ? `${method} ` : ''}${smsMoney(p.premium)}${period}.`
 }
 
 /** A client row exists but no policy yet — "reg.", never "covered". */
-export function clientRegisteredSms(clientName: string, clientPhone?: string | null): string {
-  const phone = smsPhone(clientPhone)
-  return `${clientName} reg. No policy yet. Agent will contact you.${phone ? ` ${phone}` : ''}`
+export function clientRegisteredSms(clientName: string, _clientPhone?: string | null): string {
+  return `${clientName} reg. No policy yet. Agent will contact you.`
 }
 
 /** An organisation registered for group cover. */
@@ -212,41 +215,35 @@ export interface PaymentNoticeInput {
 export function paymentReceivedSms(p: PaymentNoticeInput): string {
   const method = (p.method ?? '').trim()
   const ref = (p.reference ?? '').trim()
-  const phone = smsPhone(p.clientPhone)
   const pol = (p.policyNumber ?? '').trim()
-  return `${p.clientName}${pol ? ` ${pol}` : ''} paid. ${smsMoney(p.amount)}${method ? ` via ${method}` : ''}.${ref ? ` Ref ${ref}.` : ''}${phone ? ` ${phone}` : ''}`
+  return `${p.clientName}${pol ? ` ${pol}` : ''} paid. ${smsMoney(p.amount)}${method ? ` via ${method}` : ''}.${ref ? ` Ref ${ref}.` : ''}`
 }
 
 /** A payment attempt that collected nothing. */
 export function paymentFailedSms(p: PaymentNoticeInput): string {
   const method = (p.method ?? '').trim()
-  const phone = smsPhone(p.clientPhone)
   const pol = (p.policyNumber ?? '').trim()
-  return `${p.clientName}${pol ? ` ${pol}` : ''} payment failed. ${smsMoney(p.amount)}${method ? ` via ${method}` : ''}. Try again.${phone ? ` ${phone}` : ''}`
+  return `${p.clientName}${pol ? ` ${pol}` : ''} payment failed. ${smsMoney(p.amount)}${method ? ` via ${method}` : ''}. Try again.`
 }
 
 /** Monthly premium reminder (R1/R2/R3 — same text at every stage). */
 export function premiumReminderSms(p: { clientName: string; policyNumber: string; amount: number; dueDate: Date; clientPhone?: string | null }): string {
-  const phone = smsPhone(p.clientPhone)
-  return `${p.clientName} ${p.policyNumber} premium ${smsMoney(p.amount)} due ${smsDate(p.dueDate)}. Pay to keep cover.${phone ? ` ${phone}` : ''}`
+  return `${p.clientName} ${p.policyNumber} premium ${smsMoney(p.amount)} due ${smsDate(p.dueDate)}. Pay to keep cover.`
 }
 
 /** The grace window closed unpaid — cover suspended until reinstated. */
 export function policyLapsedSms(p: { clientName: string; policyNumber: string; amount: number; dueDate: Date; clientPhone?: string | null }): string {
-  const phone = smsPhone(p.clientPhone)
-  return `${p.clientName} ${p.policyNumber} LAPSED. ${smsMoney(p.amount)} due ${smsDate(p.dueDate)} unpaid. Pay to reinstate.${phone ? ` ${phone}` : ''}`
+  return `${p.clientName} ${p.policyNumber} LAPSED. ${smsMoney(p.amount)} due ${smsDate(p.dueDate)} unpaid. Pay to reinstate.`
 }
 
 /** A monthly group-cover invoice exists — billed to the organisation. */
 export function invoiceIssuedSms(p: { orgName: string; policyNumber: string; invoiceNumber: string; amount: number; heads: number; period: string; dueDate: Date; clientPhone?: string | null }): string {
-  const phone = smsPhone(p.clientPhone)
-  return `${p.orgName} ${p.policyNumber} invoice ${p.invoiceNumber} issued. ${smsMoney(p.amount)} for ${p.heads} member(s), period ${p.period}, due ${smsDate(p.dueDate)}.${phone ? ` ${phone}` : ''}`
+  return `${p.orgName} ${p.policyNumber} invoice ${p.invoiceNumber} issued. ${smsMoney(p.amount)} for ${p.heads} member(s), period ${p.period}, due ${smsDate(p.dueDate)}.`
 }
 
 /** The same grammar for events with no cover/premium to quote — a claim
- *  or ticket stage. `{name} {ref} {event}. {detail}. {phone}` */
-export function noticeSms(clientName: string, ref: string, event: string, detail?: string, clientPhone?: string | null): string {
-  const phone = smsPhone(clientPhone)
+ *  or ticket stage. `{name} {ref} {event}. {detail}.` */
+export function noticeSms(clientName: string, ref: string, event: string, detail?: string, _clientPhone?: string | null): string {
   const d = detail?.trim().replace(/\.+$/, '')
-  return `${clientName} ${ref} ${event}.${d ? ` ${d}.` : ''}${phone ? ` ${phone}` : ''}`
+  return `${clientName} ${ref} ${event}.${d ? ` ${d}.` : ''}`
 }
