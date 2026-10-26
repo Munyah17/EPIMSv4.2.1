@@ -65,6 +65,25 @@ export interface BulkSmsResult {
   results: Array<{ phone: string; result: SmsResult }>
 }
 
+/** Lifecycle context stamped onto each delivery's notification_log row —
+ *  the event bucket (registration, payment, renewal, claim, ticket) plus
+ *  the policy/claim/ticket number support searches by. Callers that know
+ *  the record pass it; test and marketing sends leave it out and land
+ *  under 'system'. */
+export interface SmsContext {
+  event?: string
+  ref?: string
+}
+
+/** Push one delivery outcome into notification_log (via /api/notify's
+ *  logOnly route) with the caller's event/ref attached. Deferred import
+ *  keeps the notify.ts -> smsService.ts import one-directional. */
+function reportSmsOutcome(phone: string, ctx: SmsContext | undefined, status: 'sent' | 'failed' | 'skipped', detail?: string) {
+  void import('./notify').then(({ reportOutcome }) => {
+    reportOutcome({ channel: 'sms', recipient: phone, event: ctx?.event ?? 'system', ref: ctx?.ref, status, detail })
+  }).catch(() => { /**/ })
+}
+
 /** Digits Afrosoft will accept. Invalid input comes back unchanged so the
  *  error still names the number the user typed. */
 function normalizeMsisdn(raw: string): string {
@@ -204,13 +223,13 @@ async function callAfrosoft(
  * The server retries transient failures once and logs the attempt to
  * notification_log, so a failed message leaves a trace an admin can see.
  */
-async function sendViaNotify(to: string, message: string): Promise<SmsResult> {
+async function sendViaNotify(to: string, message: string, ctx?: SmsContext): Promise<SmsResult> {
   try {
     const { data: { session } } = await supabase.auth.getSession()
     const res = await fetch('/api/notify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(session ? { Authorization: `Bearer ${session.access_token}` } : {}) },
-      body: JSON.stringify({ channel: 'sms', recipient: to, text: message, event: 'system' }),
+      body: JSON.stringify({ channel: 'sms', recipient: to, text: message, event: ctx?.event ?? 'system', ref: ctx?.ref }),
     })
     const body = await res.json().catch(() => ({})) as { ok?: boolean; delivery?: { status?: string; detail?: string } }
     if (body.ok && body.delivery?.status === 'sent') return { success: true }
@@ -223,8 +242,8 @@ async function sendViaNotify(to: string, message: string): Promise<SmsResult> {
 /**
  * Send a single SMS via Afrosoft.
  */
-export async function sendSms(to: string, message: string): Promise<SmsResult> {
-  const bulk = await sendBulkSms([to], message)
+export async function sendSms(to: string, message: string, ctx?: SmsContext): Promise<SmsResult> {
+  const bulk = await sendBulkSms([to], message, ctx)
   return bulk.results[0]?.result ?? { success: false, error: 'Send failed' }
 }
 
@@ -232,7 +251,7 @@ export async function sendSms(to: string, message: string): Promise<SmsResult> {
  * Send the same message to multiple recipients. Afrosoft accepts
  * comma-separated numbers in a single call.
  */
-export async function sendBulkSms(numbers: string[], message: string): Promise<BulkSmsResult> {
+export async function sendBulkSms(numbers: string[], message: string, ctx?: SmsContext): Promise<BulkSmsResult> {
   startOutboxPump()
   // Bad numbers are separated out and reported individually, rather than
   // being sent and taking every other recipient down with them.
@@ -241,6 +260,10 @@ export async function sendBulkSms(numbers: string[], message: string): Promise<B
   const invalidResults = invalid.map(phone => {
     const error = `Not a valid Zimbabwe mobile number (${phone.trim() || 'blank'}); correct it on the client record.`
     logSmsLocally(phone, message, 'failed', error)
+    // A number that never reached the gateway is still an attempt the
+    // delivery log should show — it is exactly the kind of quiet dead end
+    // "the client never got the text" investigations used to hit.
+    reportSmsOutcome(phone, ctx, 'failed', error)
     return { phone, result: { success: false, error } }
   })
 
@@ -258,9 +281,9 @@ export async function sendBulkSms(numbers: string[], message: string): Promise<B
     // the message from going out. Only transport-level failures retry —
     // a number Afrosoft refused is refused for good.
     const fallback = await Promise.all(valid.map(async phone => {
-      const d = await sendViaNotify(phone, message)
+      const d = await sendViaNotify(phone, message, ctx)
       logSmsLocally(phone, message, d.success ? 'sent' : 'failed', d.error)
-      if (!d.success) enqueueOutbox(phone, message)
+      if (!d.success) enqueueOutbox(phone, message, ctx)
       return { phone, result: d }
     }))
     // Health + loudness: if every number failed on both routes the gateway
@@ -302,6 +325,10 @@ export async function sendBulkSms(numbers: string[], message: string): Promise<B
         ?? batchReason
         ?? 'Afrosoft accepted the request but did not confirm this number as sent.'
     logSmsLocally(phone, message, success ? 'sent' : 'failed', error)
+    // Every outcome lands in notification_log — sent included — mirroring
+    // sendEmail. Successes used to exist only in this browser's local
+    // history, which made "did the text go out?" unanswerable for staff.
+    reportSmsOutcome(phone, ctx, success ? 'sent' : 'failed', error ?? (sentIds.get(key) ? `accepted, message-id ${sentIds.get(key)}` : undefined))
     return {
       phone,
       result: success ? { success: true, messageId: sentIds.get(key) } : { success: false, error },
@@ -309,29 +336,18 @@ export async function sendBulkSms(numbers: string[], message: string): Promise<B
   })
 
   const all = [...results, ...invalidResults]
-  // A number the gateway refused ("Blacklisted", "not reachable") is a
-  // permanent failure for that handset — record it in notification_log so
-  // every staff member sees it on the dashboard, not only in this one
-  // browser's local history.
+  // Small batches (office alerts — the sends that matter most) get one
+  // retry through /api/notify, which runs on a different Vercel egress
+  // IP — the route a per-key IP-whitelist refusal can still succeed on.
+  // Only numbers Afrosoft actually refused are retried, never a number
+  // that failed local validation. Each retry logs its own delivery row.
   const refused = all.filter(r => !r.result.success)
-  if (refused.length) {
-    void import('./notify').then(({ reportOutcome }) => {
-      for (const r of refused) {
-        reportOutcome({ channel: 'sms', recipient: r.phone, event: 'system', status: 'failed', detail: r.result.error ?? 'Refused by gateway' })
-      }
-    }).catch(() => { /**/ })
-    // Small batches (office alerts — the sends that matter most) get one
-    // retry through /api/notify, which runs on a different Vercel egress
-    // IP — the route a per-key IP-whitelist refusal can still succeed on.
-    // Only numbers Afrosoft actually refused are retried, never a number
-    // that failed local validation.
-    if (valid.length <= 10) {
-      for (const r of results.filter(x => !x.result.success)) {
-        const d = await sendViaNotify(r.phone, message)
-        if (d.success) {
-          r.result = { success: true, messageId: undefined }
-          logSmsLocally(r.phone, message, 'sent', 'delivered via notify fallback after gateway refusal')
-        }
+  if (refused.length && valid.length <= 10) {
+    for (const r of results.filter(x => !x.result.success)) {
+      const d = await sendViaNotify(r.phone, message, ctx)
+      if (d.success) {
+        r.result = { success: true, messageId: undefined }
+        logSmsLocally(r.phone, message, 'sent', 'delivered via notify fallback after gateway refusal')
       }
     }
   }
@@ -517,7 +533,7 @@ const OUTBOX_MAX_AGE_MS = 48 * 60 * 60 * 1000
 const OUTBOX_MAX_TRIES = 8
 const OUTBOX_FLUSH_MS = 3 * 60 * 1000
 
-interface OutboxEntry { to: string; message: string; ts: number; tries: number }
+interface OutboxEntry { to: string; message: string; ctx?: SmsContext; ts: number; tries: number }
 
 function readOutbox(): OutboxEntry[] {
   try { return JSON.parse(localStorage.getItem(OUTBOX_KEY) ?? '[]') } catch { return [] }
@@ -527,11 +543,11 @@ function writeOutbox(entries: OutboxEntry[]) {
   try { localStorage.setItem(OUTBOX_KEY, JSON.stringify(entries.slice(0, 50))) } catch { /**/ }
 }
 
-function enqueueOutbox(to: string, message: string) {
+function enqueueOutbox(to: string, message: string, ctx?: SmsContext) {
   const box = readOutbox()
   // Same text to the same number already waiting? Don't double it.
   if (box.some(e => e.to === to && e.message === message)) return
-  box.push({ to, message, ts: Date.now(), tries: 0 })
+  box.push({ to, message, ctx, ts: Date.now(), tries: 0 })
   writeOutbox(box)
 }
 
@@ -541,7 +557,9 @@ async function flushOutbox() {
   const kept: OutboxEntry[] = []
   for (const entry of box) {
     if (Date.now() - entry.ts > OUTBOX_MAX_AGE_MS || entry.tries >= OUTBOX_MAX_TRIES) {
-      logSmsLocally(entry.to, entry.message, 'failed', `Outbox gave up after ${entry.tries} tries / ${Math.round((Date.now() - entry.ts) / 3600000)}h — last chance exhausted.`)
+      const giveUp = `Outbox gave up after ${entry.tries} tries / ${Math.round((Date.now() - entry.ts) / 3600000)}h — last chance exhausted.`
+      logSmsLocally(entry.to, entry.message, 'failed', giveUp)
+      reportSmsOutcome(entry.to, entry.ctx, 'failed', giveUp)
       continue
     }
     // Try the primary route, then the notify fallback — same order as a
@@ -553,11 +571,12 @@ async function flushOutbox() {
       sent = (detail?.['sent-sms-details'] ?? []).some(s => msisdnKey(s['mobile-no'] ?? '') === msisdnKey(entry.to))
     }
     if (!sent) {
-      const d = await sendViaNotify(entry.to, entry.message)
+      const d = await sendViaNotify(entry.to, entry.message, entry.ctx)
       sent = d.success
     }
     if (sent) {
       logSmsLocally(entry.to, entry.message, 'sent', 'delivered by outbox retry')
+      reportSmsOutcome(entry.to, entry.ctx, 'sent', 'delivered by outbox retry')
     } else {
       kept.push({ ...entry, tries: entry.tries + 1 })
     }

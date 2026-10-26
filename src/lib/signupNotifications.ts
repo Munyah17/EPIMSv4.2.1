@@ -1,5 +1,5 @@
 import type { Policy, Client, Payment, Group } from '../types'
-import { sendSms } from './smsService'
+import { sendSms, type SmsContext } from './smsService'
 import { sendEmail, getNotifSettings, getSmsRecipientsForEvent } from './mailService'
 import { MAILBOXES } from './mailboxes'
 import { premiumPeriodLabel } from './productUtils'
@@ -32,9 +32,9 @@ function money(amount: number): string {
  *  stop it ever going out. The EVENT prefix matches the envelope
  *  api/_lib/notify.ts puts on office copies, so an alert reads the same
  *  whichever pipeline sent it. */
-async function textOffice(numbers: string[], event: string, message: string): Promise<void> {
+async function textOffice(numbers: string[], event: string, message: string, ctx?: SmsContext): Promise<void> {
   for (const number of numbers) {
-    try { await sendSms(number, `${event}: ${message}`) } catch { /* sendSms records the failure */ }
+    try { await sendSms(number, `${event}: ${message}`, ctx) } catch { /* sendSms records the failure */ }
   }
 }
 
@@ -49,7 +49,7 @@ async function textOffice(numbers: string[], event: string, message: string): Pr
 export async function notifyRegistrationFailed(what: string, detail: string): Promise<void> {
   const cfg = getNotifSettings()
   const alert = `${what} FAILED. ${detail}`
-  await textOffice(await getSmsRecipientsForEvent('registration'), 'REGISTRATION', alert)
+  await textOffice(await getSmsRecipientsForEvent('registration'), 'REGISTRATION', alert, { event: 'registration' })
   void sendEmail({
     to: cfg.insurerEmail,
     subject: `[Registration Failed] ${what}`,
@@ -63,7 +63,7 @@ export async function notifyClientRegistered(client: Client, registeredBy?: stri
   const text = clientRegisteredSms(client.name, client.phone)
 
   if (client.phone) {
-    await sendSms(client.phone, text)
+    await sendSms(client.phone, text, { event: 'registration' })
   }
 
   if (client.email) {
@@ -84,7 +84,7 @@ Please note this registration does not itself put any cover in place. One of our
   }
 
   const alert = `${text}${registeredBy ? ` by ${registeredBy}` : ''}`
-  await textOffice(await getSmsRecipientsForEvent('registration'), 'REGISTRATION', alert)
+  await textOffice(await getSmsRecipientsForEvent('registration'), 'REGISTRATION', alert, { event: 'registration' })
 }
 
 /** An organisation registered for group/corporate cover — the company's
@@ -100,7 +100,7 @@ export async function notifyGroupRegistered(group: Group): Promise<void> {
   const orgNumbers = [...new Set([group.orgPhone, group.contactPhone].filter(Boolean))] as string[]
   const msg = `${groupRegisteredSms(group.name, kind, group.contactName, group.contactPhone)}. Keep this.`
   for (const number of orgNumbers) {
-    await sendSms(number, msg)
+    await sendSms(number, msg, { event: 'registration', ref: group.name })
   }
 
   if (group.orgEmail || group.contactEmail) {
@@ -114,7 +114,7 @@ export async function notifyGroupRegistered(group: Group): Promise<void> {
   }
 
   const alert = groupRegisteredSms(group.name, kind, group.contactName, group.contactPhone)
-  await textOffice(await getSmsRecipientsForEvent('registration'), 'REGISTRATION', alert)
+  await textOffice(await getSmsRecipientsForEvent('registration'), 'REGISTRATION', alert, { event: 'registration', ref: group.name })
 }
 
 export async function notifyPolicyRegistered(policy: Policy, client: Client | null): Promise<void> {
@@ -147,7 +147,7 @@ export async function notifyPolicyRegistered(policy: Policy, client: Client | nu
     clientPhone: client?.phone,
   })
   if (client?.phone) {
-    await sendSms(client.phone, text)
+    await sendSms(client.phone, text, { event: 'registration', ref: policy.policyNumber })
   }
 
   if (client?.email) {
@@ -179,7 +179,7 @@ Keep this email for your records. If any detail above is wrong, contact us and w
   // Same text the client received — the office reads exactly what the
   // client got, so "the document says $500" disputes can't start from a
   // differently-worded alert.
-  await textOffice(await getSmsRecipientsForEvent('registration'), 'REGISTRATION', text)
+  await textOffice(await getSmsRecipientsForEvent('registration'), 'REGISTRATION', text, { event: 'registration', ref: policy.policyNumber })
 
   const insurerRecipient = cfg.insurerEmail
 
@@ -229,10 +229,10 @@ export async function notifyPaymentReceived(payment: Payment, client: { phone?: 
   // would announce a transaction the client was never part of. Office
   // alerts below still go out; staff need the receipt regardless.
   if (productCategory !== 'agriculture' && client?.phone) {
-    await sendSms(client.phone, text)
+    await sendSms(client.phone, text, { event: 'payment', ref: payment.policyNumber ?? undefined })
   }
 
-  await textOffice(await getSmsRecipientsForEvent('payment'), 'PAYMENT', text)
+  await textOffice(await getSmsRecipientsForEvent('payment'), 'PAYMENT', text, { event: 'payment', ref: payment.policyNumber ?? undefined })
 }
 
 /** A payment that came back failed — a declined EcoCash prompt, a bounced
@@ -251,7 +251,7 @@ export async function notifyPaymentFailed(payment: { policyNumber: string; clien
   })
 
   if (productCategory !== 'agriculture' && client?.phone) {
-    await sendSms(client.phone, text)
+    await sendSms(client.phone, text, { event: 'payment', ref: payment.policyNumber })
   }
   if (productCategory !== 'agriculture' && client?.email) {
     void sendEmail({
@@ -262,7 +262,7 @@ export async function notifyPaymentFailed(payment: { policyNumber: string; clien
     }).catch(() => { /**/ })
   }
 
-  await textOffice(await getSmsRecipientsForEvent('payment'), 'PAYMENT', text)
+  await textOffice(await getSmsRecipientsForEvent('payment'), 'PAYMENT', text, { event: 'payment', ref: payment.policyNumber })
   void sendEmail({
     to: cfg.insurerEmail,
     subject: `[Payment Failed] ${payment.policyNumber}: ${payment.clientName}`,

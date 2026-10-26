@@ -3,7 +3,7 @@ import type { ToastMessage, Reminder, Policy } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
-import { sendSms } from '../lib/smsService'
+import { sendSms, type SmsContext } from '../lib/smsService'
 import { policyBillablePremium } from '../lib/premium'
 import { premiumReminderSms, policyLapsedSms } from '../lib/smsText'
 import { sendSystemEmail } from '../lib/mailService'
@@ -67,7 +67,7 @@ export default function Reminders({ showToast }: Props) {
    *  SMS and/or email before the row is marked sent, and a delivery failure
    *  is reported rather than toasted away. Returns the channel that reached
    *  the client first, or null when nothing was delivered. */
-  const dispatchToClient = async (clientId: string, clientName: string, subject: string, body: string, smsText?: string): Promise<'sms' | 'email' | null> => {
+  const dispatchToClient = async (clientId: string, clientName: string, subject: string, body: string, smsText?: string, ctx?: SmsContext): Promise<'sms' | 'email' | null> => {
     const { data: client } = await db.clients.get(clientId)
     if (!client || (!client.phone && !client.email)) {
       showToast('warning', `No phone or email on file for ${clientName} — reminder not sent.`)
@@ -77,7 +77,7 @@ export default function Reminders({ showToast }: Props) {
       // smsText is the verbatim SMS (an engine-sent reminder re-sends its
       // stored sms_body — the same message the client already received);
       // the email-style body doubles as SMS only when none exists.
-      try { if ((await sendSms(client.phone, smsText ?? body)).success) return 'sms' } catch { /* fall through to email */ }
+      try { if ((await sendSms(client.phone, smsText ?? body, ctx)).success) return 'sms' } catch { /* fall through to email */ }
     }
     if (client.email) {
       const { delivered } = await sendSystemEmail({ from: MAILBOXES.noreply, to: client.email, subject, body })
@@ -99,7 +99,8 @@ export default function Reminders({ showToast }: Props) {
   }
 
   const dispatchReminder = async (r: Reminder): Promise<boolean> => {
-    const channel = await dispatchToClient(r.clientId, r.clientName, `${COMPANY_NAME} — policy reminder`, reminderMessage(r), r.smsBody)
+    const channel = await dispatchToClient(r.clientId, r.clientName, `${COMPANY_NAME} — policy reminder`, reminderMessage(r), r.smsBody,
+      { event: r.type === 'payment_due' ? 'payment' : r.type === 'policy_renewal' ? 'renewal' : 'system', ref: r.policyNumber ?? undefined })
     if (!channel) return false
     await db.reminders.markSent(r.id, `${COMPANY_NAME}: ${reminderMessage(r)}`)
     return true
@@ -142,7 +143,8 @@ export default function Reminders({ showToast }: Props) {
       const { data: c } = await db.clients.get(p.clientId)
       const smsInput = { clientName: p.clientName, policyNumber: p.policyNumber, amount: policyBillablePremium(p), dueDate: new Date(p.endDate), clientPhone: c?.phone }
       const smsText = p.status === 'lapsed' || p.status === 'defaulted' ? policyLapsedSms(smsInput) : premiumReminderSms(smsInput)
-      const channel = await dispatchToClient(p.clientId, p.clientName, `${COMPANY_NAME} — renewal reminder`, body, smsText)
+      const channel = await dispatchToClient(p.clientId, p.clientName, `${COMPANY_NAME} — renewal reminder`, body, smsText,
+        { event: 'renewal', ref: p.policyNumber })
       if (!channel) {
         showToast('error', `Renewal reminder for ${p.clientName} could not be delivered — nothing was sent.`)
         return

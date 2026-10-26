@@ -84,11 +84,11 @@ export async function sendWhatsApp(to: string, text: string, event: string, ref?
   return delivery
 }
 
-/** A phone number that needs BOTH channels — SMS and WhatsApp at once. */
+/** A phone number that needs BOTH channels — SMS and WhatsApp at once.
+ *  The SMS leg reports its own outcome to notification_log (sent AND
+ *  failed) now that sendSms carries the event/ref through. */
 export function notifyPhone(to: string, text: string, event: string, ref?: string) {
-  void sendSms(to, text).then(r => {
-    if (!r.success) reportOutcome({ channel: 'sms', recipient: to, event, ref, status: 'failed', detail: r.error })
-  }).catch(() => reportOutcome({ channel: 'sms', recipient: to, event, ref, status: 'failed' }))
+  void sendSms(to, text, { event, ref })
   void sendWhatsApp(to, text, event, ref)
 }
 
