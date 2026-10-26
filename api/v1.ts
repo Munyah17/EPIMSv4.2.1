@@ -4,7 +4,8 @@ import crypto from 'crypto'
 import { generateTransactionId } from './_lib/transactionId'
 import { dispatchNotification } from './_lib/notify.js'
 import { isTobaccoProduct, TOBACCO_SEASON } from './_lib/policyTerm.js'
-import { clientRegisteredSms, policyRegisteredSms, paymentReceivedSms } from '../src/lib/smsText.js'
+import { clientRegisteredSms, policyRegisteredSms, paymentReceivedSms, isTobaccoFieldToFloor, fieldToFloorCoverLine } from '../src/lib/smsText.js'
+import { resolveSmsText, smsVarMoney } from '../src/lib/smsTemplates.js'
 
 /**
  * Public Developer API (/api/v1/...). External developers integrate this
@@ -430,10 +431,14 @@ async function createClient_(admin: SupabaseClient, body: Json, agentId: string)
   if (!error) {
     // The client and the office both hear about a new registration —
     // wherever it came in from.
+    const regSms = await resolveSmsText(admin, 'client_registered', {
+      vars: { clientName: name },
+      fallback: clientRegisteredSms(name, phone),
+    })
     void dispatchNotification(admin, {
       event: 'registration',
       client: { name, phone, email: body.email ? String(body.email) : null },
-      smsText: clientRegisteredSms(name, phone),
+      smsText: regSms,
       emailSubject: 'Welcome to Motions Microinsurance',
       emailText: `Dear ${name},\n\nYour details have been registered with Motions Microinsurance.\n\nPlease note this registration does not itself put any cover in place. One of our agents will contact you to arrange a policy suited to you.\n\nRegards,\nMotions Microinsurance`,
     }).catch(e => console.error('v1.clients: registration notify failed', e))
@@ -589,20 +594,40 @@ async function createPolicy(admin: SupabaseClient, body: Json, dev: Record<strin
   // Issued through a partner, still our policy — the client gets the same
   // registration confirmation as a counter sale, and the office sees it land.
   const { data: contact } = await admin.from('clients').select('name, phone, email').eq('id', clientId).maybeSingle()
-  void dispatchNotification(admin, {
-    event: 'registration',
-    ref: data.policy_number,
-    client: contact ?? undefined,
-    smsText: policyRegisteredSms({
+  const polPremium = Number(product.premium)
+  const polF2F = isTobaccoFieldToFloor(product.name)
+  const polSms = await resolveSmsText(admin, 'registration_confirmation', {
+    productId: product.id as string,
+    vars: {
+      clientName: contact?.name ?? 'Client',
+      policyNumber: data.policy_number,
+      productName: product.name,
+      coverAmount: smsVarMoney(Number(product.cover_amount)),
+      coverLine: polF2F
+        ? fieldToFloorCoverLine(product.name, polPremium)
+        : smsVarMoney(Number(product.cover_amount)),
+      premium: smsVarMoney(polPremium),
+      // Tobacco texts carry no period label — see smsText.ts.
+      period: polF2F ? '' : '/yr',
+      premiumWithPeriod: polF2F ? smsVarMoney(polPremium) : `${smsVarMoney(polPremium)}/yr`,
+      paymentMethod,
+    },
+    fallback: policyRegisteredSms({
       clientName: contact?.name ?? 'Client',
       policyNumber: data.policy_number,
       productName: product.name,
       productCategory: product.category as string | undefined,
       coverAmount: Number(product.cover_amount),
-      premium: Number(product.premium),
+      premium: polPremium,
       paymentMethod,
       clientPhone: contact?.phone,
     }),
+  })
+  void dispatchNotification(admin, {
+    event: 'registration',
+    ref: data.policy_number,
+    client: contact ?? undefined,
+    smsText: polSms,
     emailSubject: `Policy ${data.policy_number} registered`,
     emailText: `Dear ${contact?.name ?? 'Client'},\n\nYour policy has been registered through one of our agents.\n\nPolicy Number:  ${data.policy_number}\nProduct:        ${product.name}\nCover Amount:   $${Number(product.cover_amount).toLocaleString()}\nPremium:        $${Number(product.premium).toFixed(2)} per month\nStatus:         PENDING APPROVAL\n\nWe will confirm once it is active.\n\nRegards,\nMotions Microinsurance`,
   }).catch(e => console.error('v1.policies: registration notify failed', e))
@@ -806,9 +831,16 @@ async function recordPayment(admin: SupabaseClient, body: Json, agentId: string)
   if (category !== 'agriculture') {
     const client = policy.clients as { name?: string; email?: string | null; phone?: string | null } | null
     const amountFmt = `$${amount.toFixed(2)}`
-    void dispatchNotification(admin, {
-      event: 'payment', ref: policyNumber, client,
-      smsText: paymentReceivedSms({
+    const paySms = await resolveSmsText(admin, 'payment_received', {
+      productId: policy.product_id,
+      vars: {
+        clientName: client?.name ?? 'Client',
+        policyNumber,
+        amount: smsVarMoney(amount),
+        method,
+        reference: paymentRow.reference,
+      },
+      fallback: paymentReceivedSms({
         clientName: client?.name ?? 'Client',
         policyNumber,
         amount,
@@ -816,6 +848,10 @@ async function recordPayment(admin: SupabaseClient, body: Json, agentId: string)
         reference: paymentRow.reference,
         clientPhone: client?.phone,
       }),
+    })
+    void dispatchNotification(admin, {
+      event: 'payment', ref: policyNumber, client,
+      smsText: paySms,
       emailSubject: `Payment received: policy ${policyNumber}`,
       emailText: `Dear ${client?.name ?? 'Client'},\n\nWe have received your payment.\n\nAmount:    ${amountFmt}\nPolicy:    ${policyNumber}\nMethod:    ${method}\nReference: ${paymentRow.reference}\n\nThank you for keeping your cover up to date.\n\nRegards,\nMotions Microinsurance`,
     }).catch(e => console.error('v1.payments: notify failed', e))

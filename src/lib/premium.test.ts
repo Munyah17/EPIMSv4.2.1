@@ -65,7 +65,7 @@ describe('per-head premiums', () => {
       ...base,
       dependants: [{ name: 'Tendai', relationship: 'Spouse', dob: '1992-04-02', nationalId: 'A', premium: 12 }],
     }
-    expect(formatBillablePremium(policy)).toBe('$24.00/mo (2 people)')
-    expect(formatBillablePremium(base)).toBe('$12.00/mo')
+    expect(formatBillablePremium(policy)).toBe('$24.00/yr (2 people)')
+    expect(formatBillablePremium(base)).toBe('$12.00/yr')
   })
 })

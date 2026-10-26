@@ -110,7 +110,7 @@ const acPhone: Handler = async ({ input, phone, session, admin }) => {
     await deleteSession(admin, session)
     return sendText(phone, 'No products are available right now.')
   }
-  await sendText(phone, `Select a product\n\n${products.map((p, i) => `${i + 1}. ${p.name} [$${p.premium}/month — ${coverLabel(p.name, p.coverAmount)}]`).join('\n')}`)
+  await sendText(phone, `Select a product\n\n${products.map((p, i) => `${i + 1}. ${p.name} [$${p.premium}/yr — ${coverLabel(p.name, p.coverAmount, p.premium)}]`).join('\n')}`)
   return setState(admin, session, 'AC_PRODUCT')
 }
 

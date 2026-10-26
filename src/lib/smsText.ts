@@ -114,12 +114,14 @@ export function dedupeMessage(raw: string): string {
 //
 // Approved standard (verbatim example, variables swapped per record):
 //
-//   Demo User TOB0514 Reg. Field To Floor Standard. Cover: Barn Fire
+//   Demo User TOB0514. Field To Floor Standard. Cover: Barn Fire
 //   $500, Hail Storm $500, Wind Storm $500, Funeral $500. Stop Order
-//   $105/yr.
+//   $105.
 //
 // Grammar: {clientName} {policyNumber} {event}. {details}. {method}
-// {premium}/{period}.
+// {premium}{period}. Field To Floor products drop the "Reg." verb and
+// the "/yr" period label — the peril breakdown is the cover clause —
+// every other product keeps "Reg." and "/yr".
 //
 // No trailing phone number: the recipient is the owner of that number —
 // echoing it back costs twelve characters and tells them nothing.
@@ -135,22 +137,56 @@ export function dedupeMessage(raw: string): string {
  *  second copy that could drift from what the SMS quotes. */
 export function isTobaccoFieldToFloor(productName: string): boolean {
   const n = productName.toLowerCase()
-  return n.includes('tobacco') || n.includes('field to floor')
+  // "Field To Field" is the misspelling that keeps reappearing in the
+  // product sheet — accept it so a data-entry typo never drops the
+  // peril breakdown off a grower's message.
+  return n.includes('tobacco') || n.includes('field to floor') || n.includes('field to field')
 }
 
-export function fieldToFloorCover(sumInsured: number): Array<{ peril: string; benefit: number }> {
-  const high = sumInsured >= 2000
+/**
+ * Field To Floor peril schedule — keyed by PRODUCT TIER, not sum insured.
+ * The product sheet (Oct 2026):
+ *   Entry    $60/yr   field perils $250
+ *   Basic    $65/yr   field perils $250
+ *   Standard $105/yr  field perils $500
+ *   Comfort  $165/yr  field perils $750
+ *   Premium  $210/yr  field perils $1,000
+ *   Funeral benefit is a flat $500 at every tier (grower's own cover,
+ *   not scaled with the crop).
+ *
+ * Tier comes from the product name; the annual premium is the
+ * tie-breaker when the name carries no tier word (mid-point bands
+ * between the listed prices), and an unrecognised F2F product falls
+ * back to the Standard schedule — the flagship tier.
+ */
+function fieldToFloorPerilBenefit(productName: string, premium?: number): number {
+  const n = productName.toLowerCase()
+  if (n.includes('premium')) return 1000
+  if (n.includes('comfort')) return 750
+  if (n.includes('standard')) return 500
+  if (n.includes('entry') || n.includes('basic')) return 250
+  if (premium != null && premium > 0) {
+    if (premium <= 85) return 250    // Entry $60 / Basic $65
+    if (premium <= 135) return 500   // Standard $105
+    if (premium <= 187.5) return 750 // Comfort $165
+    return 1000                      // Premium $210
+  }
+  return 500
+}
+
+export function fieldToFloorCover(productName: string, premium?: number): Array<{ peril: string; benefit: number }> {
+  const b = fieldToFloorPerilBenefit(productName, premium)
   return [
-    { peril: 'Barn Fire',  benefit: high ? 500 : 250 },
-    { peril: 'Hail Storm', benefit: high ? 500 : 250 },
-    { peril: 'Wind Storm', benefit: high ? 500 : 250 },
+    { peril: 'Barn Fire',  benefit: b },
+    { peril: 'Hail Storm', benefit: b },
+    { peril: 'Wind Storm', benefit: b },
     { peril: 'Funeral',    benefit: 500 },
   ]
 }
 
 /** One line for SMS/WhatsApp: "Barn Fire $500, Hail Storm $500, …" */
-export function fieldToFloorCoverLine(sumInsured: number): string {
-  return fieldToFloorCover(sumInsured).map(c => `${c.peril} $${c.benefit}`).join(', ')
+export function fieldToFloorCoverLine(productName: string, premium?: number): string {
+  return fieldToFloorCover(productName, premium).map(c => `${c.peril} $${c.benefit}`).join(', ')
 }
 
 /** "$105" / "$12.50" — whole amounts never carry ".00" (segment space is
@@ -204,16 +240,19 @@ export interface PolicyNoticeInput {
 
 /** THE policy-registered text — the approved standard, verbatim shape. */
 export function policyRegisteredSms(p: PolicyNoticeInput): string {
-  // The product name already says "Field To Floor" — the cover label
-  // doesn't repeat it.
   const fieldToFloor = isTobaccoFieldToFloor(p.productName)
   const cover = fieldToFloor
-    ? `Cover: ${fieldToFloorCoverLine(p.coverAmount)}`
+    ? `Cover: ${fieldToFloorCoverLine(p.productName, p.premium)}`
     : `Cover ${smsMoney(p.coverAmount)}`
   const method = (p.paymentMethod ?? '').trim()
   // Every premium is quoted annual — the figure on the product is the
   // whole year's cover however it is collected (stop order, EcoCash,
   // cash). "/mo" was misquoting the same figure as a monthly price.
+  if (fieldToFloor) {
+    // Tobacco wording per the product sheet: no "Reg.", no phone, no
+    // "/yr" — the peril breakdown IS the cover clause.
+    return `${p.clientName} ${p.policyNumber}. ${p.productName}. ${cover}. ${method ? `${method} ` : ''}${smsMoney(p.premium)}.`
+  }
   const period = '/yr'
   return `${p.clientName} ${p.policyNumber} Reg. ${p.productName}. ${cover}. ${method ? `${method} ` : ''}${smsMoney(p.premium)}${period}.`
 }

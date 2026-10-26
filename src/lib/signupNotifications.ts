@@ -6,10 +6,12 @@ import { MAILBOXES } from './mailboxes'
 import { premiumPeriodLabel } from './productUtils'
 import { COMPANY_NAME } from './company'
 import {
-  isTobaccoFieldToFloor, fieldToFloorCover,
+  isTobaccoFieldToFloor, fieldToFloorCover, fieldToFloorCoverLine,
   clientRegisteredSms, groupRegisteredSms, policyRegisteredSms,
   paymentReceivedSms, paymentFailedSms,
 } from './smsText'
+import { supabase } from './supabase'
+import { resolveSmsText, smsVarMoney } from './smsTemplates'
 
 /**
  * Fires the moment a policy is registered, by whatever route -- an agent in
@@ -78,7 +80,10 @@ export async function notifyRegistrationFailed(what: string, detail: string): Pr
 
 export async function notifyClientRegistered(client: Client, registeredBy?: string): Promise<void> {
   const cfg = getNotifSettings()
-  const text = clientRegisteredSms(client.name, client.phone)
+  const text = await resolveSmsText(supabase, 'client_registered', {
+    vars: { clientName: client.name },
+    fallback: clientRegisteredSms(client.name, client.phone),
+  })
 
   await textClientOnRegistration([client.phone], text, undefined, cfg.registrationClientSmsPaused)
 
@@ -114,7 +119,10 @@ export async function notifyGroupRegistered(group: Group): Promise<void> {
 
   // The organisation's own numbers — org line and the representative's.
   const orgNumbers = [...new Set([group.orgPhone, group.contactPhone].filter(Boolean))] as string[]
-  const msg = `${groupRegisteredSms(group.name, kind, group.contactName, group.contactPhone)}. Keep this.`
+  const msg = await resolveSmsText(supabase, 'group_registered', {
+    vars: { orgName: group.name, groupName: group.name, kind, contactName: group.contactName, contactPhone: group.contactPhone },
+    fallback: `${groupRegisteredSms(group.name, kind, group.contactName, group.contactPhone)}. Keep this.`,
+  })
   await textClientOnRegistration(orgNumbers, msg, group.name, cfg.registrationClientSmsPaused)
 
   if (group.orgEmail || group.contactEmail) {
@@ -142,7 +150,7 @@ export async function notifyPolicyRegistered(policy: Policy, client: Client | nu
   // the four heads add up to $2,000.
   const fieldToFloor = isTobaccoFieldToFloor(policy.productName)
   const coverEmail = fieldToFloor
-    ? `Cover Provided (Field to Floor):\n${fieldToFloorCover(policy.coverAmount).map(c => `  ${c.peril.padEnd(14)}${money(c.benefit)}`).join('\n')}`
+    ? `Cover Provided (Field to Floor):\n${fieldToFloorCover(policy.productName, policy.premium).map(c => `  ${c.peril.padEnd(14)}${money(c.benefit)}`).join('\n')}`
     : `Cover Amount:   ${cover}`
 
   // ── The client ────────────────────────────────────────────────────
@@ -150,15 +158,31 @@ export async function notifyPolicyRegistered(policy: Policy, client: Client | nu
   // policy came through. The client may be missing when the record
   // lookup failed: the office still gets the alert either way.
   const clientName = client?.name ?? policy.clientName
-  const text = policyRegisteredSms({
-    clientName,
-    policyNumber: policy.policyNumber,
-    productName: policy.productName,
-    productCategory: policy.productCategory,
-    coverAmount: policy.coverAmount,
-    premium: policy.premium,
-    paymentMethod: policy.paymentMethod,
-    clientPhone: client?.phone,
+  const text = await resolveSmsText(supabase, 'registration_confirmation', {
+    productId: policy.productId,
+    vars: {
+      clientName,
+      policyNumber: policy.policyNumber,
+      productName: policy.productName,
+      coverAmount: smsVarMoney(policy.coverAmount),
+      coverLine: fieldToFloor ? fieldToFloorCoverLine(policy.productName, policy.premium) : smsVarMoney(policy.coverAmount),
+      premium: smsVarMoney(policy.premium),
+      // Tobacco texts carry no period label — a template for an F2F
+      // product must not be able to put "/yr" back in.
+      period: fieldToFloor ? '' : period,
+      premiumWithPeriod: fieldToFloor ? smsVarMoney(policy.premium) : `${smsVarMoney(policy.premium)}${period}`,
+      paymentMethod: policy.paymentMethod,
+    },
+    fallback: policyRegisteredSms({
+      clientName,
+      policyNumber: policy.policyNumber,
+      productName: policy.productName,
+      productCategory: policy.productCategory,
+      coverAmount: policy.coverAmount,
+      premium: policy.premium,
+      paymentMethod: policy.paymentMethod,
+      clientPhone: client?.phone,
+    }),
   })
   await textClientOnRegistration([client?.phone], text, policy.policyNumber, cfg.registrationClientSmsPaused)
 
@@ -226,14 +250,24 @@ ${policy.agentName ? `Registered by:  ${policy.agentName}` : 'Registered through
  * and telling the client or the office otherwise is exactly the kind of
  * mistake an insurer cannot afford to make by SMS.
  */
-export async function notifyPaymentReceived(payment: Payment, client: { phone?: string; name?: string } | null | undefined, productCategory?: string): Promise<void> {
-  const text = paymentReceivedSms({
-    clientName: client?.name ?? payment.clientName,
-    policyNumber: payment.policyNumber,
-    amount: payment.amount,
-    method: payment.method,
-    reference: payment.reference,
-    clientPhone: client?.phone,
+export async function notifyPaymentReceived(payment: Payment, client: { phone?: string; name?: string } | null | undefined, productCategory?: string, productId?: string): Promise<void> {
+  const text = await resolveSmsText(supabase, 'payment_received', {
+    productId,
+    vars: {
+      clientName: client?.name ?? payment.clientName,
+      policyNumber: payment.policyNumber,
+      amount: smsVarMoney(payment.amount),
+      method: payment.method,
+      reference: payment.reference,
+    },
+    fallback: paymentReceivedSms({
+      clientName: client?.name ?? payment.clientName,
+      policyNumber: payment.policyNumber,
+      amount: payment.amount,
+      method: payment.method,
+      reference: payment.reference,
+      clientPhone: client?.phone,
+    }),
   })
 
   // The farmer never hands over money -- the association settles the
@@ -251,15 +285,25 @@ export async function notifyPaymentReceived(payment: Payment, client: { phone?: 
  *  Paynow transaction. The client hears it plainly (their bank's own
  *  message doesn't count as ours) and the office knows someone needs a
  *  follow-up call. */
-export async function notifyPaymentFailed(payment: { policyNumber: string; clientName: string; amount: number; method?: string; reference?: string }, client: { phone?: string; email?: string | null; name?: string } | null | undefined, productCategory?: string): Promise<void> {
+export async function notifyPaymentFailed(payment: { policyNumber: string; clientName: string; amount: number; method?: string; reference?: string }, client: { phone?: string; email?: string | null; name?: string } | null | undefined, productCategory?: string, productId?: string): Promise<void> {
   const cfg = getNotifSettings()
   const amount = money(payment.amount)
-  const text = paymentFailedSms({
-    clientName: client?.name ?? payment.clientName,
-    policyNumber: payment.policyNumber,
-    amount: payment.amount,
-    method: payment.method,
-    clientPhone: client?.phone,
+  const text = await resolveSmsText(supabase, 'payment_failed', {
+    productId,
+    vars: {
+      clientName: client?.name ?? payment.clientName,
+      policyNumber: payment.policyNumber,
+      amount: smsVarMoney(payment.amount),
+      method: payment.method,
+      reference: payment.reference,
+    },
+    fallback: paymentFailedSms({
+      clientName: client?.name ?? payment.clientName,
+      policyNumber: payment.policyNumber,
+      amount: payment.amount,
+      method: payment.method,
+      clientPhone: client?.phone,
+    }),
   })
 
   if (productCategory !== 'agriculture' && client?.phone) {

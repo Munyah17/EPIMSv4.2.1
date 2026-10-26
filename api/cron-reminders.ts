@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { dispatchNotification } from './_lib/notify.js'
 import { premiumReminderSms, policyLapsedSms, invoiceIssuedSms } from '../src/lib/smsText.js'
+import { resolveSmsText, smsVarMoney } from '../src/lib/smsTemplates.js'
 
 /**
  * Billing reminders, run on the server.
@@ -127,8 +128,10 @@ function clientEmailBody(policy: PolicyRow, type: ReminderType, due: string, amo
 
 /** The ONE reminder text — built by the shared builders in smsText.ts so
  *  the in-browser engine (src/lib/reminderEngine.ts) and this cron send a
- *  client byte-identical wording whichever fires first. */
-function clientSmsBody(policy: PolicyRow, type: ReminderType, dueDate: Date): string {
+ *  client byte-identical wording whichever fires first. A saved template
+ *  (Bulk SMS → Templates) overrides it — the resolver itself is shared, so
+ *  browser and cron still agree on whatever the current wording is. */
+async function clientSmsBody(admin: SupabaseClient, policy: PolicyRow, type: ReminderType, dueDate: Date): Promise<string> {
   const input = {
     clientName: policy.clients?.name ?? 'Client',
     policyNumber: policy.policy_number,
@@ -136,7 +139,17 @@ function clientSmsBody(policy: PolicyRow, type: ReminderType, dueDate: Date): st
     dueDate,
     clientPhone: policy.clients?.phone,
   }
-  return type === 'lapse' ? policyLapsedSms(input) : premiumReminderSms(input)
+  return resolveSmsText(admin, type === 'lapse' ? 'policy_lapsed' : 'premium_reminder', {
+    productId: policy.product_id,
+    vars: {
+      clientName: input.clientName,
+      policyNumber: policy.policy_number,
+      productName: policy.products?.name ?? '',
+      amount: smsVarMoney(input.amount),
+      dueDate: formatDate(dueDate),
+    },
+    fallback: type === 'lapse' ? policyLapsedSms(input) : premiumReminderSms(input),
+  })
 }
 
 // ── One policy ─────────────────────────────────────────────────────
@@ -168,12 +181,13 @@ async function dispatch(
   // Every stage, client and office, all three channels — and each attempt
   // is written to notification_log, so a failed send shows up on the
   // dashboard instead of pretending the run was clean.
+  const smsBody = await clientSmsBody(admin, policy, type, dueDate)
   const deliveries = await dispatchNotification(admin, {
     event: 'renewal',
     ref: policy.policy_number,
     client: { name, phone: policy.clients?.phone, email: policy.clients?.email },
-    smsText: clientSmsBody(policy, type, dueDate),
-    whatsappText: clientSmsBody(policy, type, dueDate),
+    smsText: smsBody,
+    whatsappText: smsBody,
     emailSubject: type === 'lapse'
       ? `Notice: ${policy.policy_number} has LAPSED`
       : `Premium Reminder: ${policy.policy_number} due ${dueLabel}`,
@@ -216,7 +230,7 @@ async function dispatch(
     channel: 'email',
   }
   const { error: insErr } = await admin.from('reminders')
-    .insert({ ...reminderRow, sms_body: clientSmsBody(policy, type, dueDate) })
+    .insert({ ...reminderRow, sms_body: smsBody })
   if (insErr) {
     // sms_body missing (migration not run) — the dedup row still matters.
     await admin.from('reminders').insert(reminderRow)
@@ -529,10 +543,22 @@ async function issueMonthlyInvoices(admin: SupabaseClient, today: Date) {
       // The organisation hears about its bill on every channel — same rule
       // as every billing event: nothing financial is silent.
       const org = policy.groups?.name ?? policy.clients?.name ?? 'Client'
-      const sms = invoiceIssuedSms({
-        orgName: org, policyNumber: policy.policy_number, invoiceNumber,
-        amount, heads, period, dueDate: lastDayOfMonth(today),
-        clientPhone: policy.clients?.phone,
+      const sms = await resolveSmsText(admin, 'invoice_issued', {
+        productId: policy.product_id,
+        vars: {
+          orgName: org,
+          policyNumber: policy.policy_number,
+          invoiceNumber,
+          amount: smsVarMoney(amount),
+          heads,
+          billingPeriod: period,
+          dueDate: formatDate(lastDayOfMonth(today)),
+        },
+        fallback: invoiceIssuedSms({
+          orgName: org, policyNumber: policy.policy_number, invoiceNumber,
+          amount, heads, period, dueDate: lastDayOfMonth(today),
+          clientPhone: policy.clients?.phone,
+        }),
       })
       await dispatchNotification(admin, {
         event: 'payment',

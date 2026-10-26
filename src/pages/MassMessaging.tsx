@@ -6,6 +6,7 @@ import { sendBulkSms, getSmsSettings, saveSmsSettings, getSmsLog, clearSmsLog } 
 import type { SmsSettings, SmsLogEntry } from '../lib/smsService'
 import { useAuth } from '../contexts/AuthContext'
 import { formatDateTime } from '../lib/dateUtils'
+import { SmsTemplatesPanel } from './SmsTemplates'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -22,7 +23,7 @@ export default function MassMessaging({ showToast }: Props) {
   const [search, setSearch] = useState('')
   const [sending, setSending] = useState(false)
   const [attempted, setAttempted] = useState(false)
-  const [tab, setTab] = useState<'compose' | 'settings' | 'log'>('compose')
+  const [tab, setTab] = useState<'compose' | 'templates' | 'settings' | 'log'>('compose')
   const [smsConfig, setSmsConfig] = useState<SmsSettings>(() => getSmsSettings())
   const [log, setLog] = useState<SmsLogEntry[]>([])
   // WhatsApp messages queued because no Business API credentials exist yet —
@@ -111,6 +112,9 @@ export default function MassMessaging({ showToast }: Props) {
       <div className="tabs" style={{ marginBottom: 16 }}>
         <button className={`tab${tab === 'compose' ? ' active' : ''}`} onClick={() => setTab('compose')}>
           Compose & Send
+        </button>
+        <button className={`tab${tab === 'templates' ? ' active' : ''}`} onClick={() => setTab('templates')}>
+          Notification Templates
         </button>
         <button className={`tab${tab === 'settings' ? ' active' : ''}`} onClick={() => setTab('settings')}>
           Gateway Settings
@@ -216,6 +220,9 @@ export default function MassMessaging({ showToast }: Props) {
           </div>
         </div>
       )}
+
+      {/* ── TEMPLATES TAB ── */}
+      {tab === 'templates' && <SmsTemplatesPanel showToast={showToast} />}
 
       {/* ── SETTINGS TAB ── */}
       {tab === 'settings' && (

@@ -84,14 +84,13 @@ export function billableHeadCount(policy: Policy, category?: string): number {
   return premiumLines(policy, category).length
 }
 
-/** e.g. "$36.00/mo (3 people)" — one phrasing everywhere a total is shown. */
+/** e.g. "$36.00/yr (3 people)" — one phrasing everywhere a total is shown. */
 export function formatBillablePremium(policy: Policy, category?: string): string {
   const cat = category ?? policy.productCategory
   const total = policyBillablePremium(policy, cat)
   const heads = billableHeadCount(policy, cat)
-  // A stop order collects the year's premium in one deduction — "/yr"
-  // whatever the category. Field to Floor otherwise bills monthly — the
-  // per-head test alone would still show "/yr" under agriculture.
-  const period = policy.paymentMethod === 'Stop Order' || (!isPerHeadCategory(cat) && !isTobaccoFieldToFloor(policy.productName)) ? '/yr' : '/mo'
+  // Every premium is annual — the billed total is the year's figure
+  // however it is collected, so it is always labelled "/yr".
+  const period = '/yr'
   return heads > 1 ? `$${total.toFixed(2)}${period} (${heads} people)` : `$${total.toFixed(2)}${period}`
 }

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { policyRegisteredSms } from '../../src/lib/smsText.js'
+import { policyRegisteredSms, isTobaccoFieldToFloor, fieldToFloorCoverLine } from '../../src/lib/smsText.js'
+import { resolveSmsText, smsVarMoney } from '../../src/lib/smsTemplates.js'
 
 /**
  * The stale-format trapdoor.
@@ -54,15 +55,40 @@ export async function canonicalizeSmsText(admin: SupabaseClient | null, message:
       client = c
     }
 
-    const canonical = policyRegisteredSms({
-      clientName: String(row.client_name ?? client?.name ?? 'Customer'),
-      policyNumber,
-      productName: String(row.product_name ?? row.productName ?? 'Policy'),
-      productCategory: (row.product_category ?? row.productCategory) as string | undefined,
-      coverAmount: Number(row.cover_amount ?? row.coverAmount ?? 0),
-      premium: Number(row.premium ?? 0),
-      paymentMethod: (row.payment_method ?? row.paymentMethod) as string | undefined,
-      clientPhone: client?.phone,
+    const clientName = String(row.client_name ?? client?.name ?? 'Customer')
+    const productName = String(row.product_name ?? row.productName ?? 'Policy')
+    const premium = Number(row.premium ?? 0)
+    const paymentMethod = (row.payment_method ?? row.paymentMethod) as string | undefined
+    // Rebuild through the template resolver, not just the default builder —
+    // otherwise the border would overwrite a staff-authored registration
+    // template with the stock wording on every send. Without a matching
+    // template this produces the identical standard text as before.
+    const canonical = await resolveSmsText(admin, 'registration_confirmation', {
+      productId: (row.product_id ?? row.productId) as string | undefined,
+      vars: {
+        clientName,
+        policyNumber,
+        productName,
+        coverAmount: smsVarMoney(Number(row.cover_amount ?? row.coverAmount ?? 0)),
+        coverLine: isTobaccoFieldToFloor(productName)
+          ? fieldToFloorCoverLine(productName, premium)
+          : smsVarMoney(Number(row.cover_amount ?? row.coverAmount ?? 0)),
+        premium: smsVarMoney(premium),
+        // Tobacco texts carry no period label — see smsText.ts.
+        period: isTobaccoFieldToFloor(productName) ? '' : '/yr',
+        premiumWithPeriod: isTobaccoFieldToFloor(productName) ? smsVarMoney(premium) : `${smsVarMoney(premium)}/yr`,
+        paymentMethod,
+      },
+      fallback: policyRegisteredSms({
+        clientName,
+        policyNumber,
+        productName,
+        productCategory: (row.product_category ?? row.productCategory) as string | undefined,
+        coverAmount: Number(row.cover_amount ?? row.coverAmount ?? 0),
+        premium,
+        paymentMethod,
+        clientPhone: client?.phone,
+      }),
     })
 
     const prefix = message.match(ENVELOPE_PREFIX)?.[1]

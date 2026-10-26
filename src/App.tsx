@@ -55,13 +55,14 @@ const Integrations = lazyWithRecovery('Integrations', () => import('./pages/Inte
 const WhatsAppBot = lazyWithRecovery('WhatsAppBot', () => import('./pages/WhatsAppBot'))
 const MarketingContacts = lazyWithRecovery('MarketingContacts', () => import('./pages/MarketingContacts'))
 const CampaignComposer = lazyWithRecovery('CampaignComposer', () => import('./pages/CampaignComposer'))
+const SmsTemplates = lazyWithRecovery('SmsTemplates', () => import('./pages/SmsTemplates'))
 
 export type ActivePanel =
   | 'dashboard' | 'policies' | 'claims' | 'payments' | 'products'
   | 'clients' | 'groups' | 'staff' | 'system_access_roles' | 'reminders' | 'reports' | 'leads' | 'payment_verifications'
   | 'email' | 'tickets' | 'fraud' | 'profile'
   | 'system_health' | 'settings' | 'developer_api' | 'integrations' | 'mass_messaging' | 'billing_reminders' | 'pre_loss_assessments' | 'agriculture_insurance' | 'member_cards' | 'whatsapp_bot'
-  | 'marketing_contacts' | 'campaign_composer'
+  | 'marketing_contacts' | 'campaign_composer' | 'sms_templates'
   | 'my_policies' | 'my_claims' | 'my_payments' | 'live_chat'
 
 // Earlier demo builds seeded invented clients/policies/payments into
@@ -217,6 +218,7 @@ function AppInner() {
       case 'member_cards': return <MemberCards {...panelProps} />
       case 'marketing_contacts': return <MarketingContacts {...panelProps} />
       case 'campaign_composer': return <CampaignComposer {...panelProps} />
+      case 'sms_templates': return <SmsTemplates {...panelProps} />
       case 'profile': return <Profile {...panelProps} />
       case 'my_policies': return <MyPolicies {...panelProps} />
       case 'my_claims': return <MyClaims {...panelProps} />

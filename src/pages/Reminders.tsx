@@ -5,7 +5,9 @@ import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
 import { sendSms, type SmsContext } from '../lib/smsService'
 import { policyBillablePremium } from '../lib/premium'
-import { premiumReminderSms, policyLapsedSms } from '../lib/smsText'
+import { premiumReminderSms, policyLapsedSms, smsDate } from '../lib/smsText'
+import { supabase } from '../lib/supabase'
+import { resolveSmsText, smsVarMoney } from '../lib/smsTemplates'
 import { sendSystemEmail } from '../lib/mailService'
 import { MAILBOXES } from '../lib/mailboxes'
 import { COMPANY_NAME } from '../lib/company'
@@ -57,10 +59,15 @@ export default function Reminders({ showToast }: Props) {
   const upcoming = reminders.filter(r => !r.sent && new Date(r.dueDate) > new Date())
   const sent = reminders.filter(r => r.sent)
 
-  const lapsingPolicies = policies.filter(p => p.status === 'lapsed' || p.status === 'defaulted')
+  // Agriculture is excluded like both reminder engines do — a grower's
+  // premium is a yearly stop order settled by the association, so a
+  // "pay to keep cover"/"pay to reinstate" text lands on the wrong
+  // payer. Farmers get registration and claim texts only.
+  const isAgri = (p: Policy) => p.productCategory === 'agriculture'
+  const lapsingPolicies = policies.filter(p => (p.status === 'lapsed' || p.status === 'defaulted') && !isAgri(p))
   const upcomingRenewals = policies.filter(p => {
     const diff = (new Date(p.endDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
-    return diff <= 30 && diff > 0 && p.status === 'active'
+    return diff <= 30 && diff > 0 && p.status === 'active' && !isAgri(p)
   })
 
   /** A "Send" here is a real dispatch — the reminder actually goes out over
@@ -142,7 +149,18 @@ export default function Reminders({ showToast }: Props) {
         : `Dear ${p.clientName}, your ${p.productName} policy ${p.policyNumber} renews on ${formatDate(p.endDate)}. Please contact us to continue your cover.`
       const { data: c } = await db.clients.get(p.clientId)
       const smsInput = { clientName: p.clientName, policyNumber: p.policyNumber, amount: policyBillablePremium(p), dueDate: new Date(p.endDate), clientPhone: c?.phone }
-      const smsText = p.status === 'lapsed' || p.status === 'defaulted' ? policyLapsedSms(smsInput) : premiumReminderSms(smsInput)
+      const lapsed = p.status === 'lapsed' || p.status === 'defaulted'
+      const smsText = await resolveSmsText(supabase, lapsed ? 'policy_lapsed' : 'premium_reminder', {
+        productId: p.productId,
+        vars: {
+          clientName: p.clientName,
+          policyNumber: p.policyNumber,
+          productName: p.productName,
+          amount: smsVarMoney(smsInput.amount),
+          dueDate: smsDate(smsInput.dueDate),
+        },
+        fallback: lapsed ? policyLapsedSms(smsInput) : premiumReminderSms(smsInput),
+      })
       const channel = await dispatchToClient(p.clientId, p.clientName, `${COMPANY_NAME} — renewal reminder`, body, smsText,
         { event: 'renewal', ref: p.policyNumber })
       if (!channel) {

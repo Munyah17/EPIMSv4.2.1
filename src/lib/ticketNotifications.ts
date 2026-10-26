@@ -3,6 +3,24 @@ import { sendEmail, getNotifSettings, getSmsRecipientsForEvent } from './mailSer
 import { MAILBOXES } from './mailboxes'
 import { notifyPhone } from './notify'
 import { noticeSms } from './smsText'
+import { supabase } from './supabase'
+import { resolveSmsText } from './smsTemplates'
+
+/** Client-facing ticket text — a 'ticket_update' template (Bulk SMS →
+ *  Templates) overrides the standard wording; anything else leaves the
+ *  built-in shape in place. Office alerts stay untemplated. */
+async function ticketSms(ticket: Ticket, event: string, detail?: string): Promise<string> {
+  return resolveSmsText(supabase, 'ticket_update', {
+    vars: {
+      clientName: ticket.clientName,
+      ticketNumber: ticket.ticketNumber,
+      event,
+      detail,
+      subject: ticket.subject,
+    },
+    fallback: noticeSms(ticket.clientName, ticket.ticketNumber, event, detail),
+  })
+}
 
 /** The four fixed office lines, plus the configured Super Admin number if it
  *  isn't already one of them -- the same set every other event in the
@@ -42,7 +60,7 @@ ${ticket.description}${cfg.signature ? `\n\n---\n${cfg.signature}` : ''}`,
     })
   }
   if (client.phone) {
-    notifyPhone(client.phone, noticeSms(ticket.clientName, ticket.ticketNumber, 'ticket received', "We'll respond.", client.phone), 'ticket', ticket.ticketNumber)
+    notifyPhone(client.phone, await ticketSms(ticket, 'ticket received', "We'll respond"), 'ticket', ticket.ticketNumber)
   }
   await notifyOffice(`New ticket ${ticket.ticketNumber} from ${ticket.clientName}: "${ticket.subject}"`, ticket.ticketNumber)
 }
@@ -68,7 +86,7 @@ Log in or reply to this email to continue the conversation.${cfg.signature ? `\n
     })
   }
   if (client.phone) {
-    notifyPhone(client.phone, noticeSms(ticket.clientName, ticket.ticketNumber, 'ticket replied', 'Check email.', client.phone), 'ticket', ticket.ticketNumber)
+    notifyPhone(client.phone, await ticketSms(ticket, 'ticket replied', 'Check email'), 'ticket', ticket.ticketNumber)
   }
 }
 
@@ -94,6 +112,6 @@ If this did not fully resolve your issue, contact us and we will reopen it.${cfg
     })
   }
   if (client.phone) {
-    notifyPhone(client.phone, noticeSms(ticket.clientName, ticket.ticketNumber, 'ticket closed', 'Contact us if unresolved.', client.phone), 'ticket', ticket.ticketNumber)
+    notifyPhone(client.phone, await ticketSms(ticket, 'ticket closed', 'Contact us if unresolved'), 'ticket', ticket.ticketNumber)
   }
 }

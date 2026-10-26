@@ -31,8 +31,10 @@ import { db } from './db'
 import { MAILBOXES } from './mailboxes'
 import { sendEmail, getNotifSettings, getSmsRecipientsForEvent } from './mailService'
 import { notifyPhone } from './notify'
-import { premiumReminderSms, policyLapsedSms } from './smsText'
+import { premiumReminderSms, policyLapsedSms, smsDate } from './smsText'
 import { NETONE_SUSPENDED } from './claimNotifications'
+import { supabase } from './supabase'
+import { resolveSmsText, smsVarMoney } from './smsTemplates'
 import { policyBillablePremium } from './premium'
 import { formatDate, toIsoDate } from './dateUtils'
 
@@ -182,7 +184,17 @@ async function dispatchReminder(policy: Policy, client: Client | undefined, type
     dueDate,
     clientPhone,
   }
-  const smsBody = type === 'lapse' ? policyLapsedSms(reminderInput) : premiumReminderSms(reminderInput)
+  const smsBody = await resolveSmsText(supabase, type === 'lapse' ? 'policy_lapsed' : 'premium_reminder', {
+    productId: policy.productId,
+    vars: {
+      clientName: reminderInput.clientName,
+      policyNumber: policy.policyNumber,
+      productName: policy.productName,
+      amount: smsVarMoney(reminderInput.amount),
+      dueDate: smsDate(dueDate),
+    },
+    fallback: type === 'lapse' ? policyLapsedSms(reminderInput) : premiumReminderSms(reminderInput),
+  })
   if (clientPhone) {
     notifyPhone(clientPhone, smsBody, 'renewal', policy.policyNumber)
   }

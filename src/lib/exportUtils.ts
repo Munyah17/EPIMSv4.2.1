@@ -643,10 +643,11 @@ async function buildPolicyReportDoc(policy: Policy, client: Client, category: st
 
   if (isAgriculture) {
     if (isFieldToFloor) {
-      // Field to Floor itemises each peril with its benefit amount — the
-      // figure scales with the sum insured except Funeral, which is a
-      // flat $500 grower benefit at every tier.
-      const cover = fieldToFloorCover(policy.coverAmount)
+      // Field to Floor itemises each peril with its benefit amount —
+      // the figure is set by the product tier (Entry/Basic $250,
+      // Standard $500, Comfort $750, Premium $1,000) except Funeral,
+      // which is a flat $500 grower benefit at every tier.
+      const cover = fieldToFloorCover(policy.productName, policy.premium)
       ensureRoom(22 + cover.length * 7)
       sectionBand('COVER PROVIDED (FIELD TO FLOOR)')
       autoTable(doc, {

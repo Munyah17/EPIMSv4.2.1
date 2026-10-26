@@ -2,7 +2,8 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { Paynow } from 'paynow'
 import { createClient } from '@supabase/supabase-js'
 import { dispatchNotification } from './_lib/notify.js'
-import { paymentReceivedSms, paymentFailedSms, policyRegisteredSms } from '../src/lib/smsText.js'
+import { paymentReceivedSms, paymentFailedSms, policyRegisteredSms, isTobaccoFieldToFloor, fieldToFloorCoverLine } from '../src/lib/smsText.js'
+import { resolveSmsText, smsVarMoney } from '../src/lib/smsTemplates.js'
 
 /**
  * Paynow's resultUrl callback -- a real webhook, not client-side polling.
@@ -192,22 +193,32 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // nothing was collected and the office knows to follow up.
     const { data: fPolicy } = await admin
       .from('pending_policies')
-      .select('policy_number, clients!client_id(name, email, phone), products!product_id(category)')
+      .select('policy_number, product_id, clients!client_id(name, email, phone), products!product_id(category)')
       .eq('id', txn.policy_id)
       .maybeSingle()
     const fClient = (fPolicy as { clients?: { name: string; email: string | null; phone: string | null } | null } | null)?.clients ?? null
     const fCat = (fPolicy as { products?: { category: string } | null } | null)?.products?.category
     if (fPolicy && fCat !== 'agriculture') {
       const amount = `$${(txn.expected_amount ?? 0).toFixed(2)}`
-      await dispatchNotification(admin, {
-        event: 'payment', ref: fPolicy.policy_number, client: fClient,
-        smsText: paymentFailedSms({
+      const failSms = await resolveSmsText(admin, 'payment_failed', {
+        productId: (fPolicy as { product_id?: string }).product_id,
+        vars: {
+          clientName: fClient?.name ?? 'Client',
+          policyNumber: fPolicy.policy_number,
+          amount: smsVarMoney(Number(txn.expected_amount ?? 0)),
+          method: 'Paynow',
+        },
+        fallback: paymentFailedSms({
           clientName: fClient?.name ?? 'Client',
           policyNumber: fPolicy.policy_number,
           amount: Number(txn.expected_amount ?? 0),
           method: 'Paynow',
           clientPhone: fClient?.phone,
         }),
+      })
+      await dispatchNotification(admin, {
+        event: 'payment', ref: fPolicy.policy_number, client: fClient,
+        smsText: failSms,
         emailSubject: `Payment not completed: policy ${fPolicy.policy_number}`,
         emailText: `Dear ${fClient?.name ?? 'Client'},\n\nYour payment of ${amount} for policy ${fPolicy.policy_number} could not be completed (status: ${status}).\n\nNo money was collected. Please try again — via EcoCash, Paynow, ZIPIT, or at our offices — or contact us for help.\n\nRegards,\nMotions Microinsurance`,
       }).catch(e => console.error('paynow-webhook: failure notify failed', e))
@@ -340,25 +351,53 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // The policy only NOW exists — the client gets the standard
         // registration text first (same as a counter sale), then the
         // payment receipt.
-        await dispatchNotification(admin, {
-          event: 'registration', ref: policyNumber, client,
-          smsText: policyRegisteredSms({
+        const regPremium = Number(policy.premium ?? 0)
+        const regProduct = policy.products?.name ?? 'policy'
+        const regF2F = isTobaccoFieldToFloor(regProduct)
+        const regSms = await resolveSmsText(admin, 'registration_confirmation', {
+          productId: policy.product_id,
+          vars: {
             clientName: client?.name ?? 'Client',
             policyNumber,
-            productName: policy.products?.name ?? 'policy',
+            productName: regProduct,
+            coverAmount: smsVarMoney(Number(policy.cover_amount ?? 0)),
+            coverLine: regF2F
+              ? fieldToFloorCoverLine(regProduct, regPremium)
+              : smsVarMoney(Number(policy.cover_amount ?? 0)),
+            premium: smsVarMoney(regPremium),
+            // Tobacco texts carry no period label — see smsText.ts.
+            period: regF2F ? '' : '/yr',
+            premiumWithPeriod: regF2F ? smsVarMoney(regPremium) : `${smsVarMoney(regPremium)}/yr`,
+            paymentMethod: policy.payment_method,
+          },
+          fallback: policyRegisteredSms({
+            clientName: client?.name ?? 'Client',
+            policyNumber,
+            productName: regProduct,
             productCategory: category,
             coverAmount: Number(policy.cover_amount ?? 0),
-            premium: Number(policy.premium ?? 0),
+            premium: regPremium,
             paymentMethod: policy.payment_method,
             clientPhone: client?.phone,
           }),
+        })
+        await dispatchNotification(admin, {
+          event: 'registration', ref: policyNumber, client,
+          smsText: regSms,
           emailSubject: `Policy ${policyNumber} registered`,
           emailText: `Dear ${client?.name ?? 'Client'},\n\nYour policy has been registered.\n\nPolicy Number:  ${policyNumber}\nProduct:        ${policy.products?.name ?? 'policy'}\nCover Amount:   $${Number(policy.cover_amount ?? 0).toLocaleString()}\nPremium:        $${Number(policy.premium ?? 0).toFixed(2)}\nStatus:         ${policy.status.replace('_', ' ').toUpperCase()}\n\nRegards,\nMotions Microinsurance`,
         }).catch(e => console.error('paynow-webhook: registration notify failed', e))
       }
-      await dispatchNotification(admin, {
-        event: 'payment', ref: policyNumber, client,
-        smsText: paymentReceivedSms({
+      const paidSms = await resolveSmsText(admin, 'payment_received', {
+        productId: policy.product_id,
+        vars: {
+          clientName: client?.name ?? 'Client',
+          policyNumber,
+          amount: smsVarMoney(confirmedAmount),
+          method: 'Paynow',
+          reference,
+        },
+        fallback: paymentReceivedSms({
           clientName: client?.name ?? 'Client',
           policyNumber,
           amount: confirmedAmount,
@@ -366,6 +405,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           reference,
           clientPhone: client?.phone,
         }),
+      })
+      await dispatchNotification(admin, {
+        event: 'payment', ref: policyNumber, client,
+        smsText: paidSms,
         emailSubject: `Payment received: policy ${policyNumber}`,
         emailText: `Dear ${client?.name ?? 'Client'},\n\nWe have received your payment.\n\nAmount:    ${amount}\nPolicy:    ${policyNumber}\nMethod:    Paynow\nReference: ${reference}\n\nThank you for keeping your cover up to date.\n\nRegards,\nMotions Microinsurance`,
       }).catch(e => console.error('paynow-webhook: payment notify failed', e))

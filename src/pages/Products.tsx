@@ -4,6 +4,7 @@ import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { useAuth } from '../contexts/AuthContext'
 import { premiumPeriodLabel } from '../lib/productUtils'
+import { isTobaccoFieldToFloor, fieldToFloorCover } from '../lib/smsText'
 import AddProductModal from '../components/modals/AddProductModal'
 
 interface Props {
@@ -100,6 +101,16 @@ export default function Products({ showToast, initialCategory }: Props) {
                   <span className="product-stat-value">{p.policiesCount}</span>
                 </div>
               </div>
+              {/* Field To Floor cards itemise the peril schedule — the same
+                  tier-based figures the registration SMS and the policy PDF
+                  quote, so the card never reads as one lump sum insured. */}
+              {isTobaccoFieldToFloor(p.name) && (
+                <div className="product-features">
+                  {fieldToFloorCover(p.name, p.premium).map(c => (
+                    <span key={c.peril} className="feature-tag">{c.peril} ${c.benefit}</span>
+                  ))}
+                </div>
+              )}
               <div className="product-features">
                 {p.features.slice(0, 3).map((f, i) => (
                   <span key={i} className="feature-tag">✓ {f}</span>

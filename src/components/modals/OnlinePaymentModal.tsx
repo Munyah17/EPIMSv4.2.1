@@ -169,7 +169,7 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
         setStep('failed')
         // The gateway gave a definitive no — our own failure notice, not
         // the gateway's text, is what the client and the office get.
-        void notifyPaymentFailed({ policyNumber: policy.policyNumber, clientName: policy.clientName, amount: totalAmount, method: method === 'paynow' ? 'Paynow' : 'EcoCash', reference: ref }, client, policy.productCategory)
+        void notifyPaymentFailed({ policyNumber: policy.policyNumber, clientName: policy.clientName, amount: totalAmount, method: method === 'paynow' ? 'Paynow' : 'EcoCash', reference: ref }, client, policy.productCategory, policy.productId)
       }
     }, 4000)
   }
@@ -239,7 +239,7 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
     // Confirmed by the gateway (or, for validatedManually, by staff looking
     // at proof of payment) either way -- the client and office both hear
     // about it now, the same as every other confirmed payment in the system.
-    if (recorded) void notifyPaymentReceived(recorded, client, policy.productCategory)
+    if (recorded) void notifyPaymentReceived(recorded, client, policy.productCategory, policy.productId)
 
     if (user) {
       void recordActivity({
@@ -295,7 +295,7 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
 
     if (!res.success) {
       setStep('failed')
-      void notifyPaymentFailed({ policyNumber: policy.policyNumber, clientName: policy.clientName, amount: totalAmount, method: method === 'paynow' ? 'Paynow' : 'EcoCash', reference: ref }, client, policy.productCategory)
+      void notifyPaymentFailed({ policyNumber: policy.policyNumber, clientName: policy.clientName, amount: totalAmount, method: method === 'paynow' ? 'Paynow' : 'EcoCash', reference: ref }, client, policy.productCategory, policy.productId)
       return
     }
 

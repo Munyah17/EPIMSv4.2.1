@@ -122,6 +122,7 @@ const STAFF_SECTIONS: NavSection[] = [
           { id: 'tickets', label: 'Tickets', icon: '💬' },
           { id: 'live_chat', label: 'Live Chat', icon: '🟢', roles: ['super_admin', 'admin', 'client_relations'] },
           { id: 'mass_messaging', label: 'Bulk SMS Messaging', icon: '📱', roles: ['super_admin', 'admin'] },
+          { id: 'sms_templates', label: 'SMS Templates', icon: '📝', roles: ['super_admin', 'admin'] },
         ],
       },
       {

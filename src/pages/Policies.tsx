@@ -8,7 +8,8 @@ import { exportPolicyReport, getPolicyReportPdfBase64, exportToExcel, exportToCs
 import { treatyRows, TREATY_HEADERS } from '../lib/treatyReport'
 import { toIsoDate } from '../lib/dateUtils'
 import { notifyPolicyRegistered, notifyRegistrationFailed } from '../lib/signupNotifications'
-import { invoiceIssuedSms } from '../lib/smsText'
+import { invoiceIssuedSms, smsDate } from '../lib/smsText'
+import { resolveSmsText, smsVarMoney } from '../lib/smsTemplates'
 import { notifyPhone } from '../lib/notify'
 import { getSmsRecipientsForEvent } from '../lib/mailService'
 import { COMPANY_NAME } from '../lib/company'
@@ -349,10 +350,23 @@ export default function Policies({ showToast, initialCategory }: Props) {
     // same auto-SMS rule every billing event follows.
     const { data: client } = await db.clients.get(policy.clientId)
     const org = policy.groupName ?? policy.clientName
-    const msg = invoiceIssuedSms({
-      orgName: org, policyNumber: policy.policyNumber, invoiceNumber: data.invoiceNumber,
-      amount: data.amount, heads: data.heads, period, dueDate: data.dueDate ? new Date(data.dueDate) : new Date(),
-      clientPhone: client?.phone,
+    const invDue = data.dueDate ? new Date(data.dueDate) : new Date()
+    const msg = await resolveSmsText(supabase, 'invoice_issued', {
+      productId: policy.productId,
+      vars: {
+        orgName: org,
+        policyNumber: policy.policyNumber,
+        invoiceNumber: data.invoiceNumber,
+        amount: smsVarMoney(data.amount),
+        heads: data.heads,
+        billingPeriod: period,
+        dueDate: smsDate(invDue),
+      },
+      fallback: invoiceIssuedSms({
+        orgName: org, policyNumber: policy.policyNumber, invoiceNumber: data.invoiceNumber,
+        amount: data.amount, heads: data.heads, period, dueDate: invDue,
+        clientPhone: client?.phone,
+      }),
     })
     if (client?.phone) notifyPhone(client.phone, msg, 'payment', data.invoiceNumber)
     // The organisation's named contact person gets the reminder on their
