@@ -116,7 +116,7 @@ export function dedupeMessage(raw: string): string {
 //
 //   Demo User TOB0514 Reg. Field To Floor Standard. Cover: Barn Fire
 //   $500, Hail Storm $500, Wind Storm $500, Funeral $500. Stop Order
-//   $105/mo.
+//   $105/yr.
 //
 // Grammar: {clientName} {policyNumber} {event}. {details}. {method}
 // {premium}/{period}.
@@ -211,11 +211,10 @@ export function policyRegisteredSms(p: PolicyNoticeInput): string {
     ? `Cover: ${fieldToFloorCoverLine(p.coverAmount)}`
     : `Cover ${smsMoney(p.coverAmount)}`
   const method = (p.paymentMethod ?? '').trim()
-  // The period follows how the premium is actually collected: a stop
-  // order settles the whole year's cover in one deduction — "/yr"
-  // whatever the product. Otherwise agriculture stays annual (seasonal
-  // cover) and everything else, Field to Floor included, bills monthly.
-  const period = method === 'Stop Order' || (p.productCategory === 'agriculture' && !fieldToFloor) ? '/yr' : '/mo'
+  // Every premium is quoted annual — the figure on the product is the
+  // whole year's cover however it is collected (stop order, EcoCash,
+  // cash). "/mo" was misquoting the same figure as a monthly price.
+  const period = '/yr'
   return `${p.clientName} ${p.policyNumber} Reg. ${p.productName}. ${cover}. ${method ? `${method} ` : ''}${smsMoney(p.premium)}${period}.`
 }
 

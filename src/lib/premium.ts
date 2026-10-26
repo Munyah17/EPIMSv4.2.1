@@ -1,5 +1,4 @@
 import type { Dependant, Policy } from '../types'
-import { isTobaccoFieldToFloor } from './smsText'
 
 /**
  * What a policy actually costs to run.
