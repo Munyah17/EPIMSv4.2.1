@@ -187,14 +187,13 @@ async function callAfrosoft(
     last = await callAfrosoftOnce(numbers, part)
     if (!last.ok) return last
     const code = last.data.status?.['error-code']
-    // A protocol-level refusal (error-code 003 IP not allowed, invalid
-    // sender id, insufficient balance) means NOTHING was sent even though
-    // the gateway answered 200. Returning it as a failure routes the send
-    // through the /api/notify fallback — a different Vercel egress IP —
-    // and lands the refusal in notification_log instead of dying silently.
-    if (code && code !== '000') {
-      return { ok: false, error: last.data.status?.['error-description'] ?? `Afrosoft error ${code}` }
-    }
+    // A non-000 batch verdict still carries per-number detail (002 +
+    // failed-sms-details names each refused number and why), so it is
+    // NOT flattened into a generic failure here — sendBulkSms reads the
+    // details, reports every refusal to notification_log and retries the
+    // refused numbers through the /api/notify route (a different egress
+    // IP — the one a per-key IP whitelist may still allow).
+    if (code && code !== '000') return last
   }
   return last ?? { ok: false, error: 'Message was empty.' }
 }
