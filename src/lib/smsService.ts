@@ -365,6 +365,14 @@ export async function sendBulkSms(numbers: string[], message: string, ctx?: SmsC
       if (d.success) {
         r.result = { success: true, messageId: undefined }
         logSmsLocally(r.phone, message, 'sent', 'delivered via notify fallback after gateway refusal')
+      } else {
+        // Refused on both SMS routes — the number Afrosoft's carrier
+        // route can't reach (e.g. an Econet number they won't whitelist)
+        // still gets the message if a human taps the queued WhatsApp
+        // copy in the outbox. A dead SMS route must not be a dead end.
+        void import('./notify')
+          .then(({ sendWhatsApp }) => sendWhatsApp(r.phone, message, ctx?.event ?? 'system', ctx?.ref))
+          .catch(() => { /**/ })
       }
     }
   }

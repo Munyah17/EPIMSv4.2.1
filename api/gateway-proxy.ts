@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { serviceClient, requireSession } from './_lib/sessionAuth.js'
+import { canonicalizeSmsText } from './_lib/smsCanon.js'
 
 /**
  * Generic server-side relay for the EcoCash, Paynow, and Afrosoft SMS APIs,
@@ -137,7 +138,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(400).json({ error: 'mobiles and message are required.' })
     }
     try {
-      const result = await sendViaAfrosoft(proxyReq.mobiles, proxyReq.message)
+      // Whatever the caller's bundle composed, a stale registration
+      // shape is rebuilt from the policy record before it goes out.
+      const message = await canonicalizeSmsText(admin, proxyReq.message)
+      const result = await sendViaAfrosoft(proxyReq.mobiles, message)
       return res.status(200).json({ status: result.status, ok: result.ok, body: result.body })
     } catch (e) {
       return res.status(502).json({ error: `SMS gateway unreachable: ${e}` })

@@ -1,5 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { sendMailDirect } from './mailTransport.js'
+import { serviceClient } from './sessionAuth.js'
+import { canonicalizeSmsText } from './smsCanon.js'
 import { normalizeZwMobile, parseRecipientPhones, smsParts, DEFAULT_OFFICE_SMS } from '../../src/lib/smsText.js'
 
 /**
@@ -146,6 +148,10 @@ export async function sendSmsAfrosoft(to: string, message: string): Promise<Deli
   if (!isValidMsisdn(to)) {
     return { channel: 'sms', recipient: to, status: 'failed', detail: `Not a valid ZW mobile: ${to}` }
   }
+  // A stale browser bundle can still compose last week's wording — the
+  // text is rebuilt to the current standard here so the client gets the
+  // right format whichever build pressed send.
+  message = await canonicalizeSmsText(serviceClient(), message)
   const parts = smsParts(message)
   if (parts.length === 0) {
     return { channel: 'sms', recipient: msisdn, status: 'skipped', detail: 'Empty message.' }
@@ -170,6 +176,9 @@ export async function sendEmailDirect(to: string, subject: string, text: string)
  *  is pending. */
 export async function sendWhatsAppCloud(to: string, message: string): Promise<Delivery> {
   const msisdn = normalizeMsisdn(to)
+  // Same stale-wording trapdoor as SMS — a queued wa.me link embeds the
+  // text, so it must be corrected here rather than in the outbox.
+  message = await canonicalizeSmsText(serviceClient(), message)
   // Two names for the same credentials: the notify channel pre-dates the
   // chatbot, which introduced WHATSAPP_ACCESS_TOKEN/PHONE_NUMBER_ID.
   // Either pair works — set whichever Meta gives you, never both.
