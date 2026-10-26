@@ -488,7 +488,9 @@ export default function Dashboard({ showToast, setActivePanel }: Props) {
                 {gatewayStatus.state === 'up' ? 'OPERATIONAL — TEXT MESSAGES DELIVERING'
                   : gatewayStatus.state === 'down'
                     ? (gatewayStatus.source === 'afrosoft' ? 'DOWN — AFROSOFT CANNOT DELIVER TEXTS' : 'PROBLEM ON OUR SIDE — NOT AFROSOFT')
-                    : 'CHECKING…'}
+                    : gatewayStatus.state === 'dev'
+                      ? 'DEV SERVER — TEXTS GO OUT FROM THE LIVE PORTAL'
+                      : 'CHECKING…'}
               </div>
               <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
                 {gatewayStatus.checkedAt
@@ -498,8 +500,8 @@ export default function Dashboard({ showToast, setActivePanel }: Props) {
             </div>
           </div>
 
-          {gatewayStatus.state === 'down' && gatewayStatus.detail && (
-            <div className="info-banner info-banner-danger" style={{ marginBottom: 14, fontSize: 12 }}>
+          {(gatewayStatus.state === 'down' || gatewayStatus.state === 'dev') && gatewayStatus.detail && (
+            <div className={`info-banner ${gatewayStatus.state === 'dev' ? 'info-banner-warning' : 'info-banner-danger'}`} style={{ marginBottom: 14, fontSize: 12 }}>
               {gatewayStatus.detail}
             </div>
           )}

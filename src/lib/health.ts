@@ -60,15 +60,14 @@ class HealthTracker {
 
     const writeOk = pct(writes)
     const readOk = pct(reads)
-    // Detect localhost by checking if we're running on localhost/127.0.0.1
-    const isLocalhost = typeof window !== 'undefined' &&
-      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-    // On localhost, SMS gateway is intentionally simulated (logged but not sent),
-    // so SMS failures should NOT affect overall health status
+    // On dev origins the SMS gateway is intentionally unreachable (the
+    // /api functions don't exist), so dev SMS failures must NOT affect
+    // overall health status — same reasoning as localhost, every spelling.
+    const dev = isDevOrigin()
     const overall: 'healthy' | 'degraded' | 'offline' =
       !sbConnected ? 'degraded'
-      : writeOk < 50 || readOk < 50 || (!isLocalhost && smsOps.length > 0 && smsPct < 50) ? 'offline'
-      : writeOk < 90 || readOk < 90 || (!isLocalhost && smsOps.length > 0 && smsPct < 90) ? 'degraded'
+      : writeOk < 50 || readOk < 50 || (!dev && smsOps.length > 0 && smsPct < 50) ? 'offline'
+      : writeOk < 90 || readOk < 90 || (!dev && smsOps.length > 0 && smsPct < 90) ? 'degraded'
       : 'healthy'
 
     return {
@@ -88,6 +87,29 @@ class HealthTracker {
       recent: [...all].reverse().slice(0, 25),
     }
   }
+}
+
+/**
+ * Is this page running somewhere that can NEVER have the /api functions —
+ * a vite dev server, a LAN IP, a .local name — rather than the deployed
+ * portal? The old checks matched 'localhost' literally, which is why the
+ * "SMS SERVICE PROBLEM" banner kept coming back on 127.0.0.1, LAN IPs
+ * (192.168.x.x), .local names and preview proxies: every one of those
+ * failed the check and was treated as a real gateway outage.
+ */
+export function isDevOrigin(): boolean {
+  if (typeof window === 'undefined') return false
+  const h = window.location.hostname.toLowerCase()
+  if (!h || h === 'localhost' || h === '127.0.0.1' || h === '0.0.0.0' || h === '::1' || h === '[::1]') return true
+  if (/\.(local|localhost|test|internal|lan)$/.test(h)) return true
+  if (/^10\./.test(h)) return true
+  if (/^192\.168\./.test(h)) return true
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(h)) return true
+  if (/^169\.254\./.test(h)) return true
+  // A bare hostname (no dot — "desktop-pc", "printserver") is never a
+  // public deployment.
+  if (!h.includes('.')) return true
+  return false
 }
 
 export const health = new HealthTracker()

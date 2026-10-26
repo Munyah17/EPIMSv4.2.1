@@ -131,7 +131,7 @@ interface AfrosoftResponse {
  * anyone noticing messages had stopped going out.
  */
 import { supabase } from './supabase'
-import { health } from './health'
+import { health, isDevOrigin } from './health'
 import { normalizeZwMobile, smsParts } from './smsText'
 
 /** Push an SMS gateway result into System Health, and when it failed, make
@@ -162,11 +162,14 @@ async function callAfrosoftOnce(
     })
     if (!res.ok) {
       const err = await res.json().catch(() => ({}))
-      // HTTP 404 on localhost means the API endpoint doesn't exist (Vercel serverless function)
-      if (res.status === 404 && window.location.hostname === 'localhost') {
+      // 404 means the serverless function isn't on this host at all —
+      // dev server, static preview, or a broken deploy. Named as such on
+      // ANY host: checking `hostname === 'localhost'` here is what let
+      // 127.0.0.1 and LAN IPs keep reporting a fake gateway outage.
+      if (res.status === 404) {
         return {
           ok: false,
-          error: 'SMS gateway API is not available on localhost. Use the deployed site to send real SMS messages. On localhost, SMS will be simulated (logged but not sent).'
+          error: `The SMS API is not deployed on ${window.location.hostname} — send texts from the live portal (portal.motions.co.zw).`
         }
       }
       return { ok: false, error: (err as { error?: string })?.error ?? `Gateway proxy error (HTTP ${res.status})` }
@@ -269,6 +272,20 @@ export async function sendBulkSms(numbers: string[], message: string, ctx?: SmsC
 
   if (valid.length === 0) {
     return { sent: 0, failed: invalidResults.length, results: invalidResults }
+  }
+
+  // A dev origin has no /api at all — the send can't reach the gateway,
+  // the fallback can't reach it either, and queueing it in the outbox
+  // would just retry a fetch that will 404 every 3 minutes. Answer
+  // honestly instead of cascading into the outage machinery.
+  if (isDevOrigin()) {
+    const devMsg = `Dev server (${window.location.hostname}) — the SMS API only exists on the deployed portal; nothing was sent.`
+    const devResults = valid.map(phone => {
+      logSmsLocally(phone, message, 'failed', devMsg)
+      return { phone, result: { success: false, error: devMsg } }
+    })
+    health.record({ ts: Date.now(), type: 'notify', table: 'sms-gateway', success: false, duration: 0, source: 'api', detail: devMsg })
+    return { sent: 0, failed: devResults.length + invalidResults.length, results: [...devResults, ...invalidResults] }
   }
 
   const started = Date.now()
@@ -388,6 +405,10 @@ export interface GatewayPing {
   /** Whose problem it is: 'afrosoft' = provider side, 'config'/'us' = ours. */
   source: 'afrosoft' | 'config' | 'us'
   detail: string
+  /** The page is running where /api can't exist (dev server, LAN IP) —
+   *  the ping says nothing about the real gateway, so the watch must
+   *  neither alarm nor count it as a failure. */
+  dev?: boolean
 }
 
 export function isGatewayFlaggedDown(): boolean {
@@ -395,13 +416,14 @@ export function isGatewayFlaggedDown(): boolean {
 }
 
 export async function pingSmsGateway(): Promise<GatewayPing> {
-  // On localhost, the API endpoint doesn't exist (Vercel serverless function)
-  // Return a clear message instead of treating it as a gateway failure
-  if (window.location.hostname === 'localhost') {
+  // A dev origin can never reach the API — no point fetching, and the
+  // answer must NOT read as a gateway problem.
+  if (isDevOrigin()) {
     return {
       up: false,
       source: 'us',
-      detail: 'SMS gateway API is not available on localhost. Use the deployed site to send real SMS messages. On localhost, SMS will be simulated (logged but not sent).'
+      dev: true,
+      detail: `Dev server (${window.location.hostname}) — the SMS API only exists on the deployed portal. Send test texts from portal.motions.co.zw.`
     }
   }
 
@@ -413,7 +435,11 @@ export async function pingSmsGateway(): Promise<GatewayPing> {
       body: JSON.stringify({ action: 'ping' }),
     })
     if (!res.ok) {
-      // The proxy itself failing (401/500) is OUR side, not Afrosoft's.
+      // The proxy itself failing is OUR side, not Afrosoft's — and a 404
+      // means the functions aren't on this deployment at all.
+      if (res.status === 404) {
+        return { up: false, source: 'us', detail: 'The SMS API is not deployed on this host (HTTP 404) — the serverless functions are missing from this deployment.' }
+      }
       const err = await res.json().catch(() => ({}))
       return { up: false, source: 'us', detail: (err as { error?: string })?.error ?? `Gateway proxy error (HTTP ${res.status})` }
     }
@@ -461,16 +487,16 @@ async function announceGatewayDown(ping: GatewayPing) {
 
 let gatewayWatchStarted = false
 let lastGatewayState: 'up' | 'down' | null = isGatewayFlaggedDown() ? 'down' : null
-let lastGatewayCheck: { at: number; up: boolean; source: string; detail: string } | null = null
+let lastGatewayCheck: { at: number; up: boolean; source: string; detail: string; dev?: boolean } | null = null
 let consecutiveFailures = 0
 
 /** What the watch last saw — feeds the dashboard's always-on status row. */
-export function getGatewayWatchStatus(): { state: 'up' | 'down' | 'unknown'; checkedAt: number | null; detail: string; source: string } {
+export function getGatewayWatchStatus(): { state: 'up' | 'down' | 'dev' | 'unknown'; checkedAt: number | null; detail: string; source: string } {
   if (!lastGatewayCheck) {
     return { state: lastGatewayState === 'down' ? 'down' : 'unknown', checkedAt: null, detail: 'No check run yet this session.', source: 'us' }
   }
   return {
-    state: lastGatewayCheck.up ? 'up' : 'down',
+    state: lastGatewayCheck.dev ? 'dev' : lastGatewayCheck.up ? 'up' : 'down',
     checkedAt: lastGatewayCheck.at,
     detail: lastGatewayCheck.detail,
     source: lastGatewayCheck.source,
@@ -479,6 +505,25 @@ export function getGatewayWatchStatus(): { state: 'up' | 'down' | 'unknown'; che
 
 async function checkGateway() {
   let ping = await pingSmsGateway()
+
+  // A dev host can't have the API — the probe carries zero information
+  // about Afrosoft, so it neither counts toward the outage threshold nor
+  // raises the banner. The event still goes out with down:false so a tab
+  // that WAS showing the banner clears it.
+  if (ping.dev) {
+    consecutiveFailures = 0
+    lastGatewayCheck = { at: Date.now(), up: false, source: ping.source, detail: ping.detail, dev: true }
+    lastGatewayState = null
+    // A stale flag on this origin (set by an older build's fake outage)
+    // would re-raise the banner on every login — dev can never have a
+    // real gateway outage, so the flag has no business persisting here.
+    try { localStorage.removeItem(GATEWAY_FLAG_KEY) } catch { /**/ }
+    window.dispatchEvent(new CustomEvent(SMS_GATEWAY_EVENT, {
+      detail: { down: false, source: ping.source, reason: ping.detail, checkedAt: Date.now() },
+    }))
+    return
+  }
+
   health.record({ ts: Date.now(), type: 'notify', table: 'sms-gateway', success: ping.up, duration: 0, source: 'api', detail: `watch: ${ping.detail}` })
   const state: 'up' | 'down' = ping.up ? 'up' : 'down'
   lastGatewayCheck = { at: Date.now(), up: ping.up, source: ping.source, detail: ping.detail }
