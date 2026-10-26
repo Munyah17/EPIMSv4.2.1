@@ -194,12 +194,12 @@ export interface PolicyNoticeInput {
 /** THE policy-registered text — the approved standard, verbatim shape. */
 export function policyRegisteredSms(p: PolicyNoticeInput): string {
   const cover = isTobaccoFieldToFloor(p.productName)
-    ? `cover (Field to Floor): ${fieldToFloorCoverLine(p.coverAmount)}`
-    : `cover ${smsMoney(p.coverAmount)}`
+    ? `Cover (Field to Floor): ${fieldToFloorCoverLine(p.coverAmount)}`
+    : `Cover ${smsMoney(p.coverAmount)}`
   const period = p.productCategory === 'agriculture' ? '/yr' : '/mo'
   const method = (p.paymentMethod ?? '').trim()
   const phone = smsPhone(p.clientPhone)
-  return `${p.clientName} ${p.policyNumber} reg. ${p.productName}. ${cover}. ${method ? `${method} ` : ''}${smsMoney(p.premium)}${period}.${phone ? ` ${phone}` : ''}`
+  return `${p.clientName} ${p.policyNumber}. ${p.productName}. ${cover}. ${method ? `${method} ` : ''}${smsMoney(p.premium)}${period}.${phone ? ` ${phone}` : ''}`
 }
 
 /** A client row exists but no policy yet — "reg.", never "covered". */
