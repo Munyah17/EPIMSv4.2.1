@@ -56,10 +56,9 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   // Policy fields
   const [productId, setProductId] = useState('')
   const [paymentMethod, setPaymentMethod] = useState('OneMoney')
-  // Cover starts on the 1st of the aligned month (see computeAssignedStartDate),
-  // not the day it was captured — only Super Admin/Admin may override this.
+  // The commencement date is entered by the capturer — it is never
+  // auto-assigned, so every policy starts on the date agreed at sale.
   const [startDate, setStartDate] = useState('')
-  const canOverrideStartDate = user?.role === 'super_admin' || user?.role === 'admin'
   // Optional — a policy can carry zero dependants, so this starts empty
   // rather than seeding a mandatory first row.
   const [dependants, setDependants] = useState<Dependant[]>([])
@@ -407,10 +406,8 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   if (!clientDob) missing.push({ key: 'clientDob', label: 'Date of Birth' })
   else if (clientAge !== null && clientAge < 18) missing.push({ key: 'clientDob', label: 'Date of Birth', hint: 'The policyholder must be at least 18' })
   if (!productId) missing.push({ key: 'productId', label: 'Product' })
-  // Staff without override rights can't edit this field — their cover
-  // auto-aligns to the 1st of the assigned month at save time
-  // (computeAssignedStartDate), so a blank field must not block them.
-  if (!startDate && canOverrideStartDate) missing.push({ key: 'startDate', label: 'Start Date' })
+  // Required for every role — staff must enter the commencement date.
+  if (!startDate) missing.push({ key: 'startDate', label: 'Start Date' })
   // One live policy per client per product (DB partial unique index:
   // active | waiting_period). Warn before the save hits it — the staff
   // member picks another product, or lapses the old one first.
@@ -546,10 +543,10 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
     // product's sequence (FCP0001, HCP0042, ...) — short, and the prefix
     // alone says which cover it belongs to.
     const policyNumber = await nextPolicyNumber(product!)
-    // Non-admins never typed a date (the field is disabled) — assign the
-    // standard aligned date. Admins get whatever they chose. Tobacco
-    // Field-to-Floor ignores both: cover runs with the fixed tobacco
-    // season, the same window the policy document prints.
+    // The commencement date comes from the Start Date field — required
+    // above, so no auto-assignment. Tobacco Field-to-Floor ignores it:
+    // cover runs with the fixed tobacco season, the same window the
+    // policy document prints.
     const isTobacco = product!.category === 'agriculture' && isTobaccoFieldToFloor(product!.name)
     const effectiveStartDate = isTobacco ? TOBACCO_SEASON_ISO.start : (startDate || computeAssignedStartDate())
     const endDate = new Date(effectiveStartDate)
@@ -803,7 +800,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                 <label>Product *</label>
                 <select className={invalidClass(missing, attempted, 'productId')} value={productId} onChange={e => setProductId(e.target.value)} disabled={productsLoading}>
                   <option value="">{productsLoading ? 'Loading products…' : 'Select product…'}</option>
-                  {products.filter(p => p.active).map(p => <option key={p.id} value={p.id}>{p.name} (${p.premium}{premiumPeriodLabel(p.category)})</option>)}
+                  {products.filter(p => p.active).map(p => <option key={p.id} value={p.id}>{p.name} (${p.premium}{premiumPeriodLabel(p.category, p.name, paymentMethod)})</option>)}
                 </select>
                 {liveProductClash && (
                   <p style={{ fontSize: 11, color: 'var(--danger)', marginTop: 4 }}>
@@ -813,7 +810,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
               </div>
               {product && (
                 <div className="info-banner info-banner-info">
-                  Cover: ${product.coverAmount.toLocaleString()} · Premium: ${product.premium}{premiumPeriodLabel(product.category)} · Commission: {product.commissionPct}%
+                  Cover: ${product.coverAmount.toLocaleString()} · Premium: ${product.premium}{premiumPeriodLabel(product.category, product.name, paymentMethod)} · Commission: {product.commissionPct}%
                 </div>
               )}
               {product?.category === 'agriculture' && (
@@ -875,10 +872,8 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
               )}
               <div className="form-group" id={fieldId('startDate')} style={isMissing(missing, attempted, 'startDate') ? { outline: '1px solid var(--danger)', borderRadius: 7, outlineOffset: 2 } : undefined}>
                 <label>Start Date *</label>
-                <DateInput value={startDate} onChange={setStartDate} disabled={!canOverrideStartDate} className={!canOverrideStartDate ? 'date-input-disabled' : undefined} />
-                {!canOverrideStartDate && (
-                  <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>Auto-set from today's date. Only Super Admin/Admin can change it.</p>
-                )}
+                <DateInput value={startDate} onChange={setStartDate} />
+                <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>The date cover commences — enter it as agreed with the client.</p>
               </div>
               <div className="form-group">
                 <label>Payment Method *</label>
@@ -1050,7 +1045,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                   </div>
                   {product && selectedMemberIds.size > 0 && (
                     <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
-                      Billed: <strong style={{ color: 'var(--text)' }}>${(product.premium * selectedMemberIds.size).toFixed(2)}{premiumPeriodLabel(product.category)}</strong>
+                      Billed: <strong style={{ color: 'var(--text)' }}>${(product.premium * selectedMemberIds.size).toFixed(2)}{premiumPeriodLabel(product.category, product.name, paymentMethod)}</strong>
                       {' '}({selectedMemberIds.size} {selectedMemberIds.size === 1 ? 'member' : 'members'} × ${product.premium.toFixed(2)} — the organisation itself is not a billed head)
                     </p>
                   )}

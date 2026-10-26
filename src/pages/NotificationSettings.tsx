@@ -18,6 +18,7 @@ export default function NotificationSettings({ showToast }: Props) {
   const [settings, setSettings] = useState<NotifSettings>(() => getNotifSettings())
   const [saving, setSaving] = useState(false)
   const [savingSms, setSavingSms] = useState(false)
+  const [togglingRegSms, setTogglingRegSms] = useState(false)
 
   const update = (key: keyof NotifSettings, value: string | boolean | SmsRecipient[]) => {
     if (!canEdit) return
@@ -87,6 +88,22 @@ export default function NotificationSettings({ showToast }: Props) {
     const ok = await persist({ ...settings, smsRecipients: next }, 'SMS recipients')
     setSavingSms(false)
     if (ok) showToast('success', 'SMS recipients saved and now active for all notification events.')
+  }
+
+  /** Flips the shared pause flag in one click — no Save round-trip, so
+   *  the button is also safe to hit mid-incident when nothing else on
+   *  this page has been edited yet. */
+  const handleToggleRegistrationSms = async () => {
+    if (!canEdit) return
+    const next = { ...settings, registrationClientSmsPaused: !settings.registrationClientSmsPaused }
+    setTogglingRegSms(true)
+    const ok = await persist(next, 'registration SMS setting')
+    setTogglingRegSms(false)
+    if (ok) {
+      showToast('success', next.registrationClientSmsPaused
+        ? 'Client registration SMS paused — office alerts still go out.'
+        : 'Client registration SMS reactivated.')
+    }
   }
 
   const handleReset = async () => {
@@ -214,6 +231,27 @@ export default function NotificationSettings({ showToast }: Props) {
               <input className="form-control" type="email" value={settings.companyEmail} onChange={e => update('companyEmail', e.target.value)} disabled={!canEdit} />
             </div>
           </div>
+        </div>
+
+        {/* Auto SMS to clients on registration — pause/reactivate */}
+        <div className="card">
+          <div className="card-header">
+            <span className="card-title">📨 Client SMS on Registration</span>
+            {settings.registrationClientSmsPaused
+              ? <span className="pill pill-warning">Paused</span>
+              : <span className="pill pill-active">Active</span>}
+            <button
+              className={`btn btn-sm ${settings.registrationClientSmsPaused ? 'btn-primary' : 'btn-danger'}`}
+              onClick={handleToggleRegistrationSms}
+              disabled={togglingRegSms || !canEdit}
+              style={{ marginLeft: 'auto' }}
+            >
+              {togglingRegSms ? 'Saving…' : settings.registrationClientSmsPaused ? 'Reactivate' : 'Pause'}
+            </button>
+          </div>
+          <p className="notif-settings-desc">
+            The automatic text a client gets the moment they — or their group or policy — are registered, on every channel (counter, partner API, website checkout). Pausing stops the client-facing text only; office SMS alerts, emails and WhatsApp copies keep going, and each skipped text is still recorded in the notification log.
+          </p>
         </div>
 
         {/* SMS recipients by event type */}

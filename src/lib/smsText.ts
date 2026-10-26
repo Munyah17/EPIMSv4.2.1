@@ -69,11 +69,10 @@ export function gsmUnits(text: string): number {
 }
 
 /**
- * ONE message, always. Splitting into "(1/2) …" "(2/2) …" was worse than
- * the problem — staff got fragments they couldn't act on and clients got
- * texts that read broken. A long text is sent whole: the gateway and the
- * handset handle concatenation on their side, and the recipient sees a
- * single message. (toGsm still strips characters Econet silently drops.)
+ * ONE message, always — sent whole in a single request even when it runs
+ * past 160 units. The gateway handles it as one concatenated SMS; we
+ * never split into "(1/2)" fragments ourselves and never truncate.
+ * (toGsm still strips characters Econet silently drops.)
  */
 export function smsParts(raw: string): string[] {
   const text = toGsm(raw)
@@ -117,7 +116,7 @@ export function dedupeMessage(raw: string): string {
 //
 //   Demo User TOB0514 Reg. Field To Floor Standard. Cover: Barn Fire
 //   $500, Hail Storm $500, Wind Storm $500, Funeral $500. Stop Order
-//   $105/yr.
+//   $105/mo.
 //
 // Grammar: {clientName} {policyNumber} {event}. {details}. {method}
 // {premium}/{period}.
@@ -207,11 +206,16 @@ export interface PolicyNoticeInput {
 export function policyRegisteredSms(p: PolicyNoticeInput): string {
   // The product name already says "Field To Floor" — the cover label
   // doesn't repeat it.
-  const cover = isTobaccoFieldToFloor(p.productName)
+  const fieldToFloor = isTobaccoFieldToFloor(p.productName)
+  const cover = fieldToFloor
     ? `Cover: ${fieldToFloorCoverLine(p.coverAmount)}`
     : `Cover ${smsMoney(p.coverAmount)}`
-  const period = p.productCategory === 'agriculture' ? '/yr' : '/mo'
   const method = (p.paymentMethod ?? '').trim()
+  // The period follows how the premium is actually collected: a stop
+  // order settles the whole year's cover in one deduction — "/yr"
+  // whatever the product. Otherwise agriculture stays annual (seasonal
+  // cover) and everything else, Field to Floor included, bills monthly.
+  const period = method === 'Stop Order' || (p.productCategory === 'agriculture' && !fieldToFloor) ? '/yr' : '/mo'
   return `${p.clientName} ${p.policyNumber} Reg. ${p.productName}. ${cover}. ${method ? `${method} ` : ''}${smsMoney(p.premium)}${period}.`
 }
 

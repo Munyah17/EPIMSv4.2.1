@@ -574,7 +574,7 @@ export default function Dashboard({ showToast, setActivePanel }: Props) {
                   <td><span className="mono">{p.policyNumber}</span></td>
                   <td>{p.clientName}</td>
                   <td>{p.productName}</td>
-                  <td>{formatPremium(p.premium, p.productCategory ?? '')}</td>
+                  <td>{formatPremium(p.premium, p.productCategory ?? '', p.productName, p.paymentMethod)}</td>
                   <td><span className={`pill pill-${p.status}`}>{p.status}</span></td>
                 </tr>
               ))}

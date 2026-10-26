@@ -24,6 +24,13 @@ export interface NotifSettings {
    *  to go instead of bouncing or vanishing. */
   replyTo: string
   smsEnabled: boolean
+  /** Pause switch for the automatic SMS a client gets the moment they (or
+   *  their group/policy) are registered — from Settings → Notifications.
+   *  Office copies still go out; only the client-facing text stops. The
+   *  flag lives in shared app_settings so it applies to every pipeline:
+   *  counter registrations, group registrations, partner API sales and
+   *  website checkouts alike. */
+  registrationClientSmsPaused: boolean
   signature: string
   /** Configurable SMS recipients with event type filtering */
   smsRecipients: SmsRecipient[]
@@ -50,6 +57,7 @@ export const DEFAULT_NOTIF_SETTINGS: NotifSettings = {
   fromName: 'Motions Microinsurance',
   replyTo: 'admin@motions.co.zw',
   smsEnabled: false,
+  registrationClientSmsPaused: false,
   signature: 'Regards,\nMotions Microinsurance\n+263 780 086 175\nwww.motions.co.zw',
   // The four office lines. +263780086175 is the main number, carried
   // by the CEO — it has to be on every event unless an admin removes it.

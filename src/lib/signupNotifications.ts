@@ -1,5 +1,6 @@
 import type { Policy, Client, Payment, Group } from '../types'
 import { sendSms, type SmsContext } from './smsService'
+import { reportOutcome } from './notify'
 import { sendEmail, getNotifSettings, getSmsRecipientsForEvent } from './mailService'
 import { MAILBOXES } from './mailboxes'
 import { premiumPeriodLabel } from './productUtils'
@@ -38,6 +39,23 @@ async function textOffice(numbers: string[], event: string, message: string, ctx
   }
 }
 
+/** The client's own registration text — or a logged skip while the office
+ *  has paused them (Settings → Notifications → Client SMS on
+ *  Registration). A paused send still lands in notification_log so
+ *  "did the welcome text go out?" stays answerable instead of the
+ *  message vanishing quietly. Office alerts are unaffected: staff still
+ *  need to know a registration happened. */
+async function textClientOnRegistration(phones: (string | undefined)[], message: string, ref: string | undefined, paused: boolean): Promise<void> {
+  for (const phone of phones) {
+    if (!phone) continue
+    if (paused) {
+      reportOutcome({ channel: 'sms', recipient: phone, event: 'registration', ref, status: 'skipped', detail: 'Client registration SMS is paused — Settings → Notifications.' })
+    } else {
+      await sendSms(phone, message, { event: 'registration', ref })
+    }
+  }
+}
+
 /**
  * A client registered on the CRM, before any policy exists. Deliberately
  * worded as "registered", never "covered" -- someone on file without a
@@ -62,9 +80,7 @@ export async function notifyClientRegistered(client: Client, registeredBy?: stri
   const cfg = getNotifSettings()
   const text = clientRegisteredSms(client.name, client.phone)
 
-  if (client.phone) {
-    await sendSms(client.phone, text, { event: 'registration' })
-  }
+  await textClientOnRegistration([client.phone], text, undefined, cfg.registrationClientSmsPaused)
 
   if (client.email) {
     void sendEmail({
@@ -99,9 +115,7 @@ export async function notifyGroupRegistered(group: Group): Promise<void> {
   // The organisation's own numbers — org line and the representative's.
   const orgNumbers = [...new Set([group.orgPhone, group.contactPhone].filter(Boolean))] as string[]
   const msg = `${groupRegisteredSms(group.name, kind, group.contactName, group.contactPhone)}. Keep this.`
-  for (const number of orgNumbers) {
-    await sendSms(number, msg, { event: 'registration', ref: group.name })
-  }
+  await textClientOnRegistration(orgNumbers, msg, group.name, cfg.registrationClientSmsPaused)
 
   if (group.orgEmail || group.contactEmail) {
     void sendEmail({
@@ -119,7 +133,7 @@ export async function notifyGroupRegistered(group: Group): Promise<void> {
 
 export async function notifyPolicyRegistered(policy: Policy, client: Client | null): Promise<void> {
   const cfg = getNotifSettings()
-  const period = premiumPeriodLabel(policy.productCategory ?? '')
+  const period = premiumPeriodLabel(policy.productCategory ?? '', policy.productName, policy.paymentMethod)
   const cover = money(policy.coverAmount)
   const premium = `${money(policy.premium)}${period}`
 
@@ -146,9 +160,7 @@ export async function notifyPolicyRegistered(policy: Policy, client: Client | nu
     paymentMethod: policy.paymentMethod,
     clientPhone: client?.phone,
   })
-  if (client?.phone) {
-    await sendSms(client.phone, text, { event: 'registration', ref: policy.policyNumber })
-  }
+  await textClientOnRegistration([client?.phone], text, policy.policyNumber, cfg.registrationClientSmsPaused)
 
   if (client?.email) {
     void sendEmail({

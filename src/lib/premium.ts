@@ -1,4 +1,5 @@
 import type { Dependant, Policy } from '../types'
+import { isTobaccoFieldToFloor } from './smsText'
 
 /**
  * What a policy actually costs to run.
@@ -89,6 +90,9 @@ export function formatBillablePremium(policy: Policy, category?: string): string
   const cat = category ?? policy.productCategory
   const total = policyBillablePremium(policy, cat)
   const heads = billableHeadCount(policy, cat)
-  const period = isPerHeadCategory(cat) ? '/mo' : '/yr'
+  // A stop order collects the year's premium in one deduction — "/yr"
+  // whatever the category. Field to Floor otherwise bills monthly — the
+  // per-head test alone would still show "/yr" under agriculture.
+  const period = policy.paymentMethod === 'Stop Order' || (!isPerHeadCategory(cat) && !isTobaccoFieldToFloor(policy.productName)) ? '/yr' : '/mo'
   return heads > 1 ? `$${total.toFixed(2)}${period} (${heads} people)` : `$${total.toFixed(2)}${period}`
 }

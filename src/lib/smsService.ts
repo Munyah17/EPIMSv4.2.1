@@ -296,7 +296,7 @@ export async function sendBulkSms(numbers: string[], message: string, ctx?: SmsC
   })
 
   if (valid.length === 0) {
-    return { sent: 0, failed: invalidResults.length, results: invalidResults }
+    return done({ sent: 0, failed: invalidResults.length, results: invalidResults })
   }
 
   // A dev origin has no /api at all — the send can't reach the gateway,
@@ -310,7 +310,7 @@ export async function sendBulkSms(numbers: string[], message: string, ctx?: SmsC
       return { phone, result: { success: false, error: devMsg } }
     })
     health.record({ ts: Date.now(), type: 'notify', table: 'sms-gateway', success: false, duration: 0, source: 'api', detail: devMsg })
-    return { sent: 0, failed: devResults.length + invalidResults.length, results: [...devResults, ...invalidResults] }
+    return done({ sent: 0, failed: devResults.length + invalidResults.length, results: [...devResults, ...invalidResults] })
   }
 
   const started = Date.now()
@@ -337,11 +337,11 @@ export async function sendBulkSms(numbers: string[], message: string, ctx?: SmsC
       consecutiveFailures = CONSECUTIVE_FAILURES_THRESHOLD
     }
     void reportSmsResult(anySent, anySent ? undefined : `All routes failed for ${valid.length} number(s): ${result.error}`, Date.now() - started)
-    return {
+    return done({
       sent: fallback.filter(r => r.result.success).length,
       failed: fallback.filter(r => !r.result.success).length + invalidResults.length,
       results: [...fallback, ...invalidResults],
-    }
+    })
   }
 
   const errorCode = result.data.status?.['error-code']
@@ -405,11 +405,11 @@ export async function sendBulkSms(numbers: string[], message: string, ctx?: SmsC
   // numbers were refused (a blacklisted number isn't a dead gateway).
   const stillRefused = all.filter(r => !r.result.success).length
   void reportSmsResult(true, stillRefused ? `${stillRefused} of ${all.length} number(s) refused by gateway` : undefined, Date.now() - started)
-  return {
+  return done({
     sent: all.filter(r => r.result.success).length,
     failed: all.filter(r => !r.result.success).length,
     results: all,
-  }
+  })
 }
 
 // ── Gateway watch: ask Afrosoft if it's alive, on a timer ────────────

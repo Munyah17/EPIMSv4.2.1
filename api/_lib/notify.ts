@@ -99,6 +99,23 @@ async function officeSmsNumbers(admin: SupabaseClient | null, event: string): Pr
   return DEFAULT_OFFICE_PHONES
 }
 
+/** Settings → Notifications can pause the automatic client-facing
+ *  registration text. The flag lives in the same app_settings row the
+ *  browser's SMS-recipient list does, so one toggle governs the portal,
+ *  the partner API and website checkouts alike. Only consulted for
+ *  'registration' jobs; a missing row or unreadable flag means sends
+ *  proceed — a settings lookup failure must never silently stop the
+ *  client's welcome text. */
+async function registrationClientSmsPaused(admin: SupabaseClient | null): Promise<boolean> {
+  try {
+    if (!admin) return false
+    const { data } = await admin.from('app_settings').select('value').eq('key', 'notif_settings').maybeSingle()
+    return (data?.value as { registrationClientSmsPaused?: boolean } | null)?.registrationClientSmsPaused === true
+  } catch {
+    return false
+  }
+}
+
 // ── Channel senders ─────────────────────────────────────────────────
 
 async function afrosoftOnce(msisdn: string, message: string): Promise<Delivery> {
@@ -286,8 +303,16 @@ export async function dispatchNotification(admin: SupabaseClient | null, job: No
   const clientEmail = job.notifyClient === false ? undefined : job.client?.email
   const waText = job.whatsappText ?? job.smsText
 
-  // Client — SMS + email + WhatsApp, all three at once.
-  if (clientPhone) deliveries.push(sendSmsAfrosoft(clientPhone, job.smsText))
+  // Client — SMS + email + WhatsApp, all three at once. The registration
+  // SMS alone can be paused from Settings → Notifications; the skip is
+  // pushed as a Delivery so it still lands in notification_log and
+  // "did the client get texted?" stays answerable.
+  const pauseClientSms = job.event === 'registration' && await registrationClientSmsPaused(admin)
+  if (clientPhone) {
+    deliveries.push(pauseClientSms
+      ? Promise.resolve<Delivery>({ channel: 'sms', recipient: clientPhone, status: 'skipped', detail: 'Client registration SMS is paused — Settings → Notifications.' })
+      : sendSmsAfrosoft(clientPhone, job.smsText))
+  }
   if (clientEmail) deliveries.push(sendEmailDirect(clientEmail, job.emailSubject, job.emailText))
   if (clientPhone) deliveries.push(sendWhatsAppCloud(clientPhone, waText))
 

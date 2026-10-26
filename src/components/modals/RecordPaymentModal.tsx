@@ -181,7 +181,7 @@ export default function RecordPaymentModal({ policyId: initialPolicyId, payment:
             <div className="info-banner info-banner-info" style={{ marginBottom: '1rem' }}>
               Policy: {policy.policyNumber} ({policy.clientName})<br />
               {/* Per head: the policyholder plus every dependant. */}
-              Expected premium: ${policyBillablePremium(policy, policyCategory).toFixed(2)}{premiumPeriodLabel(policyCategory)}
+              Expected premium: ${policyBillablePremium(policy, policyCategory).toFixed(2)}{premiumPeriodLabel(policyCategory, policy.productName, policy.paymentMethod)}
               {billableHeadCount(policy, policyCategory) > 1 && (
                 <> &nbsp;<span style={{ fontSize: 11 }}>({billableHeadCount(policy, policyCategory)} people on this policy)</span></>
               )}

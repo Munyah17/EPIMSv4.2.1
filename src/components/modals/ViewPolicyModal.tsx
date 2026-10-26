@@ -73,7 +73,7 @@ export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint, show
             <div className="detail-item">
               <span className="detail-label">Premium Billed</span>
               <span>
-                ${policyBillablePremium(policy, category).toFixed(2)}{premiumPeriodLabel(category)}
+                ${policyBillablePremium(policy, category).toFixed(2)}{premiumPeriodLabel(category, policy.productName, policy.paymentMethod)}
                 {billableHeadCount(policy, category) > 1 && (
                   <span style={{ color: 'var(--muted)', fontSize: 11 }}> · {billableHeadCount(policy, category)} {(policy.coverScope && policy.coverScope !== 'individual') ? `members (${policy.coverScope === 'corporate' ? 'employees' : 'members'} × $${policy.premium.toFixed(2)})` : `people ($${policy.premium.toFixed(2)} policyholder)`}</span>
                 )}

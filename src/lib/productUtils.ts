@@ -1,12 +1,20 @@
-/** Agriculture products are billed once per year (Stop Order), not
- *  monthly like every other category — anywhere a premium is shown next to
- *  its billing period, use these instead of a hardcoded "/mo". */
-export function premiumPeriodLabel(category: string): '/yr' | '/mo' {
+import { isTobaccoFieldToFloor } from './smsText'
+
+/** The period a premium is billed on. A stop order always collects the
+ *  whole year's premium in one deduction — "/yr" whatever the product.
+ *  Otherwise agriculture products bill once per year and everything else,
+ *  Field to Floor tobacco included, bills monthly. Anywhere a premium is
+ *  shown next to its billing period, use these instead of a hardcoded
+ *  "/mo" — pass the product name and payment method where you have them:
+ *  without them a tobacco policy or a stop-order policy reads wrong. */
+export function premiumPeriodLabel(category: string, productName?: string, paymentMethod?: string | null): '/yr' | '/mo' {
+  if ((paymentMethod ?? '').trim() === 'Stop Order') return '/yr'
+  if (productName && isTobaccoFieldToFloor(productName)) return '/mo'
   return category === 'agriculture' ? '/yr' : '/mo'
 }
 
-export function formatPremium(premium: number, category: string): string {
-  return `$${premium.toFixed(2)}${premiumPeriodLabel(category)}`
+export function formatPremium(premium: number, category: string, productName?: string, paymentMethod?: string | null): string {
+  return `$${premium.toFixed(2)}${premiumPeriodLabel(category, productName, paymentMethod)}`
 }
 
 /**

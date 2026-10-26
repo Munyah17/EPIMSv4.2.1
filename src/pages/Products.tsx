@@ -85,7 +85,7 @@ export default function Products({ showToast, initialCategory }: Props) {
               <div className="product-stats">
                 <div className="product-stat">
                   <span className="product-stat-label">Premium</span>
-                  <span className="product-stat-value">${p.premium}{premiumPeriodLabel(p.category)}</span>
+                  <span className="product-stat-value">${p.premium}{premiumPeriodLabel(p.category, p.name)}</span>
                 </div>
                 <div className="product-stat">
                   <span className="product-stat-label">Cover</span>

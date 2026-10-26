@@ -96,7 +96,7 @@ export default function MyPolicies({ showToast, setActivePanel }: Props) {
                 </button>
                 {expanded && (
                   <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <div className="detail-label">Premium billed per person{premiumPeriodLabel(category)}</div>
+                    <div className="detail-label">Premium billed per person{premiumPeriodLabel(category, p.productName, p.paymentMethod)}</div>
                     {lines.map((l, i) => (
                       <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: '0.85rem' }}>
                         <span style={{ minWidth: 0 }}>
@@ -109,7 +109,7 @@ export default function MyPolicies({ showToast, setActivePanel }: Props) {
                     {lines.length > 1 && (
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', fontWeight: 600, borderTop: '1px dashed var(--border)', paddingTop: 6 }}>
                         <span>Total</span>
-                        <span className="mono">${policyBillablePremium(p, category).toFixed(2)}{premiumPeriodLabel(category)}</span>
+                        <span className="mono">${policyBillablePremium(p, category).toFixed(2)}{premiumPeriodLabel(category, p.productName, p.paymentMethod)}</span>
                       </div>
                     )}
                     <div style={{ fontSize: '0.85rem', color: 'var(--muted)', marginTop: 4 }}>
