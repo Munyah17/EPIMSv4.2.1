@@ -2529,6 +2529,7 @@ async function loadDashboardStatsFallback(): Promise<DashboardStats> {
 // table only exists after database/add_notifications.sql runs, and a
 // missing table must read as "no failures to show", not a page error.
 export interface NotificationFailure {
+  id?: string
   event: string
   channel: string
   recipient: string
@@ -2613,22 +2614,41 @@ export const notificationLog = {
   },
 
   /** WhatsApp messages parked for a staff member to send by hand — the
-   *  outbox the wa.me links in `detail` are tapped from. */
+   *  outbox the wa.me links in `detail` are tapped from. Bounded to 48h
+   *  like the SMS outbox: a link older than that carries the wording it
+   *  was queued with, so an ancient tap sends yesterday's format, not
+   *  today's. */
   async whatsappOutbox(): Promise<NotificationFailure[]> {
     try {
       const { data, error } = await supabase
         .from('notification_log')
-        .select('event, channel, recipient, ref, detail, created_at')
+        .select('id, event, channel, recipient, ref, detail, created_at')
         .eq('channel', 'whatsapp')
         .eq('status', 'queued')
+        .gte('created_at', new Date(Date.now() - 48 * 3600000).toISOString())
         .order('created_at', { ascending: false })
         .limit(100)
       if (error) return []
       return (data ?? []).map(r => ({
-        event: r.event, channel: r.channel, recipient: r.recipient,
+        id: r.id, event: r.event, channel: r.channel, recipient: r.recipient,
         ref: r.ref, detail: r.detail, at: r.created_at,
       }))
     } catch { return [] }
+  },
+
+  /** A staff member tapped a queued wa.me link — record the hand-delivery
+   *  so the row leaves EVERY staff member's outbox, not just this
+   *  browser's. The .eq('status','queued') guard keeps a second tapper
+   *  from overwriting a colleague's 'sent' marker. */
+  async markSentByHand(row: NotificationFailure): Promise<void> {
+    if (!row.id) return
+    try {
+      await supabase
+        .from('notification_log')
+        .update({ status: 'sent', detail: `${row.detail ?? ''} — sent by hand` })
+        .eq('id', row.id)
+        .eq('status', 'queued')
+    } catch { /**/ }
   },
 }
 

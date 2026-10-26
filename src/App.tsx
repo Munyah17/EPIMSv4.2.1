@@ -6,6 +6,7 @@ import { startOfflineSync } from './lib/offlineQueue'
 import { DB_FALLBACK_EVENT } from './lib/db'
 import { NOTIFY_FAILURE_EVENT } from './lib/notify'
 import { startGatewayWatch } from './lib/smsService'
+import { startVersionCheck, APP_UPDATE_EVENT } from './lib/versionCheck'
 import { lazyWithRecovery } from './lib/lazyWithRecovery'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import LoginScreen from './components/Auth/LoginScreen'
@@ -106,11 +107,21 @@ function AppInner() {
       void startReminderEngine()
       void startOfflineSync()
       void startGatewayWatch()
+      void startVersionCheck()
     }, 2000)
     return () => clearTimeout(start)
   }, [])
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [toasts, setToasts] = useState<ToastMessage[]>([])
+  // Set by the version watcher when the deployed bundle differs from the
+  // one this tab is running — a persistent banner, not a toast, because
+  // a stale tab keeps building OLD message formats until it's reloaded.
+  const [updateAvailable, setUpdateAvailable] = useState(false)
+  useEffect(() => {
+    const onUpdate = () => setUpdateAvailable(true)
+    window.addEventListener(APP_UPDATE_EVENT, onUpdate)
+    return () => window.removeEventListener(APP_UPDATE_EVENT, onUpdate)
+  }, [])
 
   // Stable references: 11 pages use `[showToast]` as a data-fetch effect
   // dependency. An inline function here would be recreated on every render
@@ -221,6 +232,12 @@ function AppInner() {
       />
       {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
       <div className="main-content">
+        {updateAvailable && (
+          <div className="info-banner info-banner-warning" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, margin: 0 }}>
+            <span>A new version of the portal is available — this tab is running old code and may send outdated messages.</span>
+            <button className="btn btn-primary btn-sm" onClick={() => window.location.reload()}>Reload now</button>
+          </div>
+        )}
         <TopBar
           activePanel={activePanel}
           onMenuToggle={() => setSidebarOpen(o => !o)}

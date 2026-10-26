@@ -305,7 +305,18 @@ export default function MassMessaging({ showToast }: Props) {
                     <td>{row.event}</td>
                     <td className="mono">{row.recipient}</td>
                     <td className="mono">{row.ref ?? '—'}</td>
-                    <td>{link && <a className="btn btn-primary btn-sm" href={link} target="_blank" rel="noreferrer">Send via WhatsApp</a>}</td>
+                    <td>{link && (
+                      <a
+                        className="btn btn-primary btn-sm"
+                        href={link}
+                        target="_blank"
+                        rel="noreferrer"
+                        onClick={() => {
+                          void db.notificationLog.markSentByHand(row)
+                          setWaQueue(prev => prev.filter(x => x !== row))
+                        }}
+                      >Send via WhatsApp</a>
+                    )}</td>
                   </tr>
                 )
               })}
