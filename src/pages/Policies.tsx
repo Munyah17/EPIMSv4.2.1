@@ -193,7 +193,7 @@ export default function Policies({ showToast, initialCategory }: Props) {
     // refusal is a duplicate they can actually do something about.
     if (error || !data) {
       showToast('error', error ?? 'Failed to create policy.')
-      void notifyRegistrationFailed('Policy registration', `${policy.clientName} / ${policy.productName} — ${error ?? 'unknown error'}`)
+      void notifyRegistrationFailed('Policy signup', `${policy.clientName} / ${policy.productName} — ${error ?? 'unknown error'}`)
       return null
     }
     setPolicies(prev => [data, ...prev])

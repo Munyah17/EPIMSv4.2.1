@@ -387,8 +387,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         await dispatchNotification(admin, {
           event: 'registration', ref: policyNumber, client,
           smsText: regSms,
-          emailSubject: `Policy ${policyNumber} registered`,
-          emailText: `Dear ${client?.name ?? 'Client'},\n\nYour policy has been registered.\n\nPolicy Number:  ${policyNumber}\nProduct:        ${policy.products?.name ?? 'policy'}\nCover Amount:   $${Number(policy.cover_amount ?? 0).toLocaleString()}\nPremium:        $${Number(policy.premium ?? 0).toFixed(2)}\nStatus:         ${policy.status.replace('_', ' ').toUpperCase()}\n\nRegards,\nMotions Microinsurance`,
+          emailSubject: `Policy ${policyNumber} confirmed`,
+          emailText: `Dear ${client?.name ?? 'Client'},\n\nYour policy is on record.\n\nPolicy Number:  ${policyNumber}\nProduct:        ${policy.products?.name ?? 'policy'}\nCover Amount:   $${Number(policy.cover_amount ?? 0).toLocaleString()}\nPremium:        $${Number(policy.premium ?? 0).toFixed(2)}\nStatus:         ${policy.status.replace('_', ' ').toUpperCase()}\n\nRegards,\nMotions Microinsurance`,
         }).catch(e => console.error('paynow-webhook: registration notify failed', e))
       }
       const paidSms = await resolveSmsText(admin, 'payment_received', {

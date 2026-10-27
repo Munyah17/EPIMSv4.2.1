@@ -38,18 +38,46 @@ const ENVELOPE_PREFIX = /^\s*([A-Z]{3,14}):\s+/
  *  policy yet" or a saved staff template carrying old wording has
  *  no policy number, so it never reaches the rebuild above. This
  *  is what actually stops it:
- *  - "REG:"/"REGISTRATION:" envelope prefixes
- *  - the " reg."/"Reg."/"registered." tokens old builders wrote
+ *  - "REG:" / "REGISTRATION:" / "REG - " / "REG | " envelopes — at
+ *    the start of the message OR after a line/sentence break, with
+ *    ANY separator. The \b keeps "Region:" / "Regular:" untouched.
+ *  - the " reg."/"Reg."/"registered." verb tokens old builders
+ *    wrote — except "reg no."/"reg number" (a registration-number
+ *    field, which stays).
  *  - "Motions Microinsurance" — company name never appears in SMS
  *    bodies (emails/PDFs/UI keep it) */
-function stripBannedText(text: string): string {
+export function stripBannedText(text: string): string {
   return text
-    .replace(/^\s*REG[A-Z]*\s*:\s*/i, '')                      // REG:/REGISTRATION: envelope
-    .replace(/\s+reg(?:istered)?\.{1,2}\s*/g, '. ')            // "NAME reg. …" → "NAME. …"
-    .replace(/^reg(?:istered)?\.{1,2}\s*/i, '')               // leading "reg. "
+    // REG* envelope labels — any separator (: - — | .), start of
+    // message, after a line break, or after a sentence break. The
+    // (ISTRATION)? form covers "REGISTRATION:"; \b stops "Region:"
+    // and "REGISTRANT" matching.
+    .replace(/(^|[\n]|\.\s+|\s{2,})REG(?:ISTRATION)?\b\s*[:\-—–|.]\s*/gi, '$1')
+    // The " reg."/"registered." verb — anywhere in the text. Negative
+    // lookahead protects "reg no. 123" / "reg number".
+    .replace(/\s+reg(?:istered)?\.{1,2}(?!\s*(?:no\.?|number)\b)\s*/g, '. ')
+    .replace(/^reg(?:istered)?\.{1,2}(?!\s*(?:no\.?|number)\b)\s*/i, '')
     .replace(/\s*[-—–|]?\s*Motions Microinsurance\.?/gi, '')   // company name banned
+    .replace(/\s+([.,!?;:])/g, '$1')                          // "name ." -> "name."
+    .replace(/\.\s*\./g, '.')                                 // "a. ." -> "a."
     .replace(/\s{2,}/g, ' ')
     .trim()
+}
+
+/** The same banned-envelope scrub for EMAIL — subjects get the full
+ *  strip (a subject is an envelope, not prose). Bodies only lose
+ *  leading REG* envelope lines and [REG*] bracket tags, so readable
+ *  prose is never mangled mid-sentence. */
+export function stripEmailSubject(subject: string): string {
+  return stripBannedText(subject)
+    .replace(/\[\s*REG(?:ISTRATION)?\s*\]\s*/gi, '')
+    .trim()
+}
+export function stripEmailBody(text: string): string {
+  return text
+    .replace(/(^|\n)\s*\[\s*REG(?:ISTRATION)?\s*\]\s*/g, '$1')
+    .replace(/(^|\n)\s*REG(?:ISTRATION)?\b\s*[:\-—–|]\s*/g, '$1')
+    .replace(/(^|\n)\s*reg(?:istered)?\.{1,2}(?!\s*(?:no\.?|number)\b)\s*/g, '$1')
 }
 
 export async function canonicalizeSmsText(admin: SupabaseClient | null, message: string): Promise<string> {

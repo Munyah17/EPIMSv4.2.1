@@ -440,7 +440,7 @@ async function createClient_(admin: SupabaseClient, body: Json, agentId: string)
       client: { name, phone, email: body.email ? String(body.email) : null },
       smsText: regSms,
       emailSubject: 'Welcome to Motions Microinsurance',
-      emailText: `Dear ${name},\n\nYour details have been registered with Motions Microinsurance.\n\nPlease note this registration does not itself put any cover in place. One of our agents will contact you to arrange a policy suited to you.\n\nRegards,\nMotions Microinsurance`,
+      emailText: `Dear ${name},\n\nYour details are on file with Motions Microinsurance.\n\nPlease note this registration does not itself put any cover in place. One of our agents will contact you to arrange a policy suited to you.\n\nRegards,\nMotions Microinsurance`,
     }).catch(e => console.error('v1.clients: registration notify failed', e))
     return { status: 201, body: { data: { id: data.id, nationalId, existing: false } } }
   }
@@ -631,8 +631,8 @@ async function createPolicy(admin: SupabaseClient, body: Json, dev: Record<strin
     ref: data.policy_number,
     client: contact ?? undefined,
     smsText: polSms,
-    emailSubject: `Policy ${data.policy_number} registered`,
-    emailText: `Dear ${contact?.name ?? 'Client'},\n\nYour policy has been registered through one of our agents.\n\nPolicy Number:  ${data.policy_number}\nProduct:        ${product.name}\nCover Amount:   $${Number(product.cover_amount).toLocaleString()}\nPremium:        $${Number(product.premium).toFixed(2)} per month\nStatus:         PENDING APPROVAL\n\nWe will confirm once it is active.\n\nRegards,\nMotions Microinsurance`,
+    emailSubject: `Policy ${data.policy_number} confirmed`,
+    emailText: `Dear ${contact?.name ?? 'Client'},\n\nYour policy is on record through one of our agents.\n\nPolicy Number:  ${data.policy_number}\nProduct:        ${product.name}\nCover Amount:   $${Number(product.cover_amount).toLocaleString()}\nPremium:        $${Number(product.premium).toFixed(2)} per month\nStatus:         PENDING APPROVAL\n\nWe will confirm once it is active.\n\nRegards,\nMotions Microinsurance`,
   }).catch(e => console.error('v1.policies: registration notify failed', e))
 
   return { status: 201, body: { data: { id: data.id, policyNumber: data.policy_number, status: 'pending' } } }

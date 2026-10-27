@@ -358,7 +358,7 @@ async function reconcileBook(admin: SupabaseClient): Promise<{ orphanedClients: 
       event: 'recon', ref: 'reconciliation',
       notifyClient: false, notifyOffice: true,
       smsText: `Motions: ${newLines.length} unreconciled record(s) found — possible paid-but-unregistered signup. Check email/portal.`,
-      emailSubject: `[RECONCILIATION] ${newLines.length} unmatched record(s) — possible paid-but-unregistered`,
+      emailSubject: `[RECONCILIATION] ${newLines.length} unmatched record(s) — possible paid-but-unmatched`,
       emailText: body,
     }).catch(e => console.error('cron-reminders: recon notify failed', e))
   }

@@ -1,5 +1,6 @@
 import nodemailer from 'nodemailer'
 import { graphConfigured, sendViaGraph } from './graphMail.js'
+import { stripEmailSubject, stripEmailBody } from './smsCanon.js'
 
 /**
  * The actual mail transport, extracted from send-email.ts so non-HTTP
@@ -61,6 +62,11 @@ function getTransporter() {
 }
 
 export async function sendMailDirect(mail: MailPayload): Promise<MailResult> {
+  // Same wording border as SMS: a stale bundle or a caller that still
+  // writes "REGISTRATION:" / "[REG]" envelopes must not resurrect the
+  // banned label on email — subjects take the full strip, bodies only
+  // lose envelope lines and bracket tags so prose is never mangled.
+  mail = { ...mail, subject: stripEmailSubject(mail.subject), text: stripEmailBody(mail.text) }
   if (graphConfigured()) {
     const sender = mail.from || process.env.MS_SEND_AS || senderAddress()
     if (!sender) {

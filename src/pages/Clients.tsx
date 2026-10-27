@@ -93,7 +93,7 @@ export default function Clients({ showToast }: Props) {
     const { data, error } = await db.clients.create(client)
     if (error || !data) {
       showToast('error', error ?? 'Failed to register client.')
-      void notifyRegistrationFailed('Client registration', `${client.name} — ${error ?? 'unknown error'}`)
+      void notifyRegistrationFailed('Client signup', `${client.name} — ${error ?? 'unknown error'}`)
       return
     }
     setClients(prev => [data, ...prev])
@@ -155,7 +155,7 @@ export default function Clients({ showToast }: Props) {
     const { data, error } = await db.policies.create(policy)
     if (error || !data) {
       showToast('error', error ?? 'Failed to create policy.')
-      void notifyRegistrationFailed('Policy registration', `${policy.clientName} / ${policy.productName} — ${error ?? 'unknown error'}`)
+      void notifyRegistrationFailed('Policy signup', `${policy.clientName} / ${policy.productName} — ${error ?? 'unknown error'}`)
       return null
     }
     setClients(prev => prev.map(c => c.id === data.clientId ? { ...c, policyCount: c.policyCount + 1 } : c))

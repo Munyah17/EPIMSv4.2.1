@@ -74,7 +74,7 @@ export async function notifyRegistrationFailed(what: string, detail: string): Pr
   await textOffice(await getSmsRecipientsForEvent('registration'), '', alert, { event: 'registration' })
   void sendEmail({
     to: cfg.insurerEmail,
-    subject: `[Registration Failed] ${what}`,
+    subject: `[Signup Failed] ${what}`,
     from: MAILBOXES.admin,
     body: `A registration did not complete.\n\nWhat failed: ${what}\nDetail:      ${detail}\nTime:        ${new Date().toISOString()}${cfg.signature ? `\n\n---\n${cfg.signature}` : ''}`,
   }).catch(() => { /**/ })
@@ -96,7 +96,7 @@ export async function notifyClientRegistered(client: Client, registeredBy?: stri
       from: MAILBOXES.noreply,
       body: `Dear ${client.name},
 
-Your details have been registered with ${COMPANY_NAME}.
+Your details are on file with ${COMPANY_NAME}.
 
 Name:        ${client.name}
 National ID: ${client.nationalId || 'not given'}
@@ -131,14 +131,16 @@ export async function notifyGroupRegistered(group: Group): Promise<void> {
     void sendEmail({
       to: (group.orgEmail || group.contactEmail) as string,
       cc: group.orgEmail && group.contactEmail ? group.contactEmail : undefined,
-      subject: `${group.name} — registered for group cover with ${COMPANY_NAME}`,
+      subject: `${group.name} — group cover with ${COMPANY_NAME}`,
       from: MAILBOXES.noreply,
-      body: `Dear ${group.contactName || group.name},\n\n${group.name} has been registered as a group client with ${COMPANY_NAME}.\n\nType:             ${kind}\n\nWe will manage your member roster, monthly invoicing and policy updates through this account. If any detail above is wrong, contact us and we will correct it.${cfg.signature ? `\n\n---\n${cfg.signature}` : ''}`,
+      body: `Dear ${group.contactName || group.name},\n\n${group.name} is on file as a group client with ${COMPANY_NAME}.\n\nType:             ${kind}\n\nWe will manage your member roster, monthly invoicing and policy updates through this account. If any detail above is wrong, contact us and we will correct it.${cfg.signature ? `\n\n---\n${cfg.signature}` : ''}`,
     }).catch(() => { /**/ })
   }
 
-  const alert = groupRegisteredSms(group.name, kind, group.contactName, group.contactPhone)
-  await textOffice(await getSmsRecipientsForEvent('registration'), '', alert, { event: 'registration', ref: group.name })
+  // The office reads the SAME resolved text the organisation got — a
+  // configured template applies here too, so staff never see different
+  // wording from what went to the client.
+  await textOffice(await getSmsRecipientsForEvent('registration'), '', msg, { event: 'registration', ref: group.name })
 }
 
 export async function notifyPolicyRegistered(policy: Policy, client: Client | null): Promise<void> {
@@ -194,11 +196,11 @@ export async function notifyPolicyRegistered(policy: Policy, client: Client | nu
   if (client?.email) {
     void sendEmail({
       to: client.email,
-      subject: `Policy ${policy.policyNumber} registered: welcome to ${COMPANY_NAME}`,
+      subject: `Policy ${policy.policyNumber}: welcome to ${COMPANY_NAME}`,
       from: MAILBOXES.noreply,
       body: `Dear ${clientName},
 
-Thank you for choosing ${COMPANY_NAME}. Your policy has been registered.
+Thank you for choosing ${COMPANY_NAME}. Your policy is on record.
 
 Policy Number:  ${policy.policyNumber}
 Product:        ${policy.productName}
@@ -229,7 +231,7 @@ Keep this email for your records. If any detail above is wrong, contact us and w
       to: insurerRecipient,
       subject: `[New Policy] ${policy.policyNumber}: ${clientName}`,
       from: MAILBOXES.admin,
-      body: `A new policy has been registered.
+      body: `A new policy is on record.
 
 Policy Number:  ${policy.policyNumber}
 Client:         ${clientName}
@@ -242,7 +244,7 @@ Premium:        ${premium}
 Start Date:     ${policy.startDate}
 Status:         ${policy.status.replace('_', ' ').toUpperCase()}
 Payment Method: ${policy.paymentMethod}
-${policy.agentName ? `Registered by:  ${policy.agentName}` : 'Registered through the public website.'}${cfg.signature ? `\n\n---\n${cfg.signature}` : ''}`,
+${policy.agentName ? `Issued by:      ${policy.agentName}` : 'Issued through the public website.'}${cfg.signature ? `\n\n---\n${cfg.signature}` : ''}`,
     }).catch(() => { /**/ })
   }
 }
