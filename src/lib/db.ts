@@ -2442,12 +2442,15 @@ async function loadDashboardStatsLight(): Promise<DashboardStats | null> {
     // apart from the error gate so a missing table degrades to zero, not
     // a dashboard that refuses to load.
     supabase.from('invoices').select('amount').eq('status', 'issued').limit(5000),
-    // Clients with no policy rows at all — the embedded policies(id)
-    // left join returns NULL children exactly where cover was never
-    // written. Optional like invoices: an error degrades to zero, not a
-    // dashboard that refuses to load.
+    // Clients with no policy rows at all. The embed filter needs !inner:
+    // on a plain left-join embed, policies.id=is.null only empties each
+    // client's policies[] array — every parent still matches and count
+    // returns the whole client register. With !inner, is.null becomes an
+    // anti-join (parents with no related rows) — the ClientsNoPolicy
+    // page's policyCount=0 set. Optional like invoices: an error degrades
+    // to zero, not a dashboard that refuses to load.
     supabase.from('clients')
-      .select('id, name, phone, created_at, policies(id)', { count: 'exact' })
+      .select('id, name, phone, created_at, policies!inner(id)', { count: 'exact' })
       .is('policies.id', null)
       .order('created_at', { ascending: false })
       .limit(5),
