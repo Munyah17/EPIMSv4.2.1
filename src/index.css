@@ -34,7 +34,7 @@ input,textarea,.mono,.select-text{-webkit-user-select:text;user-select:text}
 .logo-sub{font-size:10px;color:rgba(255,255,255,0.5);letter-spacing:0.08em;text-transform:uppercase;margin-top:1px}
 .sidebar-close-btn{display:none;margin-left:auto;background:rgba(255,255,255,0.1);border:none;border-radius:5px;padding:4px 9px;cursor:pointer;color:rgba(255,255,255,0.7);font-size:18px;line-height:1}
 .sidebar-close-btn:hover{background:rgba(255,255,255,0.2)}
-.sidebar-nav{flex:1;min-height:0;padding:7px 0;overflow-y:auto}
+.sidebar-nav{flex:1;min-height:0;padding:7px 0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
 .sidebar-nav::-webkit-scrollbar{width:0}
 .nav-sec{font-size:10px;font-weight:600;letter-spacing:0.12em;text-transform:uppercase;color:rgba(255,255,255,0.4);padding:13px 17px 4px}
 .nav-item{appearance:none;background:transparent;border:none;border-left:2px solid transparent;outline:none;width:100%;text-align:left;font-family:'DM Sans',sans-serif;display:flex;align-items:center;gap:10px;padding:10px 17px;cursor:pointer;color:#fff;font-size:13.5px;font-weight:400;transition:all 0.15s;-webkit-user-select:none;user-select:none}
@@ -247,7 +247,7 @@ tbody tr:hover td{background:var(--surface)}
 /* Mobile (≤768px) */
 @media(max-width:768px){
   /* Sidebar — slides in as overlay */
-  .sidebar{position:fixed;inset:0 auto 0 0;width:260px;z-index:300;transform:translateX(-100%);box-shadow:4px 0 20px rgba(0,0,0,0.3)}
+  .sidebar{position:fixed;top:0;left:0;bottom:0;width:260px;z-index:300;transform:translateX(-100%);box-shadow:4px 0 20px rgba(0,0,0,0.3);height:100dvh}
   .sidebar-open,.sidebar.sidebar-open{transform:translateX(0)!important}
   .sidebar-close-btn{display:flex!important}
   .sidebar-overlay{display:block!important}
@@ -355,7 +355,7 @@ tbody tr:hover td{background:var(--surface)}
 .app-copyright{display:block;text-align:center;padding:8px 14px 12px;font-size:9px;color:rgba(255,255,255,0.45);text-decoration:none}
 .app-copyright:hover{color:rgba(255,255,255,0.55);text-decoration:underline}
 @media(max-width:768px){
-  .sidebar{position:fixed;inset:0 auto 0 0;width:260px;z-index:300;transform:translateX(-100%)}
+  .sidebar{position:fixed;top:0;left:0;bottom:0;width:260px;z-index:300;transform:translateX(-100%);height:100dvh}
   .sidebar-open,.sidebar.sidebar-open{transform:translateX(0)!important}
   .sidebar-close-btn{display:flex!important}
 }
@@ -1119,7 +1119,7 @@ textarea.form-control{resize:vertical;min-height:80px}
 .billing-schedule-info{display:flex;flex-direction:column;gap:2px;min-width:0}
 .billing-schedule-label{font-weight:600;color:var(--text)}
 .billing-schedule-desc{color:var(--muted);font-size:11px;line-height:1.4}
-.sidebar-nav{flex:1;min-height:0;padding:7px 0;overflow-y:auto}
+.sidebar-nav{flex:1;min-height:0;padding:7px 0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
 .sidebar-nav::-webkit-scrollbar{width:0}
 .sidebar-user{display:flex;align-items:center;gap:9px;padding:11px 14px;border-top:1px solid rgba(255,255,255,0.08)}
 .sidebar-user-avatar{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#5B7FE8,#4169E1);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:white;flex-shrink:0}
