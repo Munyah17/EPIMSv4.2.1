@@ -120,13 +120,18 @@ export async function canonicalizeSmsText(admin: SupabaseClient | null, message:
     // a Field To Floor registration into "… Reg. Policy. Cover $1,000
     // … /yr" — resolve the real name, never guess from the join.
     let productName = String(row.product_name ?? row.productName ?? '')
-    if (!productName && (row.product_id ?? row.productId)) {
+    let productCategory = String(row.product_category ?? row.productCategory ?? '')
+    // Fetch name and/or category whenever the row lacks either — the
+    // category drives the /yr vs /mo period label (agriculture is
+    // annual, everything else bills monthly).
+    if ((!productName || !productCategory) && (row.product_id ?? row.productId)) {
       const { data: prod } = await admin
         .from('products')
-        .select('name')
+        .select('name, category')
         .eq('id', (row.product_id ?? row.productId) as string)
         .maybeSingle()
-      if (prod?.name) productName = String(prod.name)
+      if (!productName && prod?.name) productName = String(prod.name)
+      if (!productCategory && prod?.category) productCategory = String(prod.category)
     }
     if (!productName) productName = 'Policy'
     const premium = Number(row.premium ?? 0)
@@ -149,16 +154,17 @@ export async function canonicalizeSmsText(admin: SupabaseClient | null, message:
         premium: smsVarMoney(premium),
         // Tobacco texts carry no period label and no closing dot — see
         // smsText.ts. Non-tobacco keeps the trailing period inside the
-        // var so one template body serves both product classes.
-        period: isTobaccoFieldToFloor(productName) ? '' : '/yr',
-        premiumWithPeriod: isTobaccoFieldToFloor(productName) ? smsVarMoney(premium) : `${smsVarMoney(premium)}/yr.`,
+        // var so one template body serves both product classes; the
+        // label is /yr for agriculture, /mo for every monthly product.
+        period: isTobaccoFieldToFloor(productName) ? '' : (productCategory === 'agriculture' ? '/yr' : '/mo'),
+        premiumWithPeriod: isTobaccoFieldToFloor(productName) ? smsVarMoney(premium) : `${smsVarMoney(premium)}${productCategory === 'agriculture' ? '/yr' : '/mo'}.`,
         paymentMethod,
       },
       fallback: policyRegisteredSms({
         clientName,
         policyNumber,
         productName,
-        productCategory: (row.product_category ?? row.productCategory) as string | undefined,
+        productCategory: (productCategory || undefined) as string | undefined,
         coverAmount: Number(row.cover_amount ?? row.coverAmount ?? 0),
         premium,
         paymentMethod,

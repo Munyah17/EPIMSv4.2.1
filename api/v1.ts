@@ -611,8 +611,8 @@ async function createPolicy(admin: SupabaseClient, body: Json, dev: Record<strin
       // Tobacco texts carry no period label and no closing dot — see
       // smsText.ts. Non-tobacco keeps the trailing period inside the
       // var so one template body serves both product classes.
-      period: polF2F ? '' : '/yr',
-      premiumWithPeriod: polF2F ? smsVarMoney(polPremium) : `${smsVarMoney(polPremium)}/yr.`,
+      period: polF2F ? '' : ((product.category as string | undefined) === 'agriculture' ? '/yr' : '/mo'),
+      premiumWithPeriod: polF2F ? smsVarMoney(polPremium) : `${smsVarMoney(polPremium)}${(product.category as string | undefined) === 'agriculture' ? '/yr' : '/mo'}.`,
       paymentMethod,
     },
     fallback: policyRegisteredSms({

@@ -1,11 +1,11 @@
-/** Every premium is annual — the figure on the product is the whole
- *  year's cover however it is collected (stop order, EcoCash, cash).
- *  Anywhere a premium is shown next to its billing period, use this
- *  instead of a hardcoded "/mo": the label exists so that if a
- *  monthly-priced product is ever added, the period changes in one
- *  place rather than across every screen and message. */
-export function premiumPeriodLabel(_category: string, _productName?: string, _paymentMethod?: string | null): '/yr' | '/mo' {
-  return '/yr'
+/** Billing period label — the split is by product CATEGORY, never by
+ *  how the client pays: agriculture products are annual (the figure on
+ *  the product is the whole season's premium, settled by stop order),
+ *  every other product — funeral, hospital cash, life, motor — bills
+ *  MONTHLY. Anywhere a premium is shown next to its period, use this
+ *  instead of hardcoding "/yr" or "/mo". */
+export function premiumPeriodLabel(category: string, _productName?: string, _paymentMethod?: string | null): '/yr' | '/mo' {
+  return category === 'agriculture' ? '/yr' : '/mo'
 }
 
 export function formatPremium(premium: number, category: string, productName?: string, paymentMethod?: string | null): string {

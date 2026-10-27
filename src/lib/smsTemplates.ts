@@ -103,7 +103,7 @@ export const SMS_TEMPLATE_EVENTS: SmsTemplateEventDef[] = [
     label: 'Registration Confirmation (policy issued)',
     defaultBody: '{clientName} {policyNumber}. {productName}. {coverClause}. {paymentMethod} {premiumWithPeriod}',
     vars: [V.clientName, V.policyNumber, V.productName, V.coverAmount, V.coverLine, V.coverClause, V.premium, V.period, V.premiumWithPeriod, V.paymentMethod],
-    sample: { clientName: 'Demo User', policyNumber: 'FCP0012', productName: 'Funeral Cash Plan', coverAmount: '$5,000', coverLine: '$5,000', coverClause: 'Cover $5,000', premium: '$105', period: '/yr', premiumWithPeriod: '$105/yr.', paymentMethod: 'EcoCash' },
+    sample: { clientName: 'Demo User', policyNumber: 'FCP0012', productName: 'Funeral Cash Plan', coverAmount: '$5,000', coverLine: '$5,000', coverClause: 'Cover $5,000', premium: '$10', period: '/mo', premiumWithPeriod: '$10/mo.', paymentMethod: 'EcoCash' },
   },
   {
     event: 'client_registered',

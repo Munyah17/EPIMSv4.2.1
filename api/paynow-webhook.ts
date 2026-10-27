@@ -366,11 +366,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               : smsVarMoney(Number(policy.cover_amount ?? 0)),
             coverClause: policyCoverClause(regProduct, Number(policy.cover_amount ?? 0), regPremium),
             premium: smsVarMoney(regPremium),
-            // Tobacco texts carry no period label and no closing dot —
-            // see smsText.ts. Non-tobacco keeps the trailing period
-            // inside the var so one template body serves both classes.
-            period: regF2F ? '' : '/yr',
-            premiumWithPeriod: regF2F ? smsVarMoney(regPremium) : `${smsVarMoney(regPremium)}/yr.`,
+            // The label is /yr for agriculture, /mo for every monthly
+            // product — see smsText.ts.
+            period: regF2F ? '' : (category === 'agriculture' ? '/yr' : '/mo'),
+            premiumWithPeriod: regF2F ? smsVarMoney(regPremium) : `${smsVarMoney(regPremium)}${category === 'agriculture' ? '/yr' : '/mo'}.`,
             paymentMethod: policy.payment_method,
           },
           fallback: policyRegisteredSms({

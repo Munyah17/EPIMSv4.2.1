@@ -120,8 +120,9 @@ export function dedupeMessage(raw: string): string {
 //
 // Grammar: {clientName} {policyNumber} {event}. {details}. {method}
 // {premium}{period}. Field To Floor products drop the "Reg." verb and
-// the "/yr" period label — the peril breakdown is the cover clause —
-// every other product keeps "Reg." and "/yr".
+// the period label — the peril breakdown is the cover clause. The
+// period itself is category-driven: agriculture is annual (/yr), every
+// other product bills monthly (/mo).
 //
 // No trailing phone number: the recipient is the owner of that number —
 // echoing it back costs twelve characters and tells them nothing.
@@ -253,16 +254,16 @@ export function policyRegisteredSms(p: PolicyNoticeInput): string {
   const fieldToFloor = isTobaccoFieldToFloor(p.productName)
   const cover = policyCoverClause(p.productName, p.coverAmount, p.premium)
   const method = (p.paymentMethod ?? '').trim()
-  // Every premium is quoted annual — the figure on the product is the
-  // whole year's cover however it is collected (stop order, EcoCash,
-  // cash). "/mo" was misquoting the same figure as a monthly price.
+  // The period label is the product's billing cycle: agriculture is
+  // annual (/yr, settled by stop order), everything else — funeral,
+  // hospital cash, life — bills monthly (/mo).
   if (fieldToFloor) {
     // Tobacco wording per the approved example: no "Reg.", no phone,
     // no "/yr", and NO closing period — the text ends on the premium:
     // "… Funeral $500. Stop Order $60"
     return `${p.clientName} ${p.policyNumber}. ${p.productName}. ${cover}. ${method ? `${method} ` : ''}${smsMoney(p.premium)}`
   }
-  const period = '/yr'
+  const period = p.productCategory === 'agriculture' ? '/yr' : '/mo'
   // No 'Reg.' verb on any product — the policy number already says this
   // is a registration.
   return `${p.clientName} ${p.policyNumber}. ${p.productName}. ${cover}. ${method ? `${method} ` : ''}${smsMoney(p.premium)}${period}.`

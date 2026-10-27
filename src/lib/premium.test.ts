@@ -60,12 +60,13 @@ describe('per-head premiums', () => {
     expect(billableHeadCount(policy)).toBe(1)
   })
 
-  it('says how many people a total covers', () => {
+  it('labels monthly products /mo and agriculture /yr', () => {
     const policy: Policy = {
       ...base,
       dependants: [{ name: 'Tendai', relationship: 'Spouse', dob: '1992-04-02', nationalId: 'A', premium: 12 }],
     }
-    expect(formatBillablePremium(policy)).toBe('$24.00/yr (2 people)')
-    expect(formatBillablePremium(base)).toBe('$12.00/yr')
+    expect(formatBillablePremium(policy)).toBe('$24.00/mo (2 people)')
+    expect(formatBillablePremium(base)).toBe('$12.00/mo')
+    expect(formatBillablePremium({ ...base, productCategory: 'agriculture', productName: 'Tobacco Cover' })).toBe('$12.00/yr')
   })
 })

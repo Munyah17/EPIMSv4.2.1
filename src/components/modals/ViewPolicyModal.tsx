@@ -81,7 +81,13 @@ export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint, show
             </div>
             <div className="detail-item"><span className="detail-label">Cover Amount</span><span>${policy.coverAmount.toLocaleString()}</span></div>
             <div className="detail-item"><span className="detail-label">Start Date</span><span>{formatDate(policy.startDate)}</span></div>
-            <div className="detail-item"><span className="detail-label">End Date</span><span>{formatDate(policy.endDate)}</span></div>
+            {/* Monthly cover has no term end — the stored end_date on a
+                non-agriculture policy is a start+1yr artifact, and shown
+                beside Next Payment it read as two different end dates.
+                Only agriculture has a real season end. */}
+            {category === 'agriculture' && (
+              <div className="detail-item"><span className="detail-label">End Date</span><span>{formatDate(policy.endDate)}</span></div>
+            )}
             <div className="detail-item"><span className="detail-label">Payment Method</span><span>{policy.paymentMethod}</span></div>
             {policy.growerNumber && (
               <div className="detail-item"><span className="detail-label">Grower Number</span><span>{policy.growerNumber}</span></div>

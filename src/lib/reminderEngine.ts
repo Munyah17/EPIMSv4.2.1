@@ -300,15 +300,20 @@ export async function checkWaitingPeriodElapsed() {
   }
 }
 
-/** Policies whose cover term has ended are swept to 'expired' — the
- *  archive state. The active book then holds only live cover (e.g. the
- *  whole tobacco book rolls off on 31 Aug when the season closes), while
- *  an archived policy keeps every record — client, dependants, payments —
- *  and can be restored from the Archive view if the client returns. */
+/** Agriculture policies expire when their season ends — the sweep to
+ *  'expired' (the archive state) exists for the tobacco book rolling off
+ *  on 31 Aug. Monthly products — funeral, hospital cash, life, motor —
+ *  have no fixed term: their stored end_date is a start+1yr bookkeeping
+ *  artifact set at creation, and cover continues while payments come in.
+ *  Sweeping them by end_date archived live paid-up policies and then
+ *  re-archived them after every restore; they are excluded exactly like
+ *  checkWaitingPeriodElapsed excludes agriculture — wrong lifecycle. */
 export async function archiveExpiredPolicies() {
-  const { data: allPolicies } = await db.policies.list()
+  const [{ data: allPolicies }, { data: allProducts }] = await Promise.all([db.policies.list(), db.products.list()])
+  const categoryByProductId = new Map((allProducts ?? []).map(p => [p.id, p.category]))
   const todayISO = toIsoDate(new Date())
   for (const policy of allPolicies ?? []) {
+    if (categoryByProductId.get(policy.productId) !== 'agriculture') continue
     if (!policy.endDate || policy.endDate >= todayISO) continue
     if (!['active', 'waiting_period', 'lapsed', 'defaulted'].includes(policy.status)) continue
     await db.policies.update(policy.id, { status: 'expired' })

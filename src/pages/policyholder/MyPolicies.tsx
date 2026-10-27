@@ -113,7 +113,12 @@ export default function MyPolicies({ showToast, setActivePanel }: Props) {
                       </div>
                     )}
                     <div style={{ fontSize: '0.85rem', color: 'var(--muted)', marginTop: 4 }}>
-                      Ends {formatDate(p.endDate)} · Payment via <strong>{p.paymentMethod}</strong>
+                      {/* Monthly cover doesn't end on a date — it runs
+                          while paid. Only agriculture has a season end. */}
+                      {category === 'agriculture'
+                        ? `Ends ${formatDate(p.endDate)}`
+                        : `Paid up to ${formatDate(p.nextPaymentDate)}`}
+                      {' '}· Payment via <strong>{p.paymentMethod}</strong>
                       {p.lastPaymentDate ? ` · Last paid ${formatDate(p.lastPaymentDate)}` : ''}
                     </div>
 
