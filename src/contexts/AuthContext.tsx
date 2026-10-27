@@ -35,6 +35,7 @@ const PANEL_ACCESS: Record<string, UserRole[]> = {
   pre_loss_assessments: ['super_admin', 'admin', 'policy_admin', 'claims_officer'],
   agriculture_insurance: ['super_admin', 'admin', 'policy_admin', 'claims_officer'],
   clients: ['super_admin', 'admin', 'policy_admin', 'client_relations', 'agent'],
+  clients_no_policy: ['super_admin', 'admin', 'policy_admin', 'client_relations', 'agent'],
   member_cards: ['super_admin', 'admin', 'policy_admin', 'claims_officer', 'client_relations', 'finance'],
   staff: ['super_admin', 'admin'],
   system_access_roles: ['super_admin'],

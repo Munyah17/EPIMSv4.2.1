@@ -30,6 +30,7 @@ const Payments = lazyWithRecovery('Payments', () => import('./pages/Payments'))
 const PaymentVerifications = lazyWithRecovery('PaymentVerifications', () => import('./pages/PaymentVerifications'))
 const Products = lazyWithRecovery('Products', () => import('./pages/Products'))
 const Clients = lazyWithRecovery('Clients', () => import('./pages/Clients'))
+const ClientsNoPolicy = lazyWithRecovery('ClientsNoPolicy', () => import('./pages/ClientsNoPolicy'))
 const Staff = lazyWithRecovery('Staff', () => import('./pages/Staff'))
 const SystemAccessRoles = lazyWithRecovery('SystemAccessRoles', () => import('./pages/SystemAccessRoles'))
 const Reminders = lazyWithRecovery('Reminders', () => import('./pages/Reminders'))
@@ -60,7 +61,7 @@ const SmsTemplates = lazyWithRecovery('SmsTemplates', () => import('./pages/SmsT
 
 export type ActivePanel =
   | 'dashboard' | 'policies' | 'claims' | 'payments' | 'products'
-  | 'clients' | 'groups' | 'staff' | 'system_access_roles' | 'reminders' | 'reports' | 'leads' | 'payment_verifications'
+  | 'clients' | 'clients_no_policy' | 'groups' | 'staff' | 'system_access_roles' | 'reminders' | 'reports' | 'leads' | 'payment_verifications'
   | 'email' | 'tickets' | 'fraud' | 'profile'
   | 'system_health' | 'settings' | 'developer_api' | 'integrations' | 'mass_messaging' | 'billing_reminders' | 'pre_loss_assessments' | 'agriculture_insurance' | 'member_cards' | 'whatsapp_bot'
   | 'marketing_contacts' | 'campaign_composer' | 'sms_templates'
@@ -216,6 +217,7 @@ function AppInner() {
       case 'payment_verifications': return <PaymentVerifications {...panelProps} />
       case 'products': return <Products {...panelProps} initialCategory={panelCategory} />
       case 'clients': return <Clients {...panelProps} />
+      case 'clients_no_policy': return <ClientsNoPolicy {...panelProps} />
       case 'groups': return <Groups {...panelProps} />
       case 'staff': return <Staff {...panelProps} />
       case 'system_access_roles': return <SystemAccessRoles {...panelProps} />

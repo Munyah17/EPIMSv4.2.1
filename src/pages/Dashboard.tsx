@@ -50,6 +50,7 @@ function timeAgo(iso: string | undefined): string {
 const EMPTY_STATS: DashboardStats = {
   activePolicies: 0, pendingClaims: 0, totalPremiums: 0, newLeads: 0, fraudAlerts: 0, lapseRate: 0, totalClients: 0,
   unpaidInvoices: 0, unpaidInvoiceAmount: 0,
+  clientsNoPolicyCount: 0, clientsNoPolicy: [],
   productBreakdown: [], recentPolicies: [], latestClaim: null, latestPayment: null, latestLead: null, latestFraud: null, latestClient: null,
 }
 
@@ -294,12 +295,18 @@ export default function Dashboard({ showToast, setActivePanel }: Props) {
             <div className="stat-delta positive">All time</div>
           </div>
         </div>
-        <div className="stat-card stat-card-clickable" onClick={() => setActivePanel('leads')}>
-          <div className="stat-icon stat-icon-purple">🎯</div>
+        {/* Clients registered but holding no policy at all — surfaced
+            because the client-vs-policy audit found registrations with
+            no cover written against them. Clicking opens the uncovered
+            list, not the leads page. */}
+        <div className="stat-card stat-card-clickable" onClick={() => setActivePanel('clients_no_policy')}>
+          <div className="stat-icon stat-icon-danger">👤</div>
           <div className="stat-body">
-            <div className="stat-value">{stats.newLeads}</div>
-            <div className="stat-label">New Leads</div>
-            <div className="stat-delta positive">{stats.newLeads > 0 ? 'Awaiting follow-up' : 'All clear'}</div>
+            <div className="stat-value">{stats.clientsNoPolicyCount}</div>
+            <div className="stat-label">Clients With No Policy</div>
+            <div className={stats.clientsNoPolicyCount > 0 ? 'stat-delta negative' : 'stat-delta positive'}>
+              {stats.clientsNoPolicyCount > 0 ? 'No cover written' : 'All covered'}
+            </div>
           </div>
         </div>
         <div className="stat-card stat-card-clickable" onClick={() => setActivePanel('fraud')}>
@@ -331,6 +338,25 @@ export default function Dashboard({ showToast, setActivePanel }: Props) {
           </div>
         </div>
       </div>
+
+      {/* Uncovered-client notice — names up to 5 of them so the
+          discrepancy is impossible to scroll past; View All opens the
+          full register of clients with no policy. */}
+      {stats.clientsNoPolicyCount > 0 && (
+        <div className="info-banner info-banner-warning" style={{ marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ flex: 1 }}>
+            ⚠ {stats.clientsNoPolicyCount} client{stats.clientsNoPolicyCount === 1 ? ' is' : 's are'} registered with no policy —
+            no cover exists under {stats.clientsNoPolicyCount === 1 ? 'their name' : 'their names'}.
+            {stats.clientsNoPolicy.length > 0 && (
+              <> {stats.clientsNoPolicy.map(c => c.name).join(', ')}
+                {stats.clientsNoPolicyCount > stats.clientsNoPolicy.length && ` and ${stats.clientsNoPolicyCount - stats.clientsNoPolicy.length} more`}.
+              </>
+            )}
+            {' '}Assign a policy to each, or confirm the registration itself is wrong.
+          </span>
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => setActivePanel('clients_no_policy')}>View All</button>
+        </div>
+      )}
 
       {canSeeHealth && (
         <div className="card" style={{ marginBottom: 20 }}>
