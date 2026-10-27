@@ -58,13 +58,14 @@ const WhatsAppBot = lazyWithRecovery('WhatsAppBot', () => import('./pages/WhatsA
 const MarketingContacts = lazyWithRecovery('MarketingContacts', () => import('./pages/MarketingContacts'))
 const CampaignComposer = lazyWithRecovery('CampaignComposer', () => import('./pages/CampaignComposer'))
 const SmsTemplates = lazyWithRecovery('SmsTemplates', () => import('./pages/SmsTemplates'))
+const Accounting = lazyWithRecovery('Accounting', () => import('./pages/Accounting'))
 
 export type ActivePanel =
   | 'dashboard' | 'policies' | 'claims' | 'payments' | 'products'
   | 'clients' | 'clients_no_policy' | 'groups' | 'staff' | 'system_access_roles' | 'reminders' | 'reports' | 'leads' | 'payment_verifications'
   | 'email' | 'tickets' | 'fraud' | 'profile'
   | 'system_health' | 'settings' | 'developer_api' | 'integrations' | 'mass_messaging' | 'billing_reminders' | 'pre_loss_assessments' | 'agriculture_insurance' | 'member_cards' | 'whatsapp_bot'
-  | 'marketing_contacts' | 'campaign_composer' | 'sms_templates'
+  | 'marketing_contacts' | 'campaign_composer' | 'sms_templates' | 'accounting'
   | 'my_policies' | 'my_claims' | 'my_payments' | 'live_chat'
 
 // Earlier demo builds seeded invented clients/policies/payments into
@@ -234,6 +235,7 @@ function AppInner() {
       case 'mass_messaging': return <MassMessaging {...panelProps} />
       case 'whatsapp_bot': return <WhatsAppBot {...panelProps} />
       case 'billing_reminders': return <BillingReminders {...panelProps} />
+      case 'accounting': return <Accounting {...panelProps} />
       case 'pre_loss_assessments': return <PreLossAssessments {...panelProps} />
       case 'agriculture_insurance': return <AgricultureInsurance {...panelProps} />
       case 'member_cards': return <MemberCards {...panelProps} />

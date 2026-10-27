@@ -128,11 +128,12 @@ const STAFF_SECTIONS: NavSection[] = [
       },
       {
         groupId: 'billing',
-        label: 'Billing & Reminders',
+        label: 'Billing & Accounting',
         icon: '💳',
         items: [
           { id: 'reminders', label: 'Reminders', icon: '🔔' },
           { id: 'billing_reminders', label: 'Billing & Reminders', icon: '💳', roles: ['super_admin', 'admin', 'finance'] },
+          { id: 'accounting', label: 'Accounting', icon: '🧮', roles: ['super_admin', 'admin', 'finance'] },
         ],
       },
     ],

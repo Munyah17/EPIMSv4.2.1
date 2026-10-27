@@ -18,6 +18,9 @@ import type {
   ClaimAssessment, PolicyAssessment, AssessmentPhoto, CropType, FraudSignalRule, HeroSlide,
   PolicyCard, Group, GroupMember, Invoice, InvoiceStatus, AgentProfile,
   MarketingContact, MarketingTemplate, MarketingCampaign, CampaignRecipient,
+  Quotation, QuotationStatus, Requisition, RequisitionStatus,
+  FloatEntry, FloatEntryType, PettyCashEntry, PettyCashEntryType,
+  FdmsReceipt, FdmsReceiptStatus,
 } from '../types'
 import { STAFF_ROLES } from '../types'
 
@@ -3285,6 +3288,271 @@ export const invoices = {
   },
 }
 
+// ── ACCOUNTING ──────────────────────────────────────────────────────
+// Quotations, requisitions, the float ledger, the petty-cash imprest and
+// the FDMS fiscalisation log — one migration (add_accounting.sql), same
+// is_staff() RLS as the rest of billing.
+
+/** Monthly document numbers — QUO-202611-001, REQ-202611-001, … The
+ *  caller's unique index closes the twin-submit race; the loser retries
+ *  with the next sequence, same as invoices. */
+async function nextDocNumber(table: 'quotations' | 'requisitions', column: string, prefix: string): Promise<string> {
+  const d = new Date()
+  const period = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}`
+  const { data: last } = await supabase.from(table)
+    .select(column).like(column, `${prefix}-${period}-%`)
+    .order(column, { ascending: false }).limit(1)
+  const lastSeq = Number((((last?.[0] as Record<string, unknown> | undefined)?.[column] as string | undefined ?? '').match(/-(\d+)$/)?.[1]) ?? 0)
+  return `${prefix}-${period}-${String(lastSeq + 1).padStart(3, '0')}`
+}
+
+function toQuotation(r: Record<string, unknown>): Quotation {
+  return {
+    id: r.id as string,
+    quotationNumber: r.quotation_number as string,
+    clientId: (r.client_id as string | null) ?? undefined,
+    clientName: r.client_name as string,
+    productId: (r.product_id as string | null) ?? undefined,
+    productName: (r.product_name as string | null) ?? '',
+    premium: Number(r.premium) || 0,
+    coverAmount: r.cover_amount != null ? Number(r.cover_amount) : undefined,
+    status: r.status as QuotationStatus,
+    validUntil: r.valid_until ? date(r.valid_until as string) : undefined,
+    notes: (r.notes as string | null) ?? undefined,
+    createdBy: (r.created_by as string | null) ?? undefined,
+    createdByName: (r.created_by_name as string | null) ?? undefined,
+    createdAt: r.created_at as string,
+    updatedAt: r.updated_at as string,
+  }
+}
+
+export const quotations = {
+  async list() {
+    const { ok, data } = await sb('quotations', 'read',
+      () => supabase.from('quotations').select('*').order('created_at', { ascending: false }),
+      d => Array.isArray(d),
+    )
+    if (ok && data) return { data: (data as unknown[]).map(q => toQuotation(q as Record<string, unknown>)), error: null }
+    return { data: [] as Quotation[], error: 'Could not load quotations — the quotations table may not exist yet (run database/add_accounting.sql).' }
+  },
+
+  async create(q: Omit<Quotation, 'id' | 'quotationNumber' | 'status' | 'createdAt' | 'updatedAt'>) {
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const quotationNumber = await nextDocNumber('quotations', 'quotation_number', 'QUO')
+      const { data, error } = await supabase.from('quotations').insert({
+        quotation_number: attempt === 1 ? quotationNumber : quotationNumber.replace(/-(\d+)$/, m => `-${String(Number(m.slice(1)) + attempt - 1).padStart(3, '0')}`),
+        client_id: q.clientId ?? null,
+        client_name: q.clientName,
+        product_id: q.productId ?? null,
+        product_name: q.productName,
+        premium: q.premium,
+        cover_amount: q.coverAmount ?? null,
+        valid_until: q.validUntil || null,
+        notes: q.notes || null,
+        created_by: q.createdBy ?? null,
+        created_by_name: q.createdByName ?? null,
+      }).select().single()
+      if (!error && data) return { data: toQuotation(data), error: null }
+      if (error?.code === '23505' && attempt < 3) continue
+      return { data: null, error: error?.message ?? 'Failed to save the quotation.' }
+    }
+    return { data: null, error: 'Failed to save the quotation.' }
+  },
+
+  async setStatus(id: string, status: QuotationStatus) {
+    const { data, error } = await supabase.from('quotations')
+      .update({ status, updated_at: new Date().toISOString() }).eq('id', id).select().single()
+    if (error || !data) return { data: null, error: error?.message ?? 'Failed to update the quotation.' }
+    return { data: toQuotation(data), error: null }
+  },
+
+  async remove(id: string) {
+    const { error } = await supabase.from('quotations').delete().eq('id', id)
+    return { error: error?.message ?? null }
+  },
+}
+
+function toRequisition(r: Record<string, unknown>): Requisition {
+  return {
+    id: r.id as string,
+    requisitionNumber: r.requisition_number as string,
+    payee: r.payee as string,
+    purpose: r.purpose as string,
+    category: (r.category as string | null) ?? 'General',
+    amount: Number(r.amount) || 0,
+    status: r.status as RequisitionStatus,
+    requestedBy: (r.requested_by as string | null) ?? undefined,
+    requestedByName: (r.requested_by_name as string | null) ?? undefined,
+    approvedBy: (r.approved_by as string | null) ?? undefined,
+    approvedByName: (r.approved_by_name as string | null) ?? undefined,
+    approvedAt: (r.approved_at as string | null) ?? undefined,
+    paidAt: (r.paid_at as string | null) ?? undefined,
+    notes: (r.notes as string | null) ?? undefined,
+    createdAt: r.created_at as string,
+  }
+}
+
+export const requisitions = {
+  async list() {
+    const { ok, data } = await sb('requisitions', 'read',
+      () => supabase.from('requisitions').select('*').order('created_at', { ascending: false }),
+      d => Array.isArray(d),
+    )
+    if (ok && data) return { data: (data as unknown[]).map(r => toRequisition(r as Record<string, unknown>)), error: null }
+    return { data: [] as Requisition[], error: 'Could not load requisitions — the requisitions table may not exist yet (run database/add_accounting.sql).' }
+  },
+
+  async create(q: { payee: string; purpose: string; category: string; amount: number; notes?: string; requestedBy?: string; requestedByName?: string }) {
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const requisitionNumber = await nextDocNumber('requisitions', 'requisition_number', 'REQ')
+      const { data, error } = await supabase.from('requisitions').insert({
+        requisition_number: attempt === 1 ? requisitionNumber : requisitionNumber.replace(/-(\d+)$/, m => `-${String(Number(m.slice(1)) + attempt - 1).padStart(3, '0')}`),
+        payee: q.payee,
+        purpose: q.purpose,
+        category: q.category || 'General',
+        amount: q.amount,
+        notes: q.notes || null,
+        requested_by: q.requestedBy ?? null,
+        requested_by_name: q.requestedByName ?? null,
+      }).select().single()
+      if (!error && data) return { data: toRequisition(data), error: null }
+      if (error?.code === '23505' && attempt < 3) continue
+      return { data: null, error: error?.message ?? 'Failed to submit the requisition.' }
+    }
+    return { data: null, error: 'Failed to submit the requisition.' }
+  },
+
+  /** approve/reject record who decided; paid only makes sense after
+   *  approval (enforced in the UI — a direct paid write on a pending row
+   *  is still a valid ledger state, money went out). */
+  async decide(id: string, status: 'approved' | 'rejected', decidedBy?: string, decidedByName?: string) {
+    const { data, error } = await supabase.from('requisitions')
+      .update({ status, approved_by: decidedBy ?? null, approved_by_name: decidedByName ?? null, approved_at: new Date().toISOString() })
+      .eq('id', id).select().single()
+    if (error || !data) return { data: null, error: error?.message ?? 'Failed to update the requisition.' }
+    return { data: toRequisition(data), error: null }
+  },
+
+  async markPaid(id: string) {
+    const { data, error } = await supabase.from('requisitions')
+      .update({ status: 'paid', paid_at: new Date().toISOString() }).eq('id', id).select().single()
+    if (error || !data) return { data: null, error: error?.message ?? 'Failed to mark the requisition paid.' }
+    return { data: toRequisition(data), error: null }
+  },
+}
+
+function toFloatEntry(r: Record<string, unknown>): FloatEntry {
+  return {
+    id: r.id as string,
+    holderId: (r.holder_id as string | null) ?? undefined,
+    holderName: r.holder_name as string,
+    type: r.entry_type as FloatEntryType,
+    amount: Number(r.amount) || 0,
+    description: r.description as string,
+    recordedBy: (r.recorded_by as string | null) ?? undefined,
+    recordedByName: (r.recorded_by_name as string | null) ?? undefined,
+    createdAt: r.created_at as string,
+  }
+}
+
+export const floatEntries = {
+  async list() {
+    const { ok, data } = await sb('float_entries', 'read',
+      () => supabase.from('float_entries').select('*').order('created_at', { ascending: false }),
+      d => Array.isArray(d),
+    )
+    if (ok && data) return { data: (data as unknown[]).map(r => toFloatEntry(r as Record<string, unknown>)), error: null }
+    return { data: [] as FloatEntry[], error: 'Could not load float entries — the float_entries table may not exist yet (run database/add_accounting.sql).' }
+  },
+
+  async create(e: { holderId?: string; holderName: string; type: FloatEntryType; amount: number; description: string; recordedBy?: string; recordedByName?: string }) {
+    const { data, error } = await supabase.from('float_entries').insert({
+      holder_id: e.holderId ?? null,
+      holder_name: e.holderName,
+      entry_type: e.type,
+      amount: e.amount,
+      description: e.description,
+      recorded_by: e.recordedBy ?? null,
+      recorded_by_name: e.recordedByName ?? null,
+    }).select().single()
+    if (!error && data) return { data: toFloatEntry(data), error: null }
+    return { data: null, error: error?.message ?? 'Failed to record the float entry.' }
+  },
+}
+
+function toPettyCashEntry(r: Record<string, unknown>): PettyCashEntry {
+  return {
+    id: r.id as string,
+    type: r.entry_type as PettyCashEntryType,
+    category: (r.category as string | null) ?? 'General',
+    payee: (r.payee as string | null) ?? undefined,
+    description: r.description as string,
+    amount: Number(r.amount) || 0,
+    receiptRef: (r.receipt_ref as string | null) ?? undefined,
+    recordedBy: (r.recorded_by as string | null) ?? undefined,
+    recordedByName: (r.recorded_by_name as string | null) ?? undefined,
+    createdAt: r.created_at as string,
+  }
+}
+
+export const pettyCashEntries = {
+  async list() {
+    const { ok, data } = await sb('petty_cash_entries', 'read',
+      () => supabase.from('petty_cash_entries').select('*').order('created_at', { ascending: false }),
+      d => Array.isArray(d),
+    )
+    if (ok && data) return { data: (data as unknown[]).map(r => toPettyCashEntry(r as Record<string, unknown>)), error: null }
+    return { data: [] as PettyCashEntry[], error: 'Could not load petty cash — the petty_cash_entries table may not exist yet (run database/add_accounting.sql).' }
+  },
+
+  async create(e: { type: PettyCashEntryType; category: string; payee?: string; description: string; amount: number; receiptRef?: string; recordedBy?: string; recordedByName?: string }) {
+    const { data, error } = await supabase.from('petty_cash_entries').insert({
+      entry_type: e.type,
+      category: e.category || 'General',
+      payee: e.payee || null,
+      description: e.description,
+      amount: e.amount,
+      receipt_ref: e.receiptRef || null,
+      recorded_by: e.recordedBy ?? null,
+      recorded_by_name: e.recordedByName ?? null,
+    }).select().single()
+    if (!error && data) return { data: toPettyCashEntry(data), error: null }
+    return { data: null, error: error?.message ?? 'Failed to record the petty cash entry.' }
+  },
+}
+
+function toFdmsReceipt(r: Record<string, unknown>): FdmsReceipt {
+  return {
+    id: r.id as string,
+    invoiceId: (r.invoice_id as string | null) ?? undefined,
+    receiptNumber: r.receipt_number as string,
+    clientName: (r.client_name as string | null) ?? '',
+    amount: Number(r.amount) || 0,
+    vatAmount: r.vat_amount != null ? Number(r.vat_amount) : undefined,
+    status: r.status as FdmsReceiptStatus,
+    deviceId: (r.device_id as string | null) ?? undefined,
+    fiscalDay: (r.fiscal_day as string | null) ?? undefined,
+    globalNo: r.global_no != null ? Number(r.global_no) : undefined,
+    verificationCode: (r.verification_code as string | null) ?? undefined,
+    qrData: (r.qr_data as string | null) ?? undefined,
+    error: (r.error as string | null) ?? undefined,
+    createdAt: r.created_at as string,
+  }
+}
+
+export const fdmsReceipts = {
+  // Read-only on the client — rows are written by /api/fdms with the
+  // service role so no browser can forge a "fiscalised" document.
+  async list() {
+    const { ok, data } = await sb('fdms_receipts', 'read',
+      () => supabase.from('fdms_receipts').select('*').order('created_at', { ascending: false }),
+      d => Array.isArray(d),
+    )
+    if (ok && data) return { data: (data as unknown[]).map(r => toFdmsReceipt(r as Record<string, unknown>)), error: null }
+    return { data: [] as FdmsReceipt[], error: 'Could not load FDMS receipts — the fdms_receipts table may not exist yet (run database/add_accounting.sql).' }
+  },
+}
+
 // ── MARKETING MODULE ────────────────────────────────────────────────
 
 function toMarketingContact(r: Record<string, unknown>): MarketingContact {
@@ -3661,6 +3929,7 @@ export const db = {
   customRoles, claimAssessments, policyAssessments, photoHashes, cropTypes, fraudSignalRules, heroSlides,
   policyCards, groups, groupMembers, agentProfiles,
   dashboardStats, sidebarCounts, notificationLog, invoices,
+  quotations, requisitions, floatEntries, pettyCashEntries, fdmsReceipts,
   marketingContacts, marketingTemplates, marketingCampaigns, campaignRecipients,
   subscribeToTable,
 }

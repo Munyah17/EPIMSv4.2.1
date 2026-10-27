@@ -523,6 +523,111 @@ export interface Invoice {
   createdBy?: string
 }
 
+// ── ACCOUNTING ──────────────────────────────────────────────────────
+
+export type QuotationStatus = 'draft' | 'sent' | 'accepted' | 'declined' | 'expired'
+
+/** A price quoted to a customer before any cover exists — the document a
+ *  prospect signs off before becoming a policyholder. clientId links the
+ *  quote to the register when the customer is already a client; a pure
+ *  prospect just carries clientName. */
+export interface Quotation {
+  id: string
+  quotationNumber: string
+  clientId?: string
+  clientName: string
+  productId?: string
+  productName: string
+  premium: number
+  coverAmount?: number
+  status: QuotationStatus
+  validUntil?: string
+  notes?: string
+  createdBy?: string
+  createdByName?: string
+  createdAt: string
+  updatedAt: string
+}
+
+export type RequisitionStatus = 'pending' | 'approved' | 'rejected' | 'paid'
+
+/** A staff request for money to go out — a purchase, a payout, any spend
+ *  that needs sign-off before finance releases it. Pending → approved →
+ *  paid is the happy path; rejected stops it. */
+export interface Requisition {
+  id: string
+  requisitionNumber: string
+  payee: string
+  purpose: string
+  category: string
+  amount: number
+  status: RequisitionStatus
+  requestedBy?: string
+  requestedByName?: string
+  approvedBy?: string
+  approvedByName?: string
+  approvedAt?: string
+  paidAt?: string
+  notes?: string
+  createdAt: string
+}
+
+export type FloatEntryType = 'issue' | 'spend' | 'return'
+
+/** One line of the float ledger — cash advanced to a staff member or
+ *  agent (issue), what they spent it on (spend), and what came back
+ *  (return). Outstanding float per holder = issues − spends − returns. */
+export interface FloatEntry {
+  id: string
+  holderId?: string
+  holderName: string
+  type: FloatEntryType
+  amount: number
+  description: string
+  recordedBy?: string
+  recordedByName?: string
+  createdAt: string
+}
+
+export type PettyCashEntryType = 'expense' | 'replenish'
+
+/** The office imprest — replenish tops the box up, expense draws it down.
+ *  Balance = replenishes − expenses. */
+export interface PettyCashEntry {
+  id: string
+  type: PettyCashEntryType
+  category: string
+  payee?: string
+  description: string
+  amount: number
+  receiptRef?: string
+  recordedBy?: string
+  recordedByName?: string
+  createdAt: string
+}
+
+export type FdmsReceiptStatus = 'pending' | 'fiscalised' | 'failed'
+
+/** A document submitted to ZIMRA's FDMS for fiscalisation — what ZIMRA
+ *  signed (global number, verification code, QR) or why it failed. The
+ *  server-side /api/fdms endpoint writes these; staff only read them. */
+export interface FdmsReceipt {
+  id: string
+  invoiceId?: string
+  receiptNumber: string
+  clientName: string
+  amount: number
+  vatAmount?: number
+  status: FdmsReceiptStatus
+  deviceId?: string
+  fiscalDay?: string
+  globalNo?: number
+  verificationCode?: string
+  qrData?: string
+  error?: string
+  createdAt: string
+}
+
 export type TicketStatus = 'open' | 'in_progress' | 'resolved' | 'closed'
 export type TicketPriority = 'low' | 'medium' | 'high' | 'urgent'
 
