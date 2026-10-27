@@ -342,9 +342,12 @@ export async function dispatchNotification(admin: SupabaseClient | null, job: No
       already.add(n)
       deliveries.push(sendSmsAfrosoft(phone, `${labelPrefix}${officeSms}`))
     }
-    deliveries.push(sendEmailDirect(COMPANY_EMAIL, `[${job.event.toUpperCase()}] ${job.emailSubject}`, job.emailText))
+    // Registration is exempt from the [EVENT] subject tag — REG is
+    // banned in notifications everywhere, not just in SMS bodies.
+    const emailTag = job.event === 'registration' ? '' : `[${job.event.toUpperCase()}] `
+    deliveries.push(sendEmailDirect(COMPANY_EMAIL, `${emailTag}${job.emailSubject}`, job.emailText))
     for (const email of job.staffEmails ?? []) {
-      if (email) deliveries.push(sendEmailDirect(email, `[${job.event.toUpperCase()}] ${job.emailSubject}`, job.emailText))
+      if (email) deliveries.push(sendEmailDirect(email, `${emailTag}${job.emailSubject}`, job.emailText))
     }
   }
 

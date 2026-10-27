@@ -28,14 +28,34 @@ const STALE_REGISTRATION = /\b([A-Z]{2,8}\d{3,})\s+reg(?:istered)?\./i
 
 // Office envelopes carry an event label — "PAYMENT: " etc. Keep
 // whatever prefix the caller used so office copies still announce
-// themselves — EXCEPT "REG:", which is banned outright; a stale
+// themselves — EXCEPT anything REG* (REG:, REGISTRATION: — the old
+// event.toUpperCase() label), which is banned outright; a stale
 // envelope must not resurrect it on the rebuilt text.
 const ENVELOPE_PREFIX = /^\s*([A-Z]{3,14}):\s+/
+
+/** Banned wording is stripped on EVERY message, not just
+ *  policy-number rebuilds — a stale bundle's "JOHN DOE reg. No
+ *  policy yet" or a saved staff template carrying old wording has
+ *  no policy number, so it never reaches the rebuild above. This
+ *  is what actually stops it:
+ *  - "REG:"/"REGISTRATION:" envelope prefixes
+ *  - the " reg."/"Reg."/"registered." tokens old builders wrote
+ *  - "Motions Microinsurance" — company name never appears in SMS
+ *    bodies (emails/PDFs/UI keep it) */
+function stripBannedText(text: string): string {
+  return text
+    .replace(/^\s*REG[A-Z]*\s*:\s*/i, '')                      // REG:/REGISTRATION: envelope
+    .replace(/\s+reg(?:istered)?\.{1,2}\s*/g, '. ')            // "NAME reg. …" → "NAME. …"
+    .replace(/^reg(?:istered)?\.{1,2}\s*/i, '')               // leading "reg. "
+    .replace(/\s*[-—–|]?\s*Motions Microinsurance\.?/gi, '')   // company name banned
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+}
 
 export async function canonicalizeSmsText(admin: SupabaseClient | null, message: string): Promise<string> {
   try {
     const m = message.match(STALE_REGISTRATION)
-    if (!m || !admin) return message
+    if (!m || !admin) return stripBannedText(message)
     const policyNumber = m[1].toUpperCase()
 
     const { data: p } = await admin
@@ -43,7 +63,7 @@ export async function canonicalizeSmsText(admin: SupabaseClient | null, message:
       .select('*')
       .eq('policy_number', policyNumber)
       .maybeSingle()
-    if (!p) return message
+    if (!p) return stripBannedText(message)
     const row = p as Record<string, unknown>
 
     let client: { name?: string; phone?: string } | null = null
@@ -109,9 +129,11 @@ export async function canonicalizeSmsText(admin: SupabaseClient | null, message:
     })
 
     const prefix = message.match(ENVELOPE_PREFIX)?.[1]
-    const keep = prefix && prefix.toUpperCase() !== 'REG' ? `${prefix}: ` : ''
-    return `${keep}${canonical}`
+    const keep = prefix && !prefix.toUpperCase().startsWith('REG') ? `${prefix}: ` : ''
+    // Strip on the way out too — a saved template could still carry
+    // " reg." wording the rebuild then re-emits.
+    return stripBannedText(`${keep}${canonical}`)
   } catch {
-    return message
+    return stripBannedText(message)
   }
 }
