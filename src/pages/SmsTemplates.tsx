@@ -216,11 +216,12 @@ export function SmsTemplatesPanel({ showToast }: Props) {
 
   return (
     <div>
-      <div className="info-banner info-banner-info" style={{ marginBottom: 14, fontSize: 12.5 }}>
-        These templates control the automatic SMS sent to clients — registration confirmations, payment
-        receipts, reminders, claim and ticket updates. Where no template exists, the standard wording
-        sends exactly as before. A product-specific template wins over its "All products" default.
-        Write <code>{'{placeholders}'}</code> from the list — anything else is sent literally.
+      <div className="info-banner info-banner-info" style={{ marginBottom: 14, fontSize: 12.5, padding: '8px 12px' }}>
+        <ul style={{ margin: 0, paddingLeft: 18, lineHeight: 1.7 }}>
+          <li><b>Automatic SMS to clients</b> — registrations, receipts, reminders, claim & ticket updates.</li>
+          <li><b>Fallback</b> — no template sends the standard wording; a product template beats its "All products" default.</li>
+          <li><b>Placeholders</b> — click a <code>{'{placeholder}'}</code> chip below the editor to insert one; anything else is sent literally.</li>
+        </ul>
       </div>
 
       <div className="card">
