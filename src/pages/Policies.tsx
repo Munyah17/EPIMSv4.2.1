@@ -428,7 +428,7 @@ export default function Policies({ showToast, initialCategory }: Props) {
     setPolicies(prev => prev.filter(p => p.id !== policy.id))
     showToast('success', `Policy ${policy.policyNumber} deleted.`)
     for (const number of await getSmsRecipientsForEvent('system')) {
-      notifyPhone(number, `${COMPANY_NAME}: Policy ${policy.policyNumber} (${policy.clientName}) was DELETED by ${user?.name ?? 'a staff member'}. Reason: ${reason.trim()}`, 'system', policy.policyNumber)
+      notifyPhone(number, `Policy ${policy.policyNumber} (${policy.clientName}) was DELETED by ${user?.name ?? 'a staff member'}. Reason: ${reason.trim()}`, 'system', policy.policyNumber)
     }
   }
 

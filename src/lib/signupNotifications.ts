@@ -7,7 +7,7 @@ import { premiumPeriodLabel } from './productUtils'
 import { COMPANY_NAME } from './company'
 import {
   isTobaccoFieldToFloor, fieldToFloorCover, fieldToFloorCoverLine,
-  clientRegisteredSms, groupRegisteredSms, policyRegisteredSms,
+  clientRegisteredSms, groupRegisteredSms, policyRegisteredSms, policyCoverClause,
   paymentReceivedSms, paymentFailedSms,
 } from './smsText'
 import { supabase } from './supabase'
@@ -34,10 +34,12 @@ function money(amount: number): string {
  *  is often last in the list, and a throw on an earlier send used to
  *  stop it ever going out. The EVENT prefix matches the envelope
  *  api/_lib/notify.ts puts on office copies, so an alert reads the same
- *  whichever pipeline sent it. */
-async function textOffice(numbers: string[], event: string, message: string, ctx?: SmsContext): Promise<void> {
+ *  whichever pipeline sent it. An EMPTY label sends the message bare —
+ *  registration alerts carry no prefix at all. */
+async function textOffice(numbers: string[], label: string, message: string, ctx?: SmsContext): Promise<void> {
+  const prefix = label ? `${label}: ` : ''
   for (const number of numbers) {
-    try { await sendSms(number, `${event}: ${message}`, ctx) } catch { /* sendSms records the failure */ }
+    try { await sendSms(number, `${prefix}${message}`, ctx) } catch { /* sendSms records the failure */ }
   }
 }
 
@@ -69,7 +71,7 @@ async function textClientOnRegistration(phones: (string | undefined)[], message:
 export async function notifyRegistrationFailed(what: string, detail: string): Promise<void> {
   const cfg = getNotifSettings()
   const alert = `${what} FAILED. ${detail}`
-  await textOffice(await getSmsRecipientsForEvent('registration'), 'REG', alert, { event: 'registration' })
+  await textOffice(await getSmsRecipientsForEvent('registration'), '', alert, { event: 'registration' })
   void sendEmail({
     to: cfg.insurerEmail,
     subject: `[Registration Failed] ${what}`,
@@ -105,7 +107,7 @@ Please note this registration does not itself put any cover in place. One of our
   }
 
   const alert = `${text}${registeredBy ? ` by ${registeredBy}` : ''}`
-  await textOffice(await getSmsRecipientsForEvent('registration'), 'REG', alert, { event: 'registration' })
+  await textOffice(await getSmsRecipientsForEvent('registration'), '', alert, { event: 'registration' })
 }
 
 /** An organisation registered for group/corporate cover — the company's
@@ -136,7 +138,7 @@ export async function notifyGroupRegistered(group: Group): Promise<void> {
   }
 
   const alert = groupRegisteredSms(group.name, kind, group.contactName, group.contactPhone)
-  await textOffice(await getSmsRecipientsForEvent('registration'), 'REG', alert, { event: 'registration', ref: group.name })
+  await textOffice(await getSmsRecipientsForEvent('registration'), '', alert, { event: 'registration', ref: group.name })
 }
 
 export async function notifyPolicyRegistered(policy: Policy, client: Client | null): Promise<void> {
@@ -166,11 +168,14 @@ export async function notifyPolicyRegistered(policy: Policy, client: Client | nu
       productName: policy.productName,
       coverAmount: smsVarMoney(policy.coverAmount),
       coverLine: fieldToFloor ? fieldToFloorCoverLine(policy.productName, policy.premium) : smsVarMoney(policy.coverAmount),
+      coverClause: policyCoverClause(policy.productName, policy.coverAmount, policy.premium),
       premium: smsVarMoney(policy.premium),
       // Tobacco texts carry no period label — a template for an F2F
-      // product must not be able to put "/yr" back in.
+      // product must not be able to put "/yr" back in. The trailing
+      // dot lives INSIDE premiumWithPeriod for non-tobacco so the
+      // tobacco text can end bare: "… Stop Order $60".
       period: fieldToFloor ? '' : period,
-      premiumWithPeriod: fieldToFloor ? smsVarMoney(policy.premium) : `${smsVarMoney(policy.premium)}${period}`,
+      premiumWithPeriod: fieldToFloor ? smsVarMoney(policy.premium) : `${smsVarMoney(policy.premium)}${period}.`,
       paymentMethod: policy.paymentMethod,
     },
     fallback: policyRegisteredSms({
@@ -215,7 +220,7 @@ Keep this email for your records. If any detail above is wrong, contact us and w
   // Same text the client received — the office reads exactly what the
   // client got, so "the document says $500" disputes can't start from a
   // differently-worded alert.
-  await textOffice(await getSmsRecipientsForEvent('registration'), 'REG', text, { event: 'registration', ref: policy.policyNumber })
+  await textOffice(await getSmsRecipientsForEvent('registration'), '', text, { event: 'registration', ref: policy.policyNumber })
 
   const insurerRecipient = cfg.insurerEmail
 

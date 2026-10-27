@@ -79,11 +79,11 @@ export function smsParts(raw: string): string[] {
   return text ? [text] : []
 }
 
-/** Office-copy envelope label: 'registration' is the one long event name
- *  — 'REG:' says the same thing without eating ten characters of the
- *  message. Everything else is already short and goes out uppercase. */
+/** Office-copy envelope label. Registration carries none — the message
+ *  itself is the alert, and a REG: prefix was banned outright. Other
+ *  events keep their short uppercase tag (PAYMENT:, CLAIM:, …). */
 export function smsEventLabel(event: string): string {
-  return event === 'registration' ? 'REG' : event.toUpperCase()
+  return event === 'registration' ? '' : event.toUpperCase()
 }
 
 /**
@@ -238,34 +238,45 @@ export interface PolicyNoticeInput {
   clientPhone?: string | null
 }
 
+/** The whole cover clause — "Cover: Barn Fire $250, …" for Field To
+ *  Floor, "Cover $5,000" for everything else. Shared between the
+ *  builder and every registration-template call site so a {coverClause}
+ *  placeholder and the fallback text can never drift apart. */
+export function policyCoverClause(productName: string, coverAmount: number, premium: number): string {
+  return isTobaccoFieldToFloor(productName)
+    ? `Cover: ${fieldToFloorCoverLine(productName, premium)}`
+    : `Cover ${smsMoney(coverAmount)}`
+}
+
 /** THE policy-registered text — the approved standard, verbatim shape. */
 export function policyRegisteredSms(p: PolicyNoticeInput): string {
   const fieldToFloor = isTobaccoFieldToFloor(p.productName)
-  const cover = fieldToFloor
-    ? `Cover: ${fieldToFloorCoverLine(p.productName, p.premium)}`
-    : `Cover ${smsMoney(p.coverAmount)}`
+  const cover = policyCoverClause(p.productName, p.coverAmount, p.premium)
   const method = (p.paymentMethod ?? '').trim()
   // Every premium is quoted annual — the figure on the product is the
   // whole year's cover however it is collected (stop order, EcoCash,
   // cash). "/mo" was misquoting the same figure as a monthly price.
   if (fieldToFloor) {
-    // Tobacco wording per the product sheet: no "Reg.", no phone, no
-    // "/yr" — the peril breakdown IS the cover clause.
-    return `${p.clientName} ${p.policyNumber}. ${p.productName}. ${cover}. ${method ? `${method} ` : ''}${smsMoney(p.premium)}.`
+    // Tobacco wording per the approved example: no "Reg.", no phone,
+    // no "/yr", and NO closing period — the text ends on the premium:
+    // "… Funeral $500. Stop Order $60"
+    return `${p.clientName} ${p.policyNumber}. ${p.productName}. ${cover}. ${method ? `${method} ` : ''}${smsMoney(p.premium)}`
   }
   const period = '/yr'
-  return `${p.clientName} ${p.policyNumber} Reg. ${p.productName}. ${cover}. ${method ? `${method} ` : ''}${smsMoney(p.premium)}${period}.`
+  // No 'Reg.' verb on any product — the policy number already says this
+  // is a registration.
+  return `${p.clientName} ${p.policyNumber}. ${p.productName}. ${cover}. ${method ? `${method} ` : ''}${smsMoney(p.premium)}${period}.`
 }
 
-/** A client row exists but no policy yet — "reg.", never "covered". */
+/** A client row exists but no policy yet — never imply cover. */
 export function clientRegisteredSms(clientName: string, _clientPhone?: string | null): string {
-  return `${clientName} reg. No policy yet. Agent will contact you.`
+  return `${clientName}. No policy yet. Agent will contact you.`
 }
 
 /** An organisation registered for group cover. */
 export function groupRegisteredSms(groupName: string, kind: string, contactName?: string | null, contactPhone?: string | null): string {
   const phone = smsPhone(contactPhone)
-  return `${groupName} reg. ${kind} cover. ${contactName || 'N/A'}${phone ? ` ${phone}` : ''}`
+  return `${groupName} ${kind} cover. ${contactName || 'N/A'}${phone ? ` ${phone}` : ''}`
 }
 
 export interface PaymentNoticeInput {

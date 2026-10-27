@@ -4,7 +4,7 @@ import crypto from 'crypto'
 import { generateTransactionId } from './_lib/transactionId'
 import { dispatchNotification } from './_lib/notify.js'
 import { isTobaccoProduct, TOBACCO_SEASON } from './_lib/policyTerm.js'
-import { clientRegisteredSms, policyRegisteredSms, paymentReceivedSms, isTobaccoFieldToFloor, fieldToFloorCoverLine } from '../src/lib/smsText.js'
+import { clientRegisteredSms, policyRegisteredSms, policyCoverClause, paymentReceivedSms, isTobaccoFieldToFloor, fieldToFloorCoverLine } from '../src/lib/smsText.js'
 import { resolveSmsText, smsVarMoney } from '../src/lib/smsTemplates.js'
 
 /**
@@ -606,10 +606,13 @@ async function createPolicy(admin: SupabaseClient, body: Json, dev: Record<strin
       coverLine: polF2F
         ? fieldToFloorCoverLine(product.name, polPremium)
         : smsVarMoney(Number(product.cover_amount)),
+      coverClause: policyCoverClause(product.name, Number(product.cover_amount), polPremium),
       premium: smsVarMoney(polPremium),
-      // Tobacco texts carry no period label — see smsText.ts.
+      // Tobacco texts carry no period label and no closing dot — see
+      // smsText.ts. Non-tobacco keeps the trailing period inside the
+      // var so one template body serves both product classes.
       period: polF2F ? '' : '/yr',
-      premiumWithPeriod: polF2F ? smsVarMoney(polPremium) : `${smsVarMoney(polPremium)}/yr`,
+      premiumWithPeriod: polF2F ? smsVarMoney(polPremium) : `${smsVarMoney(polPremium)}/yr.`,
       paymentMethod,
     },
     fallback: policyRegisteredSms({

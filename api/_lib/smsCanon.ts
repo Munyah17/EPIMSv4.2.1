@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { policyRegisteredSms, isTobaccoFieldToFloor, fieldToFloorCoverLine } from '../../src/lib/smsText.js'
+import { policyRegisteredSms, policyCoverClause, isTobaccoFieldToFloor, fieldToFloorCoverLine } from '../../src/lib/smsText.js'
 import { resolveSmsText, smsVarMoney } from '../../src/lib/smsTemplates.js'
 
 /**
@@ -26,9 +26,10 @@ import { resolveSmsText, smsVarMoney } from '../../src/lib/smsTemplates.js'
 // no policy number) can never false-positive.
 const STALE_REGISTRATION = /\b([A-Z]{2,8}\d{3,})\s+reg(?:istered)?\./i
 
-// Office envelopes carry an event label — "REG: ", "PAYMENT: " etc.
-// Keep whatever prefix the caller used so office copies still announce
-// themselves.
+// Office envelopes carry an event label — "PAYMENT: " etc. Keep
+// whatever prefix the caller used so office copies still announce
+// themselves — EXCEPT "REG:", which is banned outright; a stale
+// envelope must not resurrect it on the rebuilt text.
 const ENVELOPE_PREFIX = /^\s*([A-Z]{3,14}):\s+/
 
 export async function canonicalizeSmsText(admin: SupabaseClient | null, message: string): Promise<string> {
@@ -56,7 +57,20 @@ export async function canonicalizeSmsText(admin: SupabaseClient | null, message:
     }
 
     const clientName = String(row.client_name ?? client?.name ?? 'Customer')
-    const productName = String(row.product_name ?? row.productName ?? 'Policy')
+    // policies stores NO product_name column — the name lives on the
+    // products row. Falling back to the literal 'Policy' was what turned
+    // a Field To Floor registration into "… Reg. Policy. Cover $1,000
+    // … /yr" — resolve the real name, never guess from the join.
+    let productName = String(row.product_name ?? row.productName ?? '')
+    if (!productName && (row.product_id ?? row.productId)) {
+      const { data: prod } = await admin
+        .from('products')
+        .select('name')
+        .eq('id', (row.product_id ?? row.productId) as string)
+        .maybeSingle()
+      if (prod?.name) productName = String(prod.name)
+    }
+    if (!productName) productName = 'Policy'
     const premium = Number(row.premium ?? 0)
     const paymentMethod = (row.payment_method ?? row.paymentMethod) as string | undefined
     // Rebuild through the template resolver, not just the default builder —
@@ -73,10 +87,13 @@ export async function canonicalizeSmsText(admin: SupabaseClient | null, message:
         coverLine: isTobaccoFieldToFloor(productName)
           ? fieldToFloorCoverLine(productName, premium)
           : smsVarMoney(Number(row.cover_amount ?? row.coverAmount ?? 0)),
+        coverClause: policyCoverClause(productName, Number(row.cover_amount ?? row.coverAmount ?? 0), premium),
         premium: smsVarMoney(premium),
-        // Tobacco texts carry no period label — see smsText.ts.
+        // Tobacco texts carry no period label and no closing dot — see
+        // smsText.ts. Non-tobacco keeps the trailing period inside the
+        // var so one template body serves both product classes.
         period: isTobaccoFieldToFloor(productName) ? '' : '/yr',
-        premiumWithPeriod: isTobaccoFieldToFloor(productName) ? smsVarMoney(premium) : `${smsVarMoney(premium)}/yr`,
+        premiumWithPeriod: isTobaccoFieldToFloor(productName) ? smsVarMoney(premium) : `${smsVarMoney(premium)}/yr.`,
         paymentMethod,
       },
       fallback: policyRegisteredSms({
@@ -92,7 +109,8 @@ export async function canonicalizeSmsText(admin: SupabaseClient | null, message:
     })
 
     const prefix = message.match(ENVELOPE_PREFIX)?.[1]
-    return `${prefix ? `${prefix}: ` : ''}${canonical}`
+    const keep = prefix && prefix.toUpperCase() !== 'REG' ? `${prefix}: ` : ''
+    return `${keep}${canonical}`
   } catch {
     return message
   }

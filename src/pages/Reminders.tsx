@@ -98,7 +98,7 @@ export default function Reminders({ showToast }: Props) {
   const reminderMessage = (r: Reminder): string => {
     const tagless = r.message.replace(/^\[[^\]]+\]\s*/, '')
     switch (r.type) {
-      case 'birthday':       return `Dear ${r.clientName}, happy birthday from the ${COMPANY_NAME} team!`
+      case 'birthday':       return `Dear ${r.clientName}, happy birthday from the Motions team!`
       case 'policy_renewal': return `Dear ${r.clientName}, your policy ${r.policyNumber ?? ''} renews on ${formatDate(r.dueDate)}. Please contact us to continue your cover.`
       case 'payment_due':    return `Dear ${r.clientName}, your premium payment for ${r.policyNumber ?? 'your policy'} is due on ${formatDate(r.dueDate)}. Please pay to keep your cover active.`
       default:               return `Dear ${r.clientName}, ${tagless}`
@@ -109,7 +109,7 @@ export default function Reminders({ showToast }: Props) {
     const channel = await dispatchToClient(r.clientId, r.clientName, `${COMPANY_NAME} — policy reminder`, reminderMessage(r), r.smsBody,
       { event: r.type === 'payment_due' ? 'payment' : r.type === 'policy_renewal' ? 'renewal' : 'system', ref: r.policyNumber ?? undefined })
     if (!channel) return false
-    await db.reminders.markSent(r.id, `${COMPANY_NAME}: ${reminderMessage(r)}`)
+    await db.reminders.markSent(r.id, reminderMessage(r))
     return true
   }
 

@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { Paynow } from 'paynow'
 import { createClient } from '@supabase/supabase-js'
 import { dispatchNotification } from './_lib/notify.js'
-import { paymentReceivedSms, paymentFailedSms, policyRegisteredSms, isTobaccoFieldToFloor, fieldToFloorCoverLine } from '../src/lib/smsText.js'
+import { paymentReceivedSms, paymentFailedSms, policyRegisteredSms, policyCoverClause, isTobaccoFieldToFloor, fieldToFloorCoverLine } from '../src/lib/smsText.js'
 import { resolveSmsText, smsVarMoney } from '../src/lib/smsTemplates.js'
 
 /**
@@ -364,10 +364,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             coverLine: regF2F
               ? fieldToFloorCoverLine(regProduct, regPremium)
               : smsVarMoney(Number(policy.cover_amount ?? 0)),
+            coverClause: policyCoverClause(regProduct, Number(policy.cover_amount ?? 0), regPremium),
             premium: smsVarMoney(regPremium),
-            // Tobacco texts carry no period label — see smsText.ts.
+            // Tobacco texts carry no period label and no closing dot —
+            // see smsText.ts. Non-tobacco keeps the trailing period
+            // inside the var so one template body serves both classes.
             period: regF2F ? '' : '/yr',
-            premiumWithPeriod: regF2F ? smsVarMoney(regPremium) : `${smsVarMoney(regPremium)}/yr`,
+            premiumWithPeriod: regF2F ? smsVarMoney(regPremium) : `${smsVarMoney(regPremium)}/yr.`,
             paymentMethod: policy.payment_method,
           },
           fallback: policyRegisteredSms({
