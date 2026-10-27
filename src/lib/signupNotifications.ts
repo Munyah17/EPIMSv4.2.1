@@ -76,7 +76,7 @@ export async function notifyRegistrationFailed(what: string, detail: string): Pr
     to: cfg.insurerEmail,
     subject: `[Signup Failed] ${what}`,
     from: MAILBOXES.admin,
-    body: `A registration did not complete.\n\nWhat failed: ${what}\nDetail:      ${detail}\nTime:        ${new Date().toISOString()}${cfg.signature ? `\n\n---\n${cfg.signature}` : ''}`,
+    body: `A signup did not complete.\n\nWhat failed: ${what}\nDetail:      ${detail}\nTime:        ${new Date().toISOString()}${cfg.signature ? `\n\n---\n${cfg.signature}` : ''}`,
   }).catch(() => { /**/ })
 }
 
@@ -102,7 +102,7 @@ Name:        ${client.name}
 National ID: ${client.nationalId || 'not given'}
 Phone:       ${client.phone || 'not given'}
 
-Please note this registration does not itself put any cover in place. One of our agents will contact you to arrange a policy suited to you.${cfg.signature ? `\n\n---\n${cfg.signature}` : ''}`,
+Please note this signup does not itself put any cover in place. One of our agents will contact you to arrange a policy suited to you.${cfg.signature ? `\n\n---\n${cfg.signature}` : ''}`,
     }).catch(() => { /**/ })
   }
 

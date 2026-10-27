@@ -440,7 +440,7 @@ async function createClient_(admin: SupabaseClient, body: Json, agentId: string)
       client: { name, phone, email: body.email ? String(body.email) : null },
       smsText: regSms,
       emailSubject: 'Welcome to Motions Microinsurance',
-      emailText: `Dear ${name},\n\nYour details are on file with Motions Microinsurance.\n\nPlease note this registration does not itself put any cover in place. One of our agents will contact you to arrange a policy suited to you.\n\nRegards,\nMotions Microinsurance`,
+      emailText: `Dear ${name},\n\nYour details are on file with Motions Microinsurance.\n\nPlease note this signup does not itself put any cover in place. One of our agents will contact you to arrange a policy suited to you.\n\nRegards,\nMotions Microinsurance`,
     }).catch(e => console.error('v1.clients: registration notify failed', e))
     return { status: 201, body: { data: { id: data.id, nationalId, existing: false } } }
   }

@@ -57,9 +57,19 @@ export function stripBannedText(text: string): string {
     // lookahead protects "reg no. 123" / "reg number".
     .replace(/\s+reg(?:istered)?\.{1,2}(?!\s*(?:no\.?|number)\b)\s*/g, '. ')
     .replace(/^reg(?:istered)?\.{1,2}(?!\s*(?:no\.?|number)\b)\s*/i, '')
+    // The WORD itself is banned in SMS — "Registration" never appears
+    // on a delivered text, envelope or not. "registration" becomes
+    // "signup" so mid-sentence grammar survives ("your registration
+    // is complete" -> "your signup is complete"); a bare "REG" token
+    // and [REG]/[REGISTRATION] bracket tags are only ever labels and
+    // are deleted outright. "reg no."/"reg number" stays — a field.
+    .replace(/\[\s*REG(?:ISTRATION)?\s*\]\s*/gi, '')
+    .replace(/\bregistrations?\b(?!\s*(?:no\.?|number)\b)/gi, 'signup')
+    .replace(/\bregs?\b(?!\s*(?:no\.?|number)\b)\s*[:.\-—–|]?/gi, '')
     .replace(/\s*[-—–|]?\s*Motions Microinsurance\.?/gi, '')   // company name banned
     .replace(/\s+([.,!?;:])/g, '$1')                          // "name ." -> "name."
     .replace(/\.\s*\./g, '.')                                 // "a. ." -> "a."
+    .replace(/(^|\.\s+)signup\b/g, '$1Signup')                // sentence-initial cap
     .replace(/\s{2,}/g, ' ')
     .trim()
 }

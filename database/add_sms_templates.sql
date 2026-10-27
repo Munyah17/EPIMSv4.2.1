@@ -50,3 +50,23 @@ CREATE POLICY "sms_templates_select_staff" ON public.sms_templates
 DROP POLICY IF EXISTS "sms_templates_write_admin" ON public.sms_templates;
 CREATE POLICY "sms_templates_write_admin" ON public.sms_templates
   FOR ALL TO authenticated USING (is_admin()) WITH CHECK (is_admin());
+
+-- Scrub banned wording from any template saved before the REG ban.
+-- The send border (api/_lib/smsCanon.ts stripBannedText) rewrites
+-- outgoing text anyway — this keeps the STORED body matching what
+-- actually goes out so staff aren't editing ghosts. Idempotent.
+--   "reg no."/"reg number" kept via the CHR(1) placeholder (PG
+--   regex has no lookahead), then:
+--   " reg."/"registered."  -> "."
+--   bare "reg"/"regs"      -> removed (incl. "REG:" envelope bits)
+--   "registration(s)"     -> "signup"
+UPDATE public.sms_templates SET body = trim(regexp_replace(regexp_replace(regexp_replace(regexp_replace(regexp_replace(
+    regexp_replace(body, '\mreg\M(\s+(?:no\.?|number)\M)', chr(1) || '\1', 'gi'),
+    '\mreg(?:istered)?\.{1,2}', '.', 'gi'),
+    '\mregs?\M\s*[:.\-—–|]?', '', 'gi'),
+    '\mregistrations?\M', 'signup', 'gi'),
+    '\s+([.,!?;:])', '\1', 'g'),
+  '\s{2,}', ' ', 'g'))
+WHERE body ~* '\mreg';
+UPDATE public.sms_templates SET body = replace(body, chr(1), 'reg')
+WHERE position(chr(1) in body) > 0;

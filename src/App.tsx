@@ -7,6 +7,7 @@ import { DB_FALLBACK_EVENT } from './lib/db'
 import { NOTIFY_FAILURE_EVENT } from './lib/notify'
 import { startGatewayWatch } from './lib/smsService'
 import { startVersionCheck, APP_UPDATE_EVENT } from './lib/versionCheck'
+import { hardRefresh } from './lib/hardRefresh'
 import { lazyWithRecovery } from './lib/lazyWithRecovery'
 import { AuthProvider, useAuth } from './contexts/AuthContext'
 import LoginScreen from './components/Auth/LoginScreen'
@@ -119,10 +120,28 @@ function AppInner() {
   // a stale tab keeps building OLD message formats until it's reloaded.
   const [updateAvailable, setUpdateAvailable] = useState(false)
   useEffect(() => {
-    const onUpdate = () => setUpdateAvailable(true)
+    const onUpdate = () => {
+      setUpdateAvailable(true)
+      // Already hidden when the banner fires? Self-heal now — the reload
+      // happens while nobody is watching, so nothing visible is lost, and
+      // the tab wakes on the new bundle.
+      if (document.visibilityState === 'hidden') void hardRefresh()
+    }
     window.addEventListener(APP_UPDATE_EVENT, onUpdate)
     return () => window.removeEventListener(APP_UPDATE_EVENT, onUpdate)
   }, [])
+
+  // The banner alone depends on a human clicking it — a stale tab that is
+  // ignored keeps running old wording (the send border still strips banned
+  // text, but only the new bundle carries every fix). Once the banner has
+  // fired, the first moment the tab goes hidden it hard-refreshes itself:
+  // reloads while nobody can lose work, fresh the next time anyone looks.
+  useEffect(() => {
+    if (!updateAvailable) return
+    const onHide = () => { if (document.visibilityState === 'hidden') void hardRefresh() }
+    document.addEventListener('visibilitychange', onHide)
+    return () => document.removeEventListener('visibilitychange', onHide)
+  }, [updateAvailable])
 
   // Stable references: 11 pages use `[showToast]` as a data-fetch effect
   // dependency. An inline function here would be recreated on every render
@@ -241,7 +260,7 @@ function AppInner() {
         {updateAvailable && (
           <div className="info-banner info-banner-warning" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, margin: 0 }}>
             <span>A new version of the portal is available — this tab is running old code and may send outdated messages.</span>
-            <button className="btn btn-primary btn-sm" onClick={() => window.location.reload()}>Reload now</button>
+            <button className="btn btn-primary btn-sm" onClick={() => void hardRefresh()}>Reload now</button>
           </div>
         )}
         <TopBar

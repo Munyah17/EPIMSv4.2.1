@@ -18,6 +18,7 @@ import { formatDate } from '../lib/dateUtils'
 const BANNED_IN_TEMPLATE: { re: RegExp; label: string }[] = [
   { re: /(^|[\n.]|\s{2,})\s*REG(?:ISTRATION)?\b\s*[:\-—–|.]/i, label: 'a "REG:"/"REGISTRATION:" prefix' },
   { re: /(?:^|\s)reg(?:istered)?\.{1,2}(?!\s*(?:no\.?|number)\b)/i, label: '"reg."/"registered."' },
+  { re: /\breg(?:istration)?s?\b(?!\s*(?:no\.?|number)\b)/i, label: 'the word "registration"/"reg" — never sent in an SMS (use "signup")' },
   { re: /motions\s+microinsurance/i, label: 'the company name (never sent in SMS bodies)' },
 ]
 
