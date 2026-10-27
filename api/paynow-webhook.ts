@@ -392,7 +392,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }).catch(e => console.error('paynow-webhook: registration notify failed', e))
       }
       const paidSms = await resolveSmsText(admin, 'payment_received', {
-        productId: policy.product_id,
+        productId: (policy as { product_id?: string }).product_id,
         vars: {
           clientName: client?.name ?? 'Client',
           policyNumber,
