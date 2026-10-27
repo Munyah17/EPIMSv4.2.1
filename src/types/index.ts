@@ -149,6 +149,11 @@ export interface Client {
    *  registration. Optional — plenty of clients are direct walk-ins.
    *  New policies created for the client prefill their agent from this. */
   agentId?: string
+  /** The staff member who captured the client in the IMS — distinct from
+   *  agentId (the field officer). Unset for bot/website self-registration.
+   *  Column lands via database/add_client_captured_by.sql. */
+  capturedById?: string
+  capturedByName?: string
   createdAt: string
   policyCount: number
   status: 'active' | 'inactive'

@@ -793,6 +793,15 @@ export const policies = {
   },
 }
 
+/** captured_by records the staff member who captured the client —
+ *  probed like policies.captured_by so a database before
+ *  add_client_captured_by.sql still reads fine. */
+const getClientSelect = async () =>
+  '*, policies(count)' +
+  (await hasColumn('clients', 'captured_by')
+    ? ', captured_by, capturer:profiles!captured_by(id, name)'
+    : '')
+
 // ── CLIENTS ───────────────────────────────────────────────────────
 export const clients = {
   // See policies.list() above — falls back to a real cache, not
@@ -800,8 +809,9 @@ export const clients = {
   // a farm visit to the right grower by phone/ID) never surface a fake
   // client record.
   async list() {
+    const clientSelect = await getClientSelect()
     const { ok, data } = await sb('clients', 'read',
-      () => supabase.from('clients').select('*, policies(count)').order('created_at', { ascending: false }),
+      () => supabase.from('clients').select(clientSelect).order('created_at', { ascending: false }),
       d => Array.isArray(d),
     )
     if (ok && data) {
@@ -818,8 +828,9 @@ export const clients = {
   },
 
   async get(id: string) {
+    const clientSelect = await getClientSelect()
     const { ok, data } = await sb('clients', 'read',
-      () => supabase.from('clients').select('*, policies(count)').eq('id', id).single(),
+      () => supabase.from('clients').select(clientSelect).eq('id', id).single(),
     )
     if (ok && data) return {
       data: toClient({ ...(data as Record<string, unknown>), policy_count: ((data as Record<string, unknown>).policies as {count:number}[])?.[0]?.count ?? 0 }),
@@ -839,6 +850,15 @@ export const clients = {
       insurer: client.insurer ?? null, status: client.status,
       insurer_provisional: client.insurerProvisional ?? false,
       agent_id: client.agentId ?? null,
+    }
+    // Who captured the client — the staff member at the desk, as distinct
+    // from agent_id (the field officer who sourced them). Bot/website
+    // self-registrations don't pass through here and stay NULL. The column
+    // lands via database/add_client_captured_by.sql; probed so a database
+    // without it still writes fine.
+    if (await hasColumn('clients', 'captured_by')) {
+      const { data: { session } } = await supabase.auth.getSession()
+      ;(row as Record<string, unknown>).captured_by = session?.user?.id ?? null
     }
     const { ok, data, error } = await sb('clients', 'write',
       () => supabase.from('clients').insert(row).select().single(),

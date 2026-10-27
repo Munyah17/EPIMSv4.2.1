@@ -121,13 +121,14 @@ export default function ClientsNoPolicy({ showToast, setActivePanel }: Props) {
                 <th>National ID</th>
                 <th>Email</th>
                 <th>Joined</th>
+                <th>Captured By</th>
                 <th>Status</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={7} className="td-empty">
+                <tr><td colSpan={8} className="td-empty">
                   {clients.length === 0 ? 'Every client holds at least one policy.' : 'No clients match that search.'}
                 </td></tr>
               ) : filtered.map(c => (
@@ -137,6 +138,7 @@ export default function ClientsNoPolicy({ showToast, setActivePanel }: Props) {
                   <td><span className="mono">{c.nationalId}</span></td>
                   <td>{c.email}</td>
                   <td>{formatDate(c.createdAt)}</td>
+                  <td>{c.capturedByName ?? '—'}</td>
                   <td><span className={`pill ${c.status === 'active' ? 'pill-active' : 'pill-lapsed'}`}>{c.status}</span></td>
                   <td>
                     <button type="button" className="btn btn-primary btn-sm" onClick={() => setAssignPolicyClient(c)}>
