@@ -16,9 +16,13 @@ interface Props {
 }
 
 /**
- * Clients on the register holding NO policy of any status — the same
- * uncovered set the dashboard card counts and the reconciliation sweep
- * flags as orphaned. A policy assigned from here goes through the exact
+ * Abandoned signups — clients on the register holding NO policy of any
+ * status. Most arrived through the website/agent signup flow where the
+ * payer never finished checkout: the client row stayed (for retry), the
+ * pending policy was swept by the cleanup cron, and no money was ever
+ * taken — payments can only exist against a policy. The same uncovered
+ * set the dashboard card counts and the reconciliation sweep flags.
+ * A policy assigned from here goes through the exact
  * registration/notification path as Clients → Assign Policy, and the row
  * leaves this list the moment cover exists.
  */
@@ -104,8 +108,10 @@ export default function ClientsNoPolicy({ showToast, setActivePanel }: Props) {
       </div>
 
       <div className="info-banner info-banner-warning" style={{ marginBottom: 14 }}>
-        These clients are registered but hold no policy of any status — no cover exists under their names.
-        Assign a policy to each, or have a Super Admin remove registrations that should not be on the register.
+        <strong>Abandoned signups.</strong> These clients registered but never completed payment —
+        most came through the website/agent signup flow where checkout was abandoned, so no money
+        was taken and no cover was ever written. Follow up to convert them: assign a policy to each,
+        or have a Super Admin remove registrations that should not be on the register.
       </div>
 
       <div className="card">
@@ -121,7 +127,7 @@ export default function ClientsNoPolicy({ showToast, setActivePanel }: Props) {
                 <th>National ID</th>
                 <th>Email</th>
                 <th>Joined</th>
-                <th>Captured By</th>
+                <th>Referred By</th>
                 <th>Status</th>
                 <th></th>
               </tr>
@@ -129,7 +135,7 @@ export default function ClientsNoPolicy({ showToast, setActivePanel }: Props) {
             <tbody>
               {filtered.length === 0 ? (
                 <tr><td colSpan={8} className="td-empty">
-                  {clients.length === 0 ? 'Every client holds at least one policy.' : 'No clients match that search.'}
+                  {clients.length === 0 ? 'No abandoned signups — every client holds at least one policy.' : 'No clients match that search.'}
                 </td></tr>
               ) : filtered.map(c => (
                 <tr key={c.id}>
@@ -138,7 +144,7 @@ export default function ClientsNoPolicy({ showToast, setActivePanel }: Props) {
                   <td><span className="mono">{c.nationalId}</span></td>
                   <td>{c.email}</td>
                   <td>{formatDate(c.createdAt)}</td>
-                  <td>{c.capturedByName ?? '—'}</td>
+                  <td>{c.agentName ?? c.capturedByName ?? '—'}</td>
                   <td><span className={`pill ${c.status === 'active' ? 'pill-active' : 'pill-lapsed'}`}>{c.status}</span></td>
                   <td>
                     <button type="button" className="btn btn-primary btn-sm" onClick={() => setAssignPolicyClient(c)}>

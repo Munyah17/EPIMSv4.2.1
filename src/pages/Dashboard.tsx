@@ -295,17 +295,17 @@ export default function Dashboard({ showToast, setActivePanel }: Props) {
             <div className="stat-delta positive">All time</div>
           </div>
         </div>
-        {/* Clients registered but holding no policy at all — surfaced
-            because the client-vs-policy audit found registrations with
-            no cover written against them. Clicking opens the uncovered
-            list, not the leads page. */}
+        {/* Abandoned signups — clients registered but holding no policy
+            at all, almost always a website/agent signup whose checkout
+            was never completed (no payment can exist without a policy).
+            Clicking opens the abandoned-signups list, not the leads page. */}
         <div className="stat-card stat-card-clickable" onClick={() => setActivePanel('clients_no_policy')}>
           <div className="stat-icon stat-icon-danger">👤</div>
           <div className="stat-body">
             <div className="stat-value">{stats.clientsNoPolicyCount}</div>
-            <div className="stat-label">Clients With No Policy</div>
+            <div className="stat-label">Abandoned Signups</div>
             <div className={stats.clientsNoPolicyCount > 0 ? 'stat-delta negative' : 'stat-delta positive'}>
-              {stats.clientsNoPolicyCount > 0 ? 'No cover written' : 'All covered'}
+              {stats.clientsNoPolicyCount > 0 ? 'Payment never completed' : 'All covered'}
             </div>
           </div>
         </div>
@@ -339,20 +339,20 @@ export default function Dashboard({ showToast, setActivePanel }: Props) {
         </div>
       </div>
 
-      {/* Uncovered-client notice — names up to 5 of them so the
+      {/* Abandoned-signup notice — names up to 5 of them so the
           discrepancy is impossible to scroll past; View All opens the
-          full register of clients with no policy. */}
+          full list of signups that never completed. */}
       {stats.clientsNoPolicyCount > 0 && (
         <div className="info-banner info-banner-warning" style={{ marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ flex: 1 }}>
-            ⚠ {stats.clientsNoPolicyCount} client{stats.clientsNoPolicyCount === 1 ? ' is' : 's are'} registered with no policy —
-            no cover exists under {stats.clientsNoPolicyCount === 1 ? 'their name' : 'their names'}.
+            ⚠ {stats.clientsNoPolicyCount} abandoned signup{stats.clientsNoPolicyCount === 1 ? '' : 's'} —
+            {stats.clientsNoPolicyCount === 1 ? ' a client' : ' clients'} registered but never completed payment, so no cover exists under {stats.clientsNoPolicyCount === 1 ? 'their name' : 'their names'}.
             {stats.clientsNoPolicy.length > 0 && (
               <> {stats.clientsNoPolicy.map(c => c.name).join(', ')}
                 {stats.clientsNoPolicyCount > stats.clientsNoPolicy.length && ` and ${stats.clientsNoPolicyCount - stats.clientsNoPolicy.length} more`}.
               </>
             )}
-            {' '}Assign a policy to each, or confirm the registration itself is wrong.
+            {' '}No money was taken — follow up to convert them, or confirm the registration itself is wrong.
           </span>
           <button type="button" className="btn btn-primary btn-sm" onClick={() => setActivePanel('clients_no_policy')}>View All</button>
         </div>

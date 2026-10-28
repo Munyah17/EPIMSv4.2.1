@@ -375,7 +375,7 @@ export default function SystemHealthPage({ showToast }: Props) {
           </div>
           {recon.orphanedClients.map(c => (
             <div key={c.id} className="info-banner info-banner-danger" style={{ marginBottom: 8, borderRadius: 8, padding: '10px 13px', fontSize: 12, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-              <span style={{ flex: 1 }}>👤 Client <strong>{c.name}</strong> ({c.phone ?? 'no phone'}, registered {new Date(c.createdAt).toLocaleDateString('en-GB')}) has <strong>no policy</strong> — payment may have been taken with no cover written.</span>
+              <span style={{ flex: 1 }}>👤 Client <strong>{c.name}</strong> ({c.phone ?? 'no phone'}, registered {new Date(c.createdAt).toLocaleDateString('en-GB')}) has <strong>no policy</strong> — an abandoned signup; no payment can exist without a policy.</span>
               <button type="button" className="btn btn-ghost btn-sm" style={{ padding: '0 6px' }} title="Acknowledge — stop alerting on this"
                 onClick={() => void dismissRecon([{ kind: 'orphaned_client', ref: c.id }])}>✕</button>
             </div>

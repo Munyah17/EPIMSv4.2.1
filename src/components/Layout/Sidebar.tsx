@@ -91,7 +91,7 @@ const STAFF_SECTIONS: NavSection[] = [
     label: 'CLIENT MANAGEMENT',
     items: [
       { id: 'clients', label: 'Clients Management', icon: '👥' },
-      { id: 'clients_no_policy', label: 'Clients With No Policy', icon: '🧍' },
+      { id: 'clients_no_policy', label: 'Abandoned Signups', icon: '🧍' },
       { id: 'groups', label: 'Group Teams Insurance', icon: '🏢' },
       { id: 'member_cards', label: 'Membership IDs', icon: '🪪', roles: ['super_admin', 'admin', 'policy_admin', 'claims_officer', 'finance'] },
       {

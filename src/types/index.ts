@@ -149,6 +149,10 @@ export interface Client {
    *  registration. Optional — plenty of clients are direct walk-ins.
    *  New policies created for the client prefill their agent from this. */
   agentId?: string
+  /** agent_id resolved to a display name — how most website signups are
+   *  attributed (the agent's referral), so it's the 'referred by' column
+   *  on uncovered-client lists. */
+  agentName?: string
   /** The staff member who captured the client in the IMS — distinct from
    *  agentId (the field officer). Unset for bot/website self-registration.
    *  Column lands via database/add_client_captured_by.sql. */

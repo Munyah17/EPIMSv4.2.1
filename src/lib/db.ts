@@ -198,6 +198,9 @@ function toClient(r: Record<string, unknown>): Client {
     insurer:     (r.insurer as Client['insurer']) ?? undefined,
     insurerProvisional: (r.insurer_provisional as boolean) ?? false,
     agentId:     (r.agent_id as string | null) ?? undefined,
+    agentName:   (r.agent as { name?: string } | null)?.name ?? undefined,
+    capturedById:   ((r.capturer as { id?: string } | null)?.id ?? r.captured_by) as string | undefined,
+    capturedByName: (r.capturer as { name?: string } | null)?.name ?? undefined,
     createdAt:   date(r.created_at as string),
     policyCount: (r.policy_count as number) ?? 0,
     status:      r.status as Client['status'],
@@ -800,7 +803,7 @@ export const policies = {
  *  probed like policies.captured_by so a database before
  *  add_client_captured_by.sql still reads fine. */
 const getClientSelect = async () =>
-  '*, policies(count)' +
+  '*, policies(count), agent:profiles!agent_id(id, name)' +
   (await hasColumn('clients', 'captured_by')
     ? ', captured_by, capturer:profiles!captured_by(id, name)'
     : '')
