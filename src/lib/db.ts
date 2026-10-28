@@ -906,6 +906,42 @@ export const clients = {
   },
 
   /**
+   * Creates or resets the client's portal login via /api/client-portal-account
+   * — the service-role endpoint is the only place allowed to mint auth users.
+   * The account's email is the client record's email because RLS binds a
+   * policyholder's reads to it (clients.email = auth.users.email); name
+   * login resolves through the profile's name column. Like staff.create()
+   * there is no offline fallback — a fake "password set" would strand the
+   * client at a login that doesn't exist.
+   */
+  async setPortalPassword(clientId: string, password: string) {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) return { created: false, error: 'Not signed in.' }
+    try {
+      const res = await fetch('/api/client-portal-account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({ clientId, password }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) return { created: false, error: body?.error ?? `Failed to set the portal password (HTTP ${res.status}).` }
+      return { created: body.created === true, error: null }
+    } catch (e) {
+      return { created: false, error: `Could not reach the server: ${e}` }
+    }
+  },
+
+  /** Whether a policyholder login already exists on this email — the client
+   *  modal labels the action "Create Login" vs "Reset Password" off it.
+   *  profiles_select grants read to every authenticated user, so a direct
+   *  table read is fine. */
+  async portalAccountExists(email: string) {
+    const { data } = await supabase.from('profiles')
+      .select('id').eq('email', email.trim().toLowerCase()).eq('role', 'policyholder').maybeSingle()
+    return !!data
+  },
+
+  /**
    * Super Admin only (enforced by RLS — clients_delete_super_admin). No
    * local-storage fallback, same reasoning as staff.remove(): a "deleted"
    * client that only disappeared from browser state was never really gone.

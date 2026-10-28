@@ -82,7 +82,7 @@ export default function Clients({ showToast }: Props) {
     else setSelected(new Set(filtered.map(c => c.id)))
   }
 
-  const handleRegister = async (client: Client) => {
+  const handleRegister = async (client: Client, portalPassword?: string) => {
     // Server-side rule: nothing is registered when the server can't be
     // reached — a client on file with no welcome/alert firing is a
     // half-done registration.
@@ -100,6 +100,18 @@ export default function Clients({ showToast }: Props) {
     showToast('success', `Client ${data.name} registered.`)
     setShowRegister(false)
     void notifyClientRegistered(data, user?.name)
+    // Portal login rides along when a password was entered — it can only
+    // exist now that the client row (and its email) does. A failure here
+    // must NOT undo the registration; staff can retry from Edit → Portal.
+    if (portalPassword) {
+      if (!data.email?.trim()) {
+        showToast('warning', 'Registered — but no email was saved, so no portal login was created. Add one under Edit.')
+      } else {
+        const res = await db.clients.setPortalPassword(data.id, portalPassword)
+        if (res.error) showToast('warning', `Registered — but the portal login failed: ${res.error} Retry under Edit.`)
+        else showToast('success', `Portal login created — ${data.name} signs in with their email or full name.`)
+      }
+    }
   }
 
   const handleEdit = async (updated: Client) => {

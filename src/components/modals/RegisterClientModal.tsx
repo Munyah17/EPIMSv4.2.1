@@ -8,7 +8,10 @@ import { toIsoDate } from '../../lib/dateUtils'
 
 interface Props {
   onClose: () => void
-  onSave: (client: Client) => void
+  /** Second arg is the optional portal password — the parent provisions
+   *  the policyholder login AFTER the client row exists (the account's
+   *  email is the client record's email, so it can't exist before). */
+  onSave: (client: Client, portalPassword?: string) => void
   /** The parent's already-loaded clients — lets the national-ID field warn
    *  about a duplicate before the database has to. */
   existingClients?: Client[]
@@ -30,6 +33,10 @@ export default function RegisterClientModal({ onClose, onSave, existingClients }
   // agent books.
   const [agentId, setAgentId] = useState('')
   const [agents, setAgents] = useState<AppUser[]>([])
+  // Optional portal login — creating it needs a saved email on the record
+  // (RLS binds clients.email = auth.users.email), so the parent warns when
+  // a password arrives with no email beside it.
+  const [portalPassword, setPortalPassword] = useState('')
 
   useEffect(() => {
     db.staff.list().then(({ data }) => setAgents((data ?? []).filter(s => s.active)))
@@ -49,6 +56,8 @@ export default function RegisterClientModal({ onClose, onSave, existingClients }
     ? existingClients?.find(c => c.nationalId.toLowerCase() === nationalId.trim().toLowerCase())
     : undefined
   if (duplicateNatId) missing.push({ key: 'nationalId', label: 'National ID', hint: `Already registered to ${duplicateNatId.name}` })
+  if (portalPassword && portalPassword.length < 8) missing.push({ key: 'portalPassword', label: 'Portal Password', hint: 'Minimum 8 characters' })
+  if (portalPassword && !email.trim()) missing.push({ key: 'portalPassword', label: 'Portal Password', hint: 'Portal login needs an email — enter one above or leave this empty' })
 
   const handleSave = () => {
     setAttempted(true)
@@ -64,7 +73,7 @@ export default function RegisterClientModal({ onClose, onSave, existingClients }
       policyCount: 0,
       status: 'active',
     }
-    onSave(client)
+    onSave(client, portalPassword || undefined)
   }
 
   return (
@@ -146,6 +155,11 @@ export default function RegisterClientModal({ onClose, onSave, existingClients }
               </optgroup>
             </select>
             <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>Optional — only if an agent brought this client in. Any policy created for them later will carry the same agent.</p>
+          </div>
+          <div className="form-group" id={fieldId('portalPassword')}>
+            <label>Client Portal Password</label>
+            <input className={invalidClass(missing, attempted, 'portalPassword')} type="text" autoComplete="off" placeholder="Optional — creates their portal login" value={portalPassword} onChange={e => setPortalPassword(e.target.value)} />
+            <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>They sign in with their email or full name. Leave empty to set it later from Edit.</p>
           </div>
         </div>
         <div className="modal-footer">

@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import type { Client } from '../../types'
+import { db } from '../../lib/db'
 import PhoneInput from '../ui/PhoneInput'
 import DateInput from '../ui/DateInput'
 import ValidationSummary, { MissingField, invalidClass, fieldId } from '../ui/ValidationSummary'
@@ -23,6 +24,32 @@ export default function EditClientModal({ client, onClose, onSave, onAssignPolic
   const [dob, setDob] = useState(client.dob ?? '')
   const [nationalId, setNationalId] = useState(client.nationalId ?? '')
 
+  // Portal login — the account's email is the client record's email (RLS
+  // binds them), so provisioning needs the SAVED email, not whatever is
+  // being typed into the field above.
+  const [portalPassword, setPortalPassword] = useState('')
+  const [portalBusy, setPortalBusy] = useState(false)
+  const [portalMsg, setPortalMsg] = useState<{ ok: boolean; text: string } | null>(null)
+  const [portalExists, setPortalExists] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    if (!client.email?.trim()) { setPortalExists(null); return }
+    db.clients.portalAccountExists(client.email).then(setPortalExists)
+  }, [client.email])
+
+  const emailDirty = email.trim().toLowerCase() !== (client.email ?? '').trim().toLowerCase()
+
+  const handleSetPortalPassword = async () => {
+    if (portalPassword.length < 8) { setPortalMsg({ ok: false, text: 'Password must be at least 8 characters.' }); return }
+    setPortalBusy(true)
+    setPortalMsg(null)
+    const { created, error } = await db.clients.setPortalPassword(client.id, portalPassword)
+    setPortalBusy(false)
+    if (error) { setPortalMsg({ ok: false, text: error }); return }
+    setPortalExists(true)
+    setPortalPassword('')
+    setPortalMsg({ ok: true, text: created ? `Login created — they sign in with ${client.email} or their full name.` : 'Password updated.' })
+  }
 
   const [attempted, setAttempted] = useState(false)
 
@@ -109,6 +136,51 @@ export default function EditClientModal({ client, onClose, onSave, onAssignPolic
           <div className="form-group">
             <label>Address</label>
             <input className="form-control" value={address} onChange={e => setAddress(e.target.value)} />
+          </div>
+
+          {/* ── CLIENT PORTAL ACCESS ── */}
+          <div style={{ borderTop: '1px solid var(--border)', marginTop: 4, paddingTop: 12 }}>
+            <div className="form-group" style={{ marginBottom: 0 }}>
+              <label>Client Portal Login</label>
+              {!client.email?.trim() ? (
+                <p style={{ fontSize: 11, color: 'var(--muted)', margin: 0 }}>
+                  Save an email first — the client signs in to the portal with that email or their full name.
+                </p>
+              ) : emailDirty ? (
+                <p style={{ fontSize: 11, color: 'var(--warning)', margin: 0 }}>
+                  The email change isn't saved yet — save first, then set the portal password (the login binds to the saved email).
+                </p>
+              ) : (
+                <>
+                  <p style={{ fontSize: 11, color: 'var(--muted)', margin: '0 0 6px' }}>
+                    {portalExists === null
+                      ? 'Checking portal account…'
+                      : portalExists
+                        ? `Portal account active — signs in as ${client.email} or “${client.name}”.`
+                        : `No portal account yet — set a password to create one for ${client.email}.`}
+                  </p>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                    <input
+                      className="form-control"
+                      style={{ flex: 1 }}
+                      type="text"
+                      autoComplete="off"
+                      placeholder="New password — min 8 characters"
+                      value={portalPassword}
+                      onChange={e => setPortalPassword(e.target.value)}
+                    />
+                    <button type="button" className="btn btn-primary btn-sm" onClick={handleSetPortalPassword} disabled={portalBusy}>
+                      {portalBusy ? 'Saving…' : portalExists ? 'Reset Password' : 'Create Login'}
+                    </button>
+                  </div>
+                  {portalMsg && (
+                    <p style={{ fontSize: 11, color: portalMsg.ok ? 'var(--success)' : 'var(--danger)', margin: '6px 0 0' }}>
+                      {portalMsg.text}
+                    </p>
+                  )}
+                </>
+              )}
+            </div>
           </div>
         </div>
         <div className="modal-footer">
