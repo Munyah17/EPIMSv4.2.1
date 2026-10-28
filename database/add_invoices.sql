@@ -14,7 +14,10 @@ CREATE TABLE IF NOT EXISTS public.invoices (
   invoice_number  TEXT NOT NULL,
   policy_id       UUID NOT NULL REFERENCES public.policies(id) ON DELETE RESTRICT,
   client_id       UUID NOT NULL REFERENCES public.clients(id),
-  group_id        UUID,
+  -- FK is required, not decorative: PostgREST resolves the
+  -- groups!group_id(name) embed in invoice reads through it — without
+  -- the constraint every INVOICE_SELECT errors out.
+  group_id        UUID REFERENCES public.groups(id),
   period          TEXT NOT NULL,            -- 'YYYY-MM'
   heads           INT NOT NULL DEFAULT 0,   -- billed members on the roster
   amount          NUMERIC(14,2) NOT NULL CHECK (amount > 0),
