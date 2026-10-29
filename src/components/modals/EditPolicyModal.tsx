@@ -4,6 +4,7 @@ import { MANUAL_PAYMENT_METHODS } from '../../types'
 import { db } from '../../lib/db'
 import { HECTARAGE_OPTIONS, hectarageLabel } from '../../lib/productUtils'
 import DateInput from '../ui/DateInput'
+import { cleanNationalIdInput } from '../../lib/validation'
 
 interface Props {
   policy: Policy
@@ -57,9 +58,10 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
     setDependants(prev => prev.map((d, idx) => {
       if (idx !== i) return d
       const next = { ...d, [field]: value }
-      // Strip dashes from ID numbers for consistency
+      // IDs store in canonical form — the dependant "ID" may be a birth
+      // record number, so only separators are normalised, never rejected.
       if (field === 'nationalId' && typeof value === 'string') {
-        next.nationalId = value.replace(/-/g, '')
+        next.nationalId = cleanNationalIdInput(value)
       }
       return next
     }))
@@ -244,7 +246,7 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
                         <input className="form-control" placeholder="Name" value={d.name} onChange={e => updateDependant(i, 'name', e.target.value)} />
                         <input className="form-control" placeholder="Relationship" value={d.relationship} onChange={e => updateDependant(i, 'relationship', e.target.value)} />
                         <DateInput value={d.dob} onChange={v => updateDependant(i, 'dob', v)} />
-                        <input className="form-control" placeholder="ID (16+) or birth record no." value={d.nationalId} onChange={e => updateDependant(i, 'nationalId', e.target.value.replace(/-/g, ''))} />
+                        <input className="form-control" placeholder="ID (16+) or birth record no." value={d.nationalId} onChange={e => updateDependant(i, 'nationalId', e.target.value)} />
                         <select className="form-control" value={d.productId ?? ''} onChange={e => updateDependant(i, 'productId', e.target.value)} disabled={!product}>
                           <option value="">{product ? 'Select plan…' : 'Pick the product first'}</option>
                           {dependantPlanOptions.map(p => <option key={p.id} value={p.id}>{p.name} (${p.premium})</option>)}

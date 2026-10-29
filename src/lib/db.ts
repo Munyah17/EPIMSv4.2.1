@@ -863,7 +863,7 @@ export const clients = {
   async create(client: Omit<Client, 'id' | 'policyCount'>) {
     const row = {
       name: client.name, email: client.email, phone: client.phone,
-      national_id: client.nationalId, dob: client.dob || null,
+      national_id: normalizeNationalId(client.nationalId), dob: client.dob || null,
       gender: client.gender ?? null,
       address: client.address, occupation: client.occupation ?? null,
       insurer: client.insurer ?? null, status: client.status,
@@ -918,7 +918,7 @@ export const clients = {
       if (!phone) return { data: null, error: 'Phone number is required.' }
       row.phone = phone
     }
-    if (updates.nationalId !== undefined) row.national_id = updates.nationalId
+    if (updates.nationalId !== undefined) row.national_id = normalizeNationalId(updates.nationalId)
     if (updates.dob        !== undefined) row.dob        = updates.dob || null
     if (updates.gender     !== undefined && await hasColumn('clients', 'gender')) row.gender = updates.gender || null
     if (updates.address    !== undefined) row.address    = updates.address
@@ -3222,7 +3222,7 @@ export const groupMembers = {
   async update(id: string, updates: Partial<GroupMember>) {
     const row: Record<string, unknown> = {}
     if (updates.fullName !== undefined)   row.full_name   = updates.fullName
-    if (updates.nationalId !== undefined) row.national_id = updates.nationalId ?? null
+    if (updates.nationalId !== undefined) row.national_id = updates.nationalId == null ? null : normalizeNationalId(updates.nationalId)
     if (updates.dob !== undefined)        row.dob         = updates.dob || null
     if (updates.phone !== undefined)      row.phone       = updates.phone ?? null
     if (updates.position !== undefined)   row.position    = updates.position ?? null

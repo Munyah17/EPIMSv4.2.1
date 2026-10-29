@@ -261,7 +261,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
     const { data, error } = await db.groupMembers.add({
       groupId,
       fullName: name,
-      nationalId: memberNatId.trim() || undefined,
+      nationalId: cleanNationalIdInput(memberNatId) || undefined,
       dob: memberDob || undefined,
       phone: memberPhone.trim() || undefined,
       position: memberRole.trim() || undefined,
@@ -506,7 +506,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
         name: clientName,
         email: clientEmail,
         phone: clientPhone,
-        nationalId: clientNationalId,
+        nationalId: cleanNationalIdInput(clientNationalId),
         dob: clientDob,
         address: clientAddress,
         occupation: clientOccupation,
@@ -1121,7 +1121,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                         <input className="form-control" placeholder="Relationship" value={d.relationship} onChange={e => updateDependant(i, 'relationship', e.target.value)} />
                       )}
                       <DateInput value={d.dob} onChange={v => updateDependant(i, 'dob', v)} />
-                      <input className="form-control" placeholder="ID (16+) or birth record no." value={d.nationalId} onChange={e => updateDependant(i, 'nationalId', e.target.value.replace(/-/g, ''))} />
+                      <input className="form-control" placeholder="ID (16+) or birth record no." value={d.nationalId} onChange={e => updateDependant(i, 'nationalId', cleanNationalIdInput(e.target.value))} />
                       <select className="form-control" value={d.productId ?? ''} onChange={e => updateDependant(i, 'productId', e.target.value)} disabled={!product}>
                         <option value="">{product ? 'Select plan…' : 'Pick the product first'}</option>
                         {dependantPlanOptions.map(p => <option key={p.id} value={p.id}>{p.name} (${p.premium})</option>)}

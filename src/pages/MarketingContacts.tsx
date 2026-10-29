@@ -3,6 +3,7 @@ import type { ToastMessage, MarketingContact } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
+import { isZwPhone, PHONE_HINT } from '../lib/validation'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -251,11 +252,17 @@ function ContactModal({ contact, onClose, onSave, showToast }: ContactModalProps
   const [source, setSource] = useState(contact?.source || '')
   const [notes, setNotes] = useState(contact?.notes || '')
   const [marketingPermission, setMarketingPermission] = useState(contact?.marketingPermission ?? true)
+  const [attempted, setAttempted] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    setAttempted(true)
     if (!name.trim() || !phone.trim()) {
       showToast('warning', 'Name and phone are required.')
+      return
+    }
+    if (!isZwPhone(phone)) {
+      showToast('warning', `Phone number: ${PHONE_HINT}.`)
       return
     }
     await onSave({
@@ -284,7 +291,10 @@ function ContactModal({ contact, onClose, onSave, showToast }: ContactModalProps
           </div>
           <div className="form-group">
             <label>Phone *</label>
-            <input className="form-control" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+263 7XX XXX XXX" required />
+            <input className={`form-control${attempted && phone.trim() && !isZwPhone(phone) ? ' field-invalid' : ''}`} value={phone} onChange={e => setPhone(e.target.value)} placeholder="+263773909307 or 0773909307" required />
+            {attempted && phone.trim() && !isZwPhone(phone) && (
+              <p style={{ fontSize: 11, color: 'var(--danger)', marginTop: 4 }}>{PHONE_HINT}.</p>
+            )}
           </div>
           <div className="form-group">
             <label>Email</label>

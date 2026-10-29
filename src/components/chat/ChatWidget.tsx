@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import type { ChatTopic, ChatSession, ChatMessage } from '../../types'
 import * as chat from '../../lib/chatService'
 import PhoneInput from '../ui/PhoneInput'
+import { isZwPhone, PHONE_HINT } from '../../lib/validation'
 
 type Stage = 'closed' | 'form' | 'chatting'
 
@@ -21,6 +22,7 @@ export default function ChatWidget({ prefill }: Props) {
   const [topic, setTopic] = useState('')
   const [starting, setStarting] = useState(false)
   const [formError, setFormError] = useState('')
+  const [formAttempted, setFormAttempted] = useState(false)
 
   const [session, setSession] = useState<ChatSession | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
@@ -76,12 +78,19 @@ export default function ChatWidget({ prefill }: Props) {
 
   const startChat = async () => {
     setFormError('')
+    setFormAttempted(true)
     if (topics.length === 0) {
       setFormError('Still loading, please try again in a moment.')
       return
     }
     if (!name.trim() || !phone.trim() || !email.trim() || !topic) {
       setFormError(prefill ? 'Please choose what you need help with.' : 'Please fill in all fields.')
+      return
+    }
+    // Format only matters while the field is editable — a prefilled
+    // account phone isn't shown or fixable here.
+    if (!prefill && !isZwPhone(phone)) {
+      setFormError(`Phone number: ${PHONE_HINT}.`)
       return
     }
     if (!email.includes('@')) {
@@ -157,7 +166,7 @@ export default function ChatWidget({ prefill }: Props) {
                     <label>Full Name *</label>
                     <input className="form-control" value={name} onChange={e => setName(e.target.value)} placeholder="Your name" />
                   </div>
-                  <div className="form-group">
+                  <div className="form-group" style={formAttempted && !isZwPhone(phone) ? { outline: '1px solid var(--danger)', borderRadius: 7, outlineOffset: 2 } : undefined}>
                     <label>Phone Number *</label>
                     <PhoneInput value={phone} onChange={setPhone} />
                   </div>
