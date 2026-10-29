@@ -2,7 +2,7 @@ import type { Handler, Ctx, BotProduct } from '../types.js'
 import { sendText, sendButtons } from '../whatsapp.js'
 import { setState, patchNote, deleteSession } from '../store.js'
 import { getActiveProducts, policiesForClient, clientByNationalId, clientsOfAgent, commissionForAgent } from '../data.js'
-import { isFullName, isNationalId, isEmail, parseDob, pickIndex } from '../helpers.js'
+import { isFullName, isNationalId, isEmail, parseDob, pickIndex, normalizeNationalId } from '../helpers.js'
 import { makeTail, startTail } from '../tail.js'
 import { coverLabel } from '../../coverBreakdown.js'
 
@@ -54,9 +54,9 @@ const acName: Handler = async ({ input, phone, session, admin }) => {
 }
 
 const acId: Handler = async ({ input, phone, session, admin }) => {
-  if (!isNationalId(input)) return sendText(phone, 'Please enter a valid national ID.')
+  if (!isNationalId(input)) return sendText(phone, 'Please enter a valid national ID (e.g. 632118532K12).')
   if (await clientByNationalId(admin, input)) return sendText(phone, 'A client with that national ID already exists (send exit to cancel).')
-  await patchNote(admin, session, { nationalId: input.trim() })
+  await patchNote(admin, session, { nationalId: normalizeNationalId(input) })
   await sendButtons(phone, "Select the client's gender", [
     { id: 'male', title: 'Male' }, { id: 'female', title: 'Female' }, { id: 'other', title: 'Other' },
   ])
@@ -162,7 +162,7 @@ const acChronicDetails: Handler = async (ctx) => {
 /* ------------------------- 2. Add New Dependant ---------------------------- */
 
 const adHolderId: Handler = async ({ input, phone, session, admin }) => {
-  if (!isNationalId(input)) return sendText(phone, 'Please enter a valid national ID.')
+  if (!isNationalId(input)) return sendText(phone, 'Please enter a valid national ID (e.g. 632118532K12).')
   const holder = await clientByNationalId(admin, input)
   if (!holder) return sendText(phone, 'No client with that national ID exists (send exit to cancel).')
   await patchNote(admin, session, { holderId: holder.id, holderName: holder.name })
@@ -192,8 +192,8 @@ const adName: Handler = async ({ input, phone, session, admin }) => {
 }
 
 const adId: Handler = async ({ input, phone, session, admin }) => {
-  if (!isNationalId(input)) return sendText(phone, 'Please enter a valid national ID.')
-  await patchNote(admin, session, { depNationalId: input.trim() })
+  if (!isNationalId(input)) return sendText(phone, 'Please enter a valid national ID (e.g. 632118532K12).')
+  await patchNote(admin, session, { depNationalId: normalizeNationalId(input) })
   await sendButtons(phone, "Select the dependant's gender", [
     { id: 'male', title: 'Male' }, { id: 'female', title: 'Female' }, { id: 'other', title: 'Other' },
   ])
@@ -319,7 +319,7 @@ const commission: Handler = async ({ phone, admin, contact }) => {
 /* --------------------------- 5. Make Payment ------------------------------ */
 
 const apayId: Handler = async ({ input, phone, session, admin }) => {
-  if (!isNationalId(input)) return sendText(phone, 'Please enter a valid national ID.')
+  if (!isNationalId(input)) return sendText(phone, 'Please enter a valid national ID (e.g. 632118532K12).')
   const client = await clientByNationalId(admin, input)
   if (!client) return sendText(phone, 'No client with that national ID exists (send exit to cancel).')
   await patchNote(admin, session, { payClientId: client.id, payClientName: client.name })

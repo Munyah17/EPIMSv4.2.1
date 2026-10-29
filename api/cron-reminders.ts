@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { dispatchNotification } from './_lib/notify.js'
+import { fetchAllRows } from '../src/lib/paged.js'
 import { premiumReminderSms, policyLapsedSms, invoiceIssuedSms } from '../src/lib/smsText.js'
 import { resolveSmsText, smsVarMoney } from '../src/lib/smsTemplates.js'
 
@@ -241,10 +242,13 @@ async function dispatch(
  *  have passed and payment is current. Agriculture activates on first
  *  payment instead, so it is excluded rather than auto-activated by date. */
 async function liftWaitingPeriods(admin: SupabaseClient): Promise<number> {
-  const { data } = await admin
-    .from('policies')
-    .select('id, start_date, next_payment_date, products!product_id(category)')
-    .eq('status', 'waiting_period')
+  const { data } = await fetchAllRows(
+    () => admin
+      .from('policies')
+      .select('id, start_date, next_payment_date, products!product_id(category)')
+      .eq('status', 'waiting_period'),
+    { orderBy: 'id' },
+  )
   const today = new Date()
   let lifted = 0
   for (const row of (data ?? []) as unknown as { id: string; start_date: string; next_payment_date: string | null; products: { category: string } | null }[]) {
@@ -263,13 +267,17 @@ async function liftWaitingPeriods(admin: SupabaseClient): Promise<number> {
  *  stay intact and restorable from the Policies → Archive view. */
 async function expireEndedTerms(admin: SupabaseClient): Promise<number> {
   const todayISO = new Date().toISOString().split('T')[0]
-  const { data } = await admin
+  const { count } = await admin
+    .from('policies')
+    .select('id', { count: 'exact', head: true })
+    .lt('end_date', todayISO)
+    .in('status', ['active', 'waiting_period', 'lapsed', 'defaulted'])
+  await admin
     .from('policies')
     .update({ status: 'expired' })
     .lt('end_date', todayISO)
     .in('status', ['active', 'waiting_period', 'lapsed', 'defaulted'])
-    .select('id')
-  return data?.length ?? 0
+  return count ?? 0
 }
 
 // ── Reconciliation: money/registration happened, record didn't ──────
@@ -291,8 +299,8 @@ async function reconcileBook(admin: SupabaseClient): Promise<{ orphanedClients: 
   const findings: { kind: string; ref: string; line: string }[] = []
 
   // 1. Client registered >24h ago with no policy at all.
-  const { data: clients } = await admin.from('clients').select('id, name, phone, email, id_number, gender, dob, address, city, created_at').lt('created_at', cutoff)
-  const { data: policyClientIds } = await admin.from('policies').select('client_id')
+  const { data: clients } = await fetchAllRows(() => admin.from('clients').select('id, name, phone, email, id_number, gender, dob, address, city, created_at').lt('created_at', cutoff), { orderBy: 'id' })
+  const { data: policyClientIds } = await fetchAllRows(() => admin.from('policies').select('client_id'), { orderBy: 'id' })
   const covered = new Set((policyClientIds ?? []).map(p => p.client_id))
   for (const c of clients ?? []) {
     if (covered.has(c.id)) continue
@@ -322,18 +330,24 @@ async function reconcileBook(admin: SupabaseClient): Promise<{ orphanedClients: 
   }
 
   // 2. Paynow transaction initiated >24h ago, never confirmed or failed.
-  const { data: stale } = await admin.from('paynow_transactions')
-    .select('reference, policy_id, expected_amount, currency, created_at')
-    .eq('status', 'pending').lt('created_at', cutoff)
+  const { data: stale } = await fetchAllRows(
+    () => admin.from('paynow_transactions')
+      .select('reference, policy_id, expected_amount, currency, created_at')
+      .eq('status', 'pending').lt('created_at', cutoff),
+    { orderBy: 'id' },
+  )
   for (const t of stale ?? []) {
     findings.push({ kind: 'stale_paynow', ref: t.reference, line: `Paynow ref ${t.reference} (${t.currency} ${Number(t.expected_amount).toFixed(2)}, started ${new Date(t.created_at).toLocaleDateString('en-GB')}) never confirmed — check the gateway and reconcile against the payer.` })
   }
 
   // 3. A completed payment on a policy still 'pending' — money recorded,
   // cover never activated.
-  const { data: paidPending } = await admin.from('policies')
-    .select('id, policy_number, client_id, clients!client_id(name, phone)')
-    .eq('status', 'pending')
+  const { data: paidPending } = await fetchAllRows(
+    () => admin.from('policies')
+      .select('id, policy_number, client_id, clients!client_id(name, phone)')
+      .eq('status', 'pending'),
+    { orderBy: 'id' },
+  )
   for (const p of (paidPending ?? []) as unknown as { id: string; policy_number: string; clients: { name: string; phone: string | null } | null }[]) {
     const { data: pays } = await admin.from('payments').select('reference, amount').eq('policy_id', p.id).eq('status', 'completed').limit(1)
     if (!pays?.length) continue
@@ -420,10 +434,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const dueISO = dueDate.toISOString().split('T')[0]
   const todayISO = `${zw.getUTCFullYear()}-${String(zw.getUTCMonth() + 1).padStart(2, '0')}-${String(zwDay).padStart(2, '0')}`
 
-  const { data, error } = await admin
-    .from('policies')
-    .select('id, policy_number, client_id, product_id, premium, status, dependants, agent_id, next_payment_date, clients!client_id(name, email, phone), products!product_id(name, category)')
-    .in('status', ['active', 'waiting_period', 'defaulted'])
+  const { data, error } = await fetchAllRows(
+    () => admin
+      .from('policies')
+      .select('id, policy_number, client_id, product_id, premium, status, dependants, agent_id, next_payment_date, clients!client_id(name, email, phone), products!product_id(name, category)')
+      .in('status', ['active', 'waiting_period', 'defaulted']),
+    { orderBy: 'id' },
+  )
   if (error) {
     console.error('cron-reminders: policy query failed', error.message)
     return res.status(500).json({ error: 'Could not load policies for the reminder run.' })
@@ -490,12 +507,15 @@ async function issueMonthlyInvoices(admin: SupabaseClient, today: Date) {
   const period = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
   const dueDate = lastDayOfMonth(today).toISOString().split('T')[0]
 
-  const { data, error } = await admin
-    .from('policies')
-    .select('id, policy_number, client_id, product_id, premium, status, dependants, agent_id, cover_scope, group_id, clients!client_id(name, email, phone), products!product_id(name, category), groups!group_id(name, contact_name, contact_phone, contact_email)')
-    .in('status', ['active', 'waiting_period'])
-    .not('cover_scope', 'is', null)
-    .neq('cover_scope', 'individual')
+  const { data, error } = await fetchAllRows(
+    () => admin
+      .from('policies')
+      .select('id, policy_number, client_id, product_id, premium, status, dependants, agent_id, cover_scope, group_id, clients!client_id(name, email, phone), products!product_id(name, category), groups!group_id(name, contact_name, contact_phone, contact_email)')
+      .in('status', ['active', 'waiting_period'])
+      .not('cover_scope', 'is', null)
+      .neq('cover_scope', 'individual'),
+    { orderBy: 'id' },
+  )
   if (error) {
     // cover_scope predates the group-cover migration on some databases —
     // log and skip rather than fail the whole reminder run.

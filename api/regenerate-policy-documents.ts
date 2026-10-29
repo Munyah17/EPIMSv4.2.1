@@ -7,6 +7,7 @@
 import { VercelRequest, VercelResponse } from '@vercel/node'
 import { serviceClient, requireSession } from './_lib/sessionAuth'
 import { auditLog } from './_lib/audit'
+import { fetchAllRows } from '../src/lib/paged.js'
 import { getPolicyReportPdfBase64 } from '../src/lib/exportUtils'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -49,16 +50,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     : (req.body ?? {})
 
   // Build query with filters
-  let query = admin
-    .from('policies')
-    .select('*, clients(*)')
-  
-  if (category) query = query.eq('category', category)
-  if (status) query = query.eq('status', status)
-  if (startDate) query = query.gte('created_at', startDate)
-  if (endDate) query = query.lte('created_at', endDate)
-
-  const { data: policies, error: fetchError } = await query
+  const { data: policies, error: fetchError } = await fetchAllRows(
+    () => {
+      let query = admin
+        .from('policies')
+        .select('*, clients(*)')
+      if (category) query = query.eq('category', category)
+      if (status) query = query.eq('status', status)
+      if (startDate) query = query.gte('created_at', startDate)
+      if (endDate) query = query.lte('created_at', endDate)
+      return query
+    },
+    { orderBy: 'id' },
+  )
 
   if (fetchError) {
     return res.status(500).json({ error: 'Failed to fetch policies.', details: fetchError.message })
@@ -156,8 +160,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       entityId: 'batch',
       action: `Regenerated policy documents: ${results.success} succeeded, ${results.failed} failed`,
       changes: {
-        old: { total: results.total },
-        new: { success: results.success, failed: results.failed },
+        result: { old: { total: results.total }, new: { success: results.success, failed: results.failed } },
       },
       source: 'web',
     })

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import type { ToastMessage, Lead, LeadStatus } from '../types'
+import type { ToastMessage, Lead, LeadStatus, Client } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
@@ -22,8 +22,13 @@ const LEAD_STATUS_CLASS: Record<LeadStatus, string> = {
   lost: 'lead-status-lost',
 }
 
-export default function Leads({ showToast }: Props) {
+export default function Leads({ showToast, setActivePanel }: Props) {
   const [leads, setLeads] = useState<Lead[]>([])
+  // Abandoned signups — self-registered clients (website/bot, so
+  // captured_by is NULL; staff-captured clients like farmers are a
+  // different problem and stay out of this list) with no policy. They
+  // showed real signup intent, so they surface here as warm leads.
+  const [abandoned, setAbandoned] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<LeadStatus | 'all'>('all')
@@ -37,6 +42,9 @@ export default function Leads({ showToast }: Props) {
       else if (data) setLeads(data)
       setLoading(false)
     }).catch(() => { showToast('error', 'Failed to load leads.'); setLoading(false) })
+    db.clients.list().then(({ data }) => {
+      if (data) setAbandoned(data.filter(c => (c.policyCount ?? 0) === 0 && !c.capturedById))
+    }).catch(() => { /* abandoned-signup strip is advisory — don't block the page */ })
   }, [showToast])
 
   const filtered = leads.filter(l => {
@@ -70,6 +78,23 @@ export default function Leads({ showToast }: Props) {
     setLeads(prev => [data, ...prev])
     setShowAdd(false)
     showToast('success', `Lead "${data.name}" added, AI intent score: ${data.intentScore}.`)
+  }
+
+  // Phones already in the pipeline — an abandoned signup that was
+  // imported once (or captured another way) can't be duplicated.
+  const leadPhones = new Set(leads.map(l => l.phone))
+
+  const handleImportAbandoned = async (c: Client) => {
+    // High intent by construction — they filled out a signup form.
+    const { data, error } = await db.leads.create({
+      name: c.name, email: c.email || undefined, phone: c.phone,
+      source: 'Abandoned signup', productInterest: '—',
+      status: 'new', intentScore: 80, createdAt: new Date().toISOString(),
+    })
+    if (error || !data) { showToast('error', error ?? 'Failed to add lead.'); return }
+    setLeads(prev => [data, ...prev])
+    setAbandoned(prev => prev.filter(x => x.id !== c.id))
+    showToast('success', `${data.name} added to leads.`)
   }
 
   const handleImportSearched = async (found: Omit<Lead, 'id'>[]) => {
@@ -111,6 +136,50 @@ export default function Leads({ showToast }: Props) {
           </button>
         </div>
       </div>
+
+      {abandoned.length > 0 && (
+        <div className="card" style={{ marginBottom: 20 }}>
+          <div className="card-header">
+            <h3 className="card-title">🚪 Abandoned Signups ({abandoned.length})</h3>
+            <button type="button" className="btn btn-ghost btn-sm" onClick={() => setActivePanel('clients_no_policy')}>View all →</button>
+          </div>
+          <div className="info-banner info-banner-warning" style={{ margin: '0 16px 12px', borderRadius: 8 }}>
+            Self-registered signups (website/bot) that never completed — no payment was taken, no policy exists. Warm leads: they already tried to buy.
+          </div>
+          <div className="tbl-scroll" style={{ maxHeight: 320, overflowY: 'auto' }}>
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Phone</th>
+                <th>Email</th>
+                <th>Signed Up</th>
+                <th>Referred By</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {abandoned.map(c => (
+                <tr key={c.id}>
+                  <td><strong>{c.name}</strong></td>
+                  <td>{c.phone}</td>
+                  <td>{c.email || '—'}</td>
+                  <td>{formatDate(c.createdAt)}</td>
+                  <td>{c.agentName ?? '—'}</td>
+                  <td>
+                    {leadPhones.has(c.phone) ? (
+                      <span className="pill pill-active">In leads</span>
+                    ) : (
+                      <button type="button" className="btn btn-primary btn-sm" onClick={() => void handleImportAbandoned(c)}>+ Add to Leads</button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          </div>
+        </div>
+      )}
 
       <div className="card">
         {loading ? (

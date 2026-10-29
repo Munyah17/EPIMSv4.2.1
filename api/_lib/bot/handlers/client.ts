@@ -2,7 +2,7 @@ import type { Handler, Ctx } from '../types.js'
 import { sendText, sendButtons } from '../whatsapp.js'
 import { setState, patchNote, deleteSession } from '../store.js'
 import { getActiveProducts, policiesForClient, createClaim } from '../data.js'
-import { isFullName, isNationalId, parseDob, pickIndex } from '../helpers.js'
+import { isFullName, isNationalId, parseDob, pickIndex, normalizeNationalId } from '../helpers.js'
 import { makeTail, startTail } from '../tail.js'
 import { coverLabel, isTobaccoFieldToFloor } from '../../coverBreakdown.js'
 
@@ -221,9 +221,9 @@ const depMenuSel: Handler = async (ctx) => {
 }
 
 const depRemoveId: Handler = async ({ input, phone, session, admin, contact }) => {
-  if (!isNationalId(input)) return sendText(phone, 'Please enter a valid national ID.')
+  if (!isNationalId(input)) return sendText(phone, 'Please enter a valid national ID (e.g. 632118532K12).')
   const policies = await policiesForClient(admin, contact.client!.id)
-  const found = policies.some(p => p.dependants.some(d => d.nationalId === input.trim()))
+  const found = policies.some(p => p.dependants.some(d => normalizeNationalId(String(d.nationalId ?? '')) === normalizeNationalId(input)))
   if (!found) return sendText(phone, "That dependant was not found on your policies (send 'exit' to cancel).")
   await deleteSession(admin, session)
   return sendText(phone, 'Your request to remove the dependant has been sent. Our team will confirm once it is processed.')
@@ -237,8 +237,8 @@ const depName: Handler = async ({ input, phone, session, admin }) => {
 }
 
 const depId: Handler = async ({ input, phone, session, admin }) => {
-  if (!isNationalId(input)) return sendText(phone, 'Please enter a valid national ID.')
-  await patchNote(admin, session, { depNationalId: input.trim() })
+  if (!isNationalId(input)) return sendText(phone, 'Please enter a valid national ID (e.g. 632118532K12).')
+  await patchNote(admin, session, { depNationalId: normalizeNationalId(input) })
   await sendButtons(phone, "Select the dependant's gender", [
     { id: 'male', title: 'Male' }, { id: 'female', title: 'Female' }, { id: 'other', title: 'Other' },
   ])

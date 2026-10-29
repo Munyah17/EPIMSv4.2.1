@@ -25,6 +25,16 @@ export const TREATY_HEADERS = [
   'RETAINED SUM ASSURED', 'RETAINED PREMIUM', 'SUM REASSURED', 'REASS PREMIUM',
 ]
 
+/** Premium-column heading for the export's actual contents. Agriculture
+ *  premiums are the whole season's figure settled by stop order — labelling
+ *  them 'MONTHLY PREMIUM' has a reinsurer dividing an annual premium by 12.
+ *  A mixed book says 'PREMIUM' and lets the product column disambiguate;
+ *  a pure agriculture book says so outright. */
+export function treatyHeaders(allAgriculture: boolean): string[] {
+  const premium = allAgriculture ? 'ANNUAL PREMIUM' : 'MONTHLY PREMIUM'
+  return TREATY_HEADERS.map(h => h === 'MONTHLY PREMIUM' ? premium : h)
+}
+
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 /** Every date on the export, one format — "7-Dec-2026". Blank stays

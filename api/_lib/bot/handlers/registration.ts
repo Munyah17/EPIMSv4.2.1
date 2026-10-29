@@ -2,7 +2,7 @@ import type { Handler } from '../types.js'
 import { sendText, sendButtons } from '../whatsapp.js'
 import { setState, patchNote, deleteSession } from '../store.js'
 import { getActiveProducts, createClient, createPolicy } from '../data.js'
-import { isFullName, isNationalId, isEmail, parseDob, isEcocashPhone, pickIndex, PAYMENT_METHODS, methodMenu, sendPaymentInstruction } from '../helpers.js'
+import { isFullName, isNationalId, isEmail, parseDob, isEcocashPhone, pickIndex, PAYMENT_METHODS, methodMenu, sendPaymentInstruction, normalizeNationalId } from '../helpers.js'
 import { policyTermDates } from '../../policyTerm.js'
 import { coverLabel } from '../../coverBreakdown.js'
 
@@ -54,8 +54,8 @@ const name_: Handler = async ({ input, phone, session, admin }) => {
 }
 
 const id: Handler = async ({ input, phone, session, admin }) => {
-  if (!isNationalId(input)) return sendText(phone, 'Please enter a valid national ID.')
-  await patchNote(admin, session, { nationalId: input.trim() })
+  if (!isNationalId(input)) return sendText(phone, 'Please enter a valid national ID (e.g. 632118532K12).')
+  await patchNote(admin, session, { nationalId: normalizeNationalId(input) })
   await sendButtons(phone, 'Select your gender', [
     { id: 'male', title: 'Male' }, { id: 'female', title: 'Female' }, { id: 'other', title: 'Other' },
   ])

@@ -3,8 +3,9 @@ import type { Client, AppUser } from '../../types'
 import { db } from '../../lib/db'
 import PhoneInput from '../ui/PhoneInput'
 import DateInput from '../ui/DateInput'
-import ValidationSummary, { MissingField, invalidClass, fieldId } from '../ui/ValidationSummary'
+import ValidationSummary, { MissingField, invalidClass, fieldId, isMissing } from '../ui/ValidationSummary'
 import { toIsoDate } from '../../lib/dateUtils'
+import { isNationalId, cleanNationalIdInput, isZwPhone, NATIONAL_ID_HINT, PHONE_HINT } from '../../lib/validation'
 
 interface Props {
   onClose: () => void
@@ -47,13 +48,15 @@ export default function RegisterClientModal({ onClose, onSave, existingClients }
   const missing: MissingField[] = []
   if (!name.trim()) missing.push({ key: 'name', label: 'Full Name' })
   if (!phone.trim()) missing.push({ key: 'phone', label: 'Phone Number' })
+  else if (!isZwPhone(phone)) missing.push({ key: 'phone', label: 'Phone Number', hint: PHONE_HINT })
   if (!nationalId.trim()) missing.push({ key: 'nationalId', label: 'National ID' })
+  else if (!isNationalId(nationalId)) missing.push({ key: 'nationalId', label: 'National ID', hint: NATIONAL_ID_HINT })
   // ID and DOB are the person's identity to the insurer — a claim
   // against a client without both cannot be verified. Never optional.
   if (!dob) missing.push({ key: 'dob', label: 'Date of Birth' })
   // National ID is unique — warn before the database has to.
   const duplicateNatId = nationalId.trim()
-    ? existingClients?.find(c => c.nationalId.toLowerCase() === nationalId.trim().toLowerCase())
+    ? existingClients?.find(c => cleanNationalIdInput(c.nationalId) === cleanNationalIdInput(nationalId))
     : undefined
   if (duplicateNatId) missing.push({ key: 'nationalId', label: 'National ID', hint: `Already registered to ${duplicateNatId.name}` })
   if (portalPassword && portalPassword.length < 8) missing.push({ key: 'portalPassword', label: 'Portal Password', hint: 'Minimum 8 characters' })
@@ -66,7 +69,7 @@ export default function RegisterClientModal({ onClose, onSave, existingClients }
     const phoneValue = phone.trim() || ''
     const client: Client = {
       id: `c${Date.now()}`,
-      name, email, phone: phoneValue, nationalId, dob, address, occupation,
+      name, email, phone: phoneValue, nationalId: cleanNationalIdInput(nationalId), dob, address, occupation,
       gender: gender === 'other' ? genderOther.trim() || 'other' : gender || undefined,
       agentId: agentId || undefined,
       createdAt: toIsoDate(new Date()),
@@ -96,13 +99,13 @@ export default function RegisterClientModal({ onClose, onSave, existingClients }
             </div>
           </div>
           <div className="form-row">
-            <div className="form-group" id={fieldId('phone')} style={attempted && !phone.trim() ? { outline: '1px solid var(--danger)', borderRadius: 7, outlineOffset: 2 } : undefined}>
+            <div className="form-group" id={fieldId('phone')} style={isMissing(missing, attempted, 'phone') ? { outline: '1px solid var(--danger)', borderRadius: 7, outlineOffset: 2 } : undefined}>
               <label>Phone Number *</label>
               <PhoneInput value={phone} onChange={setPhone} />
             </div>
             <div className="form-group" id={fieldId('nationalId')}>
               <label>National ID *</label>
-              <input className={invalidClass(missing, attempted, 'nationalId')} placeholder="e.g. 632118532K12" value={nationalId} onChange={e => setNationalId(e.target.value.replace(/-/g, ''))} />
+              <input className={invalidClass(missing, attempted, 'nationalId')} placeholder="e.g. 632118532K12" value={nationalId} onChange={e => setNationalId(cleanNationalIdInput(e.target.value))} />
               {duplicateNatId && (
                 <p style={{ fontSize: 11, color: 'var(--danger)', marginTop: 4 }}>
                   Already registered to {duplicateNatId.name} — search their name on the Clients list.

@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import type { AppUser, UserRole } from '../../types'
 import PhoneInput from '../ui/PhoneInput'
-import ValidationSummary, { MissingField, invalidClass, fieldId } from '../ui/ValidationSummary'
+import ValidationSummary, { MissingField, invalidClass, fieldId, isMissing } from '../ui/ValidationSummary'
+import { isZwPhone, PHONE_HINT } from '../../lib/validation'
 
 interface Props {
   user: AppUser | null
@@ -31,6 +32,8 @@ export default function AddSystemUserModal({ user, onClose, onSave, onResetPassw
   if (!email.trim()) missing.push({ key: 'email', label: 'Email Address' })
   else if (!/^\S+@\S+\.\S+$/.test(email.trim())) missing.push({ key: 'email', label: 'Email Address', hint: 'Not a valid email format' })
   if (!passwordValid) missing.push({ key: 'password', label: 'Temporary Password', hint: 'Minimum 8 characters' })
+  // Optional, but once typed it must be a usable Zimbabwean number.
+  if (phone.trim() && !isZwPhone(phone)) missing.push({ key: 'phone', label: 'Phone Number', hint: PHONE_HINT })
 
   const handleSave = () => {
     setAttempted(true)
@@ -67,7 +70,7 @@ export default function AddSystemUserModal({ user, onClose, onSave, onResetPassw
               <label>Email Address *</label>
               <input type="email" className={invalidClass(missing, attempted, 'email')} value={email} onChange={e => setEmail(e.target.value)} placeholder="name@tariqify.com" />
             </div>
-            <div className="form-group">
+            <div className="form-group" id={fieldId('phone')} style={isMissing(missing, attempted, 'phone') ? { outline: '1px solid var(--danger)', borderRadius: 7, outlineOffset: 2 } : undefined}>
               <label>Phone Number</label>
               <PhoneInput value={phone} onChange={setPhone} />
             </div>

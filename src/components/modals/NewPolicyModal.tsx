@@ -17,6 +17,7 @@ import { uploadDocument } from '../../lib/storage'
 import { generateTransactionId } from '../../lib/transactionId'
 import { policyBillablePremium } from '../../lib/premium'
 import ValidationSummary, { MissingField, invalidClass, fieldId, isMissing } from '../ui/ValidationSummary'
+import { isNationalId, cleanNationalIdInput, normalizeNationalId, isZwPhone, NATIONAL_ID_HINT, PHONE_HINT } from '../../lib/validation'
 
 interface Props {
   onClose: () => void
@@ -206,6 +207,8 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
     if (!name) { showToast?.('error', 'Give the organisation a name first.'); return }
     if (orgType === 'other' && !orgCustomType.trim()) { showToast?.('error', 'Type is “Other” — give the organisation type a name (e.g. School, NGO).'); return }
     if (!orgContactName.trim()) { showToast?.('error', 'Name the representative / contact person.'); return }
+    if (orgLinePhone.trim() && !isZwPhone(orgLinePhone)) { showToast?.('error', `Organisation phone: ${PHONE_HINT}.`); return }
+    if (orgPhone.trim() && !isZwPhone(orgPhone)) { showToast?.('error', `Representative phone: ${PHONE_HINT}.`); return }
     setOrgSaving(true)
     // Nothing is registered if the server can't confirm it — the org
     // gets a retry prompt instead of a half-done record.
@@ -248,6 +251,8 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
       showToast?.('error', 'Capture the member\'s National ID and Date of Birth — every covered person must have both.')
       return
     }
+    if (!isNationalId(memberNatId)) { showToast?.('error', `National ID: ${NATIONAL_ID_HINT}.`); return }
+    if (memberPhone.trim() && !isZwPhone(memberPhone)) { showToast?.('error', `Member phone: ${PHONE_HINT}.`); return }
     if (!(Number(memberPremium) > 0) || !(Number(memberCover) > 0)) {
       showToast?.('error', 'Group terms are negotiated per member — enter the agreed premium and sum assured.')
       return
@@ -396,11 +401,16 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   if (customerMode === 'existing' && !existingClientId) missing.push({ key: 'existingClient', label: 'Customer search', hint: 'Search and pick the customer from the list' })
   if (!clientName.trim()) missing.push({ key: 'clientName', label: 'Full Name' })
   if (!clientPhone.trim()) missing.push({ key: 'clientPhone', label: 'Phone Number' })
+  // Format is only enforced while the field is editable — an existing
+  // client's locked, on-file details can't be corrected from this form
+  // (Edit Client does that), so a legacy value must not block the sale.
+  else if (!existingClientId && !isZwPhone(clientPhone)) missing.push({ key: 'clientPhone', label: 'Phone Number', hint: PHONE_HINT })
   if (!clientNationalId.trim()) missing.push({ key: 'clientNationalId', label: 'National ID' })
+  else if (!existingClientId && !isNationalId(clientNationalId)) missing.push({ key: 'clientNationalId', label: 'National ID', hint: NATIONAL_ID_HINT })
   // National ID is unique — catch a re-registration before it reaches
   // the database: same person must be picked via "Existing Customer".
   const duplicateNatId = customerMode === 'new' && clientNationalId.trim()
-    ? existingClients.find(c => c.nationalId.toLowerCase() === clientNationalId.trim().toLowerCase())
+    ? existingClients.find(c => normalizeNationalId(c.nationalId) === normalizeNationalId(clientNationalId))
     : undefined
   if (duplicateNatId) missing.push({ key: 'clientNationalId', label: 'National ID', hint: `Already registered to ${duplicateNatId.name} — switch to "Existing Customer" above` })
   if (!clientDob) missing.push({ key: 'clientDob', label: 'Date of Birth' })
@@ -509,10 +519,39 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
         agentId: agentId || undefined,
       }
       const { data, error } = await db.clients.create(newClient)
-      // Surface the real reason — a duplicate national ID, an RLS refusal,
-      // a dropped connection all read very differently to "failed".
-      if (error || !data) { if (showToast) showToast('error', error ?? 'Failed to create client.'); return }
-      createdClient = data
+      if (error || !data) {
+        // A national-ID collision is NOT a dead end: the ID belongs to a
+        // real row — usually an abandoned self-signup or a lead with no
+        // policy — and the person standing here is that same person. Adopt
+        // the existing record (same detail-refresh the Existing Customer
+        // path does) and continue the policy instead of failing.
+        if (error && /national ID .+ already exists/i.test(error)) {
+          const { data: existing } = await db.clients.findByNationalId(clientNationalId)
+          if (!existing) {
+            if (showToast) showToast('error', error)
+            return
+          }
+          const { data: updated, error: updateError } = await db.clients.update(existing.id, {
+            name: clientName, email: clientEmail, phone: clientPhone,
+            address: clientAddress, occupation: clientOccupation,
+            agentId: (!existing.agentId && agentId) ? agentId : undefined,
+          })
+          if (updateError || !updated) { if (showToast) showToast('error', updateError ?? 'Failed to update the existing client record.'); return }
+          setExistingClients(prev => prev.some(c => c.id === updated.id) ? prev : [updated, ...prev])
+          if (showToast) showToast('info', `${updated.name} was already on the register — continuing with their existing record.`)
+          createdClient = updated
+        } else {
+          // Surface the real reason — an RLS refusal or a dropped
+          // connection reads very differently to "failed".
+          if (showToast) showToast('error', error ?? 'Failed to create client.')
+          return
+        }
+      } else {
+        createdClient = data
+        // Keep the picker's list truthful for the rest of this session —
+        // the row the modal just created must be searchable immediately.
+        setExistingClients(prev => prev.some(c => c.id === data.id) ? prev : [data, ...prev])
+      }
     }
 
     // Group-scope policies carry the selected roster members in the
@@ -661,7 +700,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
               </div>
               <div className="form-group" id={fieldId('clientNationalId')}>
                 <label>National ID *</label>
-                <input className={invalidClass(missing, attempted, 'clientNationalId')} placeholder="e.g. 632118532K12" value={clientNationalId} onChange={e => setClientNationalId(e.target.value.replace(/-/g, ''))} disabled={!!existingClientId} style={existingClientId ? { opacity: 0.6 } : undefined} />
+                <input className={invalidClass(missing, attempted, 'clientNationalId')} placeholder="e.g. 632118532K12" value={clientNationalId} onChange={e => setClientNationalId(cleanNationalIdInput(e.target.value))} disabled={!!existingClientId} style={existingClientId ? { opacity: 0.6 } : undefined} />
                 {/* Warn the moment a known ID is typed — before the save
                     button, not after a round-trip to a unique constraint. */}
                 {duplicateNatId && (
@@ -988,7 +1027,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                   <div className="form-row" style={{ marginBottom: 8 }}>
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label style={{ fontSize: 11 }}>National ID</label>
-                      <input className="form-control" value={memberNatId} onChange={e => setMemberNatId(e.target.value.replace(/-/g, ''))} />
+                      <input className="form-control" value={memberNatId} onChange={e => setMemberNatId(cleanNationalIdInput(e.target.value))} placeholder="e.g. 632118532K12" />
                     </div>
                     <div className="form-group" style={{ marginBottom: 0 }}>
                       <label style={{ fontSize: 11 }}>Date of Birth</label>

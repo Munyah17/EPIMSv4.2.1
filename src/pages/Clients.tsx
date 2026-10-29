@@ -90,16 +90,44 @@ export default function Clients({ showToast }: Props) {
       showToast('error', 'The server is unreachable right now — nothing was registered. Try again in a moment.')
       return
     }
-    const { data, error } = await db.clients.create(client)
-    if (error || !data) {
-      showToast('error', error ?? 'Failed to register client.')
-      void notifyRegistrationFailed('Client signup', `${client.name} — ${error ?? 'unknown error'}`)
-      return
+    let data: Client | null = null
+    const { data: created, error } = await db.clients.create(client)
+    if (error || !created) {
+      // A national-ID collision isn't a dead end: the ID belongs to a real
+      // row — usually an abandoned self-signup with no policy — and this is
+      // the same person coming back. Adopt the record, refresh its details,
+      // and treat it as the registration it always should have been.
+      if (error && /national ID .+ already exists/i.test(error)) {
+        const { data: existing } = await db.clients.findByNationalId(client.nationalId)
+        if (!existing) {
+          showToast('error', error)
+          return
+        }
+        const { data: updated, error: updateError } = await db.clients.update(existing.id, {
+          name: client.name, email: client.email, phone: client.phone,
+          dob: client.dob, gender: client.gender, address: client.address,
+          occupation: client.occupation, insurer: client.insurer,
+          agentId: (!existing.agentId && client.agentId) ? client.agentId : undefined,
+        })
+        if (updateError || !updated) {
+          showToast('error', updateError ?? 'Failed to update the existing client record.')
+          return
+        }
+        data = updated
+        setClients(prev => prev.map(c => c.id === updated.id ? { ...updated, policyCount: c.policyCount } : c))
+        showToast('info', `${updated.name} was already on the register — their record was updated instead of creating a duplicate.`)
+      } else {
+        showToast('error', error ?? 'Failed to register client.')
+        void notifyRegistrationFailed('Client signup', `${client.name} — ${error ?? 'unknown error'}`)
+        return
+      }
+    } else {
+      data = created
+      setClients(prev => [created, ...prev])
+      showToast('success', `Client ${created.name} registered.`)
+      void notifyClientRegistered(created, user?.name)
     }
-    setClients(prev => [data, ...prev])
-    showToast('success', `Client ${data.name} registered.`)
     setShowRegister(false)
-    void notifyClientRegistered(data, user?.name)
     // Portal login rides along when a password was entered — it can only
     // exist now that the client row (and its email) does. A failure here
     // must NOT undo the registration; staff can retry from Edit → Portal.

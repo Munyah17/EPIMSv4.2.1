@@ -2,7 +2,8 @@ import { useState } from 'react'
 import type { Lead } from '../../types'
 import { scoreLead } from '../../lib/aiService'
 import PhoneInput from '../ui/PhoneInput'
-import ValidationSummary, { MissingField, invalidClass, fieldId } from '../ui/ValidationSummary'
+import ValidationSummary, { MissingField, invalidClass, fieldId, isMissing } from '../ui/ValidationSummary'
+import { isZwPhone, PHONE_HINT } from '../../lib/validation'
 
 interface Props {
   onClose: () => void
@@ -24,6 +25,7 @@ export default function NewLeadModal({ onClose, onSave }: Props) {
   const missing: MissingField[] = []
   if (!name.trim()) missing.push({ key: 'name', label: 'Full Name' })
   if (!phone.trim()) missing.push({ key: 'phone', label: 'Phone Number' })
+  else if (!isZwPhone(phone)) missing.push({ key: 'phone', label: 'Phone Number', hint: PHONE_HINT })
   if (!productInterest.trim()) missing.push({ key: 'productInterest', label: 'Product Interest' })
 
   const handleSave = async () => {
@@ -56,9 +58,12 @@ export default function NewLeadModal({ onClose, onSave }: Props) {
             <input className={invalidClass(missing, attempted, 'name')} value={name} onChange={e => setName(e.target.value)} placeholder="Prospect's name" />
           </div>
           <div className="form-row">
-            <div className="form-group" id={fieldId('phone')} style={attempted && !phone.trim() ? { outline: '1px solid var(--danger)', borderRadius: 7, outlineOffset: 2 } : undefined}>
+            <div className="form-group" id={fieldId('phone')} style={isMissing(missing, attempted, 'phone') ? { outline: '1px solid var(--danger)', borderRadius: 7, outlineOffset: 2 } : undefined}>
               <label>Phone Number *</label>
               <PhoneInput value={phone} onChange={setPhone} />
+              {attempted && phone.trim() && !isZwPhone(phone) && (
+                <p style={{ fontSize: 11, color: 'var(--danger)', marginTop: 4 }}>{PHONE_HINT}.</p>
+              )}
             </div>
             <div className="form-group">
               <label>Email</label>

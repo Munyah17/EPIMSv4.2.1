@@ -48,7 +48,7 @@ function timeAgo(iso: string | undefined): string {
 }
 
 const EMPTY_STATS: DashboardStats = {
-  activePolicies: 0, pendingClaims: 0, totalPremiums: 0, newLeads: 0, fraudAlerts: 0, lapseRate: 0, totalClients: 0,
+  totalPolicies: 0, activePolicies: 0, pendingClaims: 0, totalPremiums: 0, newLeads: 0, fraudAlerts: 0, lapseRate: 0, totalClients: 0,
   unpaidInvoices: 0, unpaidInvoiceAmount: 0,
   clientsNoPolicyCount: 0, clientsNoPolicy: [],
   productBreakdown: [], recentPolicies: [], latestClaim: null, latestPayment: null, latestLead: null, latestFraud: null, latestClient: null,
@@ -265,6 +265,19 @@ export default function Dashboard({ showToast, setActivePanel }: Props) {
       )}
 
       <div className="stats-grid">
+        {/* Every policy row on the system whatever its status — the
+            denominator for the whole book. Active Policies sits below
+            this precisely because waiting-period, lapsed and expired
+            cover aren't "active"; without this card that gap reads as a
+            reconciliation error instead of a lifecycle. */}
+        <div className="stat-card stat-card-clickable" onClick={() => setActivePanel('policies')}>
+          <div className="stat-icon stat-icon-blue">🗂</div>
+          <div className="stat-body">
+            <div className="stat-value">{stats.totalPolicies}</div>
+            <div className="stat-label">Total Policies</div>
+            <div className="stat-delta positive">All statuses</div>
+          </div>
+        </div>
         <div className="stat-card stat-card-clickable" onClick={() => setActivePanel('policies')}>
           <div className="stat-icon stat-icon-blue">🛡</div>
           <div className="stat-body">

@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 import { callGroq, extractJson } from './groq.js'
+import { fetchAllRows } from '../../src/lib/paged.js'
 
 /**
  * Real AI fraud scoring via Groq — replaces the
@@ -102,7 +103,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (supabaseUrl && serviceKey) {
     try {
       const admin = createClient(supabaseUrl, serviceKey, { auth: { autoRefreshToken: false, persistSession: false } })
-      const { data: rules } = await admin.from('fraud_signal_rules').select('description').eq('status', 'active')
+      const { data: rules } = await fetchAllRows(() => admin.from('fraud_signal_rules').select('description').eq('status', 'active'), { orderBy: 'id' })
       if (rules && rules.length > 0) {
         customRulesBlock = `\n\nThis organisation has also flagged these specific patterns as known fraud risks based on past cases — check the claim against each one and name any that match in "signals", using close to the rule's own wording:\n${rules.map(r => `- ${r.description}`).join('\n')}`
       }

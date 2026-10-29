@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { serviceClient, requireSession } from './_lib/sessionAuth.js'
+import { fetchAllRows } from '../src/lib/paged.js'
 
 /**
  * GET /api/admin-recon — the live version of the cron's daily
@@ -40,11 +41,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const cutoff = new Date(Date.now() - 24 * 3600e3).toISOString()
 
   const [{ data: clients }, { data: policyClientIds }, { data: stale }, { data: pending }, { data: dismissed }] = await Promise.all([
-    admin.from('clients').select('id, name, phone, created_at').lt('created_at', cutoff).order('created_at', { ascending: false }),
-    admin.from('policies').select('client_id'),
-    admin.from('paynow_transactions').select('reference, expected_amount, currency, created_at').eq('status', 'pending').lt('created_at', cutoff),
-    admin.from('policies').select('id, policy_number, clients!client_id(name, phone)').eq('status', 'pending'),
-    admin.from('recon_dismissals').select('kind, ref'),
+    fetchAllRows(() => admin.from('clients').select('id, name, phone, created_at').lt('created_at', cutoff).order('created_at', { ascending: false }), { orderBy: 'id' }),
+    fetchAllRows(() => admin.from('policies').select('client_id'), { orderBy: 'id' }),
+    fetchAllRows(() => admin.from('paynow_transactions').select('reference, expected_amount, currency, created_at').eq('status', 'pending').lt('created_at', cutoff), { orderBy: 'id' }),
+    fetchAllRows(() => admin.from('policies').select('id, policy_number, clients!client_id(name, phone)').eq('status', 'pending'), { orderBy: 'id' }),
+    fetchAllRows(() => admin.from('recon_dismissals').select('kind, ref').order('kind').order('ref')),
   ])
 
   const dismissedSet = new Set((dismissed ?? []).map(d => `${d.kind}:${d.ref}`))

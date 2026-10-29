@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext'
 import { db } from '../lib/db'
 import { supabase } from '../lib/supabase'
 import PhoneInput from '../components/ui/PhoneInput'
+import { isZwPhone, PHONE_HINT } from '../lib/validation'
 import { formatDateTime } from '../lib/dateUtils'
 
 interface Props {
@@ -82,6 +83,7 @@ export default function Profile({ showToast }: Props) {
   const saveInfo = async () => {
     if (!user) return
     if (!name.trim()) { showToast('warning', 'Full name cannot be empty.'); return }
+    if (phone.trim() && !isZwPhone(phone)) { showToast('warning', `Phone number format: ${PHONE_HINT}.`); return }
     setSavingInfo(true)
     try {
       // Only ever sends name/phone — role, department, active, and

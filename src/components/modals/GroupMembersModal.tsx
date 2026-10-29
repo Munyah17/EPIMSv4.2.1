@@ -4,6 +4,7 @@ import { db } from '../../lib/db'
 import { formatDate } from '../../lib/dateUtils'
 import DateInput from '../ui/DateInput'
 import PhoneInput from '../ui/PhoneInput'
+import { isNationalId, cleanNationalIdInput, isZwPhone } from '../../lib/validation'
 
 interface Props {
   group: Group
@@ -37,10 +38,11 @@ export default function GroupMembersModal({ group, onClose, showToast, onMembers
   const nameMissing = attempted && !fullName.trim()
   // ID and DOB are the member's identity to the insurer — a claim can't
   // be verified against a roster row that has neither.
-  const natIdMissing = attempted && !nationalId.trim()
+  const natIdMissing = attempted && (!nationalId.trim() || !isNationalId(nationalId))
   const dobMissing = attempted && !dob
   const premiumMissing = attempted && !(Number(premium) > 0)
   const coverMissing = attempted && !(Number(coverAmount) > 0)
+  const phoneInvalid = attempted && !!phone.trim() && !isZwPhone(phone)
 
   const fill = (m: GroupMember | null) => {
     setEditing(m)
@@ -68,6 +70,10 @@ export default function GroupMembersModal({ group, onClose, showToast, onMembers
     setAttempted(true)
     if (!fullName.trim() || !nationalId.trim() || !dob || !(Number(premium) > 0) || !(Number(coverAmount) > 0)) {
       showToast('warning', `A ${memberWord.toLowerCase()} needs a name, National ID, date of birth, a premium and a sum assured — capture all of them to continue.`)
+      return
+    }
+    if (!isNationalId(nationalId) || (phone.trim() && !isZwPhone(phone))) {
+      showToast('warning', 'Check the highlighted fields — National ID is 8–9 digits, a letter, then 2 digits (e.g. 632118532K12); phone is +263XXXXXXXXX or 0XXXXXXXXX.')
       return
     }
     setAdding(true)
@@ -126,7 +132,7 @@ export default function GroupMembersModal({ group, onClose, showToast, onMembers
             </div>
             <div className="form-group">
               <label>National ID *</label>
-              <input className={`form-control${natIdMissing ? ' field-invalid' : ''}`} value={nationalId} onChange={e => setNationalId(e.target.value.replace(/-/g, ''))} placeholder="e.g. 632118532K12" />
+              <input className={`form-control${natIdMissing ? ' field-invalid' : ''}`} value={nationalId} onChange={e => setNationalId(cleanNationalIdInput(e.target.value))} placeholder="e.g. 632118532K12" />
             </div>
             <div className="form-group" style={dobMissing ? { outline: '1px solid var(--danger)', borderRadius: 7, outlineOffset: 2 } : undefined}>
               <label>Date of Birth *</label>
@@ -134,7 +140,7 @@ export default function GroupMembersModal({ group, onClose, showToast, onMembers
             </div>
           </div>
           <div className="form-row" style={{ alignItems: 'flex-end' }}>
-            <div className="form-group">
+            <div className="form-group" style={phoneInvalid ? { outline: '1px solid var(--danger)', borderRadius: 7, outlineOffset: 2 } : undefined}>
               <label>Phone</label>
               <PhoneInput value={phone} onChange={setPhone} />
             </div>

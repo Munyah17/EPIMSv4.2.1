@@ -1,5 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { BotClient, BotAgent, BotProduct, BotPolicy, Contact } from './types.js'
+import { normalizeNationalId } from '../zwFormats.js'
+import { fetchAllRows } from '../../../src/lib/paged.js'
 
 /**
  * The bot's data layer — every function the Frappe version asked
@@ -41,9 +43,12 @@ export async function clientByPhone(admin: SupabaseClient, phone: string): Promi
 }
 
 export async function clientByNationalId(admin: SupabaseClient, nationalId: string): Promise<BotClient | null> {
+  // Rows written before normalisation may still carry separators, so the
+  // canonical form and the raw text both match the same person.
+  const raw = nationalId.trim()
   const { data } = await admin.from('clients')
     .select('id, name, phone, national_id, email')
-    .eq('national_id', nationalId.trim())
+    .in('national_id', [...new Set([normalizeNationalId(raw), raw])])
     .limit(1).maybeSingle()
   return data ? toBotClient(data) : null
 }
@@ -65,9 +70,12 @@ export async function findContact(admin: SupabaseClient, phone: string): Promise
 /** Products = the plans. Frappe had Policy -> Packages; the IMS keeps
  *  one row per plan, so product-pick replaces the two-step pick. */
 export async function getActiveProducts(admin: SupabaseClient): Promise<BotProduct[]> {
-  const { data } = await admin.from('products')
-    .select('id, name, code, category, premium, cover_amount, active')
-    .eq('active', true).order('name')
+  const { data } = await fetchAllRows(
+    () => admin.from('products')
+      .select('id, name, code, category, premium, cover_amount, active')
+      .eq('active', true).order('name'),
+    { orderBy: 'id' },
+  )
   return (data ?? []).map(r => ({
     id: r.id as string, name: r.name as string, code: (r.code as string) ?? '',
     category: r.category as string, premium: Number(r.premium), coverAmount: Number(r.cover_amount),
@@ -76,9 +84,12 @@ export async function getActiveProducts(admin: SupabaseClient): Promise<BotProdu
 }
 
 export async function policiesForClient(admin: SupabaseClient, clientId: string): Promise<BotPolicy[]> {
-  const { data } = await admin.from('policies')
-    .select('id, policy_number, premium, cover_amount, status, dependants, products(name)')
-    .eq('client_id', clientId)
+  const { data } = await fetchAllRows(
+    () => admin.from('policies')
+      .select('id, policy_number, premium, cover_amount, status, dependants, products(name)')
+      .eq('client_id', clientId),
+    { orderBy: 'id' },
+  )
   return (data ?? []).map(r => ({
     id: r.id as string, policyNumber: r.policy_number as string,
     productName: (r.products as { name?: string } | null)?.name ?? '',
@@ -89,9 +100,12 @@ export async function policiesForClient(admin: SupabaseClient, clientId: string)
 }
 
 export async function clientsOfAgent(admin: SupabaseClient, agentId: string): Promise<BotClient[]> {
-  const { data } = await admin.from('clients')
-    .select('id, name, phone, national_id, email')
-    .eq('agent_id', agentId).order('name')
+  const { data } = await fetchAllRows(
+    () => admin.from('clients')
+      .select('id, name, phone, national_id, email')
+      .eq('agent_id', agentId).order('name'),
+    { orderBy: 'id' },
+  )
   return (data ?? []).map(toBotClient)
 }
 
@@ -101,10 +115,13 @@ export async function clientsOfAgent(admin: SupabaseClient, agentId: string): Pr
 export async function commissionForAgent(admin: SupabaseClient, agentId: string): Promise<{ rows: string[]; total: number }> {
   const clients = await clientsOfAgent(admin, agentId)
   if (!clients.length) return { rows: [], total: 0 }
-  const { data } = await admin.from('policies')
-    .select('policy_number, premium, status, products(name, commission_pct)')
-    .in('client_id', clients.map(c => c.id))
-    .in('status', ['active', 'waiting_period'])
+  const { data } = await fetchAllRows(
+    () => admin.from('policies')
+      .select('policy_number, premium, status, products(name, commission_pct)')
+      .in('client_id', clients.map(c => c.id))
+      .in('status', ['active', 'waiting_period']),
+    { orderBy: 'id' },
+  )
   const rows: string[] = []
   let total = 0
   for (const p of data ?? []) {

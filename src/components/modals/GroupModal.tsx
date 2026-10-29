@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { Group, GroupType } from '../../types'
 import PhoneInput from '../ui/PhoneInput'
 import ValidationSummary, { MissingField, invalidClass, fieldId } from '../ui/ValidationSummary'
+import { isZwPhone, PHONE_HINT } from '../../lib/validation'
 
 /** Display labels for the group's organisation type. */
 export const GROUP_TYPE_LABEL: Record<GroupType, string> = {
@@ -49,6 +50,8 @@ export default function GroupModal({ group, onClose, onSave }: Props) {
   if (!name.trim()) missing.push({ key: 'name', label: 'Organisation Name' })
   if (groupType === 'other' && !customType.trim()) missing.push({ key: 'customType', label: 'Custom Type', hint: 'Describe the organisation type in your own words' })
   if (!orgPhone.trim() && !contactPhone.trim()) missing.push({ key: 'orgPhone', label: 'Organisation Phone', hint: 'At least one phone number — the org line or the representative' })
+  if (orgPhone.trim() && !isZwPhone(orgPhone)) missing.push({ key: 'orgPhone', label: 'Organisation Phone', hint: PHONE_HINT })
+  if (contactPhone.trim() && !isZwPhone(contactPhone)) missing.push({ key: 'contactPhone', label: 'Representative Phone', hint: PHONE_HINT })
   if (!contactName.trim()) missing.push({ key: 'contactName', label: 'Representative Name', hint: 'Who we deal with on the organisation’s behalf' })
 
   const handleSave = () => {
@@ -140,9 +143,9 @@ export default function GroupModal({ group, onClose, onSave }: Props) {
               <label>Full Name *</label>
               <input className={invalidClass(missing, attempted, 'contactName')} value={contactName} onChange={e => setContactName(e.target.value)} placeholder="HR officer, secretary, chairperson, coach" />
             </div>
-            <div className="form-group">
+            <div className="form-group" id={fieldId('contactPhone')}>
               <label>Representative Phone</label>
-              <PhoneInput value={contactPhone} onChange={setContactPhone} />
+              <div style={isMissingStyle(missing, attempted, 'contactPhone')}><PhoneInput value={contactPhone} onChange={setContactPhone} /></div>
             </div>
           </div>
           <div className="form-group">

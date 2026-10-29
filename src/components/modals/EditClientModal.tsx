@@ -3,7 +3,8 @@ import type { Client } from '../../types'
 import { db } from '../../lib/db'
 import PhoneInput from '../ui/PhoneInput'
 import DateInput from '../ui/DateInput'
-import ValidationSummary, { MissingField, invalidClass, fieldId } from '../ui/ValidationSummary'
+import ValidationSummary, { MissingField, invalidClass, fieldId, isMissing } from '../ui/ValidationSummary'
+import { isNationalId, cleanNationalIdInput, isZwPhone, NATIONAL_ID_HINT, PHONE_HINT } from '../../lib/validation'
 
 interface Props {
   client: Client
@@ -58,8 +59,11 @@ export default function EditClientModal({ client, onClose, onSave, onAssignPolic
   const missing: MissingField[] = []
   if (!name.trim()) missing.push({ key: 'name', label: 'Full Name' })
   if (!phone.trim()) missing.push({ key: 'phone', label: 'Phone' })
-  // ID and DOB are never optional — the National ID field is locked
-  // (identity doesn't change), and DOB must stay filled once captured.
+  else if (!isZwPhone(phone)) missing.push({ key: 'phone', label: 'Phone', hint: PHONE_HINT })
+  // ID and DOB are never optional — identity doesn't change, and both
+  // must stay filled once captured, in the valid national formats.
+  if (!nationalId.trim()) missing.push({ key: 'nationalId', label: 'National ID' })
+  else if (!isNationalId(nationalId)) missing.push({ key: 'nationalId', label: 'National ID', hint: NATIONAL_ID_HINT })
   if (!dob) missing.push({ key: 'dob', label: 'Date of Birth' })
 
   const handleSave = () => {
@@ -90,13 +94,13 @@ export default function EditClientModal({ client, onClose, onSave, onAssignPolic
             </div>
           </div>
           <div className="form-row">
-            <div className="form-group" id={fieldId('phone')} style={attempted && !phone.trim() ? { outline: '1px solid var(--danger)', borderRadius: 7, outlineOffset: 2 } : undefined}>
+            <div className="form-group" id={fieldId('phone')} style={isMissing(missing, attempted, 'phone') ? { outline: '1px solid var(--danger)', borderRadius: 7, outlineOffset: 2 } : undefined}>
               <label>Phone *</label>
               <PhoneInput value={phone} onChange={setPhone} />
             </div>
-            <div className="form-group">
-              <label>National ID</label>
-              <input className="form-control" value={nationalId} onChange={e => setNationalId(e.target.value)} placeholder="16-digit ID number" />
+            <div className="form-group" id={fieldId('nationalId')}>
+              <label>National ID *</label>
+              <input className={invalidClass(missing, attempted, 'nationalId')} value={nationalId} onChange={e => setNationalId(cleanNationalIdInput(e.target.value))} placeholder="e.g. 632118532K12" />
             </div>
           </div>
           <div className="form-row">

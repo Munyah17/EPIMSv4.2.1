@@ -3,7 +3,8 @@ import type { AppUser, UserRole, CustomRole, AgentProfile } from '../../types'
 import { db } from '../../lib/db'
 import PhoneInput from '../ui/PhoneInput'
 import DateInput from '../ui/DateInput'
-import ValidationSummary, { MissingField, invalidClass, fieldId } from '../ui/ValidationSummary'
+import ValidationSummary, { MissingField, invalidClass, fieldId, isMissing } from '../ui/ValidationSummary'
+import { isNationalId, cleanNationalIdInput, isZwPhone, NATIONAL_ID_HINT, PHONE_HINT } from '../../lib/validation'
 
 interface Props {
   staff: AppUser | null
@@ -83,6 +84,10 @@ export default function AddStaffModal({ staff, agentProfile, fixedRole, onClose,
   if (!email.trim()) { if (!isAgent) missing.push({ key: 'email', label: 'Email Address' }) }
   else if (!/^\S+@\S+\.\S+$/.test(email.trim())) missing.push({ key: 'email', label: 'Email Address', hint: 'Not a valid email format' })
   if (!passwordValid) missing.push({ key: 'password', label: 'Temporary Password', hint: 'Minimum 8 characters' })
+  // Optional fields still obey the national formats once anything is typed.
+  if (phone.trim() && !isZwPhone(phone)) missing.push({ key: 'phone', label: 'Phone Number', hint: PHONE_HINT })
+  if (isAgent && nationalId.trim() && !isNationalId(nationalId)) missing.push({ key: 'nationalId', label: 'National ID', hint: NATIONAL_ID_HINT })
+  if (isAgent && ecocashNumber.trim() && !isZwPhone(ecocashNumber)) missing.push({ key: 'ecocash', label: 'EcoCash Number', hint: PHONE_HINT })
 
   const handleSave = () => {
     setAttempted(true)
@@ -140,7 +145,7 @@ export default function AddStaffModal({ staff, agentProfile, fixedRole, onClose,
               <label>Email Address {!isAgent && '*'}</label>
               <input type="email" className={invalidClass(missing, attempted, 'email')} value={email} onChange={e => setEmail(e.target.value)} placeholder="staff@tariqify.com" />
             </div>
-            <div className="form-group">
+            <div className="form-group" id={fieldId('phone')} style={isMissing(missing, attempted, 'phone') ? { outline: '1px solid var(--danger)', borderRadius: 7, outlineOffset: 2 } : undefined}>
               <label>Phone Number</label>
               <PhoneInput value={phone} onChange={setPhone} />
             </div>
@@ -169,9 +174,9 @@ export default function AddStaffModal({ staff, agentProfile, fixedRole, onClose,
           {isAgent && (
             <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '0.9rem', marginBottom: '0.75rem' }}>
               <div className="form-row">
-                <div className="form-group">
+                <div className="form-group" id={fieldId('nationalId')}>
                   <label>National ID</label>
-                  <input className="form-control" value={nationalId} onChange={e => setNationalId(e.target.value.replace(/-/g, ''))} placeholder="e.g. 632118532K12" />
+                  <input className={invalidClass(missing, attempted, 'nationalId')} value={nationalId} onChange={e => setNationalId(cleanNationalIdInput(e.target.value))} placeholder="e.g. 632118532K12" />
                 </div>
                 <div className="form-group">
                   <label>Territory / Area</label>
@@ -199,7 +204,7 @@ export default function AddStaffModal({ staff, agentProfile, fixedRole, onClose,
                 </div>
               </div>
               <div className="form-row">
-                <div className="form-group">
+                <div className="form-group" id={fieldId('ecocash')} style={isMissing(missing, attempted, 'ecocash') ? { outline: '1px solid var(--danger)', borderRadius: 7, outlineOffset: 2 } : undefined}>
                   <label>EcoCash Number</label>
                   <PhoneInput value={ecocashNumber} onChange={setEcocashNumber} />
                 </div>

@@ -9,6 +9,7 @@
  */
 
 import { serviceClient } from './sessionAuth'
+import { fetchAllRows } from '../../src/lib/paged.js'
 
 export interface AuditLogEntry {
   /** The login profile of the person making the change. */
@@ -84,23 +85,26 @@ export async function getAuditLogsForEntity(
   if (!client) return []
 
   try {
-    const { data, error } = await client
-      .from('audit_log')
-      .select(`
-        id,
-        created_at,
-        operator_id,
-        action,
-        changes,
-        source,
-        notes,
-        profiles!audit_log_operator_id_fkey (
-          name
-        )
-      `)
-      .eq('entity_type', entityType)
-      .eq('entity_id', entityId)
-      .order('created_at', { ascending: false })
+    const { data, error } = await fetchAllRows(
+      () => client
+        .from('audit_log')
+        .select(`
+          id,
+          created_at,
+          operator_id,
+          action,
+          changes,
+          source,
+          notes,
+          profiles!audit_log_operator_id_fkey (
+            name
+          )
+        `)
+        .eq('entity_type', entityType)
+        .eq('entity_id', entityId)
+        .order('created_at', { ascending: false }),
+      { orderBy: 'id' },
+    )
 
     if (error) {
       console.error('[audit] Failed to fetch audit logs:', error)

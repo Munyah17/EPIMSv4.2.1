@@ -2,12 +2,15 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { sendText } from './whatsapp.js'
 import { initiatePaynowPayment } from '../paynowInitiate.js'
 import { chargeEip, eipConfigured, normalizeMsisdn } from '../ecocashInstant.js'
+import { isZwNationalId } from '../zwFormats.js'
+
+export { normalizeNationalId } from '../zwFormats.js'
 
 /** Input validators and the shared payment tail — the pieces every
  *  flow ends in. Validation rules are the Frappe version's. */
 
 export const isFullName = (s: string) => s.trim().length >= 3 && /^[A-Za-z\s\-']+$/.test(s.trim())
-export const isNationalId = (s: string) => /^[A-Za-z0-9]{6,20}$/.test(s.trim())
+export const isNationalId = isZwNationalId
 export const isEmail = (s: string) => /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(s.trim())
 export const isEcocashPhone = (s: string) => /^2637[0-9]{8}$/.test(s.trim()) || /^07[17][0-9]{6}$/.test(s.trim())
 

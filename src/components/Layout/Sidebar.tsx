@@ -91,7 +91,6 @@ const STAFF_SECTIONS: NavSection[] = [
     label: 'CLIENT MANAGEMENT',
     items: [
       { id: 'clients', label: 'Clients Management', icon: '👥' },
-      { id: 'clients_no_policy', label: 'Abandoned Signups', icon: '🧍' },
       { id: 'groups', label: 'Group Teams Insurance', icon: '🏢' },
       { id: 'member_cards', label: 'Membership IDs', icon: '🪪', roles: ['super_admin', 'admin', 'policy_admin', 'claims_officer', 'finance'] },
       {
@@ -100,6 +99,9 @@ const STAFF_SECTIONS: NavSection[] = [
         icon: '🎯',
         items: [
           { id: 'leads', label: 'Sales Leads', icon: '🎯', badge: 'AI' },
+          // Abandoned signups are a follow-up list, not client management —
+          // nested here so they don't take a top-level sidebar slot.
+          { id: 'clients_no_policy', label: 'Abandoned Signups', icon: '🧍' },
           { id: 'marketing_contacts', label: 'Marketing Database', icon: '👥' },
           { id: 'campaign_composer', label: 'Campaign Composer', icon: '📢' },
         ],

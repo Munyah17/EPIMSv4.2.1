@@ -4,8 +4,10 @@ import crypto from 'crypto'
 import { generateTransactionId } from './_lib/transactionId'
 import { dispatchNotification } from './_lib/notify.js'
 import { isTobaccoProduct, TOBACCO_SEASON } from './_lib/policyTerm.js'
+import { fetchAllRows } from '../src/lib/paged.js'
 import { clientRegisteredSms, policyRegisteredSms, policyCoverClause, paymentReceivedSms, isTobaccoFieldToFloor, fieldToFloorCoverLine } from '../src/lib/smsText.js'
 import { resolveSmsText, smsVarMoney } from '../src/lib/smsTemplates.js'
+import { isZwNationalId, isZwPhone, normalizeNationalId } from './_lib/zwFormats.js'
 
 /**
  * Public Developer API (/api/v1/...). External developers integrate this
@@ -138,16 +140,6 @@ async function debitWallet(admin: SupabaseClient, devId: string, amount: number)
     if (updated && updated.length > 0) return next
   }
   return null
-}
-
-/**
- * One stored shape for national IDs: separators and case stripped, the same
- * normalisation the public checkout applies before it ever writes a client.
- * "63-1234567-A-89" and "631234567A89" are the same person — dedup and
- * lookups only work if the row always carries the canonical form.
- */
-function normalizeNationalId(raw: string): string {
-  return raw.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
 }
 
 /** A generous ceiling — funeral family plans top out well below this; a
@@ -408,6 +400,8 @@ async function createClient_(admin: SupabaseClient, body: Json, agentId: string)
   const rawNationalId = String(body.nationalId ?? '').trim().slice(0, 60)
   const nationalId = normalizeNationalId(rawNationalId)
   if (!name || !phone || !nationalId) return { status: 400, body: { error: 'name, phone, and nationalId are required.' } }
+  if (!isZwNationalId(nationalId)) return { status: 400, body: { error: 'nationalId is not a valid Zimbabwean ID — 8–9 digits, a letter, then 2 digits (e.g. 632118532K12).' } }
+  if (!isZwPhone(phone)) return { status: 400, body: { error: 'phone is not a valid Zimbabwean number — +263 followed by 9 digits, or 10 digits starting with 0.' } }
 
   const dob = body.dob ? String(body.dob).trim() : ''
   // Checked here rather than letting Postgres reject the date column —
@@ -670,7 +664,10 @@ async function getPolicy(admin: SupabaseClient, policyNumber: string, agentId: s
  * side enforces.
  */
 async function listClients(admin: SupabaseClient, agentId: string, nationalId?: string) {
-  const { data: ownPolicies, error: polError } = await admin.from('policies').select('client_id').eq('agent_id', agentId)
+  const { data: ownPolicies, error: polError } = await fetchAllRows(
+    () => admin.from('policies').select('client_id').eq('agent_id', agentId),
+    { orderBy: 'id' },
+  )
   if (polError) {
     console.error('v1 listClients policies query failed', polError)
     return { status: 500, body: { error: 'Internal server error.' } }
@@ -678,14 +675,19 @@ async function listClients(admin: SupabaseClient, agentId: string, nationalId?: 
   const clientIds = [...new Set((ownPolicies ?? []).map(p => p.client_id as string).filter(Boolean))]
   if (clientIds.length === 0) return { status: 200, body: { data: [] } }
 
-  let query = admin.from('clients')
-    .select('id, name, phone, national_id, email, dob, status')
-    .in('id', clientIds)
-  if (nationalId) {
-    const nid = normalizeNationalId(nationalId)
-    query = query.in('national_id', [...new Set([nid, nationalId.trim()])])
-  }
-  const { data, error } = await query
+  const { data, error } = await fetchAllRows(
+    () => {
+      let query = admin.from('clients')
+        .select('id, name, phone, national_id, email, dob, status')
+        .in('id', clientIds)
+      if (nationalId) {
+        const nid = normalizeNationalId(nationalId)
+        query = query.in('national_id', [...new Set([nid, nationalId.trim()])])
+      }
+      return query
+    },
+    { orderBy: 'id' },
+  )
   if (error) {
     console.error('v1 listClients query failed', error)
     return { status: 500, body: { error: 'Internal server error.' } }

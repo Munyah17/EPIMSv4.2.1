@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { fetchAllRows } from './paged'
 import type { ChatTopic, ChatSession, ChatMessage } from '../types'
 
 function toTopic(r: Record<string, unknown>): ChatTopic {
@@ -35,7 +36,10 @@ function toMessage(r: Record<string, unknown>): ChatMessage {
 }
 
 export async function listTopics(): Promise<ChatTopic[]> {
-  const { data, error } = await supabase.from('chat_topics').select('*').eq('active', true).order('sort_order')
+  const { data, error } = await fetchAllRows(
+    () => supabase.from('chat_topics').select('*').eq('active', true).order('sort_order'),
+    { orderBy: 'id' },
+  )
   if (error || !data) return []
   return data.map(toTopic)
 }
@@ -75,7 +79,10 @@ export async function getQueuePosition(sessionId: string): Promise<number> {
 }
 
 export async function listMessages(sessionId: string): Promise<ChatMessage[]> {
-  const { data, error } = await supabase.from('chat_messages').select('*').eq('session_id', sessionId).order('created_at')
+  const { data, error } = await fetchAllRows(
+    () => supabase.from('chat_messages').select('*').eq('session_id', sessionId).order('created_at'),
+    { orderBy: 'id' },
+  )
   if (error || !data) return []
   return data.map(toMessage)
 }
@@ -122,13 +129,19 @@ export async function getSession(sessionId: string): Promise<ChatSession | null>
 const SESSION_SELECT = 'id, visitor_id, visitor_name, visitor_phone, visitor_email, topic, status, assigned_to, queued_at, started_at, closed_at, profiles!assigned_to(id, name)'
 
 export async function listQueue(): Promise<ChatSession[]> {
-  const { data, error } = await supabase.from('chat_sessions').select(SESSION_SELECT).eq('status', 'queued').order('queued_at')
+  const { data, error } = await fetchAllRows(
+    () => supabase.from('chat_sessions').select(SESSION_SELECT).eq('status', 'queued').order('queued_at'),
+    { orderBy: 'id' },
+  )
   if (error || !data) return []
   return data.map(toSession)
 }
 
 export async function listActiveSessions(): Promise<ChatSession[]> {
-  const { data, error } = await supabase.from('chat_sessions').select(SESSION_SELECT).eq('status', 'active').order('started_at', { ascending: false })
+  const { data, error } = await fetchAllRows(
+    () => supabase.from('chat_sessions').select(SESSION_SELECT).eq('status', 'active').order('started_at', { ascending: false }),
+    { orderBy: 'id' },
+  )
   if (error || !data) return []
   return data.map(toSession)
 }

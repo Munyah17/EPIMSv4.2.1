@@ -100,8 +100,11 @@ export async function exportReportToPdf(
   stats: { label: string; value: string }[],
   headers: string[],
   rows: (string | number)[][],
-  /** Wide reports (the 17-column treaty layout) need the extra width. */
-  opts?: { landscape?: boolean },
+  /** Wide reports (the 17-column treaty layout) need the extra width.
+   *  repeatColumns: the identity columns re-printed on every overflow
+   *  page set — a single repeat drops Surname on later sets and puts
+   *  whatever follows in its visual slot. */
+  opts?: { landscape?: boolean; repeatColumns?: number[] },
 ) {
   const [{ jsPDF }, { default: autoTable }, { MOTIONS_LOGO_PNG_BASE64 }] = await Promise.all([
     import('jspdf'), import('jspdf-autotable'), import('../assets/motionsLogo'),
@@ -160,7 +163,7 @@ export async function exportReportToPdf(
     // Column 0 (the member's name) repeats on every set so each half
     // still tells you WHO the row is about.
     horizontalPageBreak: opts?.landscape ?? false,
-    horizontalPageBreakRepeat: opts?.landscape ? 0 : undefined,
+    horizontalPageBreakRepeat: opts?.landscape ? (opts.repeatColumns ?? 0) : undefined,
     didParseCell: data => {
       // Numbers right-align like every other money column in the system.
       const v = data.cell.raw

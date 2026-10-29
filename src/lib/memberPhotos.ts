@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { fetchAllRows } from './paged'
 
 /**
  * Member portraits — one passport photo per member number in the public
@@ -47,6 +48,9 @@ export async function uploadMemberPhoto(memberNumber: string, blob: Blob, update
 }
 
 export async function memberPhotoMap(): Promise<Map<string, string>> {
-  const { data } = await supabase.from('member_photos').select('member_number, photo_url')
+  const { data } = await fetchAllRows(
+    () => supabase.from('member_photos').select('member_number, photo_url'),
+    { orderBy: 'member_number' },
+  )
   return new Map((data ?? []).map(r => [r.member_number, r.photo_url as string]))
 }

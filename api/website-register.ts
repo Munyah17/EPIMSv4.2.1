@@ -5,6 +5,7 @@ import type { BotProduct } from './_lib/bot/types.js'
 import { initiatePaynowPayment } from './_lib/paynowInitiate.js'
 import { chargeEip, eipConfigured, normalizeMsisdn } from './_lib/ecocashInstant.js'
 import { policyTermDates } from './_lib/policyTerm.js'
+import { isZwNationalId, isZwPhone, normalizeNationalId } from './_lib/zwFormats.js'
 
 /**
  * POST /api/website-register — the motions.co.zw → portal bridge.
@@ -100,13 +101,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   /* ------------------------------ register ------------------------------ */
 
   const name = String(body.name ?? '').trim()
-  const nationalId = String(body.nationalId ?? '').trim()
+  const nationalId = normalizeNationalId(String(body.nationalId ?? ''))
   const dob = String(body.dob ?? '').trim()
   const phone = String(body.phone ?? '').trim()
   // ID and DOB are the person's identity to the insurer — same rule as
-  // the portal: no registration proceeds without both.
+  // the portal: no registration proceeds without both, in the valid
+  // national formats.
   if (!name || !nationalId || !dob || !phone) {
     return res.status(400).json({ ok: false, error: 'name, nationalId, dob and phone are required.' })
+  }
+  if (!isZwNationalId(nationalId)) {
+    return res.status(400).json({ ok: false, code: 'INVALID_NATIONAL_ID', error: 'nationalId is not a valid Zimbabwean ID — 8–9 digits, a letter, then 2 digits (e.g. 632118532K12).' })
+  }
+  if (!isZwPhone(phone)) {
+    return res.status(400).json({ ok: false, code: 'INVALID_PHONE', error: 'phone is not a valid Zimbabwean number — +263 followed by 9 digits, or 10 digits starting with 0.' })
   }
 
   const paymentMethod = body.paymentMethod === 'ecocash' ? 'ecocash' : 'paynow'
@@ -136,7 +144,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const dependants = (body.dependants ?? []).slice(0, 10).map(d => ({
-    name: String(d.name ?? '').trim(), nationalId: d.nationalId, dob: d.dob,
+    name: String(d.name ?? '').trim(), nationalId: d.nationalId ? normalizeNationalId(String(d.nationalId)) : d.nationalId, dob: d.dob,
     relationship: d.relationship ?? 'dependant', gender: d.gender,
     hasChronicIllness: d.hasChronicIllness === true,
     chronicIllnessDetails: d.chronicIllnessDetails?.trim() || undefined,

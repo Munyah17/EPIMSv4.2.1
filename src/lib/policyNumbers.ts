@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { fetchAllRows } from './paged'
 
 /**
  * Policy numbers.
@@ -74,10 +75,13 @@ export async function nextPolicyNumber(product: PolicyNumberProduct): Promise<st
     return formatPolicyNumber(prefix, seq)
   }
 
-  const { data: rows } = await supabase
-    .from('policies')
-    .select('policy_number')
-    .ilike('policy_number', `${prefix}%`)
+  const { data: rows } = await fetchAllRows(
+    () => supabase
+      .from('policies')
+      .select('policy_number')
+      .ilike('policy_number', `${prefix}%`),
+    { orderBy: 'id' },
+  )
   const maxSeq = (rows ?? []).reduce((max: number, r: { policy_number: string }) => {
     const digits = r.policy_number.slice(prefix.length).replace(/\D/g, '')
     const n = Number(digits)

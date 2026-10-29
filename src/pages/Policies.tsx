@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
-import type { ToastMessage, Policy, PolicyStatus, CautionFlag, Client } from '../types'
+import type { ToastMessage, Policy, PolicyStatus, CautionFlag, Client, Product } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
 import { supabase } from '../lib/supabase'
 import { exportPolicyReport, getPolicyReportPdfBase64, exportToExcel, exportToCsv, exportReportToPdf } from '../lib/exportUtils'
-import { treatyRows, TREATY_HEADERS } from '../lib/treatyReport'
+import { treatyRows, treatyHeaders } from '../lib/treatyReport'
+import { policyBillablePremium, billableHeadCount } from '../lib/premium'
 import { toIsoDate } from '../lib/dateUtils'
 import { notifyPolicyRegistered, notifyRegistrationFailed } from '../lib/signupNotifications'
 import { invoiceIssuedSms, smsDate } from '../lib/smsText'
@@ -38,7 +39,7 @@ const STATUS_PILL: Partial<Record<PolicyStatus, string>> = {
   waiting_period: 'pill-pending',
 }
 
-export default function Policies({ showToast, initialCategory }: Props) {
+export default function Policies({ showToast, setActivePanel, initialCategory }: Props) {
   const { hasPermission, user } = useAuth()
   const [policies, setPolicies] = useState<Policy[]>([])
   const [loading, setLoading] = useState(true)
@@ -47,14 +48,19 @@ export default function Policies({ showToast, initialCategory }: Props) {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<PolicyStatus | 'all'>('all')
   const [productFilter, setProductFilter] = useState('all')
+  const [capturedByFilter, setCapturedByFilter] = useState('all')
+  const [agentFilter, setAgentFilter] = useState('all')
   // Individual vs group/corporate — the two books are kept on separate
   // tabs: different billing (monthly client debit vs org invoice),
   // different people to phone, different rows to reconcile.
   const [scopeFilter, setScopeFilter] = useState<'all' | 'individual' | 'group'>('all')
-  // Archive view lists 'expired' policies — cover terms that have ended
-  // (e.g. the tobacco book on 31 Aug). They keep every record and restore
-  // intact; the live book never shows them.
-  const [archiveView, setArchiveView] = useState(false)
+  // Archives are split: agriculture (tobacco/small-crop — a whole season
+  // rolls off at once and comes BACK for renewals) vs everything else.
+  // Monthly books almost never expire — their archive is a museum, the
+  // agriculture archive is a working season-to-season roster.
+  const [archiveView, setArchiveView] = useState<'off' | 'general' | 'agriculture'>('off')
+  const [showProductSummary, setShowProductSummary] = useState(false)
+  const [allProducts, setAllProducts] = useState<Product[]>([])
   const categoryFilter = initialCategory && !initialCategory.startsWith('__') ? initialCategory : undefined
   const [showNew, setShowNew] = useState(false)
   const [viewPolicy, setViewPolicy] = useState<Policy | null>(null)
@@ -66,11 +72,18 @@ export default function Policies({ showToast, initialCategory }: Props) {
 
   // Sidebar "Add New Policy" arrives as initialCategory '__new' — open the
   // modal straight onto the page instead of just navigating to the list.
-  // '__individual'/'__group' land on the matching scope tab.
+  // '__individual'/'__group' land on the matching scope tab. '__find:XXX'
+  // pre-fills the search box — the recon card's "Open in Policies" lands
+  // the reviewer on the exact row that needs attention.
   useEffect(() => {
     if (initialCategory === '__new') setShowNew(true)
     if (initialCategory === '__individual') setScopeFilter('individual')
     else if (initialCategory === '__group') setScopeFilter('group')
+    else if (initialCategory?.startsWith('__find:')) {
+      setSearch(initialCategory.slice(7))
+      setStatusFilter('all')
+      setArchiveView('off')
+    }
   }, [initialCategory])
 
   useEffect(() => {
@@ -90,10 +103,31 @@ export default function Policies({ showToast, initialCategory }: Props) {
       if (error) showToast('error', 'Failed to load client contact details — searching by phone or ID will miss matches.')
       else if (data) setClients(data)
     })
+    db.products.list().then(({ data, error }) => {
+      if (error) showToast('error', 'Failed to load products — the product filter may be incomplete.')
+      else if (data) setAllProducts(data)
+    })
   }, [showToast])
 
-  const products = [...new Set(policies.map(p => p.productName))]
+  // Every sellable product is a filter option even when it holds no
+  // policies yet — "which product's book?" must be answerable without
+  // scrolling the table. Names already on the book stay listed too, so
+  // an inactive/deleted product's policies remain findable.
+  const activeProductNames = allProducts
+    .filter(p => p.active)
+    .map(p => p.name)
+  const products = [...new Set([...activeProductNames, ...policies.map(p => p.productName)])]
+
+  // Attribution filters — the staff member who captured the policy (null
+  // on self-service channels) vs the field officer/agent who sourced it.
+  const capturers = [...new Set(policies.map(p => p.capturedByName).filter((v): v is string => !!v))].sort()
+  const agents = [...new Map(policies.filter(p => p.agentId && p.agentName).map(p => [p.agentId!, p.agentName!])).entries()].sort((a, b) => a[1].localeCompare(b[1]))
   const clientById = new Map(clients.map(c => [c.id, c]))
+
+  // Clients holding no policy of any status — the uncovered register the
+  // red tab opens. Clients already load for the search's phone/ID match,
+  // so the count costs nothing extra.
+  const noPolicyCount = clients.filter(c => (c.policyCount ?? 0) === 0).length
 
   // Search matches policy number, client name, grower number, product name,
   // and the client's phone/national ID — grower number is ranked first
@@ -114,16 +148,38 @@ export default function Policies({ showToast, initialCategory }: Props) {
 
   const isGroupPolicy = (p: Policy) => !!p.coverScope && p.coverScope !== 'individual'
 
+  const isAgri = (p: Policy) => p.productCategory === 'agriculture'
+
   const filtered = policies.filter(p => {
     const matchSearch = matchScore(p) >= 0
-    const matchStatus = archiveView
-      ? p.status === 'expired'
-      : (statusFilter === 'all' ? p.status !== 'expired' : p.status === statusFilter)
+    const matchStatus = archiveView === 'off'
+      ? (statusFilter === 'all' ? p.status !== 'expired' : p.status === statusFilter)
+      : p.status === 'expired' && (archiveView === 'agriculture') === isAgri(p)
     const matchProduct = productFilter === 'all' || p.productName === productFilter
+    const matchCapturedBy = capturedByFilter === 'all' ||
+      (capturedByFilter === '__self' ? !p.capturedByName : p.capturedByName === capturedByFilter)
+    const matchAgent = agentFilter === 'all' ||
+      (agentFilter === '__none' ? !p.agentId : p.agentId === agentFilter)
     const matchCategory = !categoryFilter || p.productCategory === categoryFilter
     const matchScope = scopeFilter === 'all' || (scopeFilter === 'group') === isGroupPolicy(p)
-    return matchSearch && matchStatus && matchProduct && matchCategory && matchScope
+    return matchSearch && matchStatus && matchProduct && matchCapturedBy && matchAgent && matchCategory && matchScope
   })
+
+  // Summary-by-product: how the filtered book splits per product —
+  // count, lives and billed premium so "what does tobacco look like
+  // this season" is one glance, not a spreadsheet export.
+  const productSummary = (() => {
+    const map = new Map<string, { name: string; policies: number; heads: number; billed: number }>()
+    for (const p of filtered) {
+      const key = p.productName || 'Unknown product'
+      const b = map.get(key) ?? { name: key, policies: 0, heads: 0, billed: 0 }
+      b.policies += 1
+      b.heads += billableHeadCount(p)
+      b.billed += policyBillablePremium(p)
+      map.set(key, b)
+    }
+    return [...map.values()].sort((a, b) => b.billed - a.billed)
+  })()
 
   const suggestions = q.length < 2 ? [] : [...policies]
     .map(p => ({ p, score: matchScore(p) }))
@@ -133,7 +189,8 @@ export default function Policies({ showToast, initialCategory }: Props) {
 
   const statusCounts = {
     all: policies.filter(p => p.status !== 'expired').length,
-    archived: policies.filter(p => p.status === 'expired').length,
+    archived: policies.filter(p => p.status === 'expired' && !isAgri(p)).length,
+    archivedAgri: policies.filter(p => p.status === 'expired' && isAgri(p)).length,
     active: policies.filter(p => p.status === 'active').length,
     waiting_period: policies.filter(p => p.status === 'waiting_period').length,
     lapsed: policies.filter(p => p.status === 'lapsed').length,
@@ -163,11 +220,15 @@ export default function Policies({ showToast, initialCategory }: Props) {
       const { data: clients } = await db.clients.list()
       const byId = new Map((clients ?? []).map(c => [c.id, c]))
       const rows = treatyRows(filtered, byId)
+      // Agriculture premiums are annual and settled by stop order — the
+      // heading has to say that or the reinsurer reads a yearly figure
+      // as monthly. A mixed book gets the neutral label.
+      const headers = treatyHeaders(filtered.every(p => isAgri(p)))
       const base = `policy-report-${toIsoDate(new Date())}`
       if (format === 'xlsx') {
-        await exportToExcel(`${base}.xlsx`, 'Policy Report', TREATY_HEADERS, rows)
+        await exportToExcel(`${base}.xlsx`, 'Policy Report', headers, rows)
       } else if (format === 'csv') {
-        exportToCsv(`${base}.csv`, TREATY_HEADERS, rows.map(r => r.map(String)))
+        exportToCsv(`${base}.csv`, headers, rows.map(r => r.map(String)))
       } else {
         // The PDF carries the book's totals so a reinsurer reads the
         // bottom line before the rows.
@@ -177,8 +238,12 @@ export default function Policies({ showToast, initialCategory }: Props) {
           { label: 'Total Sum Assured', value: `$${rows.reduce((s, r) => s + Number(r[10] || 0), 0).toLocaleString()}` },
           { label: 'Total Premium', value: `$${rows.reduce((s, r) => s + Number(r[12] || 0), 0).toFixed(2)}` },
         ]
+        // 17 columns can't fit one landscape page — overflow flows to a
+        // second page set. NAME and Surname both repeat on every set so
+        // every half still identifies the person (a single repeat column
+        // put PERIOD in the visual surname position — the page-40 bug).
         await exportReportToPdf(`${base}.pdf`, 'Policy Report',
-          `Generated ${formatDate(new Date())} by Motions IMS`, stats, TREATY_HEADERS, rows, { landscape: true })
+          `Generated ${formatDate(new Date())} by Motions IMS`, stats, headers, rows, { landscape: true, repeatColumns: [0, 1] })
       }
       showToast('success', `Policy report exported — ${filtered.length} policies.`)
     } catch {
@@ -312,16 +377,21 @@ export default function Policies({ showToast, initialCategory }: Props) {
   }
 
   /** Restoring an archived (expired) policy brings it back whole — same
-   *  client, dependants and payment history, no recapture. Agriculture
-   *  reactivates immediately; everything else re-enters waiting period.
+   *  client, dependants and payment history, no recapture. For the
+   *  agriculture book this IS the season-renewal: the farmer's records
+   *  come back at full cover the moment they're re-engaged, no waiting
+   *  period on a crop. Everything else re-enters waiting period.
    *  The edit modal opens straight after so staff set the new term dates. */
   const handleRestore = async (policy: Policy) => {
     const { category } = await getReportContext(policy)
-    const nextStatus = category === 'agriculture' ? 'active' : 'waiting_period'
+    const agri = category === 'agriculture' || isAgri(policy)
+    const nextStatus = agri ? 'active' : 'waiting_period'
     const { data, error } = await db.policies.update(policy.id, { status: nextStatus })
     if (error || !data) { showToast('error', 'Failed to restore policy.'); return }
     setPolicies(prev => prev.map(p => p.id === data.id ? data : p))
-    showToast('success', `Policy ${data.policyNumber} restored — update the cover dates for the new term.`)
+    showToast('success', agri
+      ? `Policy ${data.policyNumber} renewed — update the new season's cover dates.`
+      : `Policy ${data.policyNumber} restored — update the cover dates for the new term.`)
     void recordActivity({
       action: 'policy.updated', actor: { id: user?.id, name: user?.name ?? 'Unknown', role: user?.role ?? 'unknown' },
       entityType: 'policy', entityId: policy.id, entityLabel: policy.policyNumber,
@@ -484,6 +554,22 @@ export default function Policies({ showToast, initialCategory }: Props) {
             <option value="all">All Products</option>
             {products.map(pr => <option key={pr} value={pr}>{pr}</option>)}
           </select>
+          <select className="filter-select" value={capturedByFilter} onChange={e => setCapturedByFilter(e.target.value)}
+            title="Filter by the staff member who captured the policy">
+            <option value="all">Captured By: Anyone</option>
+            {capturers.map(n => <option key={n} value={n}>{n}</option>)}
+            <option value="__self">Self-service / website / bot</option>
+          </select>
+          <select className="filter-select" value={agentFilter} onChange={e => setAgentFilter(e.target.value)}
+            title="Filter by the field officer or agent who sourced the policy">
+            <option value="all">Agent: Anyone</option>
+            {agents.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+            <option value="__none">No agent assigned</option>
+          </select>
+          <button type="button" className={`btn ${showProductSummary ? 'btn-primary' : 'btn-ghost'} btn-sm`}
+            onClick={() => setShowProductSummary(v => !v)} title="Break the filtered list down per product">
+            Summary by Product
+          </button>
         </div>
         {/* The reinsurer's treaty layout — one row per insured head,
             fixed formats (d-MMM-yyyy dates, canonical IDs) so month-to-
@@ -508,12 +594,21 @@ export default function Policies({ showToast, initialCategory }: Props) {
         </div>
         <button
           type="button"
-          className={`btn ${archiveView ? 'btn-primary' : 'btn-ghost'}`}
-          onClick={() => { setArchiveView(v => !v); setStatusFilter('all') }}
+          className={`btn ${archiveView === 'general' ? 'btn-primary' : 'btn-ghost'}`}
+          onClick={() => { setArchiveView(v => v === 'general' ? 'off' : 'general'); setStatusFilter('all') }}
+          title="Expired cover terms — everything except the agriculture book"
         >
-          {archiveView ? '← Live Policies' : `Archive (${statusCounts.archived})`}
+          {archiveView === 'general' ? '← Live Policies' : `Archive (${statusCounts.archived})`}
         </button>
-        {hasPermission('policies.create') && !archiveView && (
+        <button
+          type="button"
+          className={`btn ${archiveView === 'agriculture' ? 'btn-primary' : 'btn-ghost'}`}
+          onClick={() => { setArchiveView(v => v === 'agriculture' ? 'off' : 'agriculture'); setStatusFilter('all') }}
+          title="Agriculture archive — last season's tobacco & small-crop book, waiting for renewal"
+        >
+          {archiveView === 'agriculture' ? '← Live Policies' : `🌾 Agri Archive (${statusCounts.archivedAgri})`}
+        </button>
+        {hasPermission('policies.create') && archiveView === 'off' && (
           <button type="button" className="btn btn-primary" onClick={() => setShowNew(true)}>+ New Policy</button>
         )}
       </div>
@@ -530,7 +625,49 @@ export default function Policies({ showToast, initialCategory }: Props) {
             {label} ({count})
           </button>
         ))}
+        {/* Not a filter — a door to the committed uncovered register
+            (Abandoned Signups). Red and unmissable by design: a client
+            with no policy needs cover assigned now, not a warning that
+            can be dismissed. */}
+        <button
+          type="button"
+          className="tab-item"
+          style={{ background: 'var(--danger)', color: '#fff', fontWeight: 600, borderRadius: 7, margin: '0 0 6px 12px', border: 'none' }}
+          onClick={() => setActivePanel('clients_no_policy')}
+          title="Clients with no policy at all — open the dedicated uncovered register"
+        >
+          No Policy ({noPolicyCount})
+        </button>
       </div>
+
+      {/* Per-product rollup of whatever the filters currently select —
+          the answer to "what does the tobacco book look like" without
+          an export. Same billed-premium math the treaty report uses. */}
+      {showProductSummary && !loading && filtered.length > 0 && (
+        <div className="card" style={{ marginBottom: 14, padding: '12px 16px' }}>
+          <div className="tbl-scroll">
+          <table className="table" style={{ fontSize: 12 }}>
+            <thead><tr><th>Product</th><th>Policies</th><th>Lives</th><th>Billed Premium</th></tr></thead>
+            <tbody>
+              {productSummary.map(s => (
+                <tr key={s.name}>
+                  <td><strong>{s.name}</strong></td>
+                  <td>{s.policies}</td>
+                  <td>{s.heads}</td>
+                  <td>${s.billed.toFixed(2)}</td>
+                </tr>
+              ))}
+              <tr>
+                <td><strong>Total</strong></td>
+                <td><strong>{productSummary.reduce((s, x) => s + x.policies, 0)}</strong></td>
+                <td><strong>{productSummary.reduce((s, x) => s + x.heads, 0)}</strong></td>
+                <td><strong>${productSummary.reduce((s, x) => s + x.billed, 0).toFixed(2)}</strong></td>
+              </tr>
+            </tbody>
+          </table>
+          </div>
+        </div>
+      )}
 
       <div className="card">
         {loading ? (
@@ -552,7 +689,7 @@ export default function Policies({ showToast, initialCategory }: Props) {
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={8} className="td-empty">{archiveView ? 'No archived policies — expired cover terms land here.' : 'No policies found.'}</td></tr>
+                <tr><td colSpan={8} className="td-empty">{archiveView === 'general' ? 'No archived policies — expired non-agriculture cover terms land here.' : archiveView === 'agriculture' ? 'No archived agriculture policies — last season’s book lands here when terms end.' : 'No policies found.'}</td></tr>
               ) : filtered.map(p => (
                 <tr key={p.id}>
                   <td><span className="mono">{p.policyNumber}</span></td>
@@ -582,10 +719,12 @@ export default function Policies({ showToast, initialCategory }: Props) {
                   <td>
                     <div className="action-btns">
                       <button type="button" className="btn btn-ghost btn-sm" onClick={() => setViewPolicy(p)}>View</button>
-                      {archiveView ? (
+                      {archiveView !== 'off' ? (
                         <>
                           {hasPermission('policies.edit') && (
-                            <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--success)' }} onClick={() => handleRestore(p)}>Restore</button>
+                            <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--success)' }} onClick={() => handleRestore(p)}>
+                              {isAgri(p) ? 'Renew & Restore' : 'Restore'}
+                            </button>
                           )}
                           {hasPermission('policies.delete') && (
                             <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => handleDelete(p)}>Delete</button>

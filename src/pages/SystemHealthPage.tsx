@@ -20,7 +20,7 @@ const QUOTA_ALERT_PATTERN = /rate.?limit|429|quota|expired|401|403|unauthorized|
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
-  setActivePanel: (panel: ActivePanel) => void
+  setActivePanel: (panel: ActivePanel, category?: string) => void
 }
 
 interface Stats {
@@ -92,7 +92,7 @@ function MetricBar({ label, value, color }: { label: string; value: number; colo
   )
 }
 
-export default function SystemHealthPage({ showToast }: Props) {
+export default function SystemHealthPage({ showToast, setActivePanel }: Props) {
   const { user } = useAuth()
   const [stats, setStats] = useState<Stats>(() => health.stats as Stats)
   const [tab, setTab] = useState<'overview' | 'log' | 'delivery'>('overview')
@@ -145,6 +145,40 @@ export default function SystemHealthPage({ showToast }: Props) {
     }
     setDismissing(false)
   }
+
+  /** Reconcile, don't just acknowledge: the recon card used to only
+   *  dismiss items — the underlying record stayed broken and a person
+   *  still had to hunt for it. Now each finding carries the action that
+   *  actually resolves it: an orphaned client goes to Abandoned Signups
+   *  (which has the assign-policy flow), a paid-but-pending policy is
+   *  activated right here (agriculture goes straight to active — no
+   *  waiting period on a crop). The stale-gateway item still needs a
+   *  human at Paynow, so it keeps the acknowledge button only. */
+  const [resolving, setResolving] = useState<string | null>(null)
+
+  const resolvePaidPending = async (item: ReconData['paidButPending'][number]) => {
+    setResolving(item.id)
+    try {
+      const [{ data: policy }, { data: products }] = await Promise.all([
+        db.policies.get(item.id), db.products.list(),
+      ])
+      const category = policy ? products?.find(p => p.id === policy.productId)?.category : undefined
+      const nextStatus = category === 'agriculture' ? 'active' : 'waiting_period'
+      const { error } = await db.policies.update(item.id, { status: nextStatus })
+      if (error) { showToast('error', `Could not activate ${item.policyNumber}: ${error}`); return }
+      showToast('success', `Policy ${item.policyNumber} activated (${nextStatus.replace(/_/g, ' ')}).`)
+      await dismissRecon([{ kind: 'paid_but_pending', ref: item.id }])
+    } finally {
+      setResolving(null)
+    }
+  }
+
+  // Every finding names where it gets fixed — a staff member who knows
+  // NOTHING about the alert should be able to click once and land on the
+  // page (and, for policies, the exact row) that resolves it.
+  const gotoAbandonedSignups = () => setActivePanel('clients_no_policy')
+  const gotoPolicy = (policyNumber: string) => setActivePanel('policies', `__find:${policyNumber}`)
+  const gotoVerifications = () => setActivePanel('payment_verifications')
 
   // Run Check probes; Apply Fixes repairs the whitelisted items and
   // logs each repair in system_fixes (the log renders below the card).
@@ -360,7 +394,7 @@ export default function SystemHealthPage({ showToast }: Props) {
       {recon && (recon.orphanedClients.length + recon.stalePaynow.length + recon.paidButPending.length) > 0 && (
         <div className="card" style={{ marginBottom: 20, borderLeft: '3px solid var(--danger)' }}>
           <div className="card-header">
-            <span className="card-title">⚖ Unreconciled records — investigate before close of day</span>
+            <span className="card-title">⚖ Unreconciled records — each finding links to the page that fixes it</span>
             {/* Dismissal is acknowledgement, not deletion — the client,
                 the transaction and the policy all keep their truth.
                 New unmatched items still alert. */}
@@ -375,21 +409,30 @@ export default function SystemHealthPage({ showToast }: Props) {
           </div>
           {recon.orphanedClients.map(c => (
             <div key={c.id} className="info-banner info-banner-danger" style={{ marginBottom: 8, borderRadius: 8, padding: '10px 13px', fontSize: 12, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-              <span style={{ flex: 1 }}>👤 Client <strong>{c.name}</strong> ({c.phone ?? 'no phone'}, registered {new Date(c.createdAt).toLocaleDateString('en-GB')}) has <strong>no policy</strong> — an abandoned signup; no payment can exist without a policy.</span>
+              <span style={{ flex: 1 }}>👤 Client <strong>{c.name}</strong> ({c.phone ?? 'no phone'}, registered {new Date(c.createdAt).toLocaleDateString('en-GB')}) has <strong>no policy</strong> — an abandoned signup; no payment can exist without a policy.<br/><span style={{ color: 'var(--muted)' }}>Fix: open <strong>Abandoned Signups</strong> and assign their policy.</span></span>
+              <button type="button" className="btn btn-primary btn-sm" onClick={gotoAbandonedSignups}
+                title="Open Abandoned Signups — this client is listed there">Fix in Abandoned Signups →</button>
               <button type="button" className="btn btn-ghost btn-sm" style={{ padding: '0 6px' }} title="Acknowledge — stop alerting on this"
                 onClick={() => void dismissRecon([{ kind: 'orphaned_client', ref: c.id }])}>✕</button>
             </div>
           ))}
           {recon.stalePaynow.map(t => (
             <div key={t.reference} className="info-banner info-banner-warning" style={{ marginBottom: 8, borderRadius: 8, padding: '10px 13px', fontSize: 12, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-              <span style={{ flex: 1 }}>💳 Paynow ref <strong>{t.reference}</strong> ({t.currency} ${Number(t.amount).toFixed(2)}) never confirmed — check the gateway, reconcile with the payer.</span>
+              <span style={{ flex: 1 }}>💳 Paynow ref <strong>{t.reference}</strong> ({t.currency} ${Number(t.amount).toFixed(2)}) never confirmed — check the gateway, reconcile with the payer.<br/><span style={{ color: 'var(--muted)' }}>Fix: search this reference in <strong>Payment Verifications</strong>, or verify it directly on Paynow.</span></span>
+              <button type="button" className="btn btn-primary btn-sm" onClick={gotoVerifications}
+                title="Open Payment Verifications — search this reference there">Fix in Payment Verifications →</button>
               <button type="button" className="btn btn-ghost btn-sm" style={{ padding: '0 6px' }} title="Acknowledge — stop alerting on this"
                 onClick={() => void dismissRecon([{ kind: 'stale_paynow', ref: t.reference }])}>✕</button>
             </div>
           ))}
           {recon.paidButPending.map(p => (
             <div key={p.policyNumber} className="info-banner info-banner-danger" style={{ marginBottom: 8, borderRadius: 8, padding: '10px 13px', fontSize: 12, display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-              <span style={{ flex: 1 }}>📄 Policy <strong>{p.policyNumber}</strong> ({p.clientName}) has a completed payment but is still <strong>pending</strong> — activate or refund.</span>
+              <span style={{ flex: 1 }}>📄 Policy <strong>{p.policyNumber}</strong> ({p.clientName}) has a completed payment but is still <strong>pending</strong> — activate or refund.<br/><span style={{ color: 'var(--muted)' }}>Fix: open it in <strong>All Policies</strong> to review, or activate it here — the payment is already on record.</span></span>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => gotoPolicy(p.policyNumber)}
+                title="Open this policy in All Policies — lands on the exact row">Open in Policies →</button>
+              <button type="button" className="btn btn-primary btn-sm" disabled={resolving === p.id}
+                title="Activate the policy — the payment is already on record"
+                onClick={() => void resolvePaidPending(p)}>{resolving === p.id ? 'Activating…' : 'Activate'}</button>
               <button type="button" className="btn btn-ghost btn-sm" style={{ padding: '0 6px' }} title="Acknowledge — stop alerting on this"
                 onClick={() => void dismissRecon([{ kind: 'paid_but_pending', ref: p.id }])}>✕</button>
             </div>

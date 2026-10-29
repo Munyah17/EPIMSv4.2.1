@@ -8,6 +8,7 @@ import { nextPolicyNumber } from '../lib/policyNumbers'
 import { computeAssignedStartDate } from '../lib/policyLifecycle'
 import { generateTransactionId } from '../lib/transactionId'
 import { recordActivity } from '../lib/activityLog'
+import { fetchAllRows } from '../lib/paged'
 import { useAuth } from '../contexts/AuthContext'
 
 interface Props {
@@ -64,11 +65,14 @@ export default function PaymentVerifications({ showToast }: Props) {
   const [busy, setBusy] = useState<string | null>(null)
 
   const load = async () => {
-    const { data, error } = await supabase
-      .from('checkout_sessions')
-      .select('*')
-      .eq('status', 'pending_verification')
-      .order('created_at', { ascending: false })
+    const { data, error } = await fetchAllRows(
+      () => supabase
+        .from('checkout_sessions')
+        .select('*')
+        .eq('status', 'pending_verification')
+        .order('created_at', { ascending: false }),
+      { orderBy: 'id' },
+    )
     if (error) showToast('error', `Could not load pending verifications: ${error.message}`)
     else setSessions((data ?? []) as CheckoutSession[])
     const { data: prods } = await db.products.list()

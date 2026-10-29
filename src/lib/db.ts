@@ -9,6 +9,8 @@ import { cacheGet, cacheSet } from './offlineCache'
 import { hammingDistance, DUPLICATE_THRESHOLD } from './photoHash'
 import { policyBillablePremium, billableHeadCount } from './premium'
 import { toIsoDate } from './dateUtils'
+import { normalizeNationalId } from './validation'
+import { fetchAllRows } from './paged'
 import type { ExchangeRate } from './exchangeRate'
 import type {
   AppUser, Client, Product, ClientSafeProduct, Policy, Claim, Payment,
@@ -109,9 +111,20 @@ async function hasColumn(table: string, column: string): Promise<boolean> {
   const hit = schemaFlags.get(key)
   if (hit && (hit.ok || Date.now() - hit.at < SCHEMA_PROBE_TTL_MS)) return hit.ok
   const { error } = await supabase.from(table).select(column).limit(0)
-  const ok = !error
-  schemaFlags.set(key, { ok, at: Date.now() })
-  return ok
+  if (!error) { schemaFlags.set(key, { ok: true, at: Date.now() }); return true }
+  // Only a genuine schema answer counts as "missing": Postgres 42703
+  // (column does not exist) or a PostgREST schema-cache miss naming the
+  // column/table. Anything else — dropped connection, expired token,
+  // a 5xx blip — says nothing about the column. Answering false there
+  // makes write-path gates (contractor/hectarage/group cover) refuse a
+  // real insert with a fake "run the migration" error AFTER the client
+  // row was already saved — the orphaned staff-captured signups. So an
+  // inconclusive probe answers true, caches nothing, and lets the real
+  // query surface the real error.
+  const missing = error.code === '42703' || error.code === 'PGRST204'
+    || /does not exist|could not find|schema cache/i.test(error.message ?? '')
+  if (missing) { schemaFlags.set(key, { ok: false, at: Date.now() }); return false }
+  return true
 }
 
 const policySelect = async () => {
@@ -559,7 +572,7 @@ export const policies = {
   async list() {
     const select = await policySelect()
     const { ok, data } = await sb('policies', 'read',
-      () => supabase.from('policies').select(select).order('created_at', { ascending: false }),
+      () => fetchAllRows(() => supabase.from('policies').select(select).order('created_at', { ascending: false }), { orderBy: 'id' }),
       d => Array.isArray(d),
     )
     if (ok && data) {
@@ -578,7 +591,7 @@ export const policies = {
    *  index. Not cached: it must be current the moment it's asked. */
   async listForClient(clientId: string) {
     const { ok, data, error } = await sb('policies', 'read',
-      () => supabase.from('policies').select('id, policy_number, product_id, status, products!product_id(name)').eq('client_id', clientId),
+      () => fetchAllRows(() => supabase.from('policies').select('id, policy_number, product_id, status, products!product_id(name)').eq('client_id', clientId), { orderBy: 'id' }),
       d => Array.isArray(d),
     )
     if (!ok || !data) return { data: null, error: error ?? 'Could not load that client\'s policies.' }
@@ -817,7 +830,7 @@ export const clients = {
   async list() {
     const clientSelect = await getClientSelect()
     const { ok, data } = await sb('clients', 'read',
-      () => supabase.from('clients').select(clientSelect).order('created_at', { ascending: false }),
+      () => fetchAllRows(() => supabase.from('clients').select(clientSelect).order('created_at', { ascending: false }), { orderBy: 'id' }),
       d => Array.isArray(d),
     )
     if (ok && data) {
@@ -877,6 +890,23 @@ export const clients = {
       return writeFailed('clients', `A client with national ID ${client.nationalId} already exists — switch to "Existing Customer" and search for them instead of registering again.`)
     }
     return writeFailed('clients', error)
+  },
+
+  /** The client row behind a national-ID unique collision. Callers use it
+   *  to ADOPT the existing record instead of dead-ending: a lead or
+   *  abandoned signup occupies the ID but holds no policy, so the right
+   *  outcome is to continue with that row, not report a failure. */
+  async findByNationalId(nationalId: string) {
+    const clientSelect = await getClientSelect()
+    // Rows written before normalisation may still carry separators —
+    // the canonical form and the raw text both match the same person.
+    const raw = nationalId.trim()
+    const { ok, data } = await sb('clients', 'read',
+      () => supabase.from('clients').select(clientSelect).in('national_id', [...new Set([normalizeNationalId(raw), raw])]).limit(1).maybeSingle(),
+    )
+    if (!ok || !data) return { data: null as Client | null, error: null }
+    const r = data as Record<string, unknown>
+    return { data: toClient({ ...r, policy_count: (r.policies as {count:number}[])?.[0]?.count ?? 0 }), error: null }
   },
 
   async update(id: string, updates: Partial<Client>) {
@@ -975,7 +1005,7 @@ export const products = {
   // fake product data.
   async list() {
     const { ok, data } = await sb('products', 'read',
-      () => supabase.from('products').select('*').order('name'),
+      () => fetchAllRows(() => supabase.from('products').select('*').order('name'), { orderBy: 'id' }),
       d => Array.isArray(d),
     )
     if (ok && data) {
@@ -1001,7 +1031,7 @@ export const products = {
    */
   async listClientSafe(): Promise<{ data: ClientSafeProduct[]; error: string | null }> {
     const { ok, data } = await sb('products_client_safe', 'read',
-      () => supabase.from('products_client_safe').select('*').order('name'),
+      () => fetchAllRows(() => supabase.from('products_client_safe').select('*').order('name'), { orderBy: 'id' }),
       d => Array.isArray(d),
     )
     if (ok && data) {
@@ -1067,7 +1097,7 @@ export const products = {
 export const cropTypes = {
   async list() {
     const { ok, data } = await sb('crop_types', 'read',
-      () => supabase.from('crop_types').select('*').order('name'),
+      () => fetchAllRows(() => supabase.from('crop_types').select('*').order('name'), { orderBy: 'id' }),
       d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as Record<string, unknown>[]).map(r => ({ id: r.id as string, name: r.name as string, status: r.status as 'active' | 'inactive', createdAt: r.created_at as string })), error: null }
@@ -1090,7 +1120,7 @@ export const cropTypes = {
 export const fraudSignalRules = {
   async list() {
     const { ok, data } = await sb('fraud_signal_rules', 'read',
-      () => supabase.from('fraud_signal_rules').select('id, description, status, created_at, profiles!created_by(name)').order('created_at', { ascending: false }),
+      () => fetchAllRows(() => supabase.from('fraud_signal_rules').select('id, description, status, created_at, profiles!created_by(name)').order('created_at', { ascending: false }), { orderBy: 'id' }),
       d => Array.isArray(d),
     )
     if (ok && data) {
@@ -1133,7 +1163,7 @@ function toHeroSlide(r: Record<string, unknown>): HeroSlide {
 export const heroSlides = {
   async list() {
     const { ok, data } = await sb('hero_slides', 'read',
-      () => supabase.from('hero_slides').select('*').order('sort_order'),
+      () => fetchAllRows(() => supabase.from('hero_slides').select('*').order('sort_order'), { orderBy: 'id' }),
       d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as Record<string, unknown>[]).map(toHeroSlide), error: null }
@@ -1187,12 +1217,14 @@ export const photoHashes = {
    *  fine at the volumes a single insurer sees, not meant to scale to
    *  millions of rows without moving the comparison server-side. */
   async findMatches(hash: string, excludeSourceId: string): Promise<PhotoHashMatch[]> {
-    const { data, error } = await supabase
-      .from('photo_hashes')
-      .select('hash, source_type, source_id, reference, label, created_at')
-      .neq('source_id', excludeSourceId)
-      .order('created_at', { ascending: false })
-      .limit(2000)
+    const { data, error } = await fetchAllRows(
+      () => supabase
+        .from('photo_hashes')
+        .select('hash, source_type, source_id, reference, label, created_at')
+        .neq('source_id', excludeSourceId)
+        .order('created_at', { ascending: false }),
+      { maxRows: 2000, orderBy: 'id' },
+    )
     if (error || !data) return []
     return (data as { hash: string; source_type: 'claim' | 'policy'; reference: string; label: string; created_at: string }[])
       .map(row => ({ ...row, distance: hammingDistance(hash, row.hash) }))
@@ -1206,7 +1238,7 @@ export const photoHashes = {
 export const claims = {
   async list() {
     const { ok, data } = await sb('claims', 'read',
-      () => supabase.from('claims').select(CLAIM_SELECT).order('created_at', { ascending: false }),
+      () => fetchAllRows(() => supabase.from('claims').select(CLAIM_SELECT).order('created_at', { ascending: false }), { orderBy: 'id' }),
       d => Array.isArray(d),
     )
     if (ok && data) {
@@ -1350,7 +1382,7 @@ export const payments = {
   async list() {
     const select = await paymentSelect()
     const { ok, data } = await sb('payments', 'read',
-      () => supabase.from('payments').select(select).order('payment_date', { ascending: false }),
+      () => fetchAllRows(() => supabase.from('payments').select(select).order('payment_date', { ascending: false }), { orderBy: 'id' }),
       d => Array.isArray(d),
     )
     if (ok && data) {
@@ -1537,7 +1569,7 @@ const POLICY_ASSESSMENT_SELECT = `
 export const claimAssessments = {
   async listForClaim(claimId: string) {
     const { ok, data } = await sb('claim_assessments', 'read',
-      () => supabase.from('claim_assessments').select(CLAIM_ASSESSMENT_SELECT).eq('claim_id', claimId).order('created_at', { ascending: false }),
+      () => fetchAllRows(() => supabase.from('claim_assessments').select(CLAIM_ASSESSMENT_SELECT).eq('claim_id', claimId).order('created_at', { ascending: false }), { orderBy: 'id' }),
       d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as unknown[]).map(toClaimAssessment), error: null }
@@ -1569,7 +1601,7 @@ export const claimAssessments = {
 export const policyAssessments = {
   async listForPolicy(policyId: string) {
     const { ok, data } = await sb('policy_assessments', 'read',
-      () => supabase.from('policy_assessments').select(POLICY_ASSESSMENT_SELECT).eq('policy_id', policyId).order('created_at', { ascending: false }),
+      () => fetchAllRows(() => supabase.from('policy_assessments').select(POLICY_ASSESSMENT_SELECT).eq('policy_id', policyId).order('created_at', { ascending: false }), { orderBy: 'id' }),
       d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as unknown[]).map(toPolicyAssessment), error: null }
@@ -1582,7 +1614,7 @@ export const policyAssessments = {
    *  policy). */
   async listAll() {
     const { ok, data } = await sb('policy_assessments', 'read',
-      () => supabase.from('policy_assessments').select(POLICY_ASSESSMENT_SELECT).order('created_at', { ascending: false }).limit(500),
+      () => fetchAllRows(() => supabase.from('policy_assessments').select(POLICY_ASSESSMENT_SELECT).order('created_at', { ascending: false }), { maxRows: 500, orderBy: 'id' }),
       d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as unknown[]).map(toPolicyAssessment), error: null }
@@ -1612,7 +1644,7 @@ export const policyAssessments = {
 export const customRoles = {
   async list() {
     const { ok, data } = await sb('custom_roles', 'read',
-      () => supabase.from('custom_roles').select('*').order('name'),
+      () => fetchAllRows(() => supabase.from('custom_roles').select('*').order('name'), { orderBy: 'id' }),
       d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as Record<string, unknown>[]).map(toCustomRole), error: null }
@@ -1651,7 +1683,7 @@ export const customRoles = {
 export const tickets = {
   async list() {
     const { ok, data } = await sb('tickets', 'read',
-      () => supabase.from('tickets').select(TICKET_SELECT).order('created_at', { ascending: false }),
+      () => fetchAllRows(() => supabase.from('tickets').select(TICKET_SELECT).order('created_at', { ascending: false }), { orderBy: 'id' }),
       d => Array.isArray(d),
     )
     if (ok && data) {
@@ -1696,11 +1728,11 @@ export const tickets = {
 export const emails = {
   async list(folder?: 'inbox' | 'sent') {
     const { ok, data } = await sb('emails', 'read',
-      () => {
+      () => fetchAllRows(() => {
         let q = supabase.from('emails').select('*').order('created_at', { ascending: false })
         if (folder) q = q.eq('folder', folder)
         return q
-      },
+      }, { orderBy: 'id' }),
       d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as unknown[]).map(toEmail), error: null }
@@ -1742,10 +1774,62 @@ export const emails = {
 }
 
 // ── LEADS ─────────────────────────────────────────────────────────
+// ── SIGNUP EVIDENCE ───────────────────────────────────────────────
+// Forensics for the Abandoned Signups page: where each policy-less client
+// record actually stalled. checkout_sessions captures the payer's last
+// gateway state (pending = walked away, failed = declined, cancelled,
+// paid = money taken but no policy issued — the alarming case);
+// pending_policies is the pre-payment holding row (swept after 24h).
+// Both are staff-only reads (RLS), joined to clients by national ID /
+// client_id on the page.
+export interface CheckoutSessionRow {
+  reference: string
+  status: 'pending' | 'paid' | 'failed' | 'cancelled' | string
+  gateway: string
+  payment_method: string | null
+  amount: number
+  product_id: string
+  client_national_id: string
+  client_phone: string
+  client_email: string
+  created_at: string
+}
+
+export interface PendingPolicyRow {
+  policy_number: string
+  client_id: string
+  product_id: string
+  premium: number
+  payment_method: string
+  source: string
+  created_at: string
+}
+
+export const signupEvidence = {
+  async checkouts(): Promise<CheckoutSessionRow[]> {
+    const { data } = await fetchAllRows(
+      () => supabase.from('checkout_sessions')
+        .select('reference, status, gateway, payment_method, amount, product_id, client_national_id, client_phone, client_email, created_at')
+        .order('created_at', { ascending: false }),
+      { maxRows: 500, orderBy: 'id' },
+    )
+    return (data ?? []) as CheckoutSessionRow[]
+  },
+  async pendingPolicies(): Promise<PendingPolicyRow[]> {
+    const { data } = await fetchAllRows(
+      () => supabase.from('pending_policies')
+        .select('policy_number, client_id, product_id, premium, payment_method, source, created_at')
+        .order('created_at', { ascending: false }),
+      { maxRows: 500, orderBy: 'id' },
+    )
+    return (data ?? []) as PendingPolicyRow[]
+  },
+}
+
 export const leads = {
   async list() {
     const { ok, data } = await sb('leads', 'read',
-      () => supabase.from('leads').select('*').order('created_at', { ascending: false }),
+      () => fetchAllRows(() => supabase.from('leads').select('*').order('created_at', { ascending: false }), { orderBy: 'id' }),
       d => Array.isArray(d),
     )
     if (ok && data) {
@@ -1801,7 +1885,7 @@ export const staff = {
     // neither can surface as an assignable agent, a claim reviewer, or a row
     // on the Staff Management page itself.
     const { ok, data } = await sb('profiles', 'read',
-      () => supabase.from('profiles').select('*, custom_roles!profiles_custom_role_id_fkey(name)').in('role', STAFF_ROLES).order('name'),
+      () => fetchAllRows(() => supabase.from('profiles').select('*, custom_roles!profiles_custom_role_id_fkey(name)').in('role', STAFF_ROLES).order('name'), { orderBy: 'id' }),
       d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as Record<string,unknown>[]).map(toProfile), error: null }
@@ -1934,7 +2018,7 @@ export const staff = {
 export const fraudCases = {
   async list() {
     const { ok, data } = await sb('fraud_cases', 'read',
-      () => supabase.from('fraud_cases').select(FRAUD_SELECT).order('created_at', { ascending: false }),
+      () => fetchAllRows(() => supabase.from('fraud_cases').select(FRAUD_SELECT).order('created_at', { ascending: false }), { orderBy: 'id' }),
       d => Array.isArray(d),
     )
     if (ok && data) {
@@ -1974,7 +2058,7 @@ export const reminders = {
   async list() {
     const select = await reminderSelect()
     const { ok, data } = await sb('reminders', 'read',
-      () => supabase.from('reminders').select(select).order('due_date'),
+      () => fetchAllRows(() => supabase.from('reminders').select(select).order('due_date'), { orderBy: 'id' }),
       d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as unknown[]).map(toReminder), error: null }
@@ -2034,7 +2118,10 @@ export const reminders = {
 // reviews claims — a caution flag is meant to trigger extra scrutiny there.
 export const cautionFlags = {
   async listActive() {
-    const { data, error } = await supabase.from('caution_flags').select('*').eq('cleared', false).order('flagged_at', { ascending: false })
+    const { data, error } = await fetchAllRows(
+      () => supabase.from('caution_flags').select('*').eq('cleared', false).order('flagged_at', { ascending: false }),
+      { orderBy: 'policy_id' },
+    )
     if (error) return { data: [] as CautionFlag[], error: error.message }
     return { data: (data ?? []).map(toCautionFlag), error: null }
   },
@@ -2203,13 +2290,19 @@ function toApiKeyRow(r: any): ApiKeyRow {
 
 export const developerApi = {
   async listDevelopers() {
-    const { data, error } = await supabase.from('api_developers').select('*').order('created_at', { ascending: false })
+    const { data, error } = await fetchAllRows(
+    () => supabase.from('api_developers').select('*').order('created_at', { ascending: false }),
+    { orderBy: 'id' },
+  )
     if (error) return { data: [] as ApiDeveloper[], error: error.message }
     return { data: (data ?? []).map(toApiDeveloper), error: null }
   },
 
   async listKeys(developerId: string) {
-    const { data, error } = await supabase.from('api_keys').select('*').eq('developer_id', developerId).order('created_at', { ascending: false })
+    const { data, error } = await fetchAllRows(
+    () => supabase.from('api_keys').select('*').eq('developer_id', developerId).order('created_at', { ascending: false }),
+    { orderBy: 'id' },
+  )
     if (error) return { data: [] as ApiKeyRow[], error: error.message }
     return { data: (data ?? []).map(toApiKeyRow), error: null }
   },
@@ -2314,7 +2407,7 @@ export const developerApi = {
   /** Recent raw request log for one developer's keys — the audit trail
    *  behind the usage stats below. */
   async listRequestLog(developerId: string, limit = 100): Promise<{ data: ApiRequestLogRow[]; error: string | null }> {
-    const { data: keys } = await supabase.from('api_keys').select('id, key_prefix').eq('developer_id', developerId)
+    const { data: keys } = await fetchAllRows(() => supabase.from('api_keys').select('id, key_prefix').eq('developer_id', developerId), { orderBy: 'id' })
     const keyIds = (keys ?? []).map(k => k.id)
     if (keyIds.length === 0) return { data: [], error: null }
     const prefixById = new Map((keys ?? []).map(k => [k.id, k.key_prefix as string]))
@@ -2338,7 +2431,7 @@ export const developerApi = {
    *  high failure/rate-limit ratio is visible at a glance. */
   async getUsageStats(developerId: string): Promise<{ data: ApiUsageStats; error: string | null }> {
     const empty: ApiUsageStats = { requestsToday: 0, requests7d: 0, requestsTotal: 0, errorRate7d: 0 }
-    const { data: keys } = await supabase.from('api_keys').select('id').eq('developer_id', developerId)
+    const { data: keys } = await fetchAllRows(() => supabase.from('api_keys').select('id').eq('developer_id', developerId), { orderBy: 'id' })
     const keyIds = (keys ?? []).map(k => k.id)
     if (keyIds.length === 0) return { data: empty, error: null }
 
@@ -2347,7 +2440,7 @@ export const developerApi = {
 
     const [todayRes, weekRes, totalRes, lastRes] = await Promise.all([
       supabase.from('api_request_log').select('*', { count: 'exact', head: true }).in('key_id', keyIds).gte('ts', startOfToday.toISOString()),
-      supabase.from('api_request_log').select('status_code').in('key_id', keyIds).gte('ts', sevenDaysAgo.toISOString()),
+      fetchAllRows(() => supabase.from('api_request_log').select('status_code').in('key_id', keyIds).gte('ts', sevenDaysAgo.toISOString()), { orderBy: 'id' }),
       supabase.from('api_request_log').select('*', { count: 'exact', head: true }).in('key_id', keyIds),
       supabase.from('api_request_log').select('ts').in('key_id', keyIds).order('ts', { ascending: false }).limit(1).maybeSingle(),
     ])
@@ -2401,8 +2494,10 @@ export const loginAttempts = {
   /** Failed attempts in the last N minutes, grouped by email, for staff-only viewing. */
   async recentFailures(minutes = 15) {
     const since = new Date(Date.now() - minutes * 60000).toISOString()
-    const { data, error } = await supabase
-      .from('login_attempts').select('email, ts').eq('success', false).gte('ts', since).order('ts', { ascending: false })
+    const { data, error } = await fetchAllRows(
+      () => supabase.from('login_attempts').select('email, ts').eq('success', false).gte('ts', since).order('ts', { ascending: false }),
+      { orderBy: 'id' },
+    )
     if (error || !data) return { data: [] as { email: string; count: number; lastAttempt: string }[], error: error?.message ?? null }
     const byEmail = new Map<string, { email: string; count: number; lastAttempt: string }>()
     for (const row of data as { email: string; ts: string }[]) {
@@ -2458,6 +2553,10 @@ export const settings = {
 // approach only if the lightweight path fails.
 
 export interface DashboardStats {
+  /** Every policy row regardless of status — active, waiting, lapsed,
+   *  cancelled, expired. Active can sit far below Total Clients purely
+   *  because waiting-period and expired cover aren't "active". */
+  totalPolicies: number
   activePolicies: number
   pendingClaims: number
   totalPremiums: number
@@ -2497,8 +2596,8 @@ async function loadDashboardStatsLight(): Promise<DashboardStats | null> {
     supabase.from('fraud_cases').select('*', { count: 'exact', head: true }).eq('status', 'open'),
     supabase.from('policies').select('*', { count: 'exact', head: true }).in('status', ['lapsed', 'defaulted']),
     supabase.from('policies').select('*', { count: 'exact', head: true }),
-    supabase.from('payments').select('amount').eq('status', 'completed').limit(5000),
-    supabase.from('policies').select('products!product_id(category)').limit(5000),
+    fetchAllRows(() => supabase.from('payments').select('amount').eq('status', 'completed'), { orderBy: 'id' }),
+    fetchAllRows(() => supabase.from('policies').select('products!product_id(category)'), { orderBy: 'id' }),
     supabase.from('policies').select(recentPolicySelect).order('created_at', { ascending: false }).limit(5),
     supabase.from('claims').select('claim_number, created_at, policies!policy_id(clients!client_id(name))').order('created_at', { ascending: false }).limit(1),
     supabase.from('payments').select('amount, payment_date, policies!policy_id(clients!client_id(name))').order('payment_date', { ascending: false }).limit(1),
@@ -2509,7 +2608,7 @@ async function loadDashboardStatsLight(): Promise<DashboardStats | null> {
     // Invoices are optional (table lands with add_invoices.sql) — queried
     // apart from the error gate so a missing table degrades to zero, not
     // a dashboard that refuses to load.
-    supabase.from('invoices').select('amount').eq('status', 'issued').limit(5000),
+    fetchAllRows(() => supabase.from('invoices').select('amount').eq('status', 'issued'), { orderBy: 'id' }),
     // Clients with no policy rows at all. The embed filter needs !inner:
     // on a plain left-join embed, policies.id=is.null only empties each
     // client's policies[] array — every parent still matches and count
@@ -2556,6 +2655,7 @@ async function loadDashboardStatsLight(): Promise<DashboardStats | null> {
   const lapsed = lapsedRes.count ?? 0
 
   return {
+    totalPolicies: total,
     activePolicies: activeRes.count ?? 0,
     pendingClaims: pendingRes.count ?? 0,
     totalPremiums,
@@ -2595,6 +2695,7 @@ async function loadDashboardStatsFallback(): Promise<DashboardStats> {
     categoryCounts.set(cat, (categoryCounts.get(cat) ?? 0) + 1)
   }
   return {
+    totalPolicies: total,
     activePolicies: pol.filter(p => p.status === 'active').length,
     pendingClaims: cla.filter(c => c.status === 'pending' || c.status === 'under_review').length,
     totalPremiums: pay.filter(p => p.status === 'completed').reduce((s, p) => s + p.amount, 0),
@@ -2827,7 +2928,7 @@ const POLICY_CARD_SELECT = '*, profiles!issued_by(name)'
 export const policyCards = {
   async list() {
     const { ok, data } = await sb('policy_cards', 'read',
-      () => supabase.from('policy_cards').select(POLICY_CARD_SELECT).order('created_at', { ascending: false }),
+      () => fetchAllRows(() => supabase.from('policy_cards').select(POLICY_CARD_SELECT).order('created_at', { ascending: false }), { orderBy: 'id' }),
       d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as Record<string, unknown>[]).map(toPolicyCard), error: null }
@@ -2921,7 +3022,7 @@ export const groups = {
     // and the Groups page quiet instead of flashing an offline warning.
     if (!(await hasColumn('groups', 'id'))) return { data: [] as Group[], error: null }
     const { ok, data } = await sb('groups', 'read',
-      () => supabase.from('groups').select('*').order('name'),
+      () => fetchAllRows(() => supabase.from('groups').select('*').order('name'), { orderBy: 'id' }),
       d => Array.isArray(d),
     )
     if (ok && data) {
@@ -3034,18 +3135,24 @@ export const groups = {
  *  never blocks the member operation (the roster write is the truth;
  *  the next roster change re-runs the sync). */
 async function syncGroupRosterToPolicies(groupId: string) {
-  const { data: mrows, error: mErr } = await supabase.from('group_members')
-    .select('full_name, national_id, dob, phone, position, premium, cover_amount')
-    .eq('group_id', groupId).eq('status', 'active')
+  const { data: mrows, error: mErr } = await fetchAllRows(
+    () => supabase.from('group_members')
+      .select('full_name, national_id, dob, phone, position, premium, cover_amount')
+      .eq('group_id', groupId).eq('status', 'active'),
+    { orderBy: 'id' },
+  )
   if (mErr) {
     health.record({ ts: Date.now(), type: 'read', table: 'group_members', success: false, duration: 0, source: 'supabase', detail: `roster sync read: ${mErr.message}` })
     return
   }
-  const { data: prows, error: pErr } = await supabase.from('policies')
-    .select('id, cover_scope, product_id, products!product_id(name, premium, cover_amount)')
-    .eq('group_id', groupId)
-    .in('cover_scope', ['corporate', 'group', 'team'])
-    .in('status', ['active', 'waiting_period', 'lapsed', 'defaulted'])
+  const { data: prows, error: pErr } = await fetchAllRows(
+    () => supabase.from('policies')
+      .select('id, cover_scope, product_id, products!product_id(name, premium, cover_amount)')
+      .eq('group_id', groupId)
+      .in('cover_scope', ['corporate', 'group', 'team'])
+      .in('status', ['active', 'waiting_period', 'lapsed', 'defaulted']),
+    { orderBy: 'id' },
+  )
   if (pErr || !prows) {
     health.record({ ts: Date.now(), type: 'read', table: 'policies', success: false, duration: 0, source: 'supabase', detail: `roster sync read: ${pErr?.message ?? 'no rows'}` })
     return
@@ -3080,8 +3187,8 @@ export const groupMembers = {
    *  matter. */
   async list(groupId: string) {
     const { ok, data } = await sb('group_members', 'read',
-      () => supabase.from('group_members').select('*').eq('group_id', groupId)
-        .order('status').order('full_name'),
+      () => fetchAllRows(() => supabase.from('group_members').select('*').eq('group_id', groupId)
+        .order('status').order('full_name'), { orderBy: 'id' }),
       d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as Record<string, unknown>[]).map(toGroupMember), error: null }
@@ -3150,7 +3257,7 @@ export const groupMembers = {
 export const agentProfiles = {
   async list() {
     const { ok, data } = await sb('agent_profiles', 'read',
-      () => supabase.from('agent_profiles').select('*'),
+      () => fetchAllRows(() => supabase.from('agent_profiles').select('*'), { orderBy: 'profile_id' }),
       d => Array.isArray(d),
     )
     if (!ok || !data) return { data: [] as AgentProfile[], error: 'Could not load agent profiles — run database/add_agent_profiles.sql if the table is missing.' }
@@ -3190,8 +3297,8 @@ export const agentProfiles = {
   async bookStats(profileIds: string[]) {
     if (profileIds.length === 0) return { data: new Map<string, { clients: number; policies: number; premium: number }>(), error: null }
     const [clientsRes, policiesRes] = await Promise.all([
-      supabase.from('clients').select('agent_id').in('agent_id', profileIds),
-      supabase.from('policies').select('agent_id, premium').in('agent_id', profileIds),
+      fetchAllRows(() => supabase.from('clients').select('agent_id').in('agent_id', profileIds), { orderBy: 'id' }),
+      fetchAllRows(() => supabase.from('policies').select('agent_id, premium').in('agent_id', profileIds), { orderBy: 'id' }),
     ])
     const stats = new Map<string, { clients: number; policies: number; premium: number }>()
     for (const c of (clientsRes.data ?? []) as { agent_id: string }[]) {
@@ -3260,7 +3367,7 @@ const INVOICE_SELECT = `
 export const invoices = {
   async list() {
     const { ok, data } = await sb('invoices', 'read',
-      () => supabase.from('invoices').select(INVOICE_SELECT).order('issued_at', { ascending: false }),
+      () => fetchAllRows(() => supabase.from('invoices').select(INVOICE_SELECT).order('issued_at', { ascending: false }), { orderBy: 'id' }),
       d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as unknown[]).map(toInvoice), error: null }
@@ -3374,7 +3481,7 @@ function toQuotation(r: Record<string, unknown>): Quotation {
 export const quotations = {
   async list() {
     const { ok, data } = await sb('quotations', 'read',
-      () => supabase.from('quotations').select('*').order('created_at', { ascending: false }),
+      () => fetchAllRows(() => supabase.from('quotations').select('*').order('created_at', { ascending: false }), { orderBy: 'id' }),
       d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as unknown[]).map(q => toQuotation(q as Record<string, unknown>)), error: null }
@@ -3440,7 +3547,7 @@ function toRequisition(r: Record<string, unknown>): Requisition {
 export const requisitions = {
   async list() {
     const { ok, data } = await sb('requisitions', 'read',
-      () => supabase.from('requisitions').select('*').order('created_at', { ascending: false }),
+      () => fetchAllRows(() => supabase.from('requisitions').select('*').order('created_at', { ascending: false }), { orderBy: 'id' }),
       d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as unknown[]).map(r => toRequisition(r as Record<string, unknown>)), error: null }
@@ -3503,7 +3610,7 @@ function toFloatEntry(r: Record<string, unknown>): FloatEntry {
 export const floatEntries = {
   async list() {
     const { ok, data } = await sb('float_entries', 'read',
-      () => supabase.from('float_entries').select('*').order('created_at', { ascending: false }),
+      () => fetchAllRows(() => supabase.from('float_entries').select('*').order('created_at', { ascending: false }), { orderBy: 'id' }),
       d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as unknown[]).map(r => toFloatEntry(r as Record<string, unknown>)), error: null }
@@ -3543,7 +3650,7 @@ function toPettyCashEntry(r: Record<string, unknown>): PettyCashEntry {
 export const pettyCashEntries = {
   async list() {
     const { ok, data } = await sb('petty_cash_entries', 'read',
-      () => supabase.from('petty_cash_entries').select('*').order('created_at', { ascending: false }),
+      () => fetchAllRows(() => supabase.from('petty_cash_entries').select('*').order('created_at', { ascending: false }), { orderBy: 'id' }),
       d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as unknown[]).map(r => toPettyCashEntry(r as Record<string, unknown>)), error: null }
@@ -3590,7 +3697,7 @@ export const fdmsReceipts = {
   // service role so no browser can forge a "fiscalised" document.
   async list() {
     const { ok, data } = await sb('fdms_receipts', 'read',
-      () => supabase.from('fdms_receipts').select('*').order('created_at', { ascending: false }),
+      () => fetchAllRows(() => supabase.from('fdms_receipts').select('*').order('created_at', { ascending: false }), { orderBy: 'id' }),
       d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as unknown[]).map(r => toFdmsReceipt(r as Record<string, unknown>)), error: null }
@@ -3713,7 +3820,7 @@ const RECIPIENT_SELECT = `
 export const marketingContacts = {
   async list() {
     const { ok, data, error } = await sb('marketing_contacts', 'read',
-      () => supabase.from('marketing_contacts').select(CONTACT_SELECT).order('created_at', { ascending: false }),
+      () => fetchAllRows(() => supabase.from('marketing_contacts').select(CONTACT_SELECT).order('created_at', { ascending: false }), { orderBy: 'id' }),
       d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as unknown[]).map((r: unknown) => toMarketingContact(r as Record<string, unknown>)), error: null }
@@ -3816,7 +3923,7 @@ export const marketingContacts = {
 export const marketingTemplates = {
   async list() {
     const { ok, data, error } = await sb('marketing_templates', 'read',
-      () => supabase.from('marketing_templates').select(TEMPLATE_SELECT).order('created_at', { ascending: false }),
+      () => fetchAllRows(() => supabase.from('marketing_templates').select(TEMPLATE_SELECT).order('created_at', { ascending: false }), { orderBy: 'id' }),
       d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as unknown[]).map((r: unknown) => toMarketingTemplate(r as Record<string, unknown>)), error: null }
@@ -3868,7 +3975,7 @@ export const marketingTemplates = {
 export const marketingCampaigns = {
   async list() {
     const { ok, data, error } = await sb('marketing_campaigns', 'read',
-      () => supabase.from('marketing_campaigns').select(CAMPAIGN_SELECT).order('created_at', { ascending: false }),
+      () => fetchAllRows(() => supabase.from('marketing_campaigns').select(CAMPAIGN_SELECT).order('created_at', { ascending: false }), { orderBy: 'id' }),
       d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as unknown[]).map((r: unknown) => toMarketingCampaign(r as Record<string, unknown>)), error: null }
@@ -3927,7 +4034,7 @@ export const marketingCampaigns = {
 
   async getRecipients(campaignId: string) {
     const { ok, data, error } = await sb('marketing_campaign_recipients', 'read',
-      () => supabase.from('marketing_campaign_recipients').select(RECIPIENT_SELECT).eq('campaign_id', campaignId),
+      () => fetchAllRows(() => supabase.from('marketing_campaign_recipients').select(RECIPIENT_SELECT).eq('campaign_id', campaignId), { orderBy: 'id' }),
       d => Array.isArray(d),
     )
     if (ok && data) return { data: (data as unknown[]).map((r: unknown) => toCampaignRecipient(r as Record<string, unknown>)), error: null }
@@ -3970,6 +4077,7 @@ export const campaignRecipients = {
 export const db = {
   policies, clients, products, claims, payments,
   tickets, emails, leads, staff, fraudCases, reminders, cautionFlags, settings, loginAttempts, developerApi,
+  signupEvidence,
   exchangeRates,
   customRoles, claimAssessments, policyAssessments, photoHashes, cropTypes, fraudSignalRules, heroSlides,
   policyCards, groups, groupMembers, agentProfiles,

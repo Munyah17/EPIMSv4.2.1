@@ -1,6 +1,7 @@
 ﻿import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { callGroq, extractJson, GROQ_TEXT_MODEL } from './groq.js'
 import { serviceClient } from './sessionAuth.js'
+import { fetchAllRows } from '../../src/lib/paged.js'
 
 /**
  * AI-powered system problem checker.
@@ -132,8 +133,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!apply && failList.length) fixable += failList.length
 
     // â”€â”€ 2. Client phone validity â€” auto-fix: re-normalise â”€â”€
-    const { data: clients } = await admin.from('clients')
-      .select('id, name, phone').not('phone', 'is', null).limit(2000)
+    const { data: clients } = await fetchAllRows(
+      () => admin.from('clients').select('id, name, phone').not('phone', 'is', null),
+      { orderBy: 'id' },
+    )
     const badPhones: string[] = []
     let phonesFixed = 0, phonesFixable = 0
     for (const c of clients ?? []) {

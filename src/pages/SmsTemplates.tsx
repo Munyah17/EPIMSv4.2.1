@@ -9,6 +9,7 @@ import {
   type SmsTemplateEvent, type SmsTemplateRow,
 } from '../lib/smsTemplates'
 import { sendSms } from '../lib/smsService'
+import { fetchAllRows } from '../lib/paged'
 import { formatDate } from '../lib/dateUtils'
 
 /** Wording the send border (api/_lib/smsCanon.ts) strips on the way out —
@@ -71,7 +72,7 @@ export function SmsTemplatesPanel({ showToast }: Props) {
     setLoading(true)
     setLoadError('')
     const [tplRes, prodRes] = await Promise.all([
-      supabase.from('sms_templates').select('id, event_type, product_id, body, active, updated_at').order('event_type'),
+      fetchAllRows(() => supabase.from('sms_templates').select('id, event_type, product_id, body, active, updated_at').order('event_type'), { orderBy: 'id' }),
       db.products.list(),
     ])
     if (tplRes.error) {

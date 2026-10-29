@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { fetchAllRows } from './paged'
 
 /**
  * Staff-editable SMS templates for automatic notifications.
@@ -241,9 +242,12 @@ async function ensureTemplateRows(client: SupabaseClient): Promise<void> {
   if (inflight) return inflight
   inflight = (async () => {
     try {
-      const { data, error } = await client
-        .from('sms_templates')
-        .select('id, event_type, product_id, body, active')
+      const { data, error } = await fetchAllRows(
+        () => client
+          .from('sms_templates')
+          .select('id, event_type, product_id, body, active'),
+        { orderBy: 'id' },
+      )
       // A missing table (migration not applied yet) reads as "no
       // templates" — the fallback wording keeps every send working.
       cache = { rows: error ? [] : (data ?? []), fetchedAt: Date.now() }
