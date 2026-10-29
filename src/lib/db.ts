@@ -934,14 +934,20 @@ export const clients = {
     }
   },
 
-  /** Whether a policyholder login already exists on this email — the client
-   *  modal labels the action "Create Login" vs "Reset Password" off it.
-   *  profiles_select grants read to every authenticated user, so a direct
-   *  table read is fine. */
-  async portalAccountExists(email: string) {
-    const { data } = await supabase.from('profiles')
-      .select('id').eq('email', email.trim().toLowerCase()).eq('role', 'policyholder').maybeSingle()
-    return !!data
+  /** The email a client's portal login is currently bound to — or null
+   *  when they have no account. Checks the stable profiles.client_id link
+   *  first (survives a client-email change — the modal shows the old
+   *  bound address until staff rebinds), falling back to the email match
+   *  for accounts provisioned before add_client_portal_fixes.sql ran or
+   *  on a database where it hasn't. profiles_select grants read to every
+   *  authenticated user, so a direct table read is fine. */
+  async portalAccountEmail(clientId: string, email: string): Promise<string | null> {
+    const byLink = await supabase.from('profiles')
+      .select('email').eq('client_id', clientId).eq('role', 'policyholder').maybeSingle()
+    if (!byLink.error && byLink.data?.email) return byLink.data.email as string
+    const byEmail = await supabase.from('profiles')
+      .select('email').eq('email', email.trim().toLowerCase()).eq('role', 'policyholder').maybeSingle()
+    return (byEmail.data?.email as string) ?? null
   },
 
   /**

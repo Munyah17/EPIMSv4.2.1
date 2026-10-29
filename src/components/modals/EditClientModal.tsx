@@ -30,12 +30,14 @@ export default function EditClientModal({ client, onClose, onSave, onAssignPolic
   const [portalPassword, setPortalPassword] = useState('')
   const [portalBusy, setPortalBusy] = useState(false)
   const [portalMsg, setPortalMsg] = useState<{ ok: boolean; text: string } | null>(null)
-  const [portalExists, setPortalExists] = useState<boolean | null>(null)
+  // The email the login is ACTUALLY bound to — undefined while checking,
+  // null when no account exists. When staff changed the client's email
+  // this can differ from client.email until the password action rebinds.
+  const [portalEmail, setPortalEmail] = useState<string | null | undefined>(undefined)
 
   useEffect(() => {
-    if (!client.email?.trim()) { setPortalExists(null); return }
-    db.clients.portalAccountExists(client.email).then(setPortalExists)
-  }, [client.email])
+    db.clients.portalAccountEmail(client.id, client.email ?? '').then(setPortalEmail)
+  }, [client.id, client.email])
 
   const emailDirty = email.trim().toLowerCase() !== (client.email ?? '').trim().toLowerCase()
 
@@ -46,7 +48,7 @@ export default function EditClientModal({ client, onClose, onSave, onAssignPolic
     const { created, error } = await db.clients.setPortalPassword(client.id, portalPassword)
     setPortalBusy(false)
     if (error) { setPortalMsg({ ok: false, text: error }); return }
-    setPortalExists(true)
+    setPortalEmail(client.email?.trim().toLowerCase() ?? null)
     setPortalPassword('')
     setPortalMsg({ ok: true, text: created ? `Login created — they sign in with ${client.email} or their full name.` : 'Password updated.' })
   }
@@ -153,12 +155,17 @@ export default function EditClientModal({ client, onClose, onSave, onAssignPolic
               ) : (
                 <>
                   <p style={{ fontSize: 11, color: 'var(--muted)', margin: '0 0 6px' }}>
-                    {portalExists === null
+                    {portalEmail === undefined
                       ? 'Checking portal account…'
-                      : portalExists
-                        ? `Portal account active — signs in as ${client.email} or “${client.name}”.`
+                      : portalEmail
+                        ? `Portal account active — signs in as ${portalEmail} or “${client.name}”.`
                         : `No portal account yet — set a password to create one for ${client.email}.`}
                   </p>
+                  {portalEmail && portalEmail !== (client.email ?? '').trim().toLowerCase() && (
+                    <p style={{ fontSize: 11, color: 'var(--warning)', margin: '0 0 6px' }}>
+                      Their email changed — the login still uses {portalEmail} and their portal is empty until you rebind it. Set the password again to move the login to {client.email}.
+                    </p>
+                  )}
                   <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                     <input
                       className="form-control"
@@ -170,7 +177,7 @@ export default function EditClientModal({ client, onClose, onSave, onAssignPolic
                       onChange={e => setPortalPassword(e.target.value)}
                     />
                     <button type="button" className="btn btn-primary btn-sm" onClick={handleSetPortalPassword} disabled={portalBusy}>
-                      {portalBusy ? 'Saving…' : portalExists ? 'Reset Password' : 'Create Login'}
+                      {portalBusy ? 'Saving…' : portalEmail ? 'Reset Password' : 'Create Login'}
                     </button>
                   </div>
                   {portalMsg && (

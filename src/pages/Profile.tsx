@@ -196,6 +196,23 @@ export default function Profile({ showToast }: Props) {
                 </button>
               </div>
 
+              {user?.role === 'policyholder' ? (
+                // A client's login email IS the link to their client record
+                // (RLS: clients.email = auth.users.email). Letting them
+                // change it here would update only the auth side — the
+                // portal would open empty until staff re-bound the two.
+                // Email changes go through the office so both move together.
+                <div className="card">
+                  <h3>Email Address</h3>
+                  <div className="form-group">
+                    <label>Sign-in Email</label>
+                    <input className="form-control" value={user?.email ?? ''} disabled style={{ opacity: 0.6 }} />
+                  </div>
+                  <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0 }}>
+                    This email is what links your login to your policies. To change it, contact the office — they update your client record and portal access together.
+                  </p>
+                </div>
+              ) : (
               <div className="card">
                 <h3>Change Email Address</h3>
                 <div className="form-group">
@@ -216,6 +233,7 @@ export default function Profile({ showToast }: Props) {
                   {savingEmail ? 'Updating…' : 'Update Email'}
                 </button>
               </div>
+              )}
             </>
           )}
 

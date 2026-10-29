@@ -143,6 +143,16 @@ export default function Clients({ showToast }: Props) {
     setClients(prev => prev.map(c => c.id === data.id ? { ...data, policyCount: c.policyCount } : c))
     showToast('success', `Client ${data.name} updated.`)
     setEditClient(null)
+    // The portal login binds to the email — changing it leaves the account
+    // pointing at the old address (empty portal) until staff rebinds from
+    // Edit → Client Portal Login. Say so instead of letting it break silently.
+    if (updates.email !== undefined && updates.email !== current.email) {
+      void db.clients.portalAccountEmail(updated.id, current.email ?? '').then(bound => {
+        if (bound && bound !== (updates.email ?? '').trim().toLowerCase()) {
+          showToast('warning', `${data.name}'s portal login still uses ${bound} — reopen Edit and set the portal password to move it to the new email.`)
+        }
+      })
+    }
     if (user?.id) {
       const changes = Object.fromEntries(Object.keys(updates).map(key => [key, {
         old: current[key as keyof Client],

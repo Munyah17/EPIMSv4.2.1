@@ -43,8 +43,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const body = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body ?? {})
   const clientId = typeof body.clientId === 'string' ? body.clientId : ''
   const password = typeof body.password === 'string' ? body.password : ''
-  if (!clientId || !password) return res.status(400).json({ error: 'Pass { clientId, password }.' })
-  if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' })
+  if (!clientId) return res.status(400).json({ error: 'Pass { clientId, password? }.' })
+  if (password && password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters.' })
 
   const { data: client } = await admin
     .from('clients')
@@ -68,11 +68,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     await admin.from('clients').update({ email }).eq('id', client.id)
   }
 
-  const { data: existing } = await admin
+  // Locate the account two ways, in order:
+  //   1. profiles.client_id — the stable link (add_client_portal_fixes.sql).
+  //      Survives a client-email change, which is exactly when the
+  //      email-only match below would mint a SECOND login and leave the
+  //      old one orphaned.
+  //   2. profiles.email — first provisioning, or accounts created before
+  //      the client_id column existed.
+  const { data: byClient } = await admin
     .from('profiles')
-    .select('id, role')
+    .select('id, role, email, client_id')
+    .eq('client_id', client.id)
+    .maybeSingle()
+  const { data: byEmail } = byClient ? { data: null } : await admin
+    .from('profiles')
+    .select('id, role, email, client_id')
     .eq('email', email)
     .maybeSingle()
+  const existing = byClient ?? byEmail
 
   if (existing && existing.role !== 'policyholder') {
     return res.status(409).json({
@@ -82,14 +95,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   if (existing) {
-    const { error } = await admin.auth.admin.updateUserById(existing.id, { password })
+    // Rebind + reset in one move: the auth email is realigned to the client
+    // record's email (no-op when they already match), and the password is
+    // set only when a new one was supplied — a bare email rebind doesn't
+    // need to know a password.
+    const { error } = await admin.auth.admin.updateUserById(existing.id, {
+      email,
+      email_confirm: true,
+      ...(password ? { password } : {}),
+    })
     if (error) return res.status(400).json({ error: error.message })
     // Keep the sign-in name in step with the client record and make sure a
-    // previously deactivated login can't stay off.
+    // previously deactivated login can't stay off. client_id is adopted
+    // only when unset — never steal the link from another client.
     await admin.from('profiles').update({
       name: client.name, username: client.name, active: true, role: 'policyholder',
+      ...(existing.client_id ? {} : { client_id: client.id }),
     }).eq('id', existing.id)
-    return res.status(200).json({ ok: true, created: false, email })
+    return res.status(200).json({ ok: true, created: false, email, rebound: byClient?.email !== email })
+  }
+
+  if (!password) {
+    return res.status(400).json({ error: 'A password is required to create a new portal account.' })
   }
 
   const { data: created, error: createError } = await admin.auth.admin.createUser({
@@ -102,11 +129,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: createError?.message ?? 'Failed to create the portal account.' })
   }
 
-  // handle_new_user() writes the profile from user_metadata; username and
-  // the active flag aren't part of its INSERT, so set them explicitly —
-  // same pattern create-account.ts uses for staff.
+  // handle_new_user() writes the profile from user_metadata; username,
+  // active and the client link aren't part of its INSERT, so set them
+  // explicitly — same pattern create-account.ts uses for staff.
   const { error: profileError } = await admin.from('profiles').update({
-    username: client.name, active: true,
+    username: client.name, active: true, client_id: client.id,
   }).eq('id', created.user.id)
   if (profileError) {
     // The auth user exists now either way — report it so staff retries the
