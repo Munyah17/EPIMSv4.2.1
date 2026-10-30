@@ -5,7 +5,7 @@ import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
 import { useAuth } from '../contexts/AuthContext'
 import { supabase } from '../lib/supabase'
-import { notifyClientRegistered, notifyPolicyRegistered, notifyRegistrationFailed } from '../lib/signupNotifications'
+import { notifyClientRegistered, notifyPolicyRegistered, notifyRegistrationFailed, resendClientRegistrationSms, resendClientRegistrationEmail } from '../lib/signupNotifications'
 import { notifyPhone, serverReachable } from '../lib/notify'
 import { getSmsRecipientsForEvent, sendSystemEmail } from '../lib/mailService'
 import { getPolicyReportPdfBase64 } from '../lib/exportUtils'
@@ -334,17 +334,54 @@ export default function Clients({ showToast }: Props) {
     setBlockedPolicies([])
   }
 
-  const bulkSMS = () => {
-    if (selected.size === 0) { showToast('warning', 'Select clients first.'); return }
-    showToast('success', `SMS sent to ${selected.size} client(s).`)
+  /**
+   * Selected clients each get their OWN registration confirmation again —
+   * the same text/email they received at signup, re-sent on the channel
+   * the button names. The old version only toasted "sent" and fired
+   * nothing, so these now report real outcomes and keep the selection on
+   * failure so a retry hits the same set.
+   */
+  const [resending, setResending] = useState<'sms' | 'email' | null>(null)
+
+  const resendRegistration = async (channel: 'sms' | 'email') => {
+    const targets = clients.filter(c => selected.has(c.id))
+    if (targets.length === 0) { showToast('warning', 'Select clients first.'); return }
+    setResending(channel)
+
+    const send = channel === 'sms' ? resendClientRegistrationSms : resendClientRegistrationEmail
+    const hasContact = channel === 'sms' ? (c: Client) => !!c.phone?.trim() : (c: Client) => !!c.email?.trim()
+    const missingField = channel === 'sms' ? 'phone number' : 'email'
+
+    let sent = 0, missing = 0
+    const failed: string[] = []
+    for (const c of targets) {
+      if (!hasContact(c)) { missing++; continue }
+      if ((await send(c)).ok) sent++
+      else failed.push(c.name)
+    }
+    setResending(null)
+
+    const label = channel === 'sms' ? 'SMS' : 'email'
+    const parts = [
+      sent > 0 && `sent to ${sent}`,
+      missing > 0 && `${missing} had no ${missingField} on record`,
+      failed.length > 0 && `failed for ${failed.length} (${failed.slice(0, 3).join(', ')}${failed.length > 3 ? ', …' : ''})`,
+    ].filter(Boolean)
+
+    if (failed.length > 0) {
+      showToast('error', `Registration ${label}: ${parts.join('; ')}.`)
+      return
+    }
+    if (sent === 0) {
+      showToast('warning', `No registration ${label} went out — ${parts.join('; ') || 'nothing to send'}.`)
+      return
+    }
+    showToast('success', `Registration ${label} ${parts.join('; ')}.`)
     setSelected(new Set())
   }
 
-  const bulkEmail = () => {
-    if (selected.size === 0) { showToast('warning', 'Select clients first.'); return }
-    showToast('success', `Email sent to ${selected.size} client(s).`)
-    setSelected(new Set())
-  }
+  const bulkSMS = () => void resendRegistration('sms')
+  const bulkEmail = () => void resendRegistration('email')
 
   return (
     <div className="panel">
@@ -358,8 +395,8 @@ export default function Clients({ showToast }: Props) {
           />
           {selected.size > 0 && (
             <>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={bulkSMS}>📱 SMS ({selected.size})</button>
-              <button type="button" className="btn btn-ghost btn-sm" onClick={bulkEmail}>✉ Email ({selected.size})</button>
+              <button type="button" className="btn btn-ghost btn-sm" disabled={resending !== null} onClick={bulkSMS}>{resending === 'sms' ? 'Sending…' : `📱 SMS (${selected.size})`}</button>
+              <button type="button" className="btn btn-ghost btn-sm" disabled={resending !== null} onClick={bulkEmail}>{resending === 'email' ? 'Sending…' : `✉ Email (${selected.size})`}</button>
             </>
           )}
         </div>

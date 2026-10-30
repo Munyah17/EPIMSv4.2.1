@@ -80,12 +80,30 @@ export async function notifyRegistrationFailed(what: string, detail: string): Pr
   }).catch(() => { /**/ })
 }
 
-export async function notifyClientRegistered(client: Client, registeredBy?: string): Promise<void> {
-  const cfg = getNotifSettings()
-  const text = await resolveSmsText(supabase, 'client_registered', {
+/** The client's own registration text — one helper so an automatic send
+ *  and a staff-triggered resend can never drift into different wording. */
+async function clientRegistrationText(client: Client): Promise<string> {
+  return resolveSmsText(supabase, 'client_registered', {
     vars: { clientName: client.name },
     fallback: clientRegisteredSms(client.name, client.phone),
   })
+}
+
+function clientWelcomeEmailBody(client: Client, signature: string): string {
+  return `Dear ${client.name},
+
+Your details are on file with ${COMPANY_NAME}.
+
+Name:        ${client.name}
+National ID: ${client.nationalId || 'not given'}
+Phone:       ${client.phone || 'not given'}
+
+Please note this signup does not itself put any cover in place. One of our agents will contact you to arrange a policy suited to you.${signature ? `\n\n---\n${signature}` : ''}`
+}
+
+export async function notifyClientRegistered(client: Client, registeredBy?: string): Promise<void> {
+  const cfg = getNotifSettings()
+  const text = await clientRegistrationText(client)
 
   await textClientOnRegistration([client.phone], text, undefined, cfg.registrationClientSmsPaused)
 
@@ -94,20 +112,40 @@ export async function notifyClientRegistered(client: Client, registeredBy?: stri
       to: client.email,
       subject: `Welcome to ${COMPANY_NAME}`,
       from: MAILBOXES.noreply,
-      body: `Dear ${client.name},
-
-Your details are on file with ${COMPANY_NAME}.
-
-Name:        ${client.name}
-National ID: ${client.nationalId || 'not given'}
-Phone:       ${client.phone || 'not given'}
-
-Please note this signup does not itself put any cover in place. One of our agents will contact you to arrange a policy suited to you.${cfg.signature ? `\n\n---\n${cfg.signature}` : ''}`,
+      body: clientWelcomeEmailBody(client, cfg.signature),
     }).catch(() => { /**/ })
   }
 
   const alert = `${text}${registeredBy ? ` by ${registeredBy}` : ''}`
   await textOffice(await getSmsRecipientsForEvent('registration'), '', alert, { event: 'registration' })
+}
+
+/**
+ * Staff re-sending a client's own registration confirmation, from
+ * Clients → SMS / Email. Same wording the automatic send produced —
+ * a resend that reads differently invites "that's not what the first
+ * one said" disputes.
+ *
+ * A deliberate staff click ignores the registration pause: that switch
+ * stops the AUTOMATIC text, not a human asking for it to go out again.
+ * The outcome is reported back to the caller (and into notification_log
+ * by the senders themselves) so the button answers honestly.
+ */
+export async function resendClientRegistrationSms(client: Client): Promise<{ ok: boolean; error?: string }> {
+  if (!client.phone?.trim()) return { ok: false, error: 'no phone number on the record' }
+  const res = await sendSms(client.phone, await clientRegistrationText(client), { event: 'registration' })
+  return res.success ? { ok: true } : { ok: false, error: res.error ?? 'send failed' }
+}
+
+export async function resendClientRegistrationEmail(client: Client): Promise<{ ok: boolean; error?: string }> {
+  if (!client.email?.trim()) return { ok: false, error: 'no email on the record' }
+  const res = await sendEmail({
+    to: client.email,
+    subject: `Welcome to ${COMPANY_NAME}`,
+    from: MAILBOXES.noreply,
+    body: clientWelcomeEmailBody(client, getNotifSettings().signature),
+  })
+  return res.delivered ? { ok: true } : { ok: false, error: res.error ?? 'send failed' }
 }
 
 /** An organisation registered for group/corporate cover — the company's

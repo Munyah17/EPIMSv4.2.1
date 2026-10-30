@@ -7,6 +7,7 @@
 import { VercelRequest, VercelResponse } from '@vercel/node'
 import { serviceClient, requireSession } from './_lib/sessionAuth'
 import { auditLog } from './_lib/audit'
+import { isZwNationalId, isZwPhone, normalizeNationalId } from './_lib/zwFormats.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -48,8 +49,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     changes.email = { old: current.email, new: updates.email }
   }
   if (updates.phone !== undefined && updates.phone !== current.phone) {
-    row.phone = updates.phone
-    changes.phone = { old: current.phone, new: updates.phone }
+    // Same rule the modal enforces — the endpoint must not be a backdoor
+    // around the format check.
+    const phone = String(updates.phone).trim()
+    if (!isZwPhone(phone)) {
+      return res.status(400).json({ error: 'phone is not a valid Zimbabwean number — +263 followed by 9 digits, or 10 digits starting with 0.' })
+    }
+    row.phone = phone
+    changes.phone = { old: current.phone, new: phone }
   }
   if (updates.address !== undefined && updates.address !== current.address) {
     row.address = updates.address
@@ -72,8 +79,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     changes.dob = { old: current.dob, new: updates.dob }
   }
   if (updates.nationalId !== undefined && updates.nationalId !== current.nationalId) {
-    row.national_id = updates.nationalId
-    changes.nationalId = { old: current.nationalId, new: updates.nationalId }
+    // Same rule the modal enforces — the endpoint must not be a backdoor
+    // around the format check.
+    const nid = normalizeNationalId(String(updates.nationalId))
+    if (nid && !isZwNationalId(nid)) {
+      return res.status(400).json({ error: 'nationalId is not a valid Zimbabwean ID — 8–9 digits, a letter, then 2 digits (e.g. 632118532K12).' })
+    }
+    row.national_id = nid
+    changes.nationalId = { old: current.nationalId, new: nid }
   }
 
   if (Object.keys(row).length === 0) {

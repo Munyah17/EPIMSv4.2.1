@@ -34,6 +34,7 @@ export default function Profile({ showToast }: Props) {
   const [activeTab, setActiveTab] = useState<'info' | 'password' | 'notifications' | 'audit'>('info')
   const [name, setName] = useState(user?.name ?? '')
   const [phone, setPhone] = useState(user?.phone ?? '')
+  const [phoneAttempted, setPhoneAttempted] = useState(false)
   const [savingInfo, setSavingInfo] = useState(false)
 
   const [newEmail, setNewEmail] = useState('')
@@ -83,6 +84,7 @@ export default function Profile({ showToast }: Props) {
   const saveInfo = async () => {
     if (!user) return
     if (!name.trim()) { showToast('warning', 'Full name cannot be empty.'); return }
+    setPhoneAttempted(true)
     if (phone.trim() && !isZwPhone(phone)) { showToast('warning', `Phone number format: ${PHONE_HINT}.`); return }
     setSavingInfo(true)
     try {
@@ -179,9 +181,12 @@ export default function Profile({ showToast }: Props) {
                     <input className="form-control" value={name} onChange={e => setName(e.target.value)} />
                   </div>
                 </div>
-                <div className="form-group">
+                <div className="form-group" style={phoneAttempted && phone.trim() && !isZwPhone(phone) ? { outline: '1px solid var(--danger)', borderRadius: 7, outlineOffset: 2 } : undefined}>
                   <label>Phone Number</label>
                   <PhoneInput value={phone} onChange={setPhone} />
+                  {phoneAttempted && phone.trim() && !isZwPhone(phone) && (
+                    <p style={{ fontSize: 11, color: 'var(--danger)', marginTop: 4 }}>{PHONE_HINT}.</p>
+                  )}
                 </div>
                 <div className="form-row">
                   <div className="form-group">

@@ -3201,7 +3201,7 @@ export const groupMembers = {
     const row = {
       group_id: input.groupId,
       full_name: fullName,
-      national_id: input.nationalId ?? null,
+      national_id: input.nationalId == null ? null : normalizeNationalId(input.nationalId),
       dob: input.dob || null,
       phone: input.phone ?? null,
       position: input.position ?? null,
@@ -3274,7 +3274,7 @@ export const agentProfiles = {
   async upsert(input: AgentProfile) {
     const row = {
       profile_id: input.profileId,
-      national_id: input.nationalId ?? null,
+      national_id: input.nationalId == null ? null : normalizeNationalId(input.nationalId),
       territory: input.territory ?? null,
       contract_start: input.contractStart || null,
       commission_pct: input.commissionPct ?? null,

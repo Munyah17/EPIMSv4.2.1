@@ -2,7 +2,7 @@ import type { Handler, Ctx } from '../types.js'
 import { sendText, sendButtons } from '../whatsapp.js'
 import { setState, patchNote, deleteSession } from '../store.js'
 import { getActiveProducts, policiesForClient, createClaim } from '../data.js'
-import { isFullName, isNationalId, parseDob, pickIndex, normalizeNationalId } from '../helpers.js'
+import { isFullName, isNationalId, isDependantId, parseDob, pickIndex, normalizeNationalId } from '../helpers.js'
 import { makeTail, startTail } from '../tail.js'
 import { coverLabel, isTobaccoFieldToFloor } from '../../coverBreakdown.js'
 
@@ -221,7 +221,7 @@ const depMenuSel: Handler = async (ctx) => {
 }
 
 const depRemoveId: Handler = async ({ input, phone, session, admin, contact }) => {
-  if (!isNationalId(input)) return sendText(phone, 'Please enter a valid national ID (e.g. 632118532K12).')
+  if (!isDependantId(input)) return sendText(phone, "Please enter the dependant's ID or birth record number.")
   const policies = await policiesForClient(admin, contact.client!.id)
   const found = policies.some(p => p.dependants.some(d => normalizeNationalId(String(d.nationalId ?? '')) === normalizeNationalId(input)))
   if (!found) return sendText(phone, "That dependant was not found on your policies (send 'exit' to cancel).")
@@ -232,12 +232,12 @@ const depRemoveId: Handler = async ({ input, phone, session, admin, contact }) =
 const depName: Handler = async ({ input, phone, session, admin }) => {
   if (!isFullName(input)) return sendText(phone, 'Please enter a valid full name.')
   await patchNote(admin, session, { depName: input.trim() })
-  await sendText(phone, "Enter the dependant's national ID (e.g. 083837373U23)")
+  await sendText(phone, "Enter the dependant's national ID or birth record number (e.g. 083837373U23)")
   return setState(admin, session, 'CDEP_ID')
 }
 
 const depId: Handler = async ({ input, phone, session, admin }) => {
-  if (!isNationalId(input)) return sendText(phone, 'Please enter a valid national ID (e.g. 632118532K12).')
+  if (!isDependantId(input)) return sendText(phone, "Please enter the dependant's ID or birth record number.")
   await patchNote(admin, session, { depNationalId: normalizeNationalId(input) })
   await sendButtons(phone, "Select the dependant's gender", [
     { id: 'male', title: 'Male' }, { id: 'female', title: 'Female' }, { id: 'other', title: 'Other' },

@@ -11,6 +11,11 @@ export { normalizeNationalId } from '../zwFormats.js'
 
 export const isFullName = (s: string) => s.trim().length >= 3 && /^[A-Za-z\s\-']+$/.test(s.trim())
 export const isNationalId = isZwNationalId
+/** A dependant's "ID" may be a birth record or passport number, not a
+ *  national ID — children have none. The portal accepts any non-empty
+ *  reference ("ID / Birth Record No."); the bot applies the same
+ *  leniency. The strict national-ID shape only binds policyholders. */
+export const isDependantId = (s: string) => { const v = s.trim(); return v.length >= 4 && v.length <= 40 }
 export const isEmail = (s: string) => /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(s.trim())
 export const isEcocashPhone = (s: string) => /^2637[0-9]{8}$/.test(s.trim()) || /^07[17][0-9]{6}$/.test(s.trim())
 
