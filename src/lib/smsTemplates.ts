@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { fetchAllRows } from './paged'
+import { fetchAllRows } from './paged.js'
 
 /**
  * Staff-editable SMS templates for automatic notifications.

@@ -5,8 +5,8 @@
  */
 
 import { VercelRequest, VercelResponse } from '@vercel/node'
-import { serviceClient, requireSession } from './_lib/sessionAuth'
-import { auditLog } from './_lib/audit'
+import { serviceClient, requireSession } from './_lib/sessionAuth.js'
+import { auditLog } from './_lib/audit.js'
 import { isZwNationalId, isZwPhone, normalizeNationalId } from './_lib/zwFormats.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

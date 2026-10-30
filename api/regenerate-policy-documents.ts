@@ -5,10 +5,10 @@
  */
 
 import { VercelRequest, VercelResponse } from '@vercel/node'
-import { serviceClient, requireSession } from './_lib/sessionAuth'
-import { auditLog } from './_lib/audit'
+import { serviceClient, requireSession } from './_lib/sessionAuth.js'
+import { auditLog } from './_lib/audit.js'
 import { fetchAllRows } from '../src/lib/paged.js'
-import { getPolicyReportPdfBase64 } from '../src/lib/exportUtils'
+import { getPolicyReportPdfBase64 } from '../src/lib/exportUtils.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {

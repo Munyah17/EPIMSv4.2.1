@@ -8,7 +8,7 @@
  * captures who, what, when, before/after values, and context.
  */
 
-import { serviceClient } from './sessionAuth'
+import { serviceClient } from './sessionAuth.js'
 import { fetchAllRows } from '../../src/lib/paged.js'
 
 export interface AuditLogEntry {

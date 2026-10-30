@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import crypto from 'crypto'
-import { generateTransactionId } from './_lib/transactionId'
+import { generateTransactionId } from './_lib/transactionId.js'
 import { dispatchNotification } from './_lib/notify.js'
 import { isTobaccoProduct, TOBACCO_SEASON } from './_lib/policyTerm.js'
 import { fetchAllRows } from '../src/lib/paged.js'

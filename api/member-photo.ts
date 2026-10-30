@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { serviceClient, requireSession } from './_lib/sessionAuth'
+import { serviceClient, requireSession } from './_lib/sessionAuth.js'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 /**
