@@ -9,7 +9,7 @@ import { cacheGet, cacheSet } from './offlineCache'
 import { hammingDistance, DUPLICATE_THRESHOLD } from './photoHash'
 import { policyBillablePremium, billableHeadCount } from './premium'
 import { toIsoDate } from './dateUtils'
-import { normalizeNationalId } from './validation'
+import { normalizeNationalId, isZwPhone, PHONE_HINT } from './validation'
 import { fetchAllRows } from './paged'
 import { toClient, toPolicy, date } from './rowMappers'
 import type { ExchangeRate } from './exchangeRate'
@@ -795,6 +795,9 @@ export const clients = {
   },
 
   async create(client: Omit<Client, 'id' | 'policyCount'>) {
+    // The format rule lives at the data layer too — a caller that skipped
+    // its own validation must not be able to store a bad number.
+    if (!isZwPhone(client.phone)) return { data: null, error: `Phone number: ${PHONE_HINT}.` }
     const row = {
       name: client.name, email: client.email, phone: client.phone,
       national_id: normalizeNationalId(client.nationalId), dob: client.dob || null,
@@ -850,6 +853,7 @@ export const clients = {
     if (updates.phone      !== undefined) {
       const phone = updates.phone.trim()
       if (!phone) return { data: null, error: 'Phone number is required.' }
+      if (!isZwPhone(phone)) return { data: null, error: `Phone number: ${PHONE_HINT}.` }
       row.phone = phone
     }
     if (updates.nationalId !== undefined) row.national_id = normalizeNationalId(updates.nationalId)
@@ -1777,6 +1781,7 @@ export const leads = {
   },
 
   async create(lead: Omit<Lead, 'id'>) {
+    if (!isZwPhone(lead.phone)) return { data: null, error: `Phone number: ${PHONE_HINT}.` }
     const row = {
       name: lead.name, email: lead.email ?? null, phone: lead.phone,
       source: lead.source, product_interest: lead.productInterest,
@@ -1855,6 +1860,11 @@ export const staff = {
   // only "succeeds" into localStorage looks fine in the moment but reverts
   // the next time real data loads, which is exactly what was reported.
   async update(id: string, updates: Partial<AppUser>) {
+    // Optional on the form, but a non-empty value must be a usable
+    // Zimbabwean number — same format rule the modals enforce.
+    if (updates.phone?.trim() && !isZwPhone(updates.phone)) {
+      return { data: null, error: `Phone number: ${PHONE_HINT}.` }
+    }
     const row: Record<string, unknown> = {}
     if (updates.name        !== undefined) row.name        = updates.name
     if (updates.username    !== undefined) row.username    = updates.username?.trim() || null
@@ -2987,6 +2997,8 @@ export const groups = {
   async create(input: Omit<Group, 'id' | 'memberCount' | 'createdAt' | 'active'>) {
     const name = input.name?.trim()
     if (!name) return { data: null, error: 'A group name is required.' }
+    if (input.orgPhone?.trim() && !isZwPhone(input.orgPhone)) return { data: null, error: `Organisation phone: ${PHONE_HINT}.` }
+    if (input.contactPhone?.trim() && !isZwPhone(input.contactPhone)) return { data: null, error: `Representative phone: ${PHONE_HINT}.` }
     const row = {
       name,
       group_type: input.groupType,
@@ -3032,6 +3044,8 @@ export const groups = {
     if (updates.groupType !== undefined && updates.groupType !== 'other') row.custom_type = null
     else if (updates.customType !== undefined)                          row.custom_type = updates.customType?.trim() || null
     if (updates.description !== undefined)         row.description        = updates.description ?? null
+    if (updates.orgPhone?.trim() && !isZwPhone(updates.orgPhone)) return { data: null, error: `Organisation phone: ${PHONE_HINT}.` }
+    if (updates.contactPhone?.trim() && !isZwPhone(updates.contactPhone)) return { data: null, error: `Representative phone: ${PHONE_HINT}.` }
     if (updates.orgPhone !== undefined)            row.org_phone          = updates.orgPhone ?? null
     if (updates.orgEmail !== undefined)            row.org_email          = updates.orgEmail ?? null
     if (updates.contactName !== undefined)         row.contact_name        = updates.contactName ?? null
@@ -3136,6 +3150,7 @@ export const groupMembers = {
   async add(input: Omit<GroupMember, 'id' | 'createdAt' | 'status'>) {
     const fullName = input.fullName?.trim()
     if (!fullName) return { data: null, error: 'A member name is required.' }
+    if (input.phone?.trim() && !isZwPhone(input.phone)) return { data: null, error: `Member phone: ${PHONE_HINT}.` }
     const row = {
       group_id: input.groupId,
       full_name: fullName,
@@ -3162,6 +3177,7 @@ export const groupMembers = {
     if (updates.fullName !== undefined)   row.full_name   = updates.fullName
     if (updates.nationalId !== undefined) row.national_id = updates.nationalId == null ? null : normalizeNationalId(updates.nationalId)
     if (updates.dob !== undefined)        row.dob         = updates.dob || null
+    if (updates.phone?.trim() && !isZwPhone(updates.phone)) return { data: null, error: `Member phone: ${PHONE_HINT}.` }
     if (updates.phone !== undefined)      row.phone       = updates.phone ?? null
     if (updates.position !== undefined)   row.position    = updates.position ?? null
     if (updates.memberNo !== undefined)   row.member_no   = updates.memberNo ?? null
@@ -3210,6 +3226,9 @@ export const agentProfiles = {
   },
 
   async upsert(input: AgentProfile) {
+    if (input.ecocashNumber?.trim() && !isZwPhone(input.ecocashNumber)) {
+      return { data: null, error: `EcoCash number: ${PHONE_HINT}.` }
+    }
     const row = {
       profile_id: input.profileId,
       national_id: input.nationalId == null ? null : normalizeNationalId(input.nationalId),
@@ -3774,6 +3793,7 @@ export const marketingContacts = {
   },
 
   async create(contact: Omit<MarketingContact, 'id' | 'createdByName' | 'createdAt' | 'updatedAt' | 'normalizedPhone'>) {
+    if (!isZwPhone(contact.phone)) return { data: null, error: `Phone number: ${PHONE_HINT}.` }
     const normalized = normalizeMsisdn(contact.phone)
     const { data: { session } } = await supabase.auth.getSession()
     const row = {
@@ -3801,7 +3821,10 @@ export const marketingContacts = {
   async update(id: string, updates: Partial<MarketingContact>) {
     const row: Record<string, unknown> = {}
     if (updates.name) row.name = updates.name
-    if (updates.phone) { row.phone = updates.phone; row.normalized_phone = normalizeMsisdn(updates.phone) }
+    if (updates.phone) {
+      if (!isZwPhone(updates.phone)) return { data: null, error: `Phone number: ${PHONE_HINT}.` }
+      row.phone = updates.phone; row.normalized_phone = normalizeMsisdn(updates.phone)
+    }
     if (updates.email !== undefined) row.email = updates.email || null
     if (updates.insuranceInterest !== undefined) row.insurance_interest = updates.insuranceInterest || null
     if (updates.source !== undefined) row.source = updates.source || null
@@ -3830,6 +3853,13 @@ export const marketingContacts = {
     const errors: string[] = []
 
     for (const contact of contacts) {
+      // A bad number in the file skips that row, it never lands in the
+      // table and never reaches the send list to fail a campaign.
+      if (!isZwPhone(contact.phone)) {
+        results.errors++
+        errors.push(`${contact.name}: ${contact.phone} — ${PHONE_HINT}`)
+        continue
+      }
       const normalized = normalizeMsisdn(contact.phone)
       const row = {
         name: contact.name,
