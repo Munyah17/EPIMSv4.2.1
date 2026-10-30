@@ -1,5 +1,5 @@
 import type { Dependant, Policy } from '../types'
-import { premiumPeriodLabel } from './productUtils'
+import { premiumPeriodLabel } from './productUtils.js'
 
 /**
  * What a policy actually costs to run.

@@ -9,7 +9,7 @@ import { isStale, rateAgeLabel, type ExchangeRate } from '../lib/exchangeRate'
 import { health } from '../lib/health'
 import { runSystemCheck, type SystemCheckResult } from '../lib/aiService'
 import { supabase } from '../lib/supabase'
-import { isGatewayFlaggedDown, getGatewayWatchStatus, pingSmsGateway, sendSms, SMS_GATEWAY_EVENT } from '../lib/smsService'
+import { isGatewayFlaggedDown, getGatewayWatchStatus, pingSmsGateway, sendSms, SMS_GATEWAY_EVENT, restartSmsGateway, isSmsSafeMode, setSmsSafeMode, getSmsOutboxCount } from '../lib/smsService'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -72,14 +72,59 @@ export default function Dashboard({ showToast, setActivePanel }: Props) {
   const [smsTestNumber, setSmsTestNumber] = useState('')
   const [smsTestMessage, setSmsTestMessage] = useState('')
   const [smsTestSending, setSmsTestSending] = useState(false)
+  const [smsRestarting, setSmsRestarting] = useState(false)
+  const [smsSafeMode, setSmsSafeModeState] = useState(isSmsSafeMode())
+  const [smsOutboxCount, setSmsOutboxCount] = useState(getSmsOutboxCount())
   useEffect(() => {
     const onStatus = (e: Event) => {
       setGatewayDown((e as CustomEvent<{ down: boolean; source?: string; reason?: string }>).detail)
       setGatewayStatus(getGatewayWatchStatus())
+      // A live probe auto-exits Safe Mode — re-read it on every check so
+      // the pill disappears the moment the gateway answers again.
+      setSmsSafeModeState(isSmsSafeMode())
+      setSmsOutboxCount(getSmsOutboxCount())
     }
     window.addEventListener(SMS_GATEWAY_EVENT, onStatus)
     return () => window.removeEventListener(SMS_GATEWAY_EVENT, onStatus)
   }, [])
+
+  /**
+   * "Restart the SMS server" — there is no process to bounce on a
+   * serverless stack, so the button does the real equivalent: wipes the
+   * outage flag and failure streak, probes the gateway live (warming the
+   * function on the way), flushes queued texts, and stamps the SMS rows
+   * in notification_log dismissed so the error board clears with the
+   * restart. If the probe still fails the banner stays honestly up.
+   */
+  const handleRestartSms = async () => {
+    setSmsRestarting(true)
+    try {
+      const ping = await restartSmsGateway()
+      setGatewayStatus(getGatewayWatchStatus())
+      await db.notificationLog.dismissFailures('sms')
+      setNotifyFails(prev => prev.filter(f => f.channel !== 'sms'))
+      setSmsOutboxCount(getSmsOutboxCount())
+      setSmsSafeModeState(isSmsSafeMode())
+      if (ping.up) {
+        showToast('success', `SMS service restarted — the gateway is answering. ${ping.detail}`)
+      } else {
+        showToast('error', `Restart ran, but the gateway still isn't answering: ${ping.detail}`)
+      }
+    } finally {
+      setSmsRestarting(false)
+    }
+  }
+
+  /** Desperate-times switch: sends skip the broken primary route and go
+   *  through the backup sender — the last path that still delivered.
+   *  It ends itself when a probe confirms recovery. */
+  const handleSafeMode = (on: boolean) => {
+    setSmsSafeMode(on)
+    setSmsSafeModeState(on)
+    showToast(on ? 'warning' : 'info', on
+      ? 'SMS Safe Mode ON — texts go via the backup sender now; anything that still fails queues and retries automatically. It switches off when the gateway recovers.'
+      : 'SMS Safe Mode off — back to the normal route.')
+  }
 
   /** On-demand proof + diagnosis — the send goes out over the real
    *  pipeline, and a failure is followed by a gateway ping so the answer
@@ -509,7 +554,24 @@ export default function Dashboard({ showToast, setActivePanel }: Props) {
         }}>
           <div className="card-header">
             <h3 className="card-title">📱 SMS Gateway — Afrosoft</h3>
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <button type="button" className="btn btn-primary btn-sm" disabled={smsRestarting}
+                onClick={() => void handleRestartSms()}
+                title="Reset the gateway watch, probe Afrosoft now, flush queued texts and clear SMS errors">
+                {smsRestarting ? 'Restarting…' : '🔄 Restart SMS Server'}
+              </button>
+              {smsSafeMode ? (
+                <button type="button" className="btn btn-ghost btn-sm" style={{ color: '#92400E', borderColor: '#F59E0B' }}
+                  onClick={() => handleSafeMode(false)}
+                  title="Leave Safe Mode — sends return to the normal route">
+                  🛟 Exit Safe Mode
+                </button>
+              ) : (
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => handleSafeMode(true)}
+                  title="Desperate times: send everything through the backup sender and queue failures — the last working behaviour. Ends itself when the gateway recovers.">
+                  Safe Mode
+                </button>
+              )}
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setActivePanel('mass_messaging')}>Mass Messaging →</button>
               <button type="button" className="btn btn-ghost btn-sm" onClick={() => setActivePanel('system_health')}>System Health →</button>
             </div>
@@ -524,13 +586,19 @@ export default function Dashboard({ showToast, setActivePanel }: Props) {
                 fontSize: 17, fontWeight: 800, letterSpacing: 0.3,
                 color: gatewayStatus.state === 'up' ? '#065f46' : gatewayStatus.state === 'down' ? '#991B1B' : 'var(--muted)',
               }}>
-                {gatewayStatus.state === 'up' ? 'OPERATIONAL — TEXT MESSAGES DELIVERING'
+                {smsSafeMode ? 'SAFE MODE — SENDING VIA THE BACKUP ROUTE'
+                  : gatewayStatus.state === 'up' ? 'OPERATIONAL — TEXT MESSAGES DELIVERING'
                   : gatewayStatus.state === 'down'
                     ? (gatewayStatus.source === 'afrosoft' ? 'DOWN — AFROSOFT CANNOT DELIVER TEXTS' : 'PROBLEM ON OUR SIDE — NOT AFROSOFT')
                     : gatewayStatus.state === 'dev'
                       ? 'DEV SERVER — TEXTS GO OUT FROM THE LIVE PORTAL'
                       : 'CHECKING…'}
               </div>
+              {smsSafeMode && (
+                <div style={{ fontSize: 11, color: '#92400E', marginTop: 2 }}>
+                  The primary route is being skipped — texts go out via the backup sender, failures queue and retry. Ends automatically when the gateway answers again.
+                </div>
+              )}
               <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
                 {gatewayStatus.checkedAt
                   ? `Last probe ${timeAgo(new Date(gatewayStatus.checkedAt).toISOString())} · auto-checks every 5 min, no SMS spent`
@@ -540,8 +608,15 @@ export default function Dashboard({ showToast, setActivePanel }: Props) {
           </div>
 
           {(gatewayStatus.state === 'down' || gatewayStatus.state === 'dev') && gatewayStatus.detail && (
-            <div className={`info-banner ${gatewayStatus.state === 'dev' ? 'info-banner-warning' : 'info-banner-danger'}`} style={{ marginBottom: 14, fontSize: 12 }}>
-              {gatewayStatus.detail}
+            <div className={`info-banner ${gatewayStatus.state === 'dev' ? 'info-banner-warning' : 'info-banner-danger'}`} style={{ marginBottom: 14, fontSize: 12, display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+              <span style={{ flex: 1 }}>{gatewayStatus.detail}</span>
+              {gatewayStatus.state === 'down' && !smsSafeMode && (
+                <button type="button" className="btn btn-ghost btn-sm" style={{ flexShrink: 0 }}
+                  onClick={() => handleSafeMode(true)}
+                  title="Send everything through the backup sender until the gateway recovers">
+                  Still down? Try Safe Mode
+                </button>
+              )}
             </div>
           )}
 
@@ -553,6 +628,7 @@ export default function Dashboard({ showToast, setActivePanel }: Props) {
             <span>Last send: <strong style={{ color: healthSnap.smsLastOk === false ? 'var(--danger)' : 'var(--text)' }}>
               {healthSnap.smsLastOk === null || healthSnap.smsLastOk === undefined ? 'none yet' : healthSnap.smsLastOk ? 'delivered ✓' : 'failed ✗'}
             </strong></span>
+            <span>Queued texts: <strong style={{ color: smsOutboxCount > 0 ? '#92400E' : 'var(--text)' }}>{smsOutboxCount === 0 ? 'none' : `${smsOutboxCount} retrying`}</strong></span>
           </div>
           {healthSnap.smsLastOk === false && healthSnap.smsLastDetail && (
             <div style={{ fontSize: 12, color: 'var(--danger)', marginTop: -8, marginBottom: 14 }}>

@@ -314,7 +314,13 @@ export async function sendBulkSms(numbers: string[], message: string, ctx?: SmsC
   }
 
   const started = Date.now()
-  const result = await callAfrosoft(valid, message)
+  // Safe Mode: the primary route is the broken piece — bypass it and
+  // send every number through the /api/notify backup, the last path
+  // that still worked. The existing fallback block below does the rest
+  // (notify send → outbox queue on failure) unchanged.
+  const result = isSmsSafeMode()
+    ? ({ ok: false, error: 'Safe Mode active — primary route bypassed' } as const)
+    : await callAfrosoft(valid, message)
 
   if (!result.ok) {
     // Second route before calling it dead: /api/notify's single-channel
@@ -432,6 +438,28 @@ const GATEWAY_FLAG_KEY = 'tqfy_sms_gateway_down'
 const GATEWAY_WATCH_MS = 5 * 60 * 1000
 const CONSECUTIVE_FAILURES_THRESHOLD = 3 // Only announce down after 3 consecutive failed pings
 export const SMS_GATEWAY_EVENT = 'ims:sms-gateway-status'
+
+// ── Safe Mode ────────────────────────────────────────────────────────
+// "The last point where SMS notifications were functional" in practice:
+// when the primary route (/api/gateway-proxy) is the broken piece, every
+// send skips it and goes straight through the /api/notify backup sender
+// — the same fallback a normal send already tries second. Failures still
+// land in the outbox and keep retrying, so nothing is lost while the
+// gateway is ill. It turns itself off the moment a live probe confirms
+// the gateway answers again — "temporary" means it, not "until someone
+// remembers the switch".
+const SAFE_MODE_KEY = 'tqfy_sms_safe_mode'
+
+export function isSmsSafeMode(): boolean {
+  try { return !!localStorage.getItem(SAFE_MODE_KEY) } catch { return false }
+}
+
+export function setSmsSafeMode(on: boolean) {
+  try {
+    if (on) localStorage.setItem(SAFE_MODE_KEY, new Date().toISOString())
+    else localStorage.removeItem(SAFE_MODE_KEY)
+  } catch { /**/ }
+}
 
 export interface GatewayPing {
   up: boolean
@@ -580,6 +608,9 @@ async function checkGateway() {
     if (lastGatewayState === 'down') {
       try { localStorage.removeItem(GATEWAY_FLAG_KEY) } catch { /**/ }
     }
+    // Safe Mode exists for the outage — a live probe means the primary
+    // route answers again, so normal sends resume on their own.
+    if (isSmsSafeMode()) setSmsSafeMode(false)
   }
   lastGatewayState = state
   // Every check updates the dashboard row — the banner itself only
@@ -595,6 +626,29 @@ export function startGatewayWatch() {
   gatewayWatchStarted = true
   void checkGateway()
   setInterval(() => { void checkGateway() }, GATEWAY_WATCH_MS)
+}
+
+/**
+ * "Restart the SMS server" on a serverless stack: there is no process to
+ * bounce, so a restart is a state reset plus a fresh probe —
+ *  1. the outage flag and the consecutive-failure streak are wiped, so a
+ *     stale "down" can't keep the banner up after the fault has cleared;
+ *  2. checkGateway() runs NOW instead of on the 5-minute tick — the ping
+ *     doubles as the cold-start warm-up for the serverless function;
+ *  3. the outbox flushes immediately, so queued texts retry this second.
+ * What it is NOT: a pretend fix. If the probe still fails, the caller
+ * gets the real result and the banner stays honestly up.
+ */
+export async function restartSmsGateway(): Promise<GatewayPing> {
+  consecutiveFailures = 0
+  lastGatewayState = null
+  try { localStorage.removeItem(GATEWAY_FLAG_KEY) } catch { /**/ }
+  await checkGateway()
+  void flushOutbox()
+  const last = lastGatewayCheck
+  return last
+    ? { up: last.up, source: last.source as GatewayPing['source'], detail: last.detail }
+    : { up: false, source: 'us', detail: 'No probe completed — check your connection.' }
 }
 
 // ── SMS outbox: failed sends retry until they land ───────────────────
@@ -642,9 +696,10 @@ async function flushOutbox() {
     }
     // Try the primary route, then the notify fallback — same order as a
     // live send, but the entry drops out only when one actually lands.
-    const primary = await callAfrosoft([entry.to], entry.message)
-    let sent = primary.ok && /"error-code"\s*:\s*"000"/.test(primary.data ? JSON.stringify(primary.data) : '')
-    if (primary.ok && !sent) {
+    // In Safe Mode the primary hop is skipped: it IS the broken piece.
+    const primary = isSmsSafeMode() ? null : await callAfrosoft([entry.to], entry.message)
+    let sent = !!primary?.ok && /"error-code"\s*:\s*"000"/.test(JSON.stringify(primary.data))
+    if (primary?.ok && !sent) {
       const detail = primary.data['sms-response-details']?.[0]
       sent = (detail?.['sent-sms-details'] ?? []).some(s => msisdnKey(s['mobile-no'] ?? '') === msisdnKey(entry.to))
     }

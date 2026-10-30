@@ -8,7 +8,8 @@ import { VercelRequest, VercelResponse } from '@vercel/node'
 import { serviceClient, requireSession } from './_lib/sessionAuth.js'
 import { auditLog } from './_lib/audit.js'
 import { fetchAllRows } from '../src/lib/paged.js'
-import { getPolicyReportPdfBase64 } from '../src/lib/exportUtils.js'
+import { toPolicy, toClient } from '../src/lib/rowMappers.js'
+import { getPolicyReportPdfBase64, type LetterheadContact } from '../src/lib/policyReportPdf.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -54,8 +55,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     () => {
       let query = admin
         .from('policies')
-        .select('*, clients(*)')
-      if (category) query = query.eq('category', category)
+        .select('*, clients!client_id(*), products!inner(id, name, category, excess), profiles!agent_id(id, name), groups!group_id(id, name)')
+      // Category lives on products, not policies — eq('category') on the
+      // policy row would error out on a column that does not exist.
+      if (category) query = query.eq('products.category', category)
       if (status) query = query.eq('status', status)
       if (startDate) query = query.gte('created_at', startDate)
       if (endDate) query = query.lte('created_at', endDate)
@@ -71,6 +74,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!policies || policies.length === 0) {
     return res.status(404).json({ error: 'No policies found matching criteria.' })
   }
+
+  // The letterhead's Head Office block comes from the shared notification
+  // settings (same source getNotifSettings() caches in the browser).
+  const { data: notifRow } = await admin
+    .from('app_settings')
+    .select('value')
+    .eq('key', 'notif_settings')
+    .maybeSingle()
+  const cfg = (notifRow?.value ?? {}) as LetterheadContact
 
   const results = {
     total: policies.length,
@@ -92,11 +104,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         continue
       }
 
-      // Determine category
-      const category = policy.category || 'general'
-      
+      // Category lives on the product, not the policy row — policies has
+      // no category column, so reading policy.category always fell back
+      // to 'general' and would render agriculture docs wrong.
+      const category = (policy.products as { category?: string } | undefined)?.category || 'general'
+
+      // The document builder reads the app's camelCase Policy/Client
+      // shapes — the raw row (policy_number, cover_amount, product_name)
+      // would print blanks. Same mapper db.ts uses everywhere else.
+      const mappedPolicy = toPolicy(policy)
+      const mappedClient = toClient(client)
+
       // Generate new PDF
-      const pdfBase64 = await getPolicyReportPdfBase64(policy, client, category)
+      const pdfBase64 = await getPolicyReportPdfBase64(mappedPolicy, mappedClient, category, cfg)
       
       if (!dryRun) {
         // Convert base64 to buffer and upload directly to Supabase storage

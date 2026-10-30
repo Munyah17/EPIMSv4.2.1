@@ -11,6 +11,7 @@ import { policyBillablePremium, billableHeadCount } from './premium'
 import { toIsoDate } from './dateUtils'
 import { normalizeNationalId } from './validation'
 import { fetchAllRows } from './paged'
+import { toClient, toPolicy, date } from './rowMappers'
 import type { ExchangeRate } from './exchangeRate'
 import type {
   AppUser, Client, Product, ClientSafeProduct, Policy, Claim, Payment,
@@ -27,7 +28,6 @@ import type {
 import { STAFF_ROLES } from '../types'
 
 // ── helpers ───────────────────────────────────────────────────────
-function date(v: string | null | undefined): string { return v?.split('T')[0] ?? '' }
 // uid() used to mint ids for records invented in browser storage when a
 // write failed. Writes no longer do that, so nothing needs a fake id.
 
@@ -197,29 +197,6 @@ function toCustomRole(r: Record<string, unknown>): CustomRole {
   }
 }
 
-function toClient(r: Record<string, unknown>): Client {
-  return {
-    id:          r.id as string,
-    name:        r.name as string,
-    email:       (r.email as string) ?? '',
-    phone:       r.phone as string,
-    nationalId:  r.national_id as string,
-    dob:         date(r.dob as string),
-    gender:      (r.gender as string | null) ?? undefined,
-    address:     (r.address as string) ?? '',
-    occupation:  r.occupation as string | undefined,
-    insurer:     (r.insurer as Client['insurer']) ?? undefined,
-    insurerProvisional: (r.insurer_provisional as boolean) ?? false,
-    agentId:     (r.agent_id as string | null) ?? undefined,
-    agentName:   (r.agent as { name?: string } | null)?.name ?? undefined,
-    capturedById:   ((r.capturer as { id?: string } | null)?.id ?? r.captured_by) as string | undefined,
-    capturedByName: (r.capturer as { name?: string } | null)?.name ?? undefined,
-    createdAt:   date(r.created_at as string),
-    policyCount: (r.policy_count as number) ?? 0,
-    status:      r.status as Client['status'],
-  }
-}
-
 /** Shared by toProduct and toClientSafeProduct — every column the client-safe
  *  view actually carries. Kept as one function so the two never drift apart
  *  on the fields both are allowed to see. */
@@ -246,49 +223,6 @@ function toProduct(r: Record<string, unknown>): Product {
     ...toClientSafeProduct(r),
     commissionPct:     r.commission_pct as number,
     policiesCount:     (r.policies_count as number) ?? 0,
-  }
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function toPolicy(r: any): Policy {
-  return {
-    id:              r.id,
-    policyNumber:    r.policy_number,
-    clientId:        r.clients?.id ?? r.client_id ?? '',
-    clientName:      r.clients?.name ?? '',
-    productId:       r.products?.id ?? r.product_id ?? '',
-    productName:     r.products?.name ?? '',
-    productCategory: r.products?.category ?? undefined,
-    excess:          r.products?.excess ?? undefined,
-    premium:         r.premium,
-    coverAmount:     r.cover_amount,
-    startDate:       date(r.start_date),
-    endDate:         date(r.end_date),
-    status:          r.status as PolicyStatus,
-    dependants:      r.dependants ?? [],
-    paymentMethod:   r.payment_method,
-    insurer:         r.insurer ?? undefined,
-    growerNumber:    r.grower_number ?? undefined,
-    gpsLat:          r.gps_lat ?? undefined,
-    gpsLng:          r.gps_lng ?? undefined,
-    agentId:         r.profiles?.id ?? r.agent_id,
-    agentName:       r.profiles?.name,
-    // The staff member who captured the policy — a different person from
-    // the agent/field officer who sourced the business.
-    capturedById:    r.capturer?.id ?? r.captured_by ?? undefined,
-    capturedByName:  r.capturer?.name ?? undefined,
-    groupId:         r.groups?.id ?? r.group_id ?? undefined,
-    groupName:       r.groups?.name ?? undefined,
-    coverScope:      (r.cover_scope as Policy['coverScope']) ?? 'individual',
-    teamActivity:    r.team_activity ?? undefined,
-    hasChronicIllness: r.has_chronic_illness ?? undefined,
-    chronicIllnessDetails: r.chronic_illness_details ?? undefined,
-    contractor:      r.contractor ?? undefined,
-    hectarage:       r.hectarage != null ? Number(r.hectarage) : undefined,
-    source:          r.source ?? undefined,
-    createdAt:       date(r.created_at),
-    nextPaymentDate: r.next_payment_date ? date(r.next_payment_date) : undefined,
-    lastPaymentDate: r.last_payment_date ? date(r.last_payment_date) : undefined,
   }
 }
 
@@ -2756,14 +2690,18 @@ export const notificationLog = {
   },
   /** Clear the banner: every undismissed failure is stamped, keeping
    *  the row's 'failed' truth for the delivery log. New failures after
-   *  this point still raise the banner — they're not dismissed. */
-  async dismissFailures(): Promise<{ error: string | null }> {
+   *  this point still raise the banner — they're not dismissed. A
+   *  channel argument scopes the clear (the SMS restart clears only
+   *  'sms' rows — an email failure shouldn't hide inside an SMS reset). */
+  async dismissFailures(channel?: string): Promise<{ error: string | null }> {
     try {
-      const { error } = await supabase
+      let q = supabase
         .from('notification_log')
         .update({ dismissed_at: new Date().toISOString() })
         .eq('status', 'failed')
         .is('dismissed_at', null)
+      if (channel) q = q.eq('channel', channel)
+      const { error } = await q
       return { error: error ? 'Could not clear the notifications.' : null }
     } catch { return { error: 'Could not clear the notifications.' } }
   },

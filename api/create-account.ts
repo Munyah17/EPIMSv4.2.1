@@ -115,7 +115,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     user_metadata: { name: body.name, role: body.role, department: body.department },
   })
   if (createError || !created.user) {
-    return res.status(400).json({ error: createError?.message ?? 'Failed to create user.' })
+    // "Already registered" answers nothing on its own — auth users include
+    // policyholder portal accounts, so the holder may be a client, not a
+    // colleague. Name whoever owns the email when we can.
+    const { data: holder } = await admin.from('profiles')
+      .select('name, role').eq('email', authEmail).limit(1).maybeSingle()
+    const who = holder ? ` It belongs to ${holder.name} (${String(holder.role ?? '').replace(/_/g, ' ')}).` : ''
+    return res.status(400).json({ error: `${createError?.message ?? 'Failed to create user.'}${who}` })
   }
 
   if (body.phone) {
@@ -137,7 +143,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   const { error: usernameError } = await admin.from('profiles').update(extra).eq('id', created.user.id)
   if (usernameError) {
-    return res.status(400).json({ error: usernameError.code === '23505' ? 'A user with that full name already exists — sign-in names must be unique.' : usernameError.message })
+    // Roll the account back: the auth user (and its cascade-deleting
+    // profile row) must not outlive a failed create. It used to stay
+    // behind — so every retry failed EARLIER, on the email, with a
+    // different "already exists", and the half-made account was never
+    // visible as the culprit. Deleting the auth user cascades to profiles.
+    await admin.auth.admin.deleteUser(created.user.id).catch(() => { /**/ })
+    if (usernameError.code === '23505') {
+      // The unique index spans EVERY profile's username — staff AND
+      // policyholder portal logins (client-portal-account.ts sets
+      // username = the client's name), so the holder may be a client
+      // who shares this person's name, not a captured colleague.
+      const pattern = username.replace(/[%_*]/g, '') || username
+      const { data: holder } = await admin.from('profiles')
+        .select('name, role').neq('id', created.user.id)
+        .ilike('username', pattern).limit(1).maybeSingle()
+      const who = holder ? ` It belongs to ${holder.name} (${String(holder.role ?? '').replace(/_/g, ' ')}).` : ''
+      return res.status(409).json({ error: `The sign-in name "${username}" is already taken.${who} Give this account a different sign-in name — e.g. add an initial.` })
+    }
+    return res.status(400).json({ error: usernameError.message })
   }
 
   const { data: profile } = await admin.from('profiles').select('*, custom_roles!profiles_custom_role_id_fkey(name)').eq('id', created.user.id).single()
