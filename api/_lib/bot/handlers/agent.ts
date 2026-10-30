@@ -101,10 +101,14 @@ const acEmail: Handler = async ({ input, phone, session, admin }) => {
 
 const acPhone: Handler = async ({ input, phone, session, admin }) => {
   const digits = input.replace(/\D/g, '')
-  if (!/^0?\d{9,12}$/.test(digits) && !/^263\d{9}$/.test(digits)) {
-    return sendText(phone, 'Please enter a valid phone number.')
+  // Reduce "263…", "+263…", "0…" and bare subscriber digits to the local
+  // 9-digit form — anything else is not a Zimbabwean number and is
+  // rejected rather than written to the client record.
+  const local = digits.startsWith('263') ? digits.slice(3) : digits.startsWith('0') ? digits.slice(1) : digits
+  if (!/^\d{9}$/.test(local)) {
+    return sendText(phone, 'Enter the number as 263XXXXXXXXX or 07XXXXXXXX — 9 digits after the prefix.')
   }
-  await patchNote(admin, session, { clientPhone: digits })
+  await patchNote(admin, session, { clientPhone: `+263${local}` })
   const products = await getActiveProducts(admin)
   if (!products.length) {
     await deleteSession(admin, session)

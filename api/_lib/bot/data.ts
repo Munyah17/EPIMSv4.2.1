@@ -164,8 +164,18 @@ async function nextPolicyNumber(admin: SupabaseClient, product: BotProduct): Pro
 export async function createClient(admin: SupabaseClient, c: {
   name: string; nationalId: string; phone: string; email?: string; dob?: string; gender?: string; agentId?: string
 }): Promise<BotClient> {
+  // One stored shape — "+263" + the 9-digit subscriber — the same format
+  // rule the portal and partner API enforce (see api/_lib/zwFormats.ts).
+  // A caller's own WhatsApp number arrives as "263…" digits, a typed
+  // number as "0…" or "+263…" — all reduce to the canonical form;
+  // anything that doesn't reduce is refused, never written.
+  const digits = c.phone.replace(/\D/g, '')
+  const local = digits.startsWith('263') ? digits.slice(3) : digits.startsWith('0') ? digits.slice(1) : digits
+  if (!/^\d{9}$/.test(local)) {
+    throw new Error(`'${c.phone}' is not a usable Zimbabwean number — +263 followed by 9 digits, or 10 digits starting with 0.`)
+  }
   const { data, error } = await admin.from('clients').insert({
-    name: c.name, national_id: c.nationalId, phone: c.phone,
+    name: c.name, national_id: c.nationalId, phone: `+263${local}`,
     email: c.email ?? '', dob: c.dob || null, gender: c.gender ?? null,
     address: '', status: 'active',
     agent_id: c.agentId ?? null,
