@@ -104,6 +104,10 @@ ALTER TABLE public.task_updates   ENABLE ROW LEVEL SECURITY;
 -- completing a milestone is expressed through task_milestones, not a
 -- direct task write — except marking a milestone-less task done, which
 -- the guard trigger limits to the status field alone.
+DROP POLICY IF EXISTS "tasks_staff_read"   ON public.tasks;
+DROP POLICY IF EXISTS "tasks_admin_insert" ON public.tasks;
+DROP POLICY IF EXISTS "tasks_update"       ON public.tasks;
+DROP POLICY IF EXISTS "tasks_admin_delete" ON public.tasks;
 CREATE POLICY "tasks_staff_read"    ON public.tasks FOR SELECT TO authenticated USING (is_staff());
 CREATE POLICY "tasks_admin_insert"  ON public.tasks FOR INSERT TO authenticated WITH CHECK (current_user_role() = 'super_admin');
 CREATE POLICY "tasks_update"        ON public.tasks FOR UPDATE TO authenticated
@@ -116,6 +120,11 @@ CREATE POLICY "tasks_admin_delete"  ON public.tasks FOR DELETE TO authenticated 
 CREATE OR REPLACE FUNCTION public.guard_task_update()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
+  -- Cascade writes (sync_task_progress rolling milestone ticks up into
+  -- progress/status/completed_at) are system writes, not user edits —
+  -- a client UPDATE always fires this trigger at depth 1, so >1 only
+  -- ever means "triggered by another trigger".
+  IF pg_trigger_depth() > 1 THEN RETURN NEW; END IF;
   IF public.current_user_role() = 'super_admin' THEN RETURN NEW; END IF;
   IF NEW.title        IS DISTINCT FROM OLD.title
      OR NEW.description  IS DISTINCT FROM OLD.description
@@ -137,6 +146,10 @@ CREATE TRIGGER tasks_update_guard
   BEFORE UPDATE ON public.tasks
   FOR EACH ROW EXECUTE FUNCTION public.guard_task_update();
 
+DROP POLICY IF EXISTS "milestones_staff_read"   ON public.task_milestones;
+DROP POLICY IF EXISTS "milestones_admin_write"  ON public.task_milestones;
+DROP POLICY IF EXISTS "milestones_tick"         ON public.task_milestones;
+DROP POLICY IF EXISTS "milestones_admin_delete" ON public.task_milestones;
 CREATE POLICY "milestones_staff_read"   ON public.task_milestones FOR SELECT TO authenticated USING (is_staff());
 CREATE POLICY "milestones_admin_write"  ON public.task_milestones FOR INSERT TO authenticated WITH CHECK (current_user_role() = 'super_admin');
 CREATE POLICY "milestones_tick"         ON public.task_milestones FOR UPDATE TO authenticated
@@ -188,6 +201,9 @@ CREATE TRIGGER milestones_progress_sync
   AFTER INSERT OR UPDATE OR DELETE ON public.task_milestones
   FOR EACH ROW EXECUTE FUNCTION public.sync_task_progress();
 
+DROP POLICY IF EXISTS "updates_staff_read"   ON public.task_updates;
+DROP POLICY IF EXISTS "updates_post"         ON public.task_updates;
+DROP POLICY IF EXISTS "updates_admin_delete" ON public.task_updates;
 CREATE POLICY "updates_staff_read"  ON public.task_updates FOR SELECT TO authenticated USING (is_staff());
 CREATE POLICY "updates_post"        ON public.task_updates FOR INSERT TO authenticated WITH CHECK (
   is_staff() AND (

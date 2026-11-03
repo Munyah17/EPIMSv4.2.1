@@ -100,7 +100,7 @@ async function fetchProfile(userId: string, email: string, metaFallback?: Record
       department: data.department ?? '',
       phone: data.phone ?? undefined,
       active: data.active ?? true,
-      permissions: data.permissions ?? [],
+      permissions: data.role === 'super_admin' ? ['all'] : data.permissions ?? [],
       customRoleId: data.custom_role_id ?? undefined,
       customRoleName: data.custom_roles?.name ?? undefined,
       lastLogin: data.last_login ?? undefined,
@@ -280,6 +280,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const hasPermission = useCallback((permission: string): boolean => {
     if (!user) return false
+    // Super admin bypasses every check by design — a divergent
+    // permissions snapshot (PermissionsModal edits, older accounts
+    // that predate the 'all' sentinel) must never lock them out.
+    if (user.role === 'super_admin') return true
     if (user.permissions.includes('all') || user.permissions.includes('all_except_super')) return true
     return user.permissions.includes(permission)
   }, [user])

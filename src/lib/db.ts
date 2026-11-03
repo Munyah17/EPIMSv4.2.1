@@ -1877,6 +1877,10 @@ export const staff = {
     if (updates.phone       !== undefined) row.phone       = updates.phone ?? null
     if (updates.active      !== undefined) row.active      = updates.active
     if (updates.permissions !== undefined) row.permissions = updates.permissions
+    // Promoting to super_admin always lands the 'all' sentinel — after
+    // the generic writes so an explicit permissions patch in the same
+    // call can't strip it again. The DB trigger enforces it too.
+    if (updates.role === 'super_admin') row.permissions = ['all']
     if (updates.customRoleId !== undefined) row.custom_role_id = updates.customRoleId || null
     const start = Date.now()
     const { data, error } = await supabase.from('profiles').update(row).eq('id', id).select('*, custom_roles!profiles_custom_role_id_fkey(name)').single()

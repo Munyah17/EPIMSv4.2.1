@@ -162,14 +162,15 @@ export default function Dashboard({ showToast, setActivePanel }: Props) {
 
   const { user } = useAuth()
 
-  // My assigned tasks — lands on every staff dashboard, live: the Tasks
-  // page and this card subscribe to the same realtime channel.
-  const [myTasks, setMyTasks] = useState<Task[]>([])
+  // Open team tasks on every staff dashboard — the assignee's own work
+  // floats to the top. Live: same realtime channel as the Tasks page.
+  const [openTasks, setOpenTasks] = useState<Task[]>([])
   useEffect(() => {
     if (!user?.id) return
     const loadTasks = () => db.tasks.list().then(({ data }) => {
-      setMyTasks((data ?? []).filter(t =>
-        t.assigneeId === user.id && (t.status === 'open' || t.status === 'in_progress')))
+      setOpenTasks((data ?? [])
+        .filter(t => t.status === 'open' || t.status === 'in_progress')
+        .sort((a, b) => Number(b.assigneeId === user.id) - Number(a.assigneeId === user.id)))
     })
     loadTasks()
     return db.subscribeToTable('tasks', loadTasks)
@@ -713,30 +714,35 @@ export default function Dashboard({ showToast, setActivePanel }: Props) {
 
         <div className="card">
           <div className="card-header">
-            <h3 className="card-title">My Tasks</h3>
+            <h3 className="card-title">Tasks</h3>
             <button type="button" className="btn btn-ghost btn-sm" onClick={() => setActivePanel('tasks')}>Open Tasks</button>
           </div>
-          {myTasks.length === 0 ? (
-            <div className="empty-state" style={{ padding: '14px 10px' }}>No tasks assigned to you.</div>
+          {openTasks.length === 0 ? (
+            <div className="empty-state" style={{ padding: '14px 10px' }}>No open tasks on the board.</div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {myTasks.slice(0, 5).map(t => {
+              {openTasks.slice(0, 5).map(t => {
                 const overdue = !!t.dueDate && t.dueDate < new Date().toISOString().slice(0, 10)
+                const mine = t.assigneeId === user?.id
                 return (
                   <div key={t.id} style={{ cursor: 'pointer' }} onClick={() => setActivePanel('tasks')}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
-                      <span style={{ fontSize: 12, fontWeight: 500 }}>{t.title}</span>
+                      <span style={{ fontSize: 12, fontWeight: 500 }}>
+                        {t.title}
+                        {mine && <span className="pill pill-caution" style={{ marginLeft: 6, fontSize: 9 }}>you</span>}
+                        <span style={{ fontSize: 10, fontWeight: 400, color: 'var(--muted)' }}> — {t.assigneeName || 'unassigned'}</span>
+                      </span>
                       <span style={{ fontSize: 10, whiteSpace: 'nowrap', color: overdue ? 'var(--danger)' : 'var(--muted)' }}>
                         {overdue ? 'overdue' : t.dueDate ? `due ${formatDate(t.dueDate)}` : ''}
                       </span>
                     </div>
                     <div style={{ height: 4, borderRadius: 2, marginTop: 4, background: 'var(--surface2, #E2E8F0)' }}>
-                      <div style={{ width: `${t.progress}%`, height: '100%', borderRadius: 2, background: 'var(--accent)', transition: 'width .3s' }} />
+                      <div style={{ width: `${t.progress}%`, height: '100%', borderRadius: 2, background: mine ? 'var(--success)' : 'var(--accent)', transition: 'width .3s' }} />
                     </div>
                   </div>
                 )
               })}
-              {myTasks.length > 5 && <div style={{ fontSize: 11, color: 'var(--muted)' }}>+{myTasks.length - 5} more — open Tasks</div>}
+              {openTasks.length > 5 && <div style={{ fontSize: 11, color: 'var(--muted)' }}>+{openTasks.length - 5} more — open Tasks</div>}
             </div>
           )}
         </div>
