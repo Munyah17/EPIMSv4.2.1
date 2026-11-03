@@ -525,6 +525,10 @@ export interface Invoice {
   issuedAt: string
   paidAt?: string
   createdBy?: string
+  /** What the invoice bills for — the description line on the PDF. */
+  notes?: string
+  /** Custom (non-policy) invoices bill a name with no client record. */
+  customerName?: string
 }
 
 // ── ACCOUNTING ──────────────────────────────────────────────────────
@@ -547,10 +551,37 @@ export interface Quotation {
   status: QuotationStatus
   validUntil?: string
   notes?: string
+  /** Everything a policy application for this product needs — captured on
+   *  the quote so →Policy converts instantly with no re-asking. Mirrors
+   *  NewPolicyModal's product-specific inputs (dependants, agriculture
+   *  fields, cover scope, contact details…). */
+  policyDetails?: QuotePolicyDetails
   createdBy?: string
   createdByName?: string
   createdAt: string
   updatedAt: string
+}
+
+/** The product-shaped answers a quotation stores so conversion to a
+ *  policy is one click, not a re-interview. Which fields apply depends
+ *  on the product's category — NewPolicyModal renders the same set. */
+export interface QuotePolicyDetails {
+  clientPhone?: string
+  clientEmail?: string
+  clientNationalId?: string
+  clientDob?: string
+  clientAddress?: string
+  clientOccupation?: string
+  paymentMethod?: PaymentMethod
+  dependants?: { name: string; relationship: string; dob?: string }[]
+  /** Agriculture (tobacco) product fields. */
+  growerNumber?: string
+  contractor?: string
+  hectarage?: string
+  /** Group / corporate cover. */
+  coverScope?: CoverScope
+  groupId?: string
+  agentId?: string
 }
 
 export type RequisitionStatus = 'pending' | 'approved' | 'rejected' | 'paid'
@@ -573,7 +604,57 @@ export interface Requisition {
   approvedAt?: string
   paidAt?: string
   notes?: string
+  /** Storage paths of the supporting files (invoice / PoP / receipt) —
+   *  'documents' bucket, requisitions/<id>/… . */
+  attachments?: string[]
   createdAt: string
+}
+
+// ── TASKS ───────────────────────────────────────────────────────────
+
+export type TaskPriority = 'low' | 'medium' | 'high' | 'urgent'
+export type TaskStatus = 'open' | 'in_progress' | 'completed' | 'cancelled'
+
+/** One milestone inside a task — the assignee ticks these as they land;
+ *  a DB trigger rolls the ticks up into the task's progress + status. */
+export interface TaskMilestone {
+  id: string
+  taskId: string
+  label: string
+  position: number
+  done: boolean
+  doneAt?: string
+  doneByName?: string
+}
+
+/** A live progress note on a task — the assignee posts updates the
+ *  Super Admin watches in real time. */
+export interface TaskUpdate {
+  id: string
+  taskId: string
+  authorId?: string
+  authorName: string
+  body: string
+  createdAt: string
+}
+
+/** A unit of work a Super Admin hands to one staff member. Milestones
+ *  define "done"; lead time = createdAt → completedAt. */
+export interface Task {
+  id: string
+  title: string
+  description: string
+  priority: TaskPriority
+  status: TaskStatus
+  assigneeId?: string
+  assigneeName: string
+  createdBy?: string
+  createdByName?: string
+  dueDate?: string
+  progress: number
+  completedAt?: string
+  createdAt: string
+  updatedAt: string
 }
 
 export type FloatEntryType = 'issue' | 'spend' | 'return'

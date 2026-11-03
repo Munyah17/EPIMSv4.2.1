@@ -51,29 +51,35 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   // second live Funeral plan from reaching the one-per-product index.
   const [clientPolicies, setClientPolicies] = useState<Array<{ productId: string; productName: string; policyNumber: string; status: string }>>([])
 
+  // The quotation's product-matched answers — captured on the quote so
+  // conversion asks nothing twice.
+  const qd = initialQuotation?.policyDetails
+
   // Client fields — a quotation without a client record seeds the
   // prospect's name into the new-client form.
   const [clientName, setClientName] = useState(initialClient ? '' : (initialQuotation?.clientName ?? ''))
-  const [clientPhone, setClientPhone] = useState('')
-  const [clientEmail, setClientEmail] = useState('')
-  const [clientNationalId, setClientNationalId] = useState('')
-  const [clientDob, setClientDob] = useState('')
-  const [clientAddress, setClientAddress] = useState('')
-  const [clientOccupation, setClientOccupation] = useState('')
+  const [clientPhone, setClientPhone] = useState(qd?.clientPhone ?? '')
+  const [clientEmail, setClientEmail] = useState(qd?.clientEmail ?? '')
+  const [clientNationalId, setClientNationalId] = useState(qd?.clientNationalId ?? '')
+  const [clientDob, setClientDob] = useState(qd?.clientDob ?? '')
+  const [clientAddress, setClientAddress] = useState(qd?.clientAddress ?? '')
+  const [clientOccupation, setClientOccupation] = useState(qd?.clientOccupation ?? '')
 
   // Policy fields
   const [productId, setProductId] = useState(initialQuotation?.productId ?? '')
-  const [paymentMethod, setPaymentMethod] = useState('OneMoney')
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(qd?.paymentMethod ?? 'OneMoney')
   // The commencement date is entered by the capturer — it is never
   // auto-assigned, so every policy starts on the date agreed at sale.
   const [startDate, setStartDate] = useState('')
   // Optional — a policy can carry zero dependants, so this starts empty
   // rather than seeding a mandatory first row.
-  const [dependants, setDependants] = useState<Dependant[]>([])
-  const [growerNumber, setGrowerNumber] = useState('')
-  const [contractor, setContractor] = useState('')
-  const [hectarage, setHectarage] = useState('')
-  const [agentId, setAgentId] = useState('')
+  const [dependants, setDependants] = useState<Dependant[]>(
+    qd?.dependants?.map(d => ({ name: d.name, relationship: d.relationship, dob: d.dob ?? '', nationalId: '' })) ?? [],
+  )
+  const [growerNumber, setGrowerNumber] = useState(qd?.growerNumber ?? '')
+  const [contractor, setContractor] = useState(qd?.contractor ?? '')
+  const [hectarage, setHectarage] = useState(qd?.hectarage ?? '')
+  const [agentId, setAgentId] = useState(qd?.agentId ?? '')
   // The channel the sale actually came through — defaults to this web app
   // since that's where the staff member is working.
   const [source, setSource] = useState(DEFAULT_POLICY_SOURCE)
@@ -81,9 +87,9 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   // dependants). 'corporate'/'group' cover an organisation's roster —
   // the org is the policyholder and is NOT a billed head, only the
   // selected members are (see src/lib/premium.ts).
-  const [coverScope, setCoverScope] = useState<CoverScope>('individual')
+  const [coverScope, setCoverScope] = useState<CoverScope>(qd?.coverScope ?? 'individual')
   const [groups, setGroups] = useState<Group[]>([])
-  const [groupId, setGroupId] = useState('')
+  const [groupId, setGroupId] = useState(qd?.groupId ?? '')
   // Team scope: the named activity/season the cover is for (e.g. "2026
   // Soccer Season") — team cover is bound to an activity the way
   // corporate/group cover is bound to an organisation.
@@ -925,7 +931,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
               </div>
               <div className="form-group">
                 <label>Payment Method *</label>
-                <select className="form-control" value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}>
+                <select className="form-control" value={paymentMethod} onChange={e => setPaymentMethod(e.target.value as PaymentMethod)}>
                   {MANUAL_PAYMENT_METHODS.map(m => (
                     <option key={m} value={m}>{m}</option>
                   ))}

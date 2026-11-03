@@ -61,13 +61,14 @@ const MarketingContacts = lazyWithRecovery('MarketingContacts', () => import('./
 const CampaignComposer = lazyWithRecovery('CampaignComposer', () => import('./pages/CampaignComposer'))
 const SmsTemplates = lazyWithRecovery('SmsTemplates', () => import('./pages/SmsTemplates'))
 const Accounting = lazyWithRecovery('Accounting', () => import('./pages/Accounting'))
+const Tasks = lazyWithRecovery('Tasks', () => import('./pages/Tasks'))
 
 export type ActivePanel =
   | 'dashboard' | 'policies' | 'lapsed_policies' | 'claims' | 'payments' | 'products'
   | 'clients' | 'clients_no_policy' | 'groups' | 'staff' | 'system_access_roles' | 'reminders' | 'reports' | 'leads' | 'payment_verifications'
   | 'email' | 'tickets' | 'fraud' | 'profile'
   | 'system_health' | 'settings' | 'developer_api' | 'integrations' | 'mass_messaging' | 'billing_reminders' | 'pre_loss_assessments' | 'agriculture_insurance' | 'member_cards' | 'whatsapp_bot'
-  | 'marketing_contacts' | 'campaign_composer' | 'sms_templates' | 'accounting'
+  | 'marketing_contacts' | 'campaign_composer' | 'sms_templates' | 'accounting' | 'tasks'
   | 'my_policies' | 'my_claims' | 'my_payments' | 'live_chat'
 
 // Earlier demo builds seeded invented clients/policies/payments into
@@ -216,6 +217,7 @@ function AppInner() {
       case 'dashboard': return <Dashboard {...panelProps} />
       case 'policies': return <Policies {...panelProps} initialCategory={panelCategory} />
       case 'lapsed_policies': return <LapsedPolicies {...panelProps} />
+      case 'tasks': return <Tasks {...panelProps} />
       case 'claims': return <Claims {...panelProps} initialCategory={panelCategory} />
       case 'payments': return <Payments {...panelProps} />
       case 'payment_verifications': return <PaymentVerifications {...panelProps} />

@@ -40,6 +40,7 @@ const PANEL_ACCESS: Record<string, UserRole[]> = {
   dashboard: ['super_admin', 'admin', 'claims_officer', 'policy_admin', 'finance', 'client_relations', 'agent'],
   policies: ['super_admin', 'admin', 'policy_admin', 'finance', 'client_relations', 'agent'],
   lapsed_policies: ['super_admin', 'admin', 'policy_admin', 'finance', 'client_relations', 'agent'],
+  tasks: ['super_admin', 'admin', 'claims_officer', 'policy_admin', 'finance', 'client_relations', 'agent'],
   claims: ['super_admin', 'admin', 'claims_officer', 'finance'],
   payments: ['super_admin', 'admin', 'finance'],
   accounting: ['super_admin', 'admin', 'finance'],

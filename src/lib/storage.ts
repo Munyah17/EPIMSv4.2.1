@@ -18,7 +18,7 @@ export interface UploadedDocument {
  *  RLS (add_document_storage.sql) can scope access by folder + record id
  *  without needing per-file metadata. */
 export async function uploadDocument(
-  folder: 'claims' | 'policies' | 'tickets',
+  folder: 'claims' | 'policies' | 'tickets' | 'requisitions',
   recordId: string,
   file: File,
 ): Promise<{ data: UploadedDocument | null; error: string | null }> {

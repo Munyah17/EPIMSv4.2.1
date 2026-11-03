@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react'
-import type { ToastMessage, Quotation, QuotationStatus, Client, Product, Policy } from '../../types'
+import type { ToastMessage, Quotation, QuotationStatus, Client, Product, Policy, CoverScope, QuotePolicyDetails } from '../../types'
 import { db } from '../../lib/db'
 import { formatDate } from '../../lib/dateUtils'
 import { useAuth } from '../../contexts/AuthContext'
 import ValidationSummary, { MissingField, invalidClass, fieldId } from '../ui/ValidationSummary'
+import { MANUAL_PAYMENT_METHODS } from '../../types'
 import NewPolicyModal from '../modals/NewPolicyModal'
 import { notifyPolicyRegistered } from '../../lib/signupNotifications'
 import { serverReachable } from '../../lib/notify'
 import { sendSystemEmail } from '../../lib/mailService'
 import { getPolicyReportPdfBase64 } from '../../lib/exportUtils'
+import { exportQuotationPdf } from '../../lib/billingDocsPdf'
 import { MAILBOXES } from '../../lib/mailboxes'
 
 interface Props {
@@ -161,6 +163,10 @@ export default function QuotationsPanel({ showToast }: Props) {
                 <td>{q.createdByName ?? '—'}</td>
                 <td>
                   <div className="action-btns">
+                    <button className="btn btn-ghost btn-sm" title="Download the branded quotation PDF"
+                      onClick={() => void exportQuotationPdf(q).catch(() => showToast('error', 'Could not generate the PDF.'))}>
+                      PDF
+                    </button>
                     {q.status === 'draft' && (
                       <button className="btn btn-ghost btn-sm" style={{ color: 'var(--accent)' }} onClick={() => setStatus(q, 'sent')}>Send</button>
                     )}
@@ -236,6 +242,17 @@ function NewQuotationModal({ onClose, onSave, saving, createdBy, createdByName }
   const [validUntil, setValidUntil] = useState('')
   const [notes, setNotes] = useState('')
   const [attempted, setAttempted] = useState(false)
+  // Product-matched policy fields — the quote captures what the policy
+  // application needs so →Policy issues instantly, no re-interview.
+  const [clientPhone, setClientPhone] = useState('')
+  const [clientEmail, setClientEmail] = useState('')
+  const [clientNationalId, setClientNationalId] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState('OneMoney')
+  const [dependants, setDependants] = useState<{ name: string; relationship: string; dob?: string }[]>([])
+  const [growerNumber, setGrowerNumber] = useState('')
+  const [contractor, setContractor] = useState('')
+  const [hectarage, setHectarage] = useState('')
+  const [coverScope, setCoverScope] = useState<CoverScope>('individual')
 
   useEffect(() => {
     db.clients.list().then(({ data }) => setClients(data ?? []))
@@ -244,6 +261,8 @@ function NewQuotationModal({ onClose, onSave, saving, createdBy, createdByName }
 
   const client = clients.find(c => c.id === clientId)
   const product = products.find(p => p.id === productId)
+  const isAgriculture = product?.category === 'agriculture'
+  const coversDependants = product?.category === 'funeral' || product?.category === 'life' || product?.category === 'health'
 
   const pickProduct = (id: string) => {
     setProductId(id)
@@ -259,6 +278,20 @@ function NewQuotationModal({ onClose, onSave, saving, createdBy, createdByName }
   const handleSave = () => {
     setAttempted(true)
     if (missing.length > 0) return
+    const details: QuotePolicyDetails = {
+      clientPhone: client?.phone ?? (clientPhone.trim() || undefined),
+      clientEmail: client?.email ?? (clientEmail.trim() || undefined),
+      clientNationalId: client?.nationalId ?? (clientNationalId.trim() || undefined),
+      clientDob: client?.dob,
+      clientAddress: client?.address,
+      clientOccupation: client?.occupation,
+      paymentMethod: (paymentMethod || undefined) as QuotePolicyDetails['paymentMethod'],
+      dependants: dependants.filter(d => d.name.trim()).length ? dependants.filter(d => d.name.trim()) : undefined,
+      growerNumber: isAgriculture ? growerNumber.trim() || undefined : undefined,
+      contractor: isAgriculture ? contractor.trim() || undefined : undefined,
+      hectarage: isAgriculture ? hectarage.trim() || undefined : undefined,
+      coverScope,
+    }
     onSave({
       clientId: clientId || undefined,
       clientName: client?.name ?? prospectName.trim(),
@@ -266,6 +299,7 @@ function NewQuotationModal({ onClose, onSave, saving, createdBy, createdByName }
       productName: product?.name ?? '',
       premium: Number(premium),
       coverAmount: coverAmount ? Number(coverAmount) : undefined,
+      policyDetails: details,
       validUntil: validUntil || undefined,
       notes: notes.trim() || undefined,
       createdBy,
@@ -318,9 +352,86 @@ function NewQuotationModal({ onClose, onSave, saving, createdBy, createdByName }
               <input type="date" className="form-control" value={validUntil} onChange={e => setValidUntil(e.target.value)} />
             </div>
             <div className="form-group">
-              <label>Notes</label>
-              <input className="form-control" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional…" />
+              <label>Payment method</label>
+              <select className="form-control" value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}>
+                {MANUAL_PAYMENT_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+              </select>
             </div>
+          </div>
+
+          {/* Product-matched application answers — carried into the
+              policy on conversion so nothing is asked twice. */}
+          {product && (
+            <>
+              {!clientId && (
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Prospect phone</label>
+                    <input className="form-control" value={clientPhone} onChange={e => setClientPhone(e.target.value)} placeholder="07…" />
+                  </div>
+                  <div className="form-group">
+                    <label>Prospect email</label>
+                    <input className="form-control" value={clientEmail} onChange={e => setClientEmail(e.target.value)} placeholder="Optional" />
+                  </div>
+                </div>
+              )}
+              <div className="form-row">
+                <div className="form-group">
+                  <label>Cover scope</label>
+                  <select className="form-control" value={coverScope} onChange={e => setCoverScope(e.target.value as CoverScope)}>
+                    <option value="individual">Individual</option>
+                    <option value="corporate">Corporate</option>
+                    <option value="group">Group</option>
+                    <option value="team">Team</option>
+                  </select>
+                </div>
+                {!clientId && (
+                  <div className="form-group">
+                    <label>National ID</label>
+                    <input className="form-control" value={clientNationalId} onChange={e => setClientNationalId(e.target.value)} placeholder="Optional" />
+                  </div>
+                )}
+              </div>
+              {isAgriculture && (
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Grower number</label>
+                    <input className="form-control" value={growerNumber} onChange={e => setGrowerNumber(e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label>Contractor</label>
+                    <input className="form-control" value={contractor} onChange={e => setContractor(e.target.value)} />
+                  </div>
+                  <div className="form-group">
+                    <label>Hectarage</label>
+                    <input className="form-control" value={hectarage} onChange={e => setHectarage(e.target.value)} />
+                  </div>
+                </div>
+              )}
+              {coversDependants && (
+                <div className="form-group">
+                  <label>Dependants {dependants.length > 0 && `(${dependants.length})`}</label>
+                  {dependants.map((d, i) => (
+                    <div key={i} className="form-row" style={{ marginBottom: 4 }}>
+                      <input className="form-control" placeholder="Name" value={d.name}
+                        onChange={e => setDependants(prev => prev.map((x, j) => j === i ? { ...x, name: e.target.value } : x))} />
+                      <input className="form-control" placeholder="Relationship" value={d.relationship}
+                        onChange={e => setDependants(prev => prev.map((x, j) => j === i ? { ...x, relationship: e.target.value } : x))} />
+                      <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }}
+                        onClick={() => setDependants(prev => prev.filter((_, j) => j !== i))}>✕</button>
+                    </div>
+                  ))}
+                  <button type="button" className="btn btn-ghost btn-sm" onClick={() => setDependants(prev => [...prev, { name: '', relationship: '' }])}>
+                    ＋ Add dependant
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+
+          <div className="form-group">
+            <label>Notes</label>
+            <input className="form-control" value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional…" />
           </div>
         </div>
         <div className="modal-footer">

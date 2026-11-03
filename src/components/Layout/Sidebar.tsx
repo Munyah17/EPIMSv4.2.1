@@ -112,6 +112,7 @@ const STAFF_SECTIONS: NavSection[] = [
   {
     label: 'OPERATIONS',
     items: [
+      { id: 'tasks', label: 'Tasks', icon: '📋' },
       { id: 'staff', label: 'Staff Management', icon: '✅', roles: ['super_admin', 'admin'] },
       { id: 'reports', label: 'Reports', icon: '📊', roles: ['super_admin', 'admin', 'finance'] },
       { id: 'fraud', label: 'Fraud Alert', icon: '⚠', roles: ['super_admin', 'admin', 'claims_officer'] },

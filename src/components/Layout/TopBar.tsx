@@ -15,6 +15,7 @@ const PANEL_TITLES: Record<ActivePanel, string> = {
   dashboard: 'Dashboard',
   policies: 'Policies',
   lapsed_policies: 'Lapsed Policies',
+  tasks: 'Tasks',
   claims: 'Claims',
   payments: 'Payments',
   payment_verifications: 'Payment Verifications',

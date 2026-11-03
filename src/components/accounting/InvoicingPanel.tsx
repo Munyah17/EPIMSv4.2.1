@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import type { ToastMessage, Invoice, FdmsReceipt } from '../../types'
+import type { ToastMessage, Invoice, FdmsReceipt, Client } from '../../types'
 import { db } from '../../lib/db'
 import { lastDayOfMonth } from '../../lib/reminderEngine'
 import { formatDate } from '../../lib/dateUtils'
@@ -8,6 +8,8 @@ import { invoiceIssuedSms, smsDate } from '../../lib/smsText'
 import { supabase } from '../../lib/supabase'
 import { resolveSmsText, smsVarMoney } from '../../lib/smsTemplates'
 import { useAuth } from '../../contexts/AuthContext'
+import { exportInvoicePdf } from '../../lib/billingDocsPdf'
+import ValidationSummary, { MissingField, invalidClass, fieldId } from '../ui/ValidationSummary'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -24,6 +26,33 @@ export default function InvoicingPanel({ showToast }: Props) {
   const [invoicesLoading, setInvoicesLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
   const [fiscalisingId, setFiscalisingId] = useState<string | null>(null)
+  const [exportingId, setExportingId] = useState<string | null>(null)
+  const [showCreate, setShowCreate] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [clients, setClients] = useState<Client[]>([])
+
+  /** Clients list loads only when the custom-invoice form opens — the
+   *  panel's default view never needs it. */
+  const openCreate = () => {
+    setShowCreate(true)
+    db.clients.list().then(({ data }) => setClients(data ?? []))
+  }
+
+  const handleExportPdf = async (inv: Invoice) => {
+    setExportingId(inv.id)
+    try { await exportInvoicePdf(inv) } catch { showToast('error', 'Could not generate the invoice PDF.') }
+    finally { setExportingId(null) }
+  }
+
+  const handleCreate = async (input: { clientId?: string; customerName: string; description: string; amount: number; dueDate?: string }) => {
+    setSaving(true)
+    const { data, error } = await db.invoices.createCustom({ ...input, createdBy: user?.name ?? 'staff' })
+    setSaving(false)
+    if (error || !data) { showToast('error', error ?? 'Failed to create the invoice.'); return }
+    setInvoiceList(prev => [data, ...prev])
+    setShowCreate(false)
+    showToast('success', `Invoice ${data.invoiceNumber} issued to ${data.clientName}.`)
+  }
 
   const loadInvoices = () => {
     setInvoicesLoading(true)
@@ -146,14 +175,19 @@ export default function InvoicingPanel({ showToast }: Props) {
   return (
     <div className="card">
       <div className="card-header">
-        <span className="card-title">Group Policy Invoices</span>
-        <button className="btn btn-primary btn-sm" onClick={handleGenerateAll} disabled={generating}>
-          {generating ? 'Issuing…' : `＋ Issue ${currentPeriod()} for all group policies`}
-        </button>
+        <span className="card-title">Invoices</span>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn btn-ghost btn-sm" onClick={openCreate}>
+            ＋ Custom Invoice
+          </button>
+          <button className="btn btn-primary btn-sm" onClick={handleGenerateAll} disabled={generating}>
+            {generating ? 'Issuing…' : `＋ Issue ${currentPeriod()} for all group policies`}
+          </button>
+        </div>
       </div>
       <p style={{ fontSize: 11, color: 'var(--muted)', margin: '0 0 12px' }}>
-        One invoice per group policy per month — the cron writes them automatically on the 1st; this button and the per-policy
-        Invoice action on Policies do the same job by hand. The organisation gets the SMS the moment the invoice exists.
+        One invoice per group policy per month — the cron writes them automatically on the 1st. Custom Invoice bills
+        anyone once-off (no policy needed). PDF downloads the branded invoice document.
       </p>
       {invoicesLoading ? (
         <div className="empty-state">Loading invoices…</div>
@@ -169,8 +203,8 @@ export default function InvoicingPanel({ showToast }: Props) {
             {invoiceList.map(inv => (
               <tr key={inv.id}>
                 <td><span className="mono">{inv.invoiceNumber}</span></td>
-                <td><span className="mono">{inv.policyNumber}</span></td>
-                <td>{inv.groupName ?? inv.clientName}</td>
+                <td>{inv.policyNumber ? <span className="mono">{inv.policyNumber}</span> : <span className="pill pill-gray">custom</span>}</td>
+                <td title={inv.notes ?? undefined}>{inv.groupName ?? inv.clientName}</td>
                 <td>{inv.period}</td>
                 <td>{inv.heads}</td>
                 <td>${inv.amount.toFixed(2)}</td>
@@ -182,6 +216,9 @@ export default function InvoicingPanel({ showToast }: Props) {
                 </td>
                 <td>
                   <div className="action-btns">
+                    <button className="btn btn-ghost btn-sm" onClick={() => void handleExportPdf(inv)} disabled={exportingId === inv.id}>
+                      {exportingId === inv.id ? 'PDF…' : 'PDF'}
+                    </button>
                     {inv.status === 'issued' && (
                       <>
                         <button className="btn btn-ghost btn-sm" style={{ color: 'var(--success)' }} onClick={() => handleInvoicePaid(inv)}>Mark Paid</button>
@@ -202,6 +239,99 @@ export default function InvoicingPanel({ showToast }: Props) {
         </table>
         </div>
       )}
+      {showCreate && (
+        <NewInvoiceModal
+          clients={clients}
+          saving={saving}
+          onClose={() => setShowCreate(false)}
+          onSave={handleCreate}
+        />
+      )}
+    </div>
+  )
+}
+
+/** Once-off billing — a prospect, a supplier, a sundry charge. A linked
+ *  client gets the join on the row (fiscalisation + PDF), a free name
+ *  just prints on the document. */
+function NewInvoiceModal({ clients, saving, onClose, onSave }: {
+  clients: Client[]
+  saving: boolean
+  onClose: () => void
+  onSave: (input: { clientId?: string; customerName: string; description: string; amount: number; dueDate?: string }) => void
+}) {
+  const [clientId, setClientId] = useState('')
+  const [customerName, setCustomerName] = useState('')
+  const [description, setDescription] = useState('')
+  const [amount, setAmount] = useState('')
+  const [dueDate, setDueDate] = useState('')
+  const [attempted, setAttempted] = useState(false)
+
+  const missing: MissingField[] = []
+  if (!clientId && !customerName.trim()) missing.push({ key: 'customer', label: 'Customer (pick a client or type a name)' })
+  if (!description.trim()) missing.push({ key: 'description', label: 'What the invoice is for' })
+  if (!amount || Number(amount) <= 0) missing.push({ key: 'amount', label: 'Amount' })
+
+  const handleSave = () => {
+    setAttempted(true)
+    if (missing.length) return
+    const client = clients.find(c => c.id === clientId)
+    onSave({
+      clientId: clientId || undefined,
+      customerName: client?.name ?? customerName.trim(),
+      description: description.trim(),
+      amount: Number(amount),
+      dueDate: dueDate || undefined,
+    })
+  }
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal" style={{ maxWidth: 520 }}>
+        <div className="modal-header">
+          <h3>Custom Invoice</h3>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          <ValidationSummary missing={missing} attempted={attempted} />
+          <div className="form-group" id={fieldId('customer')}>
+            <label>Bill an existing client</label>
+            <select className="form-control" value={clientId} onChange={e => setClientId(e.target.value)}>
+              <option value="">— not a registered client —</option>
+              {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+          {!clientId && (
+            <div className="form-group">
+              <label>…or bill anyone by name *</label>
+              <input className={invalidClass(missing, attempted, 'customer')} value={customerName}
+                onChange={e => setCustomerName(e.target.value)} placeholder="e.g. ZMC Property Management" />
+            </div>
+          )}
+          <div className="form-group" id={fieldId('description')}>
+            <label>Description *</label>
+            <textarea className={invalidClass(missing, attempted, 'description')} rows={2} value={description}
+              onChange={e => setDescription(e.target.value)} placeholder="What this invoice is for — printed as the line item" />
+          </div>
+          <div className="form-row">
+            <div className="form-group" id={fieldId('amount')}>
+              <label>Amount ($) *</label>
+              <input type="number" min="0" step="0.01" className={invalidClass(missing, attempted, 'amount')}
+                value={amount} onChange={e => setAmount(e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label>Due date</label>
+              <input type="date" className="form-control" value={dueDate} onChange={e => setDueDate(e.target.value)} />
+            </div>
+          </div>
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
+            {saving ? 'Issuing…' : 'Issue Invoice'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

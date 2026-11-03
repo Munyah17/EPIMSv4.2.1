@@ -24,6 +24,7 @@ import type {
   Quotation, QuotationStatus, Requisition, RequisitionStatus,
   FloatEntry, FloatEntryType, PettyCashEntry, PettyCashEntryType,
   FdmsReceipt, FdmsReceiptStatus, FdmsDocType, FdmsFiscalDay, FdmsFiscalDayStatus,
+  QuotePolicyDetails, Task, TaskStatus, TaskPriority, TaskMilestone, TaskUpdate,
 } from '../types'
 import { STAFF_ROLES } from '../types'
 
@@ -3327,7 +3328,8 @@ function toInvoice(r: any): Invoice {
     policyId:      r.policy_id,
     policyNumber:  r.policies?.policy_number ?? '',
     clientId:      r.client_id,
-    clientName:    r.clients?.name ?? '',
+    clientName:    r.customer_name ?? r.clients?.name ?? '',
+    customerName:  r.customer_name ?? undefined,
     groupId:       r.group_id ?? undefined,
     groupName:     r.groups?.name ?? undefined,
     period:        r.period,
@@ -3338,12 +3340,13 @@ function toInvoice(r: any): Invoice {
     issuedAt:      r.issued_at,
     paidAt:        r.paid_at ?? undefined,
     createdBy:     r.created_by ?? undefined,
+    notes:         r.notes ?? undefined,
   }
 }
 
 const INVOICE_SELECT = `
   id, invoice_number, policy_id, client_id, group_id, period, heads, amount,
-  status, due_date, issued_at, paid_at, created_by,
+  status, due_date, issued_at, paid_at, created_by, notes, customer_name,
   policies!policy_id(policy_number),
   clients!client_id(name),
   groups!group_id(name)
@@ -3411,6 +3414,32 @@ export const invoices = {
     return { data: null, error: 'Failed to create invoice.', created: false }
   },
 
+  /** A bespoke invoice — no policy, optionally no client record (a
+   *  prospect or supplier billed once). Shares the per-period
+   *  INV-YYYYMM-NNN numbering with policy invoices. */
+  async createCustom(input: { clientId?: string; customerName: string; description: string; amount: number; dueDate?: string; period?: string; createdBy?: string }): Promise<{ data: Invoice | null; error: string | null; created: boolean }> {
+    const period = input.period ?? (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` })()
+    const dueDate = input.dueDate ?? (() => { const [yr, mo] = period.split('-').map(Number); return new Date(yr, mo, 0).toISOString().split('T')[0] })()
+    const { data: last } = await supabase.from('invoices')
+      .select('invoice_number').like('invoice_number', `INV-${period.replace('-', '')}-%`)
+      .order('invoice_number', { ascending: false }).limit(1)
+    const lastSeq = Number(((last?.[0]?.invoice_number ?? '').match(/-(\d+)$/)?.[1]) ?? 0)
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const invoiceNumber = `INV-${period.replace('-', '')}-${String(lastSeq + attempt).padStart(3, '0')}`
+      const { data, error } = await supabase.from('invoices').insert({
+        invoice_number: invoiceNumber,
+        policy_id: null, client_id: input.clientId ?? null, group_id: null,
+        customer_name: input.customerName,
+        period, heads: 0, amount: input.amount, due_date: dueDate,
+        created_by: input.createdBy ?? 'staff', notes: input.description,
+      }).select(INVOICE_SELECT).single()
+      if (!error && data) return { data: toInvoice(data), error: null, created: true }
+      if (error?.code === '23505' && attempt < 3) continue
+      return { data: null, error: error?.message ?? 'Failed to create the invoice.', created: false }
+    }
+    return { data: null, error: 'Failed to create the invoice.', created: false }
+  },
+
   async markPaid(id: string) {
     const { data, error } = await supabase.from('invoices')
       .update({ status: 'paid', paid_at: new Date().toISOString() }).eq('id', id)
@@ -3453,6 +3482,7 @@ function toQuotation(r: Record<string, unknown>): Quotation {
     productName: (r.product_name as string | null) ?? '',
     premium: Number(r.premium) || 0,
     coverAmount: r.cover_amount != null ? Number(r.cover_amount) : undefined,
+    policyDetails: (r.policy_details as QuotePolicyDetails | null) ?? undefined,
     status: r.status as QuotationStatus,
     validUntil: r.valid_until ? date(r.valid_until as string) : undefined,
     notes: (r.notes as string | null) ?? undefined,
@@ -3484,6 +3514,7 @@ export const quotations = {
         product_name: q.productName,
         premium: q.premium,
         cover_amount: q.coverAmount ?? null,
+        policy_details: q.policyDetails ?? null,
         valid_until: q.validUntil || null,
         notes: q.notes || null,
         created_by: q.createdBy ?? null,
@@ -3525,6 +3556,7 @@ function toRequisition(r: Record<string, unknown>): Requisition {
     approvedAt: (r.approved_at as string | null) ?? undefined,
     paidAt: (r.paid_at as string | null) ?? undefined,
     notes: (r.notes as string | null) ?? undefined,
+    attachments: Array.isArray(r.attachments) ? r.attachments as string[] : [],
     createdAt: r.created_at as string,
   }
 }
@@ -3539,7 +3571,7 @@ export const requisitions = {
     return { data: [] as Requisition[], error: 'Could not load requisitions — the requisitions table may not exist yet (run database/add_accounting.sql).' }
   },
 
-  async create(q: { payee: string; purpose: string; category: string; amount: number; notes?: string; requestedBy?: string; requestedByName?: string }) {
+  async create(q: { payee: string; purpose: string; category: string; amount: number; notes?: string; attachments?: string[]; requestedBy?: string; requestedByName?: string }) {
     for (let attempt = 1; attempt <= 3; attempt++) {
       const requisitionNumber = await nextDocNumber('requisitions', 'requisition_number', 'REQ')
       const { data, error } = await supabase.from('requisitions').insert({
@@ -3549,6 +3581,7 @@ export const requisitions = {
         category: q.category || 'General',
         amount: q.amount,
         notes: q.notes || null,
+        attachments: q.attachments ?? [],
         requested_by: q.requestedBy ?? null,
         requested_by_name: q.requestedByName ?? null,
       }).select().single()
@@ -3575,6 +3608,176 @@ export const requisitions = {
       .update({ status: 'paid', paid_at: new Date().toISOString() }).eq('id', id).select().single()
     if (error || !data) return { data: null, error: error?.message ?? 'Failed to mark the requisition paid.' }
     return { data: toRequisition(data), error: null }
+  },
+
+  /** Attach supporting files after upload — the row exists before its
+   *  files do (the storage path carries the requisition's own id). */
+  async setAttachments(id: string, attachments: string[]) {
+    const { data, error } = await supabase.from('requisitions')
+      .update({ attachments }).eq('id', id).select().single()
+    if (error || !data) return { data: null, error: error?.message ?? 'Failed to save attachments.' }
+    return { data: toRequisition(data), error: null }
+  },
+}
+
+// ── TASKS ───────────────────────────────────────────────────────────
+// Super Admin issues tasks to staff; the assignee ticks milestones and
+// posts live updates; a DB trigger rolls milestone ticks up into the
+// task's progress + status so every watcher sees it move in real time.
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toTask(r: any): Task {
+  return {
+    id: r.id,
+    title: r.title,
+    description: r.description ?? '',
+    priority: r.priority as TaskPriority,
+    status: r.status as TaskStatus,
+    assigneeId: r.assignee_id ?? undefined,
+    assigneeName: r.assignee_name ?? '',
+    createdBy: r.created_by ?? undefined,
+    createdByName: r.created_by_name ?? undefined,
+    dueDate: r.due_date ? date(r.due_date) : undefined,
+    progress: Number(r.progress) || 0,
+    completedAt: r.completed_at ?? undefined,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toTaskMilestone(r: any): TaskMilestone {
+  return {
+    id: r.id, taskId: r.task_id, label: r.label,
+    position: Number(r.position) || 0,
+    done: !!r.done,
+    doneAt: r.done_at ?? undefined,
+    doneByName: r.done_by_name ?? undefined,
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function toTaskUpdate(r: any): TaskUpdate {
+  return {
+    id: r.id, taskId: r.task_id,
+    authorId: r.author_id ?? undefined,
+    authorName: r.author_name ?? '',
+    body: r.body,
+    createdAt: r.created_at,
+  }
+}
+
+export const tasks = {
+  async list() {
+    const { ok, data } = await sb('tasks', 'read',
+      () => fetchAllRows(() => supabase.from('tasks').select('*').order('created_at', { ascending: false }), { orderBy: 'id' }),
+      d => Array.isArray(d),
+    )
+    if (ok && data) return { data: (data as unknown[]).map(r => toTask(r)), error: null }
+    return { data: [] as Task[], error: 'Could not load tasks — run database/extend_accounting_docs_tasks.sql.' }
+  },
+
+  /** Issue a task — super_admin only (RLS). Milestones are inserted as
+   *  ordered labels and become the task's definition of done. */
+  async create(t: { title: string; description?: string; priority?: TaskPriority; assigneeId?: string; assigneeName?: string; dueDate?: string; createdBy?: string; createdByName?: string; milestones?: string[] }) {
+    const { data, error } = await supabase.from('tasks').insert({
+      title: t.title, description: t.description ?? '',
+      priority: t.priority ?? 'medium', status: 'open',
+      assignee_id: t.assigneeId ?? null, assignee_name: t.assigneeName ?? '',
+      created_by: t.createdBy ?? null, created_by_name: t.createdByName ?? null,
+      due_date: t.dueDate || null,
+    }).select().single()
+    if (error || !data) return { data: null, error: error?.message ?? 'Failed to create the task.' }
+    const labels = (t.milestones ?? []).map(m => m.trim()).filter(Boolean)
+    if (labels.length) {
+      const { error: mErr } = await supabase.from('task_milestones').insert(
+        labels.map((label, i) => ({ task_id: data.id, label, position: i })),
+      )
+      if (mErr) return { data: toTask(data), error: mErr.message }
+    }
+    return { data: toTask(data), error: null }
+  },
+
+  /** Reassign or edit — super_admin only (RLS + guard trigger). */
+  async update(id: string, patch: { title?: string; description?: string; priority?: TaskPriority; assigneeId?: string; assigneeName?: string; dueDate?: string | null; status?: TaskStatus }) {
+    const { data, error } = await supabase.from('tasks').update({
+      ...(patch.title !== undefined ? { title: patch.title } : {}),
+      ...(patch.description !== undefined ? { description: patch.description } : {}),
+      ...(patch.priority !== undefined ? { priority: patch.priority } : {}),
+      ...(patch.assigneeId !== undefined ? { assignee_id: patch.assigneeId, assignee_name: patch.assigneeName ?? '' } : {}),
+      ...(patch.dueDate !== undefined ? { due_date: patch.dueDate || null } : {}),
+      ...(patch.status !== undefined ? { status: patch.status } : {}),
+      updated_at: new Date().toISOString(),
+    }).eq('id', id).select().single()
+    if (error || !data) return { data: null, error: error?.message ?? 'Failed to update the task.' }
+    return { data: toTask(data), error: null }
+  },
+
+  /** Milestone-less completion — the assignee flips the task itself. */
+  async markComplete(id: string) {
+    const { data, error } = await supabase.from('tasks')
+      .update({ status: 'completed', completed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+      .eq('id', id).select().single()
+    if (error || !data) return { data: null, error: error?.message ?? 'Failed to mark the task complete.' }
+    return { data: toTask(data), error: null }
+  },
+
+  async remove(id: string) {
+    const { error } = await supabase.from('tasks').delete().eq('id', id)
+    return { error: error?.message ?? null }
+  },
+}
+
+export const taskMilestones = {
+  async list() {
+    const { ok, data } = await sb('task_milestones', 'read',
+      () => fetchAllRows(() => supabase.from('task_milestones').select('*').order('position').order('created_at'), { orderBy: 'id' }),
+      d => Array.isArray(d),
+    )
+    if (ok && data) return { data: (data as unknown[]).map(r => toTaskMilestone(r)), error: null }
+    return { data: [] as TaskMilestone[], error: 'Could not load milestones.' }
+  },
+
+  /** Tick or untick — allowed for the task's assignee and super_admin.
+   *  The sync_task_progress trigger updates the task for every watcher. */
+  async toggle(id: string, done: boolean, doneByName: string) {
+    const { data, error } = await supabase.from('task_milestones')
+      .update({ done, done_at: done ? new Date().toISOString() : null, done_by_name: done ? doneByName : null })
+      .eq('id', id).select().single()
+    if (error || !data) return { data: null, error: error?.message ?? 'Could not update the milestone.' }
+    return { data: toTaskMilestone(data), error: null }
+  },
+
+  async add(taskId: string, label: string, position: number) {
+    const { data, error } = await supabase.from('task_milestones')
+      .insert({ task_id: taskId, label, position }).select().single()
+    if (error || !data) return { data: null, error: error?.message ?? 'Could not add the milestone.' }
+    return { data: toTaskMilestone(data), error: null }
+  },
+
+  async remove(id: string) {
+    const { error } = await supabase.from('task_milestones').delete().eq('id', id)
+    return { error: error?.message ?? null }
+  },
+}
+
+export const taskUpdates = {
+  async list() {
+    const { ok, data } = await sb('task_updates', 'read',
+      () => fetchAllRows(() => supabase.from('task_updates').select('*').order('created_at', { ascending: false }), { orderBy: 'id' }),
+      d => Array.isArray(d),
+    )
+    if (ok && data) return { data: (data as unknown[]).map(r => toTaskUpdate(r)), error: null }
+    return { data: [] as TaskUpdate[], error: 'Could not load task updates.' }
+  },
+
+  async post(u: { taskId: string; authorId?: string; authorName?: string; body: string }) {
+    const { data, error } = await supabase.from('task_updates').insert({
+      task_id: u.taskId, author_id: u.authorId ?? null,
+      author_name: u.authorName ?? '', body: u.body,
+    }).select().single()
+    if (error || !data) return { data: null, error: error?.message ?? 'Could not post the update.' }
+    return { data: toTaskUpdate(data), error: null }
   },
 }
 
@@ -4120,6 +4323,7 @@ export const db = {
   policyCards, groups, groupMembers, agentProfiles,
   dashboardStats, sidebarCounts, notificationLog, invoices,
   quotations, requisitions, floatEntries, pettyCashEntries, fdmsReceipts, fdmsFiscalDays,
+  tasks, taskMilestones, taskUpdates,
   marketingContacts, marketingTemplates, marketingCampaigns, campaignRecipients,
   subscribeToTable,
 }
