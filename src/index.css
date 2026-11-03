@@ -342,7 +342,9 @@ tbody tr:hover td{background:var(--surface)}
 .sidebar-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:299;cursor:pointer}
 
 /* --- SIDEBAR REACT CLASSES --- */
-.sidebar{width:220px;min-width:220px;background:var(--blue-dark);display:flex;flex-direction:column;flex-shrink:0;transition:transform .28s cubic-bezier(.4,0,.2,1);position:relative}
+/* 223px: three pixels of breathing room over the old 220px rail. Only
+   width/min-width move — flex layout absorbs it with no knock-on. */
+.sidebar{width:223px;min-width:223px;background:var(--blue-dark);display:flex;flex-direction:column;flex-shrink:0;transition:transform .28s cubic-bezier(.4,0,.2,1);position:relative}
 .sidebar-logo{display:flex;align-items:center;gap:10px;padding:18px 14px 14px;border-bottom:1px solid rgba(255,255,255,0.08)}
 .sidebar-logo-mark{width:30px;height:30px;background:var(--blue-mid);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:white;flex-shrink:0}
 .sidebar-logo-name{font-family:'DM Serif Display',serif;font-size:14px;color:white;line-height:1.2}
@@ -1407,3 +1409,41 @@ textarea.form-control{resize:vertical;min-height:80px}
 
 /* Focus ring companion for the composite phone field */
 .phone-input:focus-within{box-shadow:0 0 0 2px rgba(91,127,232,0.18)}
+
+/* ── Danger tab — same tab-item geometry as the filters beside it,
+   painted red: it is a door to a register that needs action, not a
+   filter that can be dismissed. */
+.tab-item.tab-item-danger{background:var(--danger);color:#fff;font-weight:600;border:none;border-radius:7px;margin:0 0 6px 12px}
+.tab-item.tab-item-danger:hover{color:#fff;filter:brightness(1.08)}
+
+/* ── No-policy explainer: two cohorts, two responses. Side by side on
+   desktop, stacked on narrow screens. */
+.nc-explainer{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+.nc-explainer-col{background:var(--warning-bg);border:1px solid #FCD34D;border-radius:9px;padding:10px 14px;font-size:12px;line-height:1.5;color:#92400e}
+.nc-explainer-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px}
+.nc-explainer-col p{margin:0}
+@media(max-width:768px){.nc-explainer{grid-template-columns:1fr}}
+
+/* ── Dashboard readability bump: +2px on every text surface the page
+   renders. Desktop only — the mobile breakpoints keep their own compact
+   sizes (they win via !important or later rules), so phones don't pay
+   for a desktop readability choice. */
+.dashboard-panel{font-size:15px}
+.dashboard-panel .stat-value{font-size:24px}
+.dashboard-panel .stat-label{font-size:12px}
+.dashboard-panel .stat-delta{font-size:13px}
+.dashboard-panel .stat-icon{font-size:19px}
+.dashboard-panel td{font-size:14px}
+.dashboard-panel th{font-size:12px}
+.dashboard-panel .pill{font-size:13px}
+.dashboard-panel .btn{font-size:15px}
+.dashboard-panel .btn-sm{font-size:14px}
+.dashboard-panel .btn-ghost{font-size:14px}
+.dashboard-panel .info-banner{font-size:14px}
+.dashboard-panel .card-header{font-size:15px}
+.dashboard-panel .detail-label{font-size:12px}
+.dashboard-panel .search-input,
+.dashboard-panel input,
+.dashboard-panel select{font-size:15px}
+.dashboard-panel .act-txt{font-size:13px}
+.dashboard-panel .act-time{font-size:12px}

@@ -45,6 +45,19 @@ export default function SystemAccessRoles({ showToast }: Props) {
     if (editUser) {
       const { data, error } = await db.staff.update(u.id, u)
       if (error || !data) { showToast('error', error ?? 'Failed to update account.'); return }
+      // The sign-in email lives in auth.users — route changes through the
+      // auth-aware endpoint or the old address keeps being the real login.
+      const newEmail = (u.email ?? '').trim().toLowerCase()
+      const oldEmail = (editUser.email ?? '').trim().toLowerCase()
+      if (newEmail !== oldEmail) {
+        if (newEmail) {
+          const { error: emailError } = await db.staff.updateEmail(u.id, newEmail)
+          if (emailError) showToast('warning', `Details saved, but the sign-in email change failed: ${emailError}`)
+          else { data.email = newEmail; showToast('info', `Sign-in email updated to ${newEmail}.`) }
+        } else {
+          showToast('warning', 'Details saved — but an account cannot lose its sign-in email, so the old address still applies.')
+        }
+      }
       setAccounts(prev => prev.map(x => x.id === data.id ? data : x))
       showToast('success', `${data.name} updated.`)
     } else {

@@ -90,6 +90,21 @@ export default function Staff({ showToast }: Props) {
     if (editStaff) {
       const { data, error } = await db.staff.update(s.id, s)
       if (error || !data) { showToast('error', error ?? 'Failed to update staff.'); return }
+      // The sign-in email lives in auth.users — the profile update above
+      // deliberately doesn't touch it (see db.staff.update), so a change
+      // must go through the auth-aware endpoint or the old address keeps
+      // being the real login.
+      const newEmail = (s.email ?? '').trim().toLowerCase()
+      const oldEmail = (editStaff.email ?? '').trim().toLowerCase()
+      if (newEmail !== oldEmail) {
+        if (newEmail) {
+          const { error: emailError } = await db.staff.updateEmail(s.id, newEmail)
+          if (emailError) showToast('warning', `Details saved, but the sign-in email change failed: ${emailError}`)
+          else { data.email = newEmail; showToast('info', `Sign-in email updated to ${newEmail}.`) }
+        } else {
+          showToast('warning', 'Details saved — but an account cannot lose its sign-in email, so the old address still applies.')
+        }
+      }
       setStaff(prev => prev.map(x => x.id === data.id ? data : x))
       saved = data
     } else {

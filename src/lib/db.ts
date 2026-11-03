@@ -23,7 +23,7 @@ import type {
   MarketingContact, MarketingTemplate, MarketingCampaign, CampaignRecipient,
   Quotation, QuotationStatus, Requisition, RequisitionStatus,
   FloatEntry, FloatEntryType, PettyCashEntry, PettyCashEntryType,
-  FdmsReceipt, FdmsReceiptStatus,
+  FdmsReceipt, FdmsReceiptStatus, FdmsDocType, FdmsFiscalDay, FdmsFiscalDayStatus,
 } from '../types'
 import { STAFF_ROLES } from '../types'
 
@@ -1956,6 +1956,34 @@ export const staff = {
       return { error: `Could not reach the server: ${e}` }
     }
   },
+
+  /**
+   * Changes a staff/system account's sign-in email via the update branch of
+   * api/create-account.ts ({ id, email }) — the service-role endpoint is the
+   * only place allowed to touch auth.users, and auth's address is the
+   * identity signInWithPassword actually checks. update() above never
+   * writes profiles.email on purpose: a profiles-only edit would leave
+   * auth.users.email behind, the resolved login would point at an address
+   * that no longer authenticates, and the divergence reads exactly like
+   * "the password reset didn't take". profiles.email follows the auth
+   * change server-side.
+   */
+  async updateEmail(staffId: string, email: string) {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) return { error: 'Not signed in.' }
+    try {
+      const res = await fetch('/api/create-account', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session.access_token}` },
+        body: JSON.stringify({ id: staffId, email }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) return { error: body?.error ?? `Failed to update the sign-in email (HTTP ${res.status}).` }
+      return { error: null }
+    } catch (e) {
+      return { error: `Could not reach the server: ${e}` }
+    }
+  },
 }
 
 // ── FRAUD CASES ───────────────────────────────────────────────────
@@ -3639,6 +3667,11 @@ function toFdmsReceipt(r: Record<string, unknown>): FdmsReceipt {
     amount: Number(r.amount) || 0,
     vatAmount: r.vat_amount != null ? Number(r.vat_amount) : undefined,
     status: r.status as FdmsReceiptStatus,
+    docType: (r.doc_type as FdmsDocType | null) ?? 'FiscalInvoice',
+    receiptCounter: r.receipt_counter != null ? Number(r.receipt_counter) : undefined,
+    fiscalDayId: (r.fiscal_day_id as string | null) ?? undefined,
+    originalReceiptId: (r.original_receipt_id as string | null) ?? undefined,
+    reason: (r.reason as string | null) ?? undefined,
     deviceId: (r.device_id as string | null) ?? undefined,
     fiscalDay: (r.fiscal_day as string | null) ?? undefined,
     globalNo: r.global_no != null ? Number(r.global_no) : undefined,
@@ -3659,6 +3692,42 @@ export const fdmsReceipts = {
     )
     if (ok && data) return { data: (data as unknown[]).map(r => toFdmsReceipt(r as Record<string, unknown>)), error: null }
     return { data: [] as FdmsReceipt[], error: 'Could not load FDMS receipts — the fdms_receipts table may not exist yet (run database/add_accounting.sql).' }
+  },
+}
+
+function toFdmsFiscalDay(r: Record<string, unknown>): FdmsFiscalDay {
+  return {
+    id: r.id as string,
+    deviceId: (r.device_id as string | null) ?? '',
+    fiscalDayNo: (r.fiscal_day_no as string | null) ?? '',
+    status: r.status as FdmsFiscalDayStatus,
+    openedAt: r.opened_at as string,
+    openedBy: (r.opened_by as string | null) ?? undefined,
+    closedAt: (r.closed_at as string | null) ?? undefined,
+    closedBy: (r.closed_by as string | null) ?? undefined,
+    receiptCounter: Number(r.receipt_counter) || 0,
+    docsCount: Number(r.docs_count) || 0,
+    upstreamError: (r.upstream_error as string | null) ?? undefined,
+    createdAt: r.created_at as string,
+  }
+}
+
+export const fdmsFiscalDays = {
+  // Read-only on the client — fiscal days are opened/closed by /api/fdms
+  // with the service role, same trust model as the receipts table.
+  async list() {
+    const { ok, data } = await sb('fdms_fiscal_days', 'read',
+      () => fetchAllRows(() => supabase.from('fdms_fiscal_days').select('*').order('opened_at', { ascending: false }), { orderBy: 'id' }),
+      d => Array.isArray(d),
+    )
+    if (ok && data) return { data: (data as unknown[]).map(r => toFdmsFiscalDay(r as Record<string, unknown>)), error: null }
+    return { data: [] as FdmsFiscalDay[], error: 'Could not load fiscal days — run database/extend_fdms_fiscalisation.sql.' }
+  },
+
+  /** Most recent open day, if any — the day new documents land in. */
+  async current() {
+    const { data, error } = await fdmsFiscalDays.list()
+    return { data: (data ?? []).find(d => d.status === 'open') ?? null, error }
   },
 }
 
@@ -4050,7 +4119,7 @@ export const db = {
   customRoles, claimAssessments, policyAssessments, photoHashes, cropTypes, fraudSignalRules, heroSlides,
   policyCards, groups, groupMembers, agentProfiles,
   dashboardStats, sidebarCounts, notificationLog, invoices,
-  quotations, requisitions, floatEntries, pettyCashEntries, fdmsReceipts,
+  quotations, requisitions, floatEntries, pettyCashEntries, fdmsReceipts, fdmsFiscalDays,
   marketingContacts, marketingTemplates, marketingCampaigns, campaignRecipients,
   subscribeToTable,
 }

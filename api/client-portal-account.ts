@@ -112,6 +112,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       name: client.name, username: client.name, active: true, role: 'policyholder',
       ...(existing.client_id ? {} : { client_id: client.id }),
     }).eq('id', existing.id)
+    // Staff vouching for the account by resetting it is the human review the
+    // login lockout exists to wait for — clear the attempts trail or the new
+    // password still can't sign in. Same rationale as reset-staff-password.
+    await admin.from('login_attempts').delete().eq('email', email)
     return res.status(200).json({ ok: true, created: false, email, rebound: byClient?.email !== email })
   }
 
@@ -135,6 +139,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { error: profileError } = await admin.from('profiles').update({
     username: client.name, active: true, client_id: client.id,
   }).eq('id', created.user.id)
+  // Fresh account, fresh start: any failed sign-ins logged against this
+  // address (e.g. someone guessing it before it existed) shouldn't carry
+  // into a lockout the moment the client first tries their password.
+  await admin.from('login_attempts').delete().eq('email', email)
   if (profileError) {
     // The auth user exists now either way — report it so staff retries the
     // password instead of believing nothing happened.

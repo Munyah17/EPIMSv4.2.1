@@ -23,6 +23,7 @@ export type ActivityAction =
   | 'developer.registered' | 'developer.status_changed' | 'developer.terminated'
   | 'developer.commission_changed' | 'developer.wallet_topup' | 'developer.agriculture_toggled'
   // Money and outcomes
+  | 'client.deleted'
   | 'policy.created' | 'policy.updated' | 'policy.deleted'
   | 'claim.intake_accepted' | 'claim.intake_rejected' | 'claim.escalated'
   | 'claim.approved' | 'claim.declined' | 'claim.deleted'
@@ -149,6 +150,7 @@ export const ACTION_LABELS: Record<string, string> = {
   'developer.commission_changed': 'Changed developer commission',
   'developer.wallet_topup': 'Topped up a developer wallet',
   'developer.agriculture_toggled': 'Changed developer agriculture access',
+  'client.deleted': 'Deleted a client record',
   'policy.created': 'Created a policy',
   'policy.updated': 'Updated a policy',
   'policy.deleted': 'Deleted a policy',

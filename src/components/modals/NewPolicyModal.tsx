@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import type { Policy, Payment, PaymentMethod, Dependant, Client, Product, AppUser, Group, GroupMember, GroupType, CoverScope } from '../../types'
+import type { Policy, Payment, PaymentMethod, Dependant, Client, Product, AppUser, Group, GroupMember, GroupType, CoverScope, Quotation } from '../../types'
 import { MANUAL_PAYMENT_METHODS } from '../../types'
 import { db } from '../../lib/db'
 import { useAuth } from '../../contexts/AuthContext'
@@ -30,9 +30,15 @@ interface Props {
    *  Clients page for someone registered with no policy yet) — skips the
    *  New/Existing toggle and search step entirely. */
   initialClient?: Client
+  /** A quotation being converted — pre-fills the product and carries the
+   *  negotiated premium/cover onto the policy (quotes are priced before
+   *  cover exists, so the agreed figure can differ from the product
+   *  default). The prospect's name seeds the new-client form when the
+   *  quote has no client record. */
+  initialQuotation?: Quotation
 }
 
-export default function NewPolicyModal({ onClose, onSave, showToast, initialClient }: Props) {
+export default function NewPolicyModal({ onClose, onSave, showToast, initialClient, initialQuotation }: Props) {
   const { user } = useAuth()
   // A customer already on file can take out another policy without being
   // re-registered from scratch — that's what "existing" mode is for. It's
@@ -45,8 +51,9 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   // second live Funeral plan from reaching the one-per-product index.
   const [clientPolicies, setClientPolicies] = useState<Array<{ productId: string; productName: string; policyNumber: string; status: string }>>([])
 
-  // Client fields
-  const [clientName, setClientName] = useState('')
+  // Client fields — a quotation without a client record seeds the
+  // prospect's name into the new-client form.
+  const [clientName, setClientName] = useState(initialClient ? '' : (initialQuotation?.clientName ?? ''))
   const [clientPhone, setClientPhone] = useState('')
   const [clientEmail, setClientEmail] = useState('')
   const [clientNationalId, setClientNationalId] = useState('')
@@ -55,7 +62,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   const [clientOccupation, setClientOccupation] = useState('')
 
   // Policy fields
-  const [productId, setProductId] = useState('')
+  const [productId, setProductId] = useState(initialQuotation?.productId ?? '')
   const [paymentMethod, setPaymentMethod] = useState('OneMoney')
   // The commencement date is entered by the capturer — it is never
   // auto-assigned, so every policy starts on the date agreed at sale.
@@ -598,8 +605,10 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
       clientName: createdClient.name,
       productId,
       productName: product!.name,
-      premium: product!.premium,
-      coverAmount: product!.coverAmount,
+      // A converted quotation carries its agreed figures — the negotiated
+      // price, not the catalogue default.
+      premium: initialQuotation?.premium ?? product!.premium,
+      coverAmount: initialQuotation?.coverAmount ?? product!.coverAmount,
       startDate: effectiveStartDate,
       endDate: effectiveEndDate,
       // Every new policy starts in a waiting period, lifted to active after
@@ -635,7 +644,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
     <div className="modal-overlay">
       <div className="modal" style={{ maxWidth: 900 }}>
         <div className="modal-header">
-          <h3>New Policy</h3>
+          <h3>{initialQuotation ? `New Policy — from ${initialQuotation.quotationNumber}` : 'New Policy'}</h3>
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
 import Copyright from '../Layout/Copyright'
 import ChatWidget from '../chat/ChatWidget'
+import ForgotPasswordForm from './ForgotPasswordForm'
 
 export default function LoginScreen() {
   const { login } = useAuth()
@@ -9,6 +10,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [forgot, setForgot] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -62,6 +64,14 @@ export default function LoginScreen() {
             {loading ? 'Signing in…' : 'Sign In'}
           </button>
         </form>
+
+        {forgot ? (
+          <ForgotPasswordForm onBack={() => setForgot(false)} />
+        ) : (
+          <button type="button" className="btn btn-ghost btn-full" onClick={() => setForgot(true)}>
+            Forgot password?
+          </button>
+        )}
 
         <div className="login-footer">
           <Copyright />

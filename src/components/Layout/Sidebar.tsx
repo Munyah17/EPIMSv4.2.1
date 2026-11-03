@@ -65,6 +65,7 @@ const STAFF_SECTIONS: NavSection[] = [
           { id: 'policies', label: 'Individual Policies', icon: '👤', withCategory: '__individual' },
           { id: 'policies', label: 'Group & Corporate', icon: '🏢', withCategory: '__group' },
           { id: 'policies', label: 'All Policies', icon: '🛡' },
+          { id: 'lapsed_policies', label: 'Lapsed Policies', icon: '📉' },
         ],
       },
       {

@@ -13,6 +13,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext'
 import LoginScreen from './components/Auth/LoginScreen'
 import SuperAdminLogin from './components/Auth/SuperAdminLogin'
 import AdminLogin from './components/Auth/AdminLogin'
+import ResetPasswordScreen from './components/Auth/ResetPasswordScreen'
 import Sidebar from './components/Layout/Sidebar'
 import TopBar from './components/Layout/TopBar'
 import Toast from './components/ui/Toast'
@@ -25,6 +26,7 @@ import type { ToastMessage } from './types'
 // in one bundle every user downloads just to see the login screen.
 const Dashboard = lazyWithRecovery('Dashboard', () => import('./pages/Dashboard'))
 const Policies = lazyWithRecovery('Policies', () => import('./pages/Policies'))
+const LapsedPolicies = lazyWithRecovery('LapsedPolicies', () => import('./pages/LapsedPolicies'))
 const Claims = lazyWithRecovery('Claims', () => import('./pages/Claims'))
 const Payments = lazyWithRecovery('Payments', () => import('./pages/Payments'))
 const PaymentVerifications = lazyWithRecovery('PaymentVerifications', () => import('./pages/PaymentVerifications'))
@@ -61,7 +63,7 @@ const SmsTemplates = lazyWithRecovery('SmsTemplates', () => import('./pages/SmsT
 const Accounting = lazyWithRecovery('Accounting', () => import('./pages/Accounting'))
 
 export type ActivePanel =
-  | 'dashboard' | 'policies' | 'claims' | 'payments' | 'products'
+  | 'dashboard' | 'policies' | 'lapsed_policies' | 'claims' | 'payments' | 'products'
   | 'clients' | 'clients_no_policy' | 'groups' | 'staff' | 'system_access_roles' | 'reminders' | 'reports' | 'leads' | 'payment_verifications'
   | 'email' | 'tickets' | 'fraud' | 'profile'
   | 'system_health' | 'settings' | 'developer_api' | 'integrations' | 'mass_messaging' | 'billing_reminders' | 'pre_loss_assessments' | 'agriculture_insurance' | 'member_cards' | 'whatsapp_bot'
@@ -213,6 +215,7 @@ function AppInner() {
     switch (activePanel) {
       case 'dashboard': return <Dashboard {...panelProps} />
       case 'policies': return <Policies {...panelProps} initialCategory={panelCategory} />
+      case 'lapsed_policies': return <LapsedPolicies {...panelProps} />
       case 'claims': return <Claims {...panelProps} initialCategory={panelCategory} />
       case 'payments': return <Payments {...panelProps} />
       case 'payment_verifications': return <PaymentVerifications {...panelProps} />
@@ -291,9 +294,13 @@ function AppInner() {
 }
 
 function AuthGate() {
-  const { user, loading } = useAuth()
+  const { user, loading, recoveryMode, recoveryError } = useAuth()
 
   if (loading) return <div className="app-loading">Loading…</div>
+
+  // A password-recovery link — valid or dead — always lands on the reset
+  // screen first, never inside the app and never on a bare login form.
+  if (recoveryMode || recoveryError) return <ResetPasswordScreen />
 
   return (
     <Routes>

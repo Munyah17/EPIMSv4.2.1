@@ -269,7 +269,7 @@ export default function Dashboard({ showToast, setActivePanel }: Props) {
   const rateNeedsAttention = isSuperAdmin && rateLoaded && isStale(rate)
 
   return (
-    <div className="panel">
+    <div className="panel dashboard-panel">
       {gatewayDown.down && (
         // Big, unmissable, and names whose problem it is — staff answering
         // a "my text never came" call need to know in one glance that it
@@ -375,7 +375,7 @@ export default function Dashboard({ showToast, setActivePanel }: Props) {
             <div className="stat-delta negative">{stats.fraudAlerts > 0 ? 'Investigate now' : 'All clear'}</div>
           </div>
         </div>
-        <div className="stat-card">
+        <div className="stat-card stat-card-clickable" onClick={() => setActivePanel('lapsed_policies')}>
           <div className="stat-icon stat-icon-danger">📉</div>
           <div className="stat-body">
             <div className="stat-value">{stats.lapseRate}%</div>

@@ -123,8 +123,8 @@ export default function MoneyReportsPanel({ showToast }: Props) {
           <div className="stat-card"><div className="stat-value" style={{ color: claimsPaid > 0 ? 'var(--danger)' : undefined }}>${claimsPaid.toFixed(2)}</div><div className="stat-label">Claims Paid</div></div>
           <div className="stat-card"><div className="stat-value">${reqsTotal.toFixed(2)}</div><div className="stat-label">Requisitions Paid</div></div>
           <div className="stat-card"><div className="stat-value">${pettyTotal.toFixed(2)}</div><div className="stat-label">Petty Cash Spent</div></div>
-        </div>
-        <div className="stats-grid" style={{ marginTop: 8 }}>
+          {/* Seventh card: on the 4-column desktop grid this lands at
+              row 2 column 3, capping the stats block at two rows. */}
           <div className="stat-card">
             <div className="stat-value" style={{ color: net >= 0 ? 'var(--success)' : 'var(--danger)' }}>${net.toFixed(2)}</div>
             <div className="stat-label">Net Cash Position (collected − outflows)</div>

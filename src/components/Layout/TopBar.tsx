@@ -14,6 +14,7 @@ interface TopBarProps {
 const PANEL_TITLES: Record<ActivePanel, string> = {
   dashboard: 'Dashboard',
   policies: 'Policies',
+  lapsed_policies: 'Lapsed Policies',
   claims: 'Claims',
   payments: 'Payments',
   payment_verifications: 'Payment Verifications',

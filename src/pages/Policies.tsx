@@ -625,14 +625,12 @@ export default function Policies({ showToast, setActivePanel, initialCategory }:
             {label} ({count})
           </button>
         ))}
-        {/* Not a filter — a door to the committed uncovered register
-            (Abandoned Signups). Red and unmissable by design: a client
-            with no policy needs cover assigned now, not a warning that
-            can be dismissed. */}
+        {/* Same tab affordance as the filters beside it, but kept red —
+            a client with no policy needs cover assigned now, not a
+            warning that can be dismissed. */}
         <button
           type="button"
-          className="tab-item"
-          style={{ background: 'var(--danger)', color: '#fff', fontWeight: 600, borderRadius: 7, margin: '0 0 6px 12px', border: 'none' }}
+          className="tab-item tab-item-danger"
           onClick={() => setActivePanel('clients_no_policy')}
           title="Clients with no policy at all — open the dedicated uncovered register"
         >

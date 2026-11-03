@@ -10,6 +10,8 @@ import { sendSystemEmail } from '../lib/mailService'
 import { getPolicyReportPdfBase64 } from '../lib/exportUtils'
 import { MAILBOXES } from '../lib/mailboxes'
 import NewPolicyModal from '../components/modals/NewPolicyModal'
+import { recordActivity } from '../lib/activityLog'
+import { useAuth } from '../contexts/AuthContext'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -28,7 +30,12 @@ interface Props {
  * leaves this list the moment cover exists.
  */
 export default function ClientsNoPolicy({ showToast, setActivePanel }: Props) {
+  const { user } = useAuth()
   const [clients, setClients] = useState<Client[]>([])
+  // Covered clients too — a no-policy row sharing a national ID or email
+  // with a covered client is a DUPLICATE record (the same person on both
+  // this page and the policy register), not an abandoned signup.
+  const [allClients, setAllClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [assignPolicyClient, setAssignPolicyClient] = useState<Client | null>(null)
@@ -50,7 +57,10 @@ export default function ClientsNoPolicy({ showToast, setActivePanel }: Props) {
       db.products.list(),
     ]).then(([clientsRes, checkoutsRes, pendingRes, leadsRes, productsRes]) => {
       if (clientsRes.error) showToast('error', 'Failed to load clients.')
-      else if (clientsRes.data) setClients(clientsRes.data.filter(c => (c.policyCount ?? 0) === 0))
+      else if (clientsRes.data) {
+        setAllClients(clientsRes.data)
+        setClients(clientsRes.data.filter(c => (c.policyCount ?? 0) === 0))
+      }
       setCheckouts(checkoutsRes)
       setPendingPolicies(pendingRes)
       setLeadRows(leadsRes.data ?? [])
@@ -80,9 +90,19 @@ export default function ClientsNoPolicy({ showToast, setActivePanel }: Props) {
       l.phone === c.phone),
   })
 
+  // Same person, two rows: this no-policy row shares a national ID or an
+  // email with a client who already holds a policy. Not an abandoned
+  // signup at all — the answer is to delete the empty duplicate.
+  const isDuplicateOfCovered = (c: Client) =>
+    allClients.some(o => o.id !== c.id && (o.policyCount ?? 0) > 0 && (
+      (!!c.nationalId && c.nationalId === o.nationalId) ||
+      (!!c.email && c.email.toLowerCase() === o.email.toLowerCase())
+    ))
+
   // Most recent evidence wins — a payer who tried twice and gave up shows
   // the LAST attempt's fate, not the first.
   const reasonFor = (c: Client): { label: string; pill: string } => {
+    if (isDuplicateOfCovered(c)) return { label: 'Duplicate record — person already holds a policy', pill: 'pill-danger' }
     const ev = evidenceFor(c)
     const latest = ev.checkouts[0] // checkouts arrive newest-first
     if (latest?.status === 'paid') return { label: 'PAID but no policy issued — needs attention', pill: 'pill-danger' }
@@ -110,10 +130,12 @@ export default function ClientsNoPolicy({ showToast, setActivePanel }: Props) {
       void notifyRegistrationFailed('Policy signup', `${policy.clientName} / ${policy.productName} — ${error ?? 'unknown error'}`)
       return null
     }
-    // Cover now exists — the client leaves this list immediately.
+    // Cover now exists — the client leaves this list immediately, and the
+    // person assigning lands on the register where the new policy sits.
     setClients(prev => prev.filter(c => c.id !== data.clientId))
     showToast('success', `Policy ${data.policyNumber} assigned to ${data.clientName}.`)
     setAssignPolicyClient(null)
+    setActivePanel('policies')
 
     const { data: client } = await db.clients.get(data.clientId)
     void notifyPolicyRegistered(data, client ?? null)
@@ -142,6 +164,35 @@ export default function ClientsNoPolicy({ showToast, setActivePanel }: Props) {
     return data
   }
 
+  /**
+   * Removes a client who was never meant to be here — a bot signup, a
+   * test record, or an empty duplicate of a client who already holds a
+   * policy. Super Admin only (RLS clients_delete_super_admin); rows with
+   * policies can't reach this by definition but RESTRICT still guards it.
+   * The mirrored sales lead and checkout history stay — they're reporting
+   * records, not the person.
+   */
+  const handleDelete = async (c: Client) => {
+    const dup = isDuplicateOfCovered(c)
+    if (!window.confirm(
+      `Delete ${c.name}?${dup ? '\n\nA duplicate client record holding their policy will remain — only the empty copy is removed.' : ''}\n\nThis permanently removes the client record. Their lead and checkout history stay for reporting.`,
+    )) return
+
+    await recordActivity({
+      action: 'client.deleted',
+      actor: { id: user?.id, name: user?.name ?? 'Unknown', role: user?.role ?? 'unknown' },
+      entityType: 'client', entityId: c.id, entityLabel: c.name,
+      detail: `Removed from the no-policy register${dup ? ' as an empty duplicate of a covered client' : ''}. ${reasonFor(c).label}.`,
+      severity: 'warning',
+    })
+
+    const { error } = await db.clients.remove(c.id)
+    if (error) { showToast('error', error); return }
+    setClients(prev => prev.filter(x => x.id !== c.id))
+    setAllClients(prev => prev.filter(x => x.id !== c.id))
+    showToast('success', `${c.name} deleted.`)
+  }
+
   return (
     <div className="panel">
       <div className="panel-toolbar">
@@ -156,14 +207,31 @@ export default function ClientsNoPolicy({ showToast, setActivePanel }: Props) {
         <button type="button" className="btn btn-ghost" onClick={() => setActivePanel('clients')}>← Clients Management</button>
       </div>
 
-      <div className="info-banner info-banner-warning" style={{ marginBottom: 14 }}>
-        <strong>Two different problems live on this page.</strong>{' '}
-        <strong>Self-signups</strong> (Referred By shows an agent, or blank) are abandoned
-        website/bot signups — no payment was taken, and they're mirrored under
-        Leads &amp; Marketing for follow-up. <strong>Back-office</strong> rows (Referred By
-        shows a staff member) are clients staff registered but whose policy was never
-        issued — e.g. tobacco farmers whose Stop Order cover should activate instantly.
-        Those need a policy assigned <em>now</em>, not a sales call.
+      {/* Two cohorts, two different responses — side by side on desktop,
+          stacked on mobile. */}
+      <div className="nc-explainer">
+        <div className="nc-explainer-col">
+          <div className="nc-explainer-head">
+            <strong>🧍 Self-signups</strong>
+            <span className="pill pill-caution">Referred By: agent or blank</span>
+          </div>
+          <p>
+            Abandoned website/bot signups — no payment was taken. They're mirrored
+            under Leads &amp; Marketing for follow-up, or <strong>Delete</strong> them if they
+            were never meant to be clients (test rows, bots, empty duplicates).
+          </p>
+        </div>
+        <div className="nc-explainer-col">
+          <div className="nc-explainer-head">
+            <strong>🏢 Back-office</strong>
+            <span className="pill pill-gray">Referred By: staff member</span>
+          </div>
+          <p>
+            Clients staff registered but whose policy was never issued — e.g. tobacco
+            farmers whose Stop Order cover should activate instantly. <strong>Assign
+            Policy</strong> now — don't put them on a sales call.
+          </p>
+        </div>
       </div>
 
       <div className="card">
@@ -210,10 +278,18 @@ export default function ClientsNoPolicy({ showToast, setActivePanel }: Props) {
                     </button>
                   </td>
                   <td><span className={`pill ${c.status === 'active' ? 'pill-active' : 'pill-lapsed'}`}>{c.status}</span></td>
-                  <td>
+                  <td style={{ whiteSpace: 'nowrap' }}>
                     <button type="button" className="btn btn-primary btn-sm" onClick={() => setAssignPolicyClient(c)}>
                       Assign Policy
                     </button>
+                    {user?.role === 'super_admin' && (
+                      <button type="button" className="btn btn-ghost btn-sm"
+                        style={{ color: 'var(--danger)', marginLeft: 8 }}
+                        title="Remove this record — bot signup, test row, or an empty duplicate"
+                        onClick={() => void handleDelete(c)}>
+                        Delete
+                      </button>
+                    )}
                   </td>
                 </tr>
                 {expanded && ev && (

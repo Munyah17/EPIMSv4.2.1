@@ -1,9 +1,15 @@
 import { useState, useEffect } from 'react'
-import type { ToastMessage, Quotation, QuotationStatus, Client, Product } from '../../types'
+import type { ToastMessage, Quotation, QuotationStatus, Client, Product, Policy } from '../../types'
 import { db } from '../../lib/db'
 import { formatDate } from '../../lib/dateUtils'
 import { useAuth } from '../../contexts/AuthContext'
 import ValidationSummary, { MissingField, invalidClass, fieldId } from '../ui/ValidationSummary'
+import NewPolicyModal from '../modals/NewPolicyModal'
+import { notifyPolicyRegistered } from '../../lib/signupNotifications'
+import { serverReachable } from '../../lib/notify'
+import { sendSystemEmail } from '../../lib/mailService'
+import { getPolicyReportPdfBase64 } from '../../lib/exportUtils'
+import { MAILBOXES } from '../../lib/mailboxes'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
@@ -26,6 +32,10 @@ export default function QuotationsPanel({ showToast }: Props) {
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [saving, setSaving] = useState(false)
+  // Quotation being converted — the modal carries the quote's product and
+  // its negotiated figures; client is resolved when the quote links one.
+  const [converting, setConverting] = useState<{ quote: Quotation; client?: Client } | null>(null)
+  const [convertLoadingId, setConvertLoadingId] = useState<string | null>(null)
 
   const load = () => {
     setLoading(true)
@@ -49,6 +59,73 @@ export default function QuotationsPanel({ showToast }: Props) {
     if (error) { showToast('error', error); return }
     setItems(prev => prev.filter(x => x.id !== q.id))
     showToast('success', `${q.quotationNumber} deleted.`)
+  }
+
+  /** Quote → policy. A quote linked to a client locks that client into
+   *  the new-policy form; a pure prospect seeds the name and lets staff
+   *  finish the record inside the modal. */
+  const startConvert = async (q: Quotation) => {
+    setConvertLoadingId(q.id)
+    try {
+      let client: Client | undefined
+      if (q.clientId) {
+        const { data } = await db.clients.get(q.clientId)
+        if (!data) { showToast('error', `Could not load ${q.clientName}'s client record — register them first.`); return }
+        client = data
+      }
+      setConverting({ quote: q, client })
+    } finally {
+      setConvertLoadingId(null)
+    }
+  }
+
+  /** Same registration path as Clients → Assign Policy / the no-policy
+   *  register: the created policy texts the client and, for non-funeral
+   *  cover, emails the policy document. */
+  const handleConvertSave = async (policy: Policy): Promise<Policy | null> => {
+    if (!(await serverReachable())) {
+      showToast('error', 'The server is unreachable right now — nothing was registered. Try again in a moment.')
+      return null
+    }
+    const { data, error } = await db.policies.create(policy)
+    if (error || !data) {
+      showToast('error', error ?? 'Failed to create policy.')
+      return null
+    }
+    const quote = converting?.quote
+    setConverting(null)
+    showToast('success', `Policy ${data.policyNumber} issued from ${quote?.quotationNumber ?? 'the quotation'}.`)
+
+    // Conversion IS acceptance — a sent quote flips to accepted, and a
+    // converted quote never sits looking un-actioned afterwards.
+    if (quote && quote.status !== 'accepted') {
+      const { data: updated } = await db.quotations.setStatus(quote.id, 'accepted')
+      if (updated) setItems(prev => prev.map(x => x.id === updated.id ? updated : x))
+    }
+
+    const { data: client } = await db.clients.get(data.clientId)
+    void notifyPolicyRegistered(data, client ?? null)
+
+    const { data: allProducts } = await db.products.list()
+    const category = allProducts?.find(pr => pr.id === data.productId)?.category ?? ''
+    if (category !== 'funeral' && client?.email) {
+      try {
+        const attachmentBase64 = await getPolicyReportPdfBase64(data, client, category)
+        const result = await sendSystemEmail({
+          from: MAILBOXES.noreply,
+          to: client.email,
+          subject: `Your Policy ${data.policyNumber}: Documents Enclosed`,
+          body: `Dear ${client.name},\n\nThank you for choosing us. Your policy ${data.policyNumber} (${data.productName}) is now active. Your policy report is attached for your records.\n\nRegards,\nTariqify IMS`,
+          linkedTo: data.id,
+          attachmentBase64,
+          attachmentFilename: `${data.policyNumber}-Policy-Report.pdf`,
+        })
+        if (!result.delivered) showToast('warning', 'Policy created, but the document email could not be sent; check Settings → Notifications.')
+      } catch {
+        showToast('warning', 'Policy created, but the document email could not be sent.')
+      }
+    }
+    return data
   }
 
   return (
@@ -96,6 +173,14 @@ export default function QuotationsPanel({ showToast }: Props) {
                     {q.status === 'draft' && (
                       <button className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => remove(q)}>Delete</button>
                     )}
+                    {(q.status === 'sent' || q.status === 'accepted') && (
+                      <button className="btn btn-primary btn-sm"
+                        disabled={convertLoadingId === q.id}
+                        title="Issue a real policy from this quote — product and agreed price carry over"
+                        onClick={() => void startConvert(q)}>
+                        {convertLoadingId === q.id ? 'Loading…' : '→ Policy'}
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -103,6 +188,15 @@ export default function QuotationsPanel({ showToast }: Props) {
           </tbody>
         </table>
         </div>
+      )}
+      {converting && (
+        <NewPolicyModal
+          initialClient={converting.client}
+          initialQuotation={converting.quote}
+          onClose={() => setConverting(null)}
+          onSave={handleConvertSave}
+          showToast={showToast}
+        />
       )}
       {showForm && (
         <NewQuotationModal

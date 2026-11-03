@@ -21,6 +21,17 @@ interface AuthContextValue {
    *  allowing a password or email change — proves the caller isn't just an open session
    *  on an unlocked device. Returns false without throwing on a wrong password. */
   reauthenticate: (password: string) => Promise<boolean>
+  /** True while a valid password-recovery session is active — the app must
+   *  show the reset screen, not the dashboard, until a new password is set. */
+  recoveryMode: boolean
+  /** A recovery link that arrived dead (expired or already used) — the reset
+   *  screen shows this instead of the form. */
+  recoveryError: string | null
+  /** After updateUser({password}) succeeds on the reset screen: loads the
+   *  profile and signs the user straight in. Returns null if no profile. */
+  completeRecovery: () => Promise<AppUser | null>
+  /** Leaves the recovery flow (back to sign-in) — also drops any partial session. */
+  exitRecovery: () => void
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null)
@@ -28,6 +39,7 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 const PANEL_ACCESS: Record<string, UserRole[]> = {
   dashboard: ['super_admin', 'admin', 'claims_officer', 'policy_admin', 'finance', 'client_relations', 'agent'],
   policies: ['super_admin', 'admin', 'policy_admin', 'finance', 'client_relations', 'agent'],
+  lapsed_policies: ['super_admin', 'admin', 'policy_admin', 'finance', 'client_relations', 'agent'],
   claims: ['super_admin', 'admin', 'claims_officer', 'finance'],
   payments: ['super_admin', 'admin', 'finance'],
   accounting: ['super_admin', 'admin', 'finance'],
@@ -120,14 +132,34 @@ async function fetchProfile(userId: string, email: string, metaFallback?: Record
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AppUser | null>(null)
   const [loading, setLoading] = useState(true)
+  // A recovery link lands on the app URL carrying #access_token=…&type=recovery.
+  // Detected here (and again via the PASSWORD_RECOVERY event below) so the
+  // gate can show the reset screen — auto-logging someone straight into the
+  // app from an emailed link was never the intent, and a dead link surfaces
+  // its error instead of a confusing plain login screen.
+  const [recoveryMode, setRecoveryMode] = useState(() =>
+    typeof window !== 'undefined' && /type=recovery/.test(window.location.hash))
+  const [recoveryError, setRecoveryError] = useState<string | null>(() => {
+    if (typeof window === 'undefined' || !/[#&?]error=/.test(window.location.hash)) return null
+    const m = window.location.hash.match(/error_description=([^&]*)/)
+    return m ? decodeURIComponent(m[1]).replace(/\+/g, ' ') : 'This password reset link is invalid or has expired.'
+  })
 
   useEffect(() => {
     const timeout = setTimeout(() => setLoading(false), 4000)
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       clearTimeout(timeout)
+      // supabase-js already redeemed the URL hash by now — strip it so the
+      // token doesn't sit in the address bar or re-trigger on a refresh.
+      if (window.location.hash) window.history.replaceState(null, '', window.location.pathname + window.location.search)
       // Anonymous sessions (the live chat widget) fire the same auth events
       // as a real login — never treat one as an app sign-in.
       if (session?.user && !session.user.is_anonymous) {
+        if (recoveryMode) {
+          // Recovery session: hold at the reset screen — no auto sign-in.
+          setLoading(false)
+          return
+        }
         const meta = session.user.user_metadata as Record<string, unknown>
         const profile = await fetchProfile(session.user.id, session.user.email ?? '', meta)
         setUser(profile)
@@ -151,12 +183,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // never hit the same race window) — login would hang on
       // "Authenticating…" for the full 15s client-side timeout and then
       // fail with "Invalid credentials" despite the password being right.
+      if (event === 'PASSWORD_RECOVERY') {
+        setRecoveryMode(true)
+        setRecoveryError(null)
+      }
       if (event === 'SIGNED_OUT') {
         setUser(null)
+        setRecoveryMode(false)
+        setRecoveryError(null)
       }
     })
 
     return () => subscription.unsubscribe()
+    // recoveryMode is read inside getSession's callback; the initial state
+    // already covers the landing-on-a-link case, so [] stays correct.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const login = useCallback(async (identifier: string, password: string): Promise<{ profile: AppUser | null; error: string | null }> => {
@@ -261,8 +302,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     )
   }, [user])
 
+  const completeRecovery = useCallback(async (): Promise<AppUser | null> => {
+    const { data: { user: authUser } } = await supabase.auth.getUser()
+    if (!authUser) return null
+    const meta = authUser.user_metadata as Record<string, unknown>
+    const profile = await fetchProfile(authUser.id, authUser.email ?? '', meta)
+    setRecoveryMode(false)
+    setRecoveryError(null)
+    if (profile) setUser(profile)
+    return profile
+  }, [])
+
+  const exitRecovery = useCallback(() => {
+    setRecoveryMode(false)
+    setRecoveryError(null)
+    void supabase.auth.signOut().catch(() => {})
+  }, [])
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, hasPermission, canAccess, updateLocalUser, reauthenticate }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, hasPermission, canAccess, updateLocalUser, reauthenticate, recoveryMode, recoveryError, completeRecovery, exitRecovery }}>
       {children}
     </AuthContext.Provider>
   )

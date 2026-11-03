@@ -49,7 +49,14 @@ export default function InvoicingPanel({ showToast }: Props) {
     setGenerating(true)
     try {
       const { data: allPolicies } = await db.policies.list()
-      const groupPolicies = (allPolicies ?? []).filter(p => p.groupId && (p.status === 'active' || p.status === 'waiting_period'))
+      // Same detection as the Group & Corporate tab and the monthly cron:
+      // cover_scope marks the policy group-cover; group_id is only the link
+      // to the organisation record and is legitimately absent on groups
+      // captured without one — a missing link must not make the policy
+      // uninvoiceable (this is what produced "No live group-cover policies").
+      const groupPolicies = (allPolicies ?? []).filter(p =>
+        (p.status === 'active' || p.status === 'waiting_period') &&
+        (p.groupId || (p.coverScope && p.coverScope !== 'individual')))
       if (groupPolicies.length === 0) { showToast('info', 'No live group-cover policies to invoice.'); return }
       const period = currentPeriod()
       let issued = 0, skipped = 0, failed = 0

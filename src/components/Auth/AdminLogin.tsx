@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
 import Copyright from '../Layout/Copyright'
+import ForgotPasswordForm from './ForgotPasswordForm'
 
 export default function AdminLogin() {
   const { login } = useAuth()
@@ -11,6 +12,7 @@ export default function AdminLogin() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [forgot, setForgot] = useState(false)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -93,6 +95,14 @@ export default function AdminLogin() {
             {loading ? 'Authenticating…' : 'Sign In as Admin'}
           </button>
         </form>
+
+        {forgot ? (
+          <ForgotPasswordForm onBack={() => setForgot(false)} />
+        ) : (
+          <button type="button" className="btn btn-ghost btn-full" onClick={() => setForgot(true)}>
+            Forgot password?
+          </button>
+        )}
 
         <div className="login-footer">
           <Copyright />

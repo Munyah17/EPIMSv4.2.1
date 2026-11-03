@@ -64,7 +64,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { data: target, error: targetError } = await admin
     .from('profiles')
-    .select('role')
+    .select('role, email')
     .eq('id', body.staffId)
     .maybeSingle()
   if (targetError || !target) {
@@ -74,9 +74,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(403).json({ error: 'Super Admin passwords cannot be reset from here.' })
   }
 
-  const { error: updateError } = await admin.auth.admin.updateUserById(body.staffId, { password: body.newPassword })
+  const { data: updated, error: updateError } = await admin.auth.admin.updateUserById(body.staffId, { password: body.newPassword })
   if (updateError) {
     return res.status(400).json({ error: updateError.message })
+  }
+
+  // A lockout outlives the password that caused it: is_login_locked() reads
+  // the raw login_attempts table, not auth state, so a successful reset used
+  // to leave a locked account still refusing sign-in. Deleting the trail is
+  // exactly what add_login_lockout.sql prescribes as the manual unlock —
+  // this just stops making an admin run SQL to finish a reset.
+  const resetEmail = (updated.user?.email ?? target.email ?? '').toLowerCase()
+  if (resetEmail) {
+    await admin.from('login_attempts').delete().eq('email', resetEmail)
   }
 
   return res.status(200).json({ success: true })

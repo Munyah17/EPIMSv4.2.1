@@ -611,6 +611,9 @@ export interface PettyCashEntry {
 }
 
 export type FdmsReceiptStatus = 'pending' | 'fiscalised' | 'failed'
+/** The three document types ZIMRA fiscalises — the approval sample pack
+ *  needs one of each from the test environment. */
+export type FdmsDocType = 'FiscalInvoice' | 'CreditNote' | 'DebitNote'
 
 /** A document submitted to ZIMRA's FDMS for fiscalisation — what ZIMRA
  *  signed (global number, verification code, QR) or why it failed. The
@@ -623,12 +626,40 @@ export interface FdmsReceipt {
   amount: number
   vatAmount?: number
   status: FdmsReceiptStatus
+  docType: FdmsDocType
+  /** Per-fiscal-day sequence — ZIMRA requires counters to run contiguously
+   *  inside an open day. */
+  receiptCounter?: number
+  fiscalDayId?: string
+  /** Credit/debit notes point back at the fiscalised document they adjust. */
+  originalReceiptId?: string
+  reason?: string
   deviceId?: string
   fiscalDay?: string
   globalNo?: number
   verificationCode?: string
   qrData?: string
   error?: string
+  createdAt: string
+}
+
+export type FdmsFiscalDayStatus = 'open' | 'closed' | 'closed_with_errors'
+
+/** One ZIMRA fiscal-day session — ZIMRA requires a device to open a day
+ *  before issuing documents and close it at day's end; a clean close with
+ *  zero errors is part of test-environment approval. */
+export interface FdmsFiscalDay {
+  id: string
+  deviceId: string
+  fiscalDayNo: string
+  status: FdmsFiscalDayStatus
+  openedAt: string
+  openedBy?: string
+  closedAt?: string
+  closedBy?: string
+  receiptCounter: number
+  docsCount: number
+  upstreamError?: string
   createdAt: string
 }
 

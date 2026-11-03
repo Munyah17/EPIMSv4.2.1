@@ -24,6 +24,9 @@ const STAFF_ROLES = ['claims_officer', 'policy_admin', 'finance', 'client_relati
 const SYSTEM_ROLES = ['super_admin', 'admin', 'tech_support'] as const
 
 interface CreateAccountBody {
+  /** When present this is an UPDATE, not a create: only the sign-in email
+   *  is changed (`{ id, email }`). Everything else is ignored. */
+  id?: string
   name: string
   username?: string
   email: string
@@ -57,29 +60,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const body: CreateAccountBody = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body ?? {})
+  const updateId = typeof body.id === 'string' && body.id.length > 0 ? body.id : null
+  const isUpdate = updateId !== null
 
-  if (!body.name || !body.password || !body.role || !body.department) {
+  if (!isUpdate && (!body.name || !body.password || !body.role || !body.department)) {
     return res.status(400).json({ error: 'name, password, role, and department are required.' })
   }
   // Agents are field intermediaries — most never touch this portal.
   // Email is optional for them; the auth account needs SOME email, so a
   // placeholder backs it and the profile shows none. Sign-in resolves
   // by full name regardless.
-  if (!body.email?.trim() && body.role !== 'agent') {
+  if (!isUpdate && !body.email?.trim() && body.role !== 'agent') {
     return res.status(400).json({ error: 'Email is required for staff accounts.' })
   }
-  if (body.password.length < 8) {
+  if (!isUpdate && body.password.length < 8) {
     return res.status(400).json({ error: 'Password must be at least 8 characters.' })
   }
   // Optional, but once given it must be a usable Zimbabwean number —
   // same format rule the modals enforce.
-  if (body.phone?.trim() && !isZwPhone(body.phone)) {
+  if (!isUpdate && body.phone?.trim() && !isZwPhone(body.phone)) {
     return res.status(400).json({ error: 'phone is not a valid Zimbabwean number — +263 followed by 9 digits, or 10 digits starting with 0.' })
   }
 
   const isSystemRole = (SYSTEM_ROLES as readonly string[]).includes(body.role)
   const isStaffRole = (STAFF_ROLES as readonly string[]).includes(body.role)
-  if (!isSystemRole && !isStaffRole) {
+  if (!isUpdate && !isSystemRole && !isStaffRole) {
     return res.status(400).json({ error: 'Invalid role.' })
   }
 
@@ -96,8 +101,57 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .eq('id', caller.id)
     .single()
   if (profileError || !callerProfile || !callerProfile.active) {
-    return res.status(403).json({ error: 'You do not have permission to create accounts.' })
+    return res.status(403).json({ error: 'You do not have permission to manage accounts.' })
   }
+
+  // ── Update path: change an existing account's sign-in email ──
+  // Email edits in the staff modals used to write only the profiles row
+  // (or nothing) while auth.users kept the old address — the account then
+  // authenticated under a different email than the one shown, which read
+  // exactly like "password resets don't work". The auth email is the
+  // identity, so it moves here; profiles.email follows via the
+  // sync_profile_email trigger (and an explicit write below in case the
+  // trigger migration never ran).
+  if (isUpdate) {
+    const newEmail = (body.email ?? '').trim().toLowerCase()
+    if (!newEmail || !/^\S+@\S+\.\S+$/.test(newEmail)) {
+      return res.status(400).json({ error: 'A valid email address is required.' })
+    }
+    const { data: target } = await admin
+      .from('profiles')
+      .select('role, email')
+      .eq('id', updateId)
+      .maybeSingle()
+    if (!target) return res.status(404).json({ error: 'Account not found.' })
+    // Same tier bar as reset-staff-password/delete-staff: super_admins are
+    // managed out of band, system roles only by a super_admin, and a
+    // policyholder's sign-in email is owned by the client record — change
+    // it through the client-portal-account flow so the RLS binding moves
+    // with it.
+    if (target.role === 'super_admin') {
+      return res.status(403).json({ error: 'Super Admin accounts cannot be edited here.' })
+    }
+    if (target.role === 'policyholder') {
+      return res.status(400).json({ error: "Client portal logins are managed from the client's record, not here." })
+    }
+    if ((SYSTEM_ROLES as readonly string[]).includes(target.role) && callerProfile.role !== 'super_admin') {
+      return res.status(403).json({ error: 'Only a Super Admin can edit system access accounts.' })
+    }
+    if ((STAFF_ROLES as readonly string[]).includes(target.role) && !['admin', 'super_admin'].includes(callerProfile.role)) {
+      return res.status(403).json({ error: 'You do not have permission to edit staff accounts.' })
+    }
+
+    const { error: emailError } = await admin.auth.admin.updateUserById(updateId, {
+      email: newEmail,
+      email_confirm: true,
+    })
+    if (emailError) {
+      return res.status(400).json({ error: emailError.message })
+    }
+    await admin.from('profiles').update({ email: newEmail }).eq('id', updateId)
+    return res.status(200).json({ success: true, email: newEmail })
+  }
+
   if (isSystemRole && callerProfile.role !== 'super_admin') {
     return res.status(403).json({ error: 'Only a Super Admin can create system access accounts.' })
   }
