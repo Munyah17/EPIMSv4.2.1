@@ -16,6 +16,7 @@ import { searchMembers } from '../lib/memberNumbers'
 import RegisterClientModal from '../components/modals/RegisterClientModal'
 import EditClientModal from '../components/modals/EditClientModal'
 import NewPolicyModal from '../components/modals/NewPolicyModal'
+import CapturePaymentModal from '../components/modals/CapturePaymentModal'
 import ActionMenu from '../components/ui/ActionMenu'
 
 interface Props {
@@ -31,6 +32,7 @@ export default function Clients({ showToast }: Props) {
   const [showRegister, setShowRegister] = useState(false)
   const [editClient, setEditClient] = useState<Client | null>(null)
   const [assignPolicyClient, setAssignPolicyClient] = useState<Client | null>(null)
+  const [captureClient, setCaptureClient] = useState<Client | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
   const [policies, setPolicies] = useState<Policy[]>([])
@@ -469,6 +471,9 @@ export default function Clients({ showToast }: Props) {
                     <ActionMenu items={[
                       { label: 'Edit', onClick: () => setEditClient(c) },
                       { label: 'Assign Policy', onClick: () => setAssignPolicyClient(c) },
+                      // Money paid directly (cash/EcoCash/bank) never hits a
+                      // gateway — a super admin records it and clears arrears.
+                      { label: 'Capture Payment', onClick: () => setCaptureClient(c), hidden: user?.role !== 'super_admin' },
                       { label: 'Delete', onClick: () => handleDelete(c), danger: true, hidden: user?.role !== 'super_admin' },
                     ]} />
                   </td>
@@ -496,6 +501,18 @@ export default function Clients({ showToast }: Props) {
           initialClient={assignPolicyClient}
           onClose={() => setAssignPolicyClient(null)}
           onSave={handleAssignPolicy}
+          showToast={showToast}
+        />
+      )}
+      {captureClient && (
+        <CapturePaymentModal
+          policies={policies.filter(p => p.clientId === captureClient.id)}
+          clientName={captureClient.name}
+          onClose={() => setCaptureClient(null)}
+          onCaptured={updated => {
+            setPolicies(prev => prev.map(p => p.id === updated.id ? { ...p, ...updated } : p))
+            setCaptureClient(null)
+          }}
           showToast={showToast}
         />
       )}

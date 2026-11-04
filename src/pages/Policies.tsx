@@ -22,6 +22,7 @@ import { paymentCurrencyStatus, PAYMENT_CURRENCY_LABEL, PAYMENT_CURRENCY_CLASS }
 import NewPolicyModal from '../components/modals/NewPolicyModal'
 import ViewPolicyModal from '../components/modals/ViewPolicyModal'
 import EditPolicyModal from '../components/modals/EditPolicyModal'
+import CapturePaymentModal from '../components/modals/CapturePaymentModal'
 import OnlinePaymentModal from '../components/modals/OnlinePaymentModal'
 
 interface Props {
@@ -66,6 +67,7 @@ export default function Policies({ showToast, setActivePanel, initialCategory }:
   const [viewPolicy, setViewPolicy] = useState<Policy | null>(null)
   const [editPolicy, setEditPolicy] = useState<Policy | null>(null)
   const [payPolicy, setPayPolicy] = useState<Policy | null>(null)
+  const [capturePolicy, setCapturePolicy] = useState<Policy | null>(null)
   const [cautionFlags, setCautionFlags] = useState<CautionFlag[]>([])
   const [clients, setClients] = useState<Client[]>([])
   const [suggestOpen, setSuggestOpen] = useState(false)
@@ -743,6 +745,9 @@ export default function Policies({ showToast, setActivePanel, initialCategory }:
                         <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--success)' }} onClick={() => handleReenable(p)}>Re-enable</button>
                       )}
                       <button type="button" className="btn btn-primary btn-sm" onClick={() => setPayPolicy(p)}>Pay Online</button>
+                      {user?.role === 'super_admin' && (
+                        <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--success)' }} title="Record money paid directly (EcoCash, bank transfer, cash) and clear arrears" onClick={() => setCapturePolicy(p)}>Capture Payment</button>
+                      )}
                       {p.groupId && hasPermission('payments.create') && (
                         <button type="button" className="btn btn-ghost btn-sm" onClick={() => handleInvoice(p)}>Invoice</button>
                       )}
@@ -782,6 +787,18 @@ export default function Policies({ showToast, setActivePanel, initialCategory }:
           policy={editPolicy}
           onClose={() => setEditPolicy(null)}
           onSave={handleEdit}
+        />
+      )}
+      {capturePolicy && (
+        <CapturePaymentModal
+          policy={capturePolicy}
+          onClose={() => setCapturePolicy(null)}
+          onCaptured={updated => {
+            setPolicies(prev => prev.map(p => p.id === updated.id ? { ...p, ...updated } : p))
+            setCapturePolicy(null)
+            db.cautionFlags.listActive().then(({ data, error }) => { if (!error) setCautionFlags(data) })
+          }}
+          showToast={showToast}
         />
       )}
       {payPolicy && (

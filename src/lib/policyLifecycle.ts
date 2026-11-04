@@ -32,6 +32,43 @@ export function paymentCurrencyStatus(policy: Policy): PaymentCurrencyStatus {
   return 'current'
 }
 
+/** Adds whole months to a YYYY-MM-DD date without a timezone round-trip,
+ *  clamping to the month's last day (31 Jan + 1 → 28 Feb). */
+export function addMonthsIso(iso: string, months: number): string {
+  const [y, m, d] = iso.slice(0, 10).split('-').map(Number)
+  const lastDay = new Date(y, m - 1 + months + 1, 0).getDate()
+  return toIsoDate(new Date(y, m - 1 + months, Math.min(d, lastDay)))
+}
+
+/** What a policy owes: every billing period from its paid-up-to date
+ *  through today (a period due today counts — same as
+ *  paymentCurrencyStatus, which flags arrears on the due date). */
+export function arrearsSummary(
+  nextPaymentDate: string | undefined, perPeriod: number, cycleMonths: number, today: Date = new Date(),
+): { periods: number; amount: number; since?: string } {
+  const todayIso = toIsoDate(today)
+  if (!nextPaymentDate || nextPaymentDate.slice(0, 10) > todayIso) return { periods: 0, amount: 0 }
+  let cursor = nextPaymentDate.slice(0, 10)
+  let periods = 0
+  while (cursor <= todayIso && periods < 600) {
+    cursor = addMonthsIso(cursor, cycleMonths)
+    periods++
+  }
+  return { periods, amount: Math.round(periods * perPeriod * 100) / 100, since: nextPaymentDate.slice(0, 10) }
+}
+
+/** Where cover runs to after a payment. Continues from the existing
+ *  paid-up-to date — NOT from today — so a client settling missed months
+ *  is credited exactly the months they paid for. Only whole periods count;
+ *  a part payment is still recorded but doesn't move the date. */
+export function paidUntilAfterPayment(
+  nextPaymentDate: string | undefined, amount: number, perPeriod: number, cycleMonths: number, today: Date = new Date(),
+): { periods: number; paidUntil: string } {
+  const base = nextPaymentDate ? nextPaymentDate.slice(0, 10) : toIsoDate(today)
+  const periods = perPeriod > 0 && amount > 0 ? Math.floor((amount + 0.005) / perPeriod) : 0
+  return { periods, paidUntil: addMonthsIso(base, periods * cycleMonths) }
+}
+
 export const PAYMENT_CURRENCY_LABEL: Record<PaymentCurrencyStatus, string> = {
   current: 'Up to Date',
   arrears: 'In Arrears',

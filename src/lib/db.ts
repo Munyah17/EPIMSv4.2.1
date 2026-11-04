@@ -653,6 +653,7 @@ export const policies = {
     // Blank date must become NULL. An empty string is not a date, and
     // Postgres rejects the whole update with a syntax error.
     if (updates.nextPaymentDate !== undefined)       row.next_payment_date  = updates.nextPaymentDate || null
+    if (updates.lastPaymentDate !== undefined)       row.last_payment_date  = updates.lastPaymentDate || null
     if (updates.dependants !== undefined)            row.dependants         = updates.dependants ?? []
     if (updates.premium !== undefined) {
       const premium = Number(updates.premium)
@@ -1334,7 +1335,7 @@ export const payments = {
     return { data: [] as Payment[], error: 'Could not load payments — connect to the internet at least once to cache them for offline use.' }
   },
 
-  async create(payment: Omit<Payment, 'id'>) {
+  async create(payment: Omit<Payment, 'id'>, opts: { applyToPolicy?: boolean } = {}) {
     // A zero or negative amount recorded as 'completed' still advances
     // nextPaymentDate and can reinstate a lapsed policy for free (see
     // applyCompletedPaymentToPolicy's Math.max(1, ...) floor) -- checked
@@ -1361,7 +1362,7 @@ export const payments = {
     )
     if (ok && data) {
       const result = toPayment(data)
-      if (result.status === 'completed') void applyCompletedPaymentToPolicy(result.policyId, result.amount)
+      if (result.status === 'completed' && opts.applyToPolicy !== false) void applyCompletedPaymentToPolicy(result.policyId, result.amount)
       return { data: result, error: null }
     }
     return writeFailed('payments', error)
@@ -1413,6 +1414,70 @@ export const payments = {
     }
     return writeFailed('payments', error)
   },
+}
+
+/**
+ * Super Admin "Capture Payment": money a client paid straight to the
+ * company (direct EcoCash send-money, bank transfer, cash) that no gateway
+ * ever reported, so the policy still shows arrears.
+ *
+ * Unlike payments.create's auto-advance, the paid-up-to date is explicit
+ * (computed by paidUntilAfterPayment, overridable by the Super Admin) and
+ * the policy write is AWAITED — if it fails, the caller is told so, rather
+ * than the payment showing as recorded while the arrears silently remain.
+ */
+export async function capturePayment(input: {
+  policyId: string
+  amount: number
+  method: PaymentMethod
+  /** Date the money was received. */
+  date: string
+  /** New next-payment date — cover is paid up to here. */
+  paidUntil: string
+  /** The client's own transaction / slip reference, if any. */
+  externalRef?: string
+  popUrl?: string
+  transactionId: string
+}): Promise<{ payment: Payment | null; policy: Policy | null; error: string | null }> {
+  const { data: policy } = await policies.get(input.policyId)
+  if (!policy) return { payment: null, policy: null, error: 'Policy not found.' }
+  if (!input.paidUntil) return { payment: null, policy: null, error: 'Set the date cover is paid up to.' }
+
+  const reference = `CAP${input.date.replace(/-/g, '')}${String(Date.now()).slice(-4)}`
+  const { data: payment, error } = await payments.create({
+    reference,
+    transactionId: input.transactionId,
+    policyId: policy.id,
+    policyNumber: policy.policyNumber,
+    clientName: policy.clientName,
+    amount: input.amount,
+    method: input.method,
+    status: 'completed',
+    date: input.date,
+    popUrl: input.popUrl,
+    popDescription: input.externalRef?.trim() || undefined,
+  }, { applyToPolicy: false })
+  if (error || !payment) return { payment: null, policy: null, error: error ?? 'Could not record the payment.' }
+
+  // Paid back into cover → a lapsed/defaulted policy is reinstated on the
+  // same terms as any other completed payment (agriculture has no waiting
+  // period). Only when the money actually brings cover past today.
+  let status = policy.status
+  if (input.paidUntil > toIsoDate(new Date()) && (policy.status === 'lapsed' || policy.status === 'defaulted')) {
+    const { data: prods } = await products.list()
+    const category = prods?.find(p => p.id === policy.productId)?.category ?? ''
+    status = category === 'agriculture' ? 'active' : 'waiting_period'
+  }
+
+  const { data: updated, error: policyError } = await policies.update(policy.id, {
+    status,
+    nextPaymentDate: input.paidUntil,
+    lastPaymentDate: input.date,
+  })
+  if (policyError || !updated) {
+    return { payment, policy: null, error: `Payment ${payment.reference} was recorded, but the policy could not be updated: ${policyError ?? 'unknown error'}. Set its next payment date by hand via Edit.` }
+  }
+  return { payment, policy: updated, error: null }
 }
 
 // ── AGRICULTURE ASSESSMENTS ─────────────────────────────────────────
@@ -4319,7 +4384,7 @@ export const campaignRecipients = {
 
 // ── EXPORT ────────────────────────────────────────────────────────
 export const db = {
-  policies, clients, products, claims, payments,
+  policies, clients, products, claims, payments, capturePayment,
   tickets, emails, leads, staff, fraudCases, reminders, cautionFlags, settings, loginAttempts, developerApi,
   signupEvidence,
   exchangeRates,
