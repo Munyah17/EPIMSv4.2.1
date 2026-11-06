@@ -39,6 +39,22 @@ describe('per-head premiums', () => {
     expect(billableHeadCount(policy)).toBe(3)
   })
 
+  it('does not bill a blank dependant row left on the form', () => {
+    const policy: Policy = {
+      ...base,
+      premium: 1,
+      dependants: [
+        { name: 'Tendai', relationship: 'Spouse', dob: '1992-04-02', nationalId: 'A', premium: 1 },
+        { name: 'Rudo', relationship: 'Daughter', dob: '2015-09-14', nationalId: 'B', premium: 1 },
+        { name: 'Tariro', relationship: 'Son', dob: '2018-02-01', nationalId: 'C', premium: 1 },
+        { name: 'Nyasha', relationship: 'Daughter', dob: '2020-06-11', nationalId: 'D', premium: 1 },
+        { name: '   ', relationship: '', dob: '', nationalId: '' },
+      ],
+    }
+    expect(policyBillablePremium(policy)).toBe(5)
+    expect(billableHeadCount(policy)).toBe(5)
+  })
+
   it('puts a dependant with no plan of their own on the policyholder’s premium', () => {
     const policy: Policy = {
       ...base,

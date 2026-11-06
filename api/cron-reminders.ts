@@ -98,7 +98,7 @@ interface PolicyRow {
 function billablePremium(policy: PolicyRow): number {
   const own = Number(policy.premium) || 0
   if (policy.products?.category === 'agriculture') return own
-  const deps = policy.dependants ?? []
+  const deps = (policy.dependants ?? []).filter(d => String((d as { name?: string }).name ?? '').trim().length > 0)
   const total = deps.reduce((sum, d) => {
     const p = Number(d?.premium)
     return sum + (Number.isFinite(p) && p > 0 ? p : own)
@@ -494,7 +494,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
 function groupBillable(policy: PolicyRow): { heads: number; amount: number } {
   const own = Number(policy.premium) || 0
-  const deps = policy.dependants ?? []
+  const deps = (policy.dependants ?? []).filter(d => String((d as { name?: string }).name ?? '').trim().length > 0)
   const amount = Math.round(deps.reduce((sum, d) => {
     const p = Number(d?.premium)
     return sum + (Number.isFinite(p) && p > 0 ? p : own)

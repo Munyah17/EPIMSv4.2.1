@@ -7,7 +7,8 @@ import { health } from './health'
 // empty result with an explanation; writes fail and say why.
 import { cacheGet, cacheSet } from './offlineCache'
 import { hammingDistance, DUPLICATE_THRESHOLD } from './photoHash'
-import { policyBillablePremium, billableHeadCount } from './premium'
+import { policyBillablePremium, billableHeadCount, namedDependants } from './premium'
+import { allocatePayment } from './paymentAllocation'
 import { toIsoDate } from './dateUtils'
 import { normalizeNationalId, isZwPhone, PHONE_HINT } from './validation'
 import { fetchAllRows } from './paged'
@@ -559,7 +560,7 @@ export const policies = {
       product_id: policy.productId, premium: policy.premium,
       cover_amount: policy.coverAmount, start_date: policy.startDate,
       end_date: policy.endDate, status: policy.status,
-      dependants: policy.dependants, payment_method: policy.paymentMethod,
+      dependants: namedDependants(policy.dependants), payment_method: policy.paymentMethod,
       insurer: policy.insurer ?? null, grower_number: policy.growerNumber ?? null,
       gps_lat: policy.gpsLat ?? null, gps_lng: policy.gpsLng ?? null,
       agent_id: policy.agentId ?? null, next_payment_date: policy.nextPaymentDate ?? null,
@@ -654,7 +655,7 @@ export const policies = {
     // Postgres rejects the whole update with a syntax error.
     if (updates.nextPaymentDate !== undefined)       row.next_payment_date  = updates.nextPaymentDate || null
     if (updates.lastPaymentDate !== undefined)       row.last_payment_date  = updates.lastPaymentDate || null
-    if (updates.dependants !== undefined)            row.dependants         = updates.dependants ?? []
+    if (updates.dependants !== undefined)            row.dependants         = namedDependants(updates.dependants)
     if (updates.premium !== undefined) {
       const premium = Number(updates.premium)
       if (!Number.isFinite(premium)) return { data: null, error: 'Premium must be a number.' }
@@ -1279,33 +1280,38 @@ async function applyCompletedPaymentToPolicy(policyId: string, amountPaid: numbe
   const perPeriod = policyBillablePremium(policy, category)
 
   /**
-   * Cover is only extended by the whole periods the money actually covers.
+   * Cover is only extended by the whole periods the money actually covers,
+   * after first filling any mid-cycle dependant shortfall (holder already
+   * paid this month; new heads still owe). Remainder that does not buy a
+   * whole extra period is overpayment — settlement() surfaces it, it is
+   * never silently dropped.
    *
    * This used to be Math.max(1, Math.round(paid / perPeriod)), which gave a
    * full month of cover for ANY payment at all: 50 cents against a $12
    * premium, a zero, even a negative, all bought a month. Rounding also
    * over-credited — $18 against $12 bought two months instead of one.
    *
-   * floor() and no minimum: a part payment is still recorded as received
-   * (the client is owed the credit and staff can see it), but it does not
-   * move the due date until it adds up to a full period. Nothing is ever
-   * extended for free.
+   * A later floor() still judged each payment in isolation, so a $4
+   * dependant top-up against a $5 family premium bought nothing and the
+   * extra dollar on a $6 charge vanished. allocatePayment adds payments
+   * up inside the current window first.
    */
-  const periodsPaid = perPeriod > 0 && amountPaid > 0
-    ? Math.floor(amountPaid / perPeriod)
-    : 0
-  const monthsToAdvance = cycleMonths * periodsPaid
-
   const today = new Date()
-  const base = policy.nextPaymentDate && new Date(policy.nextPaymentDate) > today ? new Date(policy.nextPaymentDate) : today
-  const next = new Date(base)
-  next.setMonth(next.getMonth() + monthsToAdvance)
+  const prior = await completedPaymentsForPolicy(policyId)
+  // The row we just inserted is already in `prior`. Strip this payment's
+  // amount out of the current window so allocatePayment sees the ledger
+  // as it was before this posting.
+  const priorForAlloc = stripLatestAmount(prior, amountPaid)
+  const alloc = allocatePayment(
+    amountPaid, perPeriod, cycleMonths, policy.nextPaymentDate, priorForAlloc, today,
+  )
 
   // Reinstatement and activation are worth a full period, same as cover:
   // a token payment must not bring a lapsed policy back to life. Gated on
-  // periodsPaid for exactly that reason.
+  // periodsAdvanced for exactly that reason. Filling a dependant upgrade
+  // does not reinstate — the period was already paid.
   let status = policy.status
-  if (periodsPaid >= 1) {
+  if (alloc.periodsAdvanced >= 1) {
     if (policy.status === 'lapsed' || policy.status === 'defaulted') status = category === 'agriculture' ? 'active' : 'waiting_period'
     else if (category === 'agriculture' && policy.status === 'waiting_period') status = 'active'
   }
@@ -1313,8 +1319,26 @@ async function applyCompletedPaymentToPolicy(policyId: string, amountPaid: numbe
   await policies.update(policyId, {
     status,
     lastPaymentDate: toIsoDate(today),
-    nextPaymentDate: toIsoDate(next),
+    nextPaymentDate: alloc.nextPaymentDate,
   })
+}
+
+async function completedPaymentsForPolicy(policyId: string): Promise<{ amount: number; date: string }[]> {
+  const { data, error } = await supabase
+    .from('payments')
+    .select('amount, payment_date, status')
+    .eq('policy_id', policyId)
+    .eq('status', 'completed')
+  if (error || !Array.isArray(data)) return []
+  return data.map(r => ({ amount: Number(r.amount) || 0, date: String(r.payment_date ?? '').slice(0, 10) }))
+}
+
+/** Drop one occurrence of `amount` so the just-inserted row is not counted twice. */
+function stripLatestAmount(payments: { amount: number; date: string }[], amount: number): { amount: number; date: string }[] {
+  const idx = [...payments].reverse().findIndex(p => Math.abs(p.amount - amount) < 0.005)
+  if (idx < 0) return payments
+  const fromEnd = payments.length - 1 - idx
+  return payments.filter((_, i) => i !== fromEnd)
 }
 
 // ── PAYMENTS ──────────────────────────────────────────────────────
@@ -1422,7 +1446,7 @@ export const payments = {
  * ever reported, so the policy still shows arrears.
  *
  * Unlike payments.create's auto-advance, the paid-up-to date is explicit
- * (computed by paidUntilAfterPayment, overridable by the Super Admin) and
+ * (suggested by allocatePayment, overridable by the Super Admin) and
  * the policy write is AWAITED — if it fails, the caller is told so, rather
  * than the payment showing as recorded while the arrears silently remain.
  */

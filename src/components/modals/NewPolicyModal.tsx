@@ -588,8 +588,8 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
           premium: m.premium ?? product!.premium, coverAmount: m.coverAmount ?? product!.coverAmount,
         }))
       : product!.category === 'agriculture'
-        ? dependants.slice(0, 1).map(d => ({ ...d, relationship: 'Spouse' }))
-        : dependants
+        ? dependants.filter(d => d.name.trim()).slice(0, 1).map(d => ({ ...d, relationship: 'Spouse' }))
+        : dependants.filter(d => d.name.trim())
 
     // Create policy with the client. The number is drawn from the
     // product's sequence (FCP0001, HCP0042, ...) — short, and the prefix

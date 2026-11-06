@@ -34,6 +34,13 @@ export function dependantPremium(policy: Policy, dependant: Dependant): number {
   return typeof own === 'number' && Number.isFinite(own) && own > 0 ? own : policy.premium
 }
 
+/** Blank rows from the add-dependant form are not people and must not
+ *  be billed. An empty extra row on a $1 product was charging a sixth
+ *  head — $6 for a family that should have been $5. */
+export function namedDependants(dependants: Dependant[] | null | undefined): Dependant[] {
+  return (dependants ?? []).filter(d => (d.name ?? '').trim().length > 0)
+}
+
 export interface PremiumLine {
   name: string
   role: 'holder' | 'dependant' | 'member'
@@ -45,8 +52,9 @@ export interface PremiumLine {
 export function premiumLines(policy: Policy, category?: string): PremiumLine[] {
   // Corporate/group scope: the organisation holds the policy but is not a
   // billed head — the invoice is exactly N members × their own premium.
+  const billed = namedDependants(policy.dependants)
   if (policy.coverScope === 'corporate' || policy.coverScope === 'group' || policy.coverScope === 'team') {
-    return policy.dependants.map(d => ({
+    return billed.map(d => ({
       name: d.name,
       role: 'member' as const,
       planName: d.productName ?? policy.productName,
@@ -62,7 +70,7 @@ export function premiumLines(policy: Policy, category?: string): PremiumLine[] {
   if (!isPerHeadCategory(category ?? policy.productCategory)) return [holder]
   return [
     holder,
-    ...policy.dependants.map(d => ({
+    ...billed.map(d => ({
       name: d.name,
       role: 'dependant' as const,
       planName: d.productName ?? policy.productName,

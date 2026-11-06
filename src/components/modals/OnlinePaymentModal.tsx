@@ -13,6 +13,7 @@ import { convertUsdToZig } from '../../lib/exchangeRate'
 import { taggedReference } from '../../lib/originTag'
 import { db } from '../../lib/db'
 import { policyBillablePremium, billableHeadCount } from '../../lib/premium'
+import { settlement, defaultCharge, completedPays } from '../../lib/paymentAllocation'
 import { recordActivity } from '../../lib/activityLog'
 import { notifyPaymentReceived, notifyPaymentFailed } from '../../lib/signupNotifications'
 import { notifyPhone } from '../../lib/notify'
@@ -106,6 +107,7 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
   const [client, setClient] = useState<{ phone?: string; email?: string } | null>(null)
   const [category, setCategory] = useState('')
   const [periods, setPeriods] = useState(1)
+  const [completed, setCompleted] = useState<{ amount: number; date: string }[]>([])
   useEffect(() => {
     db.clients.list().then(({ data }) => {
       setClient(data?.find(c => c.id === policy.clientId) ?? null)
@@ -113,14 +115,22 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
     db.products.list().then(({ data }) => {
       setCategory(data?.find(p => p.id === policy.productId)?.category ?? '')
     })
-  }, [policy.clientId, policy.productId])
+    db.payments.list().then(({ data }) => {
+      setCompleted(completedPays((data ?? []).filter(p => p.policyId === policy.id)))
+    })
+  }, [policy.clientId, policy.productId, policy.id])
   const isAgriculture = category === 'agriculture'
   const ref = taggedReference(`${policy.policyNumber}${Date.now().toString(36).toUpperCase()}`)
   // Premiums are per head: the amount collected covers the policyholder and
-  // every dependant on the policy, not the policyholder alone.
+  // every dependant on the policy, not the policyholder alone. When the
+  // holder already paid this month and dependants were added after, collect
+  // only the new heads — charging the new $5 family total took the holder's
+  // $1 a second time.
   const perPeriod = policyBillablePremium(policy, category)
   const heads = billableHeadCount(policy, category)
-  const totalAmount = perPeriod * periods
+  const cycleMonths = isAgriculture ? 12 : 1
+  const due = settlement(perPeriod, cycleMonths, policy.nextPaymentDate, completed)
+  const totalAmount = defaultCharge(due, periods)
 
   const req = {
     policyId: policy.id,
@@ -344,7 +354,17 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
                 <div style={{ fontSize: 11, color: 'var(--muted)' }}>{policy.productName} · {policy.policyNumber}</div>
                 {heads > 1 && (
                   <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>
-                    Covers {heads} people (policyholder + {heads - 1} dependant{heads === 2 ? '' : 's'})
+                    Covers {heads} people (policyholder + {heads - 1} dependant{heads === 2 ? '' : 's'}) · ${perPeriod.toFixed(2)}{isAgriculture ? '/yr' : '/mo'}
+                  </div>
+                )}
+                {due.isUpgrade && (
+                  <div style={{ fontSize: 12, color: 'var(--accent, #1a4)', marginTop: 8 }}>
+                    This month is already paid for the policyholder. Collecting ${due.dueNow.toFixed(2)} for the newly added dependant{heads === 2 ? '' : 's'} — not the full ${perPeriod.toFixed(2)}.
+                  </div>
+                )}
+                {due.credit > 0 && (
+                  <div style={{ fontSize: 12, marginTop: 8 }}>
+                    Overpayment on file: <strong>${due.credit.toFixed(2)}</strong> credit toward the next premium.
                   </div>
                 )}
               </div>
@@ -353,7 +373,11 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
                 <label>Number of {isAgriculture ? 'Years' : 'Months'} to Pay</label>
                 <select className="form-control" value={periods} onChange={e => setPeriods(Number(e.target.value))}>
                   {Array.from({ length: 12 }, (_, i) => i + 1).map(n => (
-                    <option key={n} value={n}>{n} {isAgriculture ? (n === 1 ? 'year' : 'years') : (n === 1 ? 'month' : 'months')} (${(perPeriod * n).toFixed(2)})</option>
+                    <option key={n} value={n}>
+                      {due.isUpgrade && n === 1
+                        ? `Dependant top-up this ${isAgriculture ? 'year' : 'month'} ($${defaultCharge(due, n).toFixed(2)})`
+                        : `${n} ${isAgriculture ? (n === 1 ? 'year' : 'years') : (n === 1 ? 'month' : 'months')} ($${defaultCharge(due, n).toFixed(2)})`}
+                    </option>
                   ))}
                 </select>
               </div>

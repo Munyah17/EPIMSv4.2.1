@@ -112,7 +112,8 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
     }
     const nextEnd = endDate.trim()
     if (nextEnd && nextEnd !== (policy.endDate ?? '')) updates.endDate = nextEnd
-    if (JSON.stringify(dependants) !== JSON.stringify(policy.dependants ?? [])) updates.dependants = dependants
+    const namedDependants = dependants.filter(d => d.name.trim())
+    if (JSON.stringify(namedDependants) !== JSON.stringify(policy.dependants ?? [])) updates.dependants = namedDependants
 
     onSave(updates as Policy)
   }

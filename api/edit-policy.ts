@@ -80,8 +80,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     changes.endDate = { old: current.end_date, new: updates.endDate }
   }
   if (updates.dependants !== undefined) {
-    // Ensure dependants is always a valid array
-    const dependantsArray = Array.isArray(updates.dependants) ? updates.dependants : []
+    // Blank add-dependant rows are not people — billing them added a
+    // ghost $1 head, so a family of five was charged $6.
+    const raw = Array.isArray(updates.dependants) ? updates.dependants : []
+    const dependantsArray = raw.filter((d: { name?: string }) => String(d?.name ?? '').trim().length > 0)
     row.dependants = dependantsArray
     changes.dependants = { old: current.dependants, new: dependantsArray }
   }

@@ -1,7 +1,7 @@
 import type { jsPDF } from 'jspdf'
 import type { Policy, Client } from '../types'
 import { formatDate } from './dateUtils.js'
-import { policyBillablePremium, billableHeadCount } from './premium.js'
+import { policyBillablePremium, billableHeadCount, namedDependants } from './premium.js'
 import { holderMemberNumber, dependantMemberNumber } from './memberNumbers.js'
 import { termsPagesFor } from './policyTerms.js'
 import { policySourceLabel } from './policySources.js'
@@ -42,6 +42,27 @@ const DEFAULT_POLICY_EXCESS = '15% of loss'
  * scaled with the crop.
  */
 const TOBACCO_SEASON = { start: '15-NOV-2026', end: '31-AUG-2027' }
+
+/** Schedule strip on page 1. Agriculture keeps Commencement / Expiration
+ *  (season window). Every other product prints Payment Date = when the last
+ *  premium actually landed, and Renewal Date = next due date. */
+export function policyDocumentSchedule(
+  policy: Pick<Policy, 'lastPaymentDate' | 'nextPaymentDate' | 'endDate' | 'productName'>,
+  category: string,
+): { paymentLabel: string; untilLabel: string; paidWhen: string; renewsWhen: string } {
+  const isAgriculture = category === 'agriculture'
+  const isFieldToFloor = isAgriculture && isTobaccoFieldToFloor(policy.productName)
+  return {
+    paymentLabel: isAgriculture ? 'Commencement Date' : 'Payment Date',
+    untilLabel: isAgriculture ? 'Expiration Date' : 'Renewal Date',
+    paidWhen: isAgriculture ? TOBACCO_SEASON.start : formatDate(policy.lastPaymentDate),
+    renewsWhen: isFieldToFloor
+      ? TOBACCO_SEASON.end
+      : isAgriculture
+        ? formatDate(policy.endDate)
+        : formatDate(policy.nextPaymentDate),
+  }
+}
 
 /** Money on a printed policy document always carries thousands separators
  *  and exactly two decimals -- "$12,000.00", never "$12000". */
@@ -293,10 +314,11 @@ export async function buildPolicyReportDoc(policy: Policy, client: Client, categ
   const billedPremium = policyBillablePremium(policy, category)
   const heads = billableHeadCount(policy, category)
 
+  const schedule = policyDocumentSchedule(policy, category)
   autoTable(doc, {
     startY: y,
-    head: [['Amount Paid', 'Payment Method', isAgriculture ? 'Commencement Date' : 'Payment Date', 'Expiration Date']],
-    body: [[money(billedPremium), up(policy.paymentMethod), isAgriculture ? TOBACCO_SEASON.start : formatDate(policy.nextPaymentDate), isFieldToFloor ? TOBACCO_SEASON.end : formatDate(policy.endDate)]],
+    head: [['Amount Paid', 'Payment Method', schedule.paymentLabel, schedule.untilLabel]],
+    body: [[money(billedPremium), up(policy.paymentMethod), schedule.paidWhen, schedule.renewsWhen]],
     styles: { fontSize: 9, lineColor: [220, 226, 240], lineWidth: 0.3, cellPadding: 2 },
     headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold', fontSize: 9.5 },
     theme: 'grid',
@@ -386,7 +408,8 @@ export async function buildPolicyReportDoc(policy: Policy, client: Client, categ
     : policy.coverScope === 'group' ? 'MEMBERS COVERED'
     : 'DEPENDANTS'
   sectionBand(coveredBand)
-  if (policy.dependants.length === 0) {
+  const billedDependants = namedDependants(policy.dependants)
+  if (billedDependants.length === 0) {
     doc.setFontSize(10)
     doc.setTextColor(...MUTED)
     doc.text(
@@ -398,7 +421,7 @@ export async function buildPolicyReportDoc(policy: Policy, client: Client, categ
     doc.setTextColor(...TEXT)
     y += 3
   } else {
-    policy.dependants.forEach((d, i) => {
+    billedDependants.forEach((d, i) => {
       ensureRoom(32)
       doc.setFontSize(8)
       doc.setTextColor(...NAVY)
@@ -511,10 +534,10 @@ export async function buildPolicyReportDoc(policy: Policy, client: Client, categ
   } else {
     conditions.push(policy.status === 'waiting_period'
       ? 'This policy is in its waiting period — claims arising during it are not payable.'
-      : 'Cover is in force from the commencement date shown, subject to the terms appended.')
+      : 'Cover is in force from the payment date shown, subject to the terms appended.')
     conditions.push('Premiums must be kept up to date; a lapsed policy carries no cover until reinstated.')
-    if (policy.dependants.length > 0) {
-      conditions.push(`This policy covers the policyholder and the ${policy.dependants.length} dependant${policy.dependants.length === 1 ? '' : 's'} named above only.`)
+    if (billedDependants.length > 0) {
+      conditions.push(`This policy covers the policyholder and the ${billedDependants.length} dependant${billedDependants.length === 1 ? '' : 's'} named above only.`)
     }
   }
   conditions.push('Familiarize Yourself With The Following Terms and Conditions')

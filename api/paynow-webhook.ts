@@ -4,6 +4,7 @@ import { createClient } from '@supabase/supabase-js'
 import { dispatchNotification } from './_lib/notify.js'
 import { paymentReceivedSms, paymentFailedSms, policyRegisteredSms, policyCoverClause, isTobaccoFieldToFloor, fieldToFloorCoverLine } from '../src/lib/smsText.js'
 import { resolveSmsText, smsVarMoney } from '../src/lib/smsTemplates.js'
+import { allocatePayment } from '../src/lib/paymentAllocation.js'
 
 /**
  * Paynow's resultUrl callback -- a real webhook, not client-side polling.
@@ -67,10 +68,11 @@ export const config = {
  *  importing it here would fail at module load. Keep this in sync with
  *  premium.ts if that math ever changes. */
 function billablePremium(policy: { premium: number; dependants: unknown }): number {
-  const dependants = Array.isArray(policy.dependants) ? policy.dependants as { premium?: number }[] : []
+  const dependants = Array.isArray(policy.dependants) ? policy.dependants as { premium?: number; name?: string }[] : []
+  const named = dependants.filter(d => String(d?.name ?? '').trim().length > 0)
   const lines = [
     policy.premium,
-    ...dependants.map(d => (typeof d.premium === 'number' && Number.isFinite(d.premium) && d.premium > 0) ? d.premium : policy.premium),
+    ...named.map(d => (typeof d.premium === 'number' && Number.isFinite(d.premium) && d.premium > 0) ? d.premium : policy.premium),
   ]
   return Math.round(lines.reduce((s, n) => s + n, 0) * 100) / 100
 }
@@ -312,25 +314,29 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // itself is never converted.
     const rateUsed = Number.isFinite(txnRate) && txnRate > 0 ? txnRate : 1
     const perPeriod = Math.round(billablePremium(policy) * rateUsed * 100) / 100
-    // Only whole periods extend cover — the Math.max(1, Math.round(...))
-    // this replaces bought a full month for ANY amount at all, including a
-    // token $0.01. The payment row above still records every cent received
-    // (the client is owed the credit); it just doesn't move the due date
-    // until it adds up to a full cycle. Same rule as
+    // Mid-cycle dependant top-ups and remainders: fill the current period's
+    // unpaid heads first, then buy whole extra periods, and keep leftover
+    // cents as overpayment rather than dropping them. Same rule as
     // applyCompletedPaymentToPolicy in src/lib/db.ts and recordPayment in
     // api/v1.ts.
-    const periodsPaid = perPeriod > 0 ? Math.floor(confirmedAmount / perPeriod) : 0
-    const monthsToAdvance = cycleMonths * periodsPaid
-
     const today = new Date()
-    const base = policy.next_payment_date && new Date(policy.next_payment_date) > today ? new Date(policy.next_payment_date) : today
-    const next = new Date(base)
-    next.setMonth(next.getMonth() + monthsToAdvance)
+    const { data: priorRows } = await admin.from('payments')
+      .select('amount, payment_date')
+      .eq('policy_id', policy.id)
+      .eq('status', 'completed')
+    const prior = (priorRows ?? [])
+      .map(r => ({ amount: Number(r.amount) || 0, date: String(r.payment_date ?? '').slice(0, 10) }))
+    const priorIdx = [...prior].reverse().findIndex(p => Math.abs(p.amount - confirmedAmount) < 0.005)
+    const priorForAlloc = priorIdx < 0 ? prior : prior.filter((_, i) => i !== prior.length - 1 - priorIdx)
+    const alloc = allocatePayment(
+      confirmedAmount, perPeriod, cycleMonths, policy.next_payment_date ?? undefined, priorForAlloc, today,
+    )
 
     // Reinstatement is worth a full period, same as cover: a token payment
-    // must not bring a lapsed policy back to life.
+    // must not bring a lapsed policy back to life. Filling a dependant
+    // upgrade does not reinstate — that period was already paid.
     let newStatus = policy.status
-    if (periodsPaid >= 1) {
+    if (alloc.periodsAdvanced >= 1) {
       if (policy.status === 'lapsed') newStatus = category === 'agriculture' ? 'active' : 'waiting_period'
       else if (category === 'agriculture' && policy.status === 'waiting_period') newStatus = 'active'
     }
@@ -338,7 +344,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     await admin.from('policies').update({
       status: newStatus,
       last_payment_date: today.toISOString().split('T')[0],
-      next_payment_date: next.toISOString().split('T')[0],
+      next_payment_date: alloc.nextPaymentDate,
     }).eq('id', policy.id)
 
     // OUR payment confirmation — distinct from anything Paynow texted the

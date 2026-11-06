@@ -1,5 +1,5 @@
 import type { Policy } from '../types'
-import { toIsoDate } from './dateUtils'
+import { toIsoDate } from './dateUtils.js'
 
 /**
  * When a policy actually starts: capture date (today, when staff register

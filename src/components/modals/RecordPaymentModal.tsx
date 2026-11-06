@@ -8,6 +8,7 @@ import { uploadDocument } from '../../lib/storage'
 import { serverReachable } from '../../lib/notify'
 import { premiumPeriodLabel } from '../../lib/productUtils'
 import { policyBillablePremium, billableHeadCount } from '../../lib/premium'
+import { settlement, defaultCharge, completedPays } from '../../lib/paymentAllocation'
 import DateInput from '../ui/DateInput'
 import { toIsoDate } from '../../lib/dateUtils'
 
@@ -30,6 +31,7 @@ export default function RecordPaymentModal({ policyId: initialPolicyId, payment:
   const [policyId, setPolicyId] = useState(editing?.policyId ?? initialPolicyId ?? '')
   const [policy, setPolicy] = useState<Policy | null>(null)
   const [policyCategory, setPolicyCategory] = useState('')
+  const [completed, setCompleted] = useState<{ amount: number; date: string }[]>([])
   const [amount, setAmount] = useState(editing ? String(editing.amount) : '')
   const [method, setMethod] = useState<PaymentMethod>(editing?.method ?? 'OneMoney')
   const [status, setStatus] = useState<PaymentStatus>(editing?.status ?? 'completed')
@@ -58,6 +60,9 @@ export default function RecordPaymentModal({ policyId: initialPolicyId, payment:
         db.products.list().then(({ data: products }) => {
           setPolicyCategory(products?.find(pr => pr.id === data.productId)?.category ?? '')
         })
+        db.payments.list().then(({ data: pays }) => {
+          setCompleted(completedPays((pays ?? []).filter(p => p.policyId === data.id)))
+        })
       })
     } else {
       setPolicy(null)
@@ -74,6 +79,13 @@ export default function RecordPaymentModal({ policyId: initialPolicyId, payment:
 
   const splitTotal = splits.reduce((sum, s) => sum + (s.amount || 0), 0)
   const splitMismatch = useSplit && Math.abs(splitTotal - Number(amount || 0)) > 0.01
+  const perPeriod = policy ? policyBillablePremium(policy, policyCategory) : 0
+  const due = policy ? settlement(perPeriod, policyCategory === 'agriculture' ? 12 : 1, policy.nextPaymentDate, completed) : null
+
+  useEffect(() => {
+    if (editing || !due || !perPeriod) return
+    setAmount(String(defaultCharge(due, 1)))
+  }, [editing, due?.dueNow, due?.credit, due?.isUpgrade, perPeriod]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
    * A recorded payment is money asserted to have been received, so the
@@ -181,9 +193,18 @@ export default function RecordPaymentModal({ policyId: initialPolicyId, payment:
             <div className="info-banner info-banner-info" style={{ marginBottom: '1rem' }}>
               Policy: {policy.policyNumber} ({policy.clientName})<br />
               {/* Per head: the policyholder plus every dependant. */}
-              Expected premium: ${policyBillablePremium(policy, policyCategory).toFixed(2)}{premiumPeriodLabel(policyCategory, policy.productName, policy.paymentMethod)}
+              Monthly premium: ${perPeriod.toFixed(2)}{premiumPeriodLabel(policyCategory, policy.productName, policy.paymentMethod)}
               {billableHeadCount(policy, policyCategory) > 1 && (
                 <> &nbsp;<span style={{ fontSize: 11 }}>({billableHeadCount(policy, policyCategory)} people on this policy)</span></>
+              )}
+              {due?.isUpgrade && (
+                <><br />Due now: ${due.dueNow.toFixed(2)} for newly added dependants (holder already paid this month).</>
+              )}
+              {due && due.credit > 0 && (
+                <><br />Overpayment on file: ${due.credit.toFixed(2)} credit toward the next premium.</>
+              )}
+              {due && !due.isUpgrade && due.dueNow > 0 && (
+                <><br />Amount due now: ${due.dueNow.toFixed(2)}</>
               )}
             </div>
           )}

@@ -3,6 +3,7 @@ import type { Policy, Payment } from '../../types'
 import { formatDate, formatDateTime } from '../../lib/dateUtils'
 import { premiumPeriodLabel } from '../../lib/productUtils'
 import { policyBillablePremium, billableHeadCount } from '../../lib/premium'
+import { settlement, completedPays } from '../../lib/paymentAllocation'
 import { holderMemberNumber, dependantMemberNumber } from '../../lib/memberNumbers'
 import { paymentCurrencyStatus, PAYMENT_CURRENCY_LABEL, PAYMENT_CURRENCY_CLASS } from '../../lib/policyLifecycle'
 import { policySourceLabel } from '../../lib/policySources'
@@ -36,6 +37,13 @@ export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint, show
   }, [policy.productId, policy.id])
 
   const latestPayment = policyPayments.find(p => p.status === 'completed') ?? policyPayments[0]
+  const billed = policyBillablePremium(policy, category)
+  const due = settlement(
+    billed,
+    category === 'agriculture' ? 12 : 1,
+    policy.nextPaymentDate,
+    completedPays(policyPayments),
+  )
 
   return (
     <div className="modal-overlay">
@@ -73,7 +81,7 @@ export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint, show
             <div className="detail-item">
               <span className="detail-label">Premium Billed</span>
               <span>
-                ${policyBillablePremium(policy, category).toFixed(2)}{premiumPeriodLabel(category, policy.productName, policy.paymentMethod)}
+                ${billed.toFixed(2)}{premiumPeriodLabel(category, policy.productName, policy.paymentMethod)}
                 {billableHeadCount(policy, category) > 1 && (
                   <span style={{ color: 'var(--muted)', fontSize: 11 }}> · {billableHeadCount(policy, category)} {(policy.coverScope && policy.coverScope !== 'individual') ? `members (${policy.coverScope === 'corporate' ? 'employees' : 'members'} × $${policy.premium.toFixed(2)})` : `people ($${policy.premium.toFixed(2)} policyholder)`}</span>
                 )}
@@ -99,6 +107,18 @@ export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint, show
               <div className="detail-item"><span className="detail-label">Hectarage</span><span>{policy.hectarage} ha</span></div>
             )}
             <div className="detail-item"><span className="detail-label">Next Payment</span><span>{formatDate(policy.nextPaymentDate)}</span></div>
+            {due.credit > 0 && (
+              <div className="detail-item">
+                <span className="detail-label">Overpayment / Credit</span>
+                <span><strong>${due.credit.toFixed(2)}</strong> toward the next premium</span>
+              </div>
+            )}
+            {due.isUpgrade && due.dueNow > 0 && (
+              <div className="detail-item">
+                <span className="detail-label">Dependant Top-up Due</span>
+                <span>${due.dueNow.toFixed(2)} (new heads this period — holder already paid)</span>
+              </div>
+            )}
             <div className="detail-item">
               <span className="detail-label">Last Payment</span>
               {/* Exact time, not just the day: a disputed payment is matched

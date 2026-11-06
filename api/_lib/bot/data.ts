@@ -86,7 +86,7 @@ export async function getActiveProducts(admin: SupabaseClient): Promise<BotProdu
 export async function policiesForClient(admin: SupabaseClient, clientId: string): Promise<BotPolicy[]> {
   const { data } = await fetchAllRows(
     () => admin.from('policies')
-      .select('id, policy_number, premium, cover_amount, status, dependants, products(name)')
+      .select('id, policy_number, premium, cover_amount, status, dependants, next_payment_date, products(name)')
       .eq('client_id', clientId),
     { orderBy: 'id' },
   )
@@ -95,6 +95,7 @@ export async function policiesForClient(admin: SupabaseClient, clientId: string)
     productName: (r.products as { name?: string } | null)?.name ?? '',
     premium: Number(r.premium), coverAmount: Number(r.cover_amount),
     status: r.status as string,
+    nextPaymentDate: r.next_payment_date ? String(r.next_payment_date).slice(0, 10) : undefined,
     dependants: Array.isArray(r.dependants) ? r.dependants as BotPolicy['dependants'] : [],
   }))
 }
@@ -251,6 +252,24 @@ export async function pendingPoliciesForClient(admin: SupabaseClient, clientId: 
     status: 'pending',
     dependants: Array.isArray(r.dependants) ? r.dependants as BotPolicy['dependants'] : [],
   }))
+}
+
+/** Policyholder plus every named dependant — blank form rows are not billed. */
+export function botBillablePremium(policy: BotPolicy): number {
+  const named = policy.dependants.filter(d => (d.name ?? '').trim().length > 0)
+  const total = named.reduce((sum, d) => {
+    const p = Number(d.premium)
+    return sum + (Number.isFinite(p) && p > 0 ? p : policy.premium)
+  }, policy.premium)
+  return Math.round(total * 100) / 100
+}
+
+export async function completedPaymentsForPolicy(admin: SupabaseClient, policyId: string): Promise<{ amount: number; date: string }[]> {
+  const { data } = await admin.from('payments')
+    .select('amount, payment_date')
+    .eq('policy_id', policyId)
+    .eq('status', 'completed')
+  return (data ?? []).map(r => ({ amount: Number(r.amount) || 0, date: String(r.payment_date ?? '').slice(0, 10) }))
 }
 
 /** Append a dependant to a policy's JSONB dependants array. */

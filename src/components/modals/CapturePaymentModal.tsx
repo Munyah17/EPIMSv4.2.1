@@ -7,7 +7,8 @@ import { serverReachable } from '../../lib/notify'
 import { generateTransactionId } from '../../lib/transactionId'
 import { policyBillablePremium, billableHeadCount } from '../../lib/premium'
 import { premiumPeriodLabel } from '../../lib/productUtils'
-import { arrearsSummary, paidUntilAfterPayment } from '../../lib/policyLifecycle'
+import { arrearsSummary } from '../../lib/policyLifecycle'
+import { settlement, defaultCharge, completedPays, allocatePayment } from '../../lib/paymentAllocation'
 import { formatDate, toIsoDate } from '../../lib/dateUtils'
 import { recordActivity } from '../../lib/activityLog'
 import { notifyPaymentReceived } from '../../lib/signupNotifications'
@@ -44,6 +45,7 @@ export default function CapturePaymentModal({ policy: initialPolicy, policies, c
   const [policyId, setPolicyId] = useState(initialPolicy?.id ?? (candidates.length === 1 ? candidates[0].id : ''))
   const policy = candidates.find(p => p.id === policyId) ?? null
   const [products, setProducts] = useState<Product[]>([])
+  const [completed, setCompleted] = useState<{ amount: number; date: string }[]>([])
   const [amount, setAmount] = useState('')
   const [method, setMethod] = useState<PaymentMethod>('EcoCash')
   const [date, setDate] = useState(toIsoDate(new Date()))
@@ -56,30 +58,42 @@ export default function CapturePaymentModal({ policy: initialPolicy, policies, c
   const [attempted, setAttempted] = useState(false)
 
   useEffect(() => { db.products.list().then(({ data }) => setProducts(data ?? [])) }, [])
+  useEffect(() => {
+    if (!policy) { setCompleted([]); return }
+    db.payments.list().then(({ data }) => {
+      setCompleted(completedPays((data ?? []).filter(p => p.policyId === policy.id)))
+    })
+  }, [policy?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const category = policy ? products.find(p => p.id === policy.productId)?.category ?? '' : ''
   const cycleMonths = category === 'agriculture' ? 12 : 1
   const perPeriod = policy ? policyBillablePremium(policy, category) : 0
   const arrears = policy ? arrearsSummary(policy.nextPaymentDate, perPeriod, cycleMonths) : { periods: 0, amount: 0 }
+  const due = policy ? settlement(perPeriod, cycleMonths, policy.nextPaymentDate, completed) : null
 
-  // Default the amount to what's owed (or one period when up to date) the
-  // moment a policy is chosen — the common case is "they paid the arrears".
+  // Default the amount to what's owed (dependant top-up, arrears, or one
+  // period when up to date) the moment a policy is chosen.
   useEffect(() => {
-    if (!policy || !perPeriod) return
-    setAmount(String(arrears.periods > 0 ? arrears.amount : perPeriod))
+    if (!policy || !perPeriod || !due) return
+    setAmount(String(defaultCharge(due, 1)))
     setPaidUntilTouched(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [policyId, perPeriod])
+  }, [policyId, perPeriod, due?.dueNow, due?.credit, due?.isUpgrade])
 
   const amountValue = Number(amount)
   const amountInvalid = !amount.trim() || !Number.isFinite(amountValue) || amountValue <= 0
-  const computed = policy ? paidUntilAfterPayment(policy.nextPaymentDate, amountInvalid ? 0 : amountValue, perPeriod, cycleMonths) : null
+  // allocatePayment fills a mid-cycle dependant top-up first. floor(amount /
+  // perPeriod) would treat a $6 capture against a $4 upgrade as a full extra
+  // month and hide the leftover dollar.
+  const alloc = policy && !amountInvalid
+    ? allocatePayment(amountValue, perPeriod, cycleMonths, policy.nextPaymentDate, completed)
+    : null
 
   useEffect(() => {
-    if (!paidUntilTouched && computed) setPaidUntil(computed.paidUntil)
-  }, [computed?.paidUntil, paidUntilTouched]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (!paidUntilTouched && alloc) setPaidUntil(alloc.nextPaymentDate)
+  }, [alloc?.nextPaymentDate, paidUntilTouched]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const partPayment = computed !== null && !amountInvalid && computed.periods === 0
+  const partPayment = alloc !== null && alloc.periodsAdvanced === 0
   const stillInArrears = !!paidUntil && arrearsSummary(paidUntil, perPeriod, cycleMonths).periods > 0
 
   const blocked = !policy ? 'Choose the policy this payment is for.'
@@ -184,6 +198,12 @@ export default function CapturePaymentModal({ policy: initialPolicy, policies, c
               {arrears.periods > 0
                 ? <> — <strong style={{ color: 'var(--danger)' }}>in arrears {arrears.periods} {cycleMonths === 12 ? 'season' : 'month'}{arrears.periods === 1 ? '' : 's'} (${arrears.amount.toFixed(2)})</strong></>
                 : <> — up to date</>}
+              {due?.isUpgrade && (
+                <><br />Holder already paid this {cycleMonths === 12 ? 'year' : 'month'}. Collect <strong>${due.dueNow.toFixed(2)}</strong> for the newly added dependants — not the full ${perPeriod.toFixed(2)}.</>
+              )}
+              {due && due.credit > 0 && (
+                <><br />Overpayment on file: <strong>${due.credit.toFixed(2)}</strong> credit toward the next premium.</>
+              )}
             </div>
           )}
 
@@ -214,14 +234,19 @@ export default function CapturePaymentModal({ policy: initialPolicy, policies, c
             <label>Cover Paid Up To *</label>
             <DateInput value={paidUntil} onChange={v => { setPaidUntil(v); setPaidUntilTouched(true) }} />
             <p style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4 }}>
-              {computed && !amountInvalid
-                ? <>${amountValue.toFixed(2)} covers <strong>{computed.periods}</strong> {cycleMonths === 12 ? 'season' : 'month'}{computed.periods === 1 ? '' : 's'} from {formatDate(policy?.nextPaymentDate)} → suggested <strong>{formatDate(computed.paidUntil)}</strong>. Override if the slip says otherwise.</>
+              {alloc
+                ? <>${amountValue.toFixed(2)} covers <strong>{alloc.periodsAdvanced}</strong> {cycleMonths === 12 ? 'season' : 'month'}{alloc.periodsAdvanced === 1 ? '' : 's'} from {formatDate(policy?.nextPaymentDate)} → suggested <strong>{formatDate(alloc.nextPaymentDate)}</strong>{alloc.credit > 0 ? <> · leftover <strong>${alloc.credit.toFixed(2)}</strong> is overpayment credit</> : null}. Override if the slip says otherwise.</>
                 : 'Worked out from the amount — or set it yourself.'}
-              {paidUntilTouched && computed && paidUntil !== computed.paidUntil && (
-                <> <button type="button" className="btn btn-ghost btn-sm" style={{ padding: '0 6px', fontSize: 11 }} onClick={() => { setPaidUntilTouched(false); setPaidUntil(computed.paidUntil) }}>Use suggested</button></>
+              {paidUntilTouched && alloc && paidUntil !== alloc.nextPaymentDate && (
+                <> <button type="button" className="btn btn-ghost btn-sm" style={{ padding: '0 6px', fontSize: 11 }} onClick={() => { setPaidUntilTouched(false); setPaidUntil(alloc.nextPaymentDate) }}>Use suggested</button></>
               )}
             </p>
-            {partPayment && (
+            {partPayment && due?.isUpgrade && (
+              <p style={{ fontSize: 12, margin: '4px 0 0' }}>
+                This is the dependant top-up for a month already paid — the paid-up-to date stays put{alloc && alloc.credit > 0 ? `, with $${alloc.credit.toFixed(2)} credit toward the next premium` : ''}.
+              </p>
+            )}
+            {partPayment && !due?.isUpgrade && (
               <p style={{ fontSize: 12, color: 'var(--danger)', margin: '4px 0 0' }}>
                 Less than one full {cycleMonths === 12 ? 'season' : 'month'} — the payment is recorded but the date won't move unless you set it.
               </p>

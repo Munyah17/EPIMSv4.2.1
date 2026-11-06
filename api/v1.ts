@@ -8,6 +8,7 @@ import { fetchAllRows } from '../src/lib/paged.js'
 import { clientRegisteredSms, policyRegisteredSms, policyCoverClause, paymentReceivedSms, isTobaccoFieldToFloor, fieldToFloorCoverLine } from '../src/lib/smsText.js'
 import { resolveSmsText, smsVarMoney } from '../src/lib/smsTemplates.js'
 import { isZwNationalId, isZwPhone, normalizeNationalId } from './_lib/zwFormats.js'
+import { allocatePayment } from '../src/lib/paymentAllocation.js'
 
 /**
  * Public Developer API (/api/v1/...). External developers integrate this
@@ -805,32 +806,40 @@ async function recordPayment(admin: SupabaseClient, body: Json, agentId: string)
   // Premiums are per head, so the period price is the policyholder's
   // premium plus one for each dependant, except agriculture which is
   // billed on the crop.
-  const deps = Array.isArray(policy.dependants) ? policy.dependants as { premium?: number }[] : []
+  const deps = Array.isArray(policy.dependants) ? policy.dependants as { premium?: number; name?: string }[] : []
+  const named = deps.filter(d => String(d?.name ?? '').trim().length > 0)
   const own = Number(policy.premium) || 0
   const perPeriod = category === 'agriculture'
     ? own
-    : deps.reduce((sum, d) => {
+    : named.reduce((sum, d) => {
       const p = Number(d?.premium)
       return sum + (Number.isFinite(p) && p > 0 ? p : own)
     }, own)
-  const periodsPaid = perPeriod > 0 && amount > 0 ? Math.floor(amount / perPeriod) : 0
+
+  const today = new Date()
+  const cycleMonths = category === 'agriculture' ? 12 : 1
+  const { data: priorRows } = await admin.from('payments')
+    .select('amount, payment_date')
+    .eq('policy_id', policy.id)
+    .eq('status', 'completed')
+  const prior = (priorRows ?? [])
+    .map(r => ({ amount: Number(r.amount) || 0, date: String(r.payment_date ?? '').slice(0, 10) }))
+  const priorIdx = [...prior].reverse().findIndex(p => Math.abs(p.amount - amount) < 0.005)
+  const priorForAlloc = priorIdx < 0 ? prior : prior.filter((_, i) => i !== prior.length - 1 - priorIdx)
+  const alloc = allocatePayment(
+    amount, perPeriod, cycleMonths, policy.next_payment_date ?? undefined, priorForAlloc, today,
+  )
 
   let nextStatus = policy.status
-  if (periodsPaid >= 1) {
+  if (alloc.periodsAdvanced >= 1) {
     if (policy.status === 'lapsed' || policy.status === 'defaulted') nextStatus = category === 'agriculture' ? 'active' : 'waiting_period'
     else if (category === 'agriculture' && policy.status === 'waiting_period') nextStatus = 'active'
   }
 
-  const today = new Date()
-  const cycleMonths = category === 'agriculture' ? 12 : 1
-  const base = policy.next_payment_date && new Date(policy.next_payment_date) > today ? new Date(policy.next_payment_date) : today
-  const next = new Date(base)
-  next.setMonth(next.getMonth() + cycleMonths * periodsPaid)
-
   await admin.from('policies').update({
     status: nextStatus,
     last_payment_date: today.toISOString().split('T')[0],
-    next_payment_date: next.toISOString().split('T')[0],
+    next_payment_date: alloc.nextPaymentDate,
   }).eq('id', policy.id)
 
   if (category !== 'agriculture') {

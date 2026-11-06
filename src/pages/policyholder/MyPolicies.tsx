@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
-import type { ToastMessage } from '../../types'
+import type { ToastMessage, Payment, PolicyStatus } from '../../types'
 import type { ActivePanel } from '../../App'
 import { formatDate } from '../../lib/dateUtils'
-import type { PolicyStatus } from '../../types'
 import { useAuth } from '../../contexts/AuthContext'
 import { premiumPeriodLabel, categoryIssuesMemberCards } from '../../lib/productUtils'
 import { premiumLines, policyBillablePremium, formatBillablePremium } from '../../lib/premium'
+import { settlement, completedPays } from '../../lib/paymentAllocation'
+import { db } from '../../lib/db'
 import { policyMembers } from '../../lib/memberNumbers'
 import type { PolicyMember } from '../../lib/memberNumbers'
 import { memberPhotoMap } from '../../lib/memberPhotos'
@@ -31,12 +32,14 @@ export default function MyPolicies({ showToast, setActivePanel }: Props) {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [photos, setPhotos] = useState<Map<string, string>>(new Map())
   const [photoMember, setPhotoMember] = useState<PolicyMember | null>(null)
+  const [payments, setPayments] = useState<Payment[]>([])
 
   // Photo URLs for the expanded policy's members — loaded once alongside
   // the policies; member_photos is readable by any signed-in user, so a
   // policyholder sees their own family's photos without staff RLS.
   useEffect(() => {
     memberPhotoMap().then(setPhotos).catch(() => { /**/ })
+    db.payments.list().then(({ data }) => { if (data) setPayments(data) }).catch(() => { /**/ })
   }, [myPolicies])
 
   useEffect(() => {
@@ -60,6 +63,12 @@ export default function MyPolicies({ showToast, setActivePanel }: Props) {
             const category = p.productCategory ?? ''
             const lines = premiumLines(p, category)
             const expanded = expandedId === p.id
+            const due = settlement(
+              policyBillablePremium(p, category),
+              category === 'agriculture' ? 12 : 1,
+              p.nextPaymentDate,
+              completedPays(payments.filter(pay => pay.policyId === p.id)),
+            )
             return (
               <div key={p.id} className="product-card">
                 <div className="product-card-header">
@@ -120,6 +129,8 @@ export default function MyPolicies({ showToast, setActivePanel }: Props) {
                         : `Paid up to ${formatDate(p.nextPaymentDate)}`}
                       {' '}· Payment via <strong>{p.paymentMethod}</strong>
                       {p.lastPaymentDate ? ` · Last paid ${formatDate(p.lastPaymentDate)}` : ''}
+                      {due.credit > 0 ? ` · Overpayment credit $${due.credit.toFixed(2)}` : ''}
+                      {due.isUpgrade && due.dueNow > 0 ? ` · $${due.dueNow.toFixed(2)} still due for newly added dependants` : ''}
                     </div>
 
                     {categoryIssuesMemberCards(category) && (

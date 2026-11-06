@@ -1,7 +1,8 @@
 import type { Handler, Ctx } from '../types.js'
 import { sendText, sendButtons } from '../whatsapp.js'
 import { setState, patchNote, deleteSession } from '../store.js'
-import { getActiveProducts, policiesForClient, createClaim } from '../data.js'
+import { getActiveProducts, policiesForClient, createClaim, botBillablePremium, completedPaymentsForPolicy } from '../data.js'
+import { settlement, defaultCharge } from '../../../src/lib/paymentAllocation.js'
 import { isFullName, isNationalId, isDependantId, parseDob, pickIndex, normalizeNationalId } from '../helpers.js'
 import { makeTail, startTail } from '../tail.js'
 import { coverLabel, isTobaccoFieldToFloor } from '../../coverBreakdown.js'
@@ -48,7 +49,7 @@ const payStart: Handler = async ({ phone, session, admin, contact }) => {
     await deleteSession(admin, session)
     return sendText(phone, 'You have no policies to pay for.')
   }
-  await sendText(phone, `Select the policy to pay\n\n${policies.map((p, i) => `${i + 1}. ${p.policyNumber} — ${p.productName} ($${p.premium}/month, ${p.status})`).join('\n')}`)
+  await sendText(phone, `Select the policy to pay\n\n${policies.map((p, i) => `${i + 1}. ${p.policyNumber} — ${p.productName} ($${botBillablePremium(p).toFixed(2)}/month, ${p.status})`).join('\n')}`)
   return setState(admin, session, 'CPAY_POLICY')
 }
 
@@ -58,7 +59,7 @@ const renewStart: Handler = async ({ phone, session, admin, contact }) => {
     await deleteSession(admin, session)
     return sendText(phone, 'You have no policies to renew.')
   }
-  await sendText(phone, `Select the policy to renew\n\n${policies.map((p, i) => `${i + 1}. ${p.policyNumber} — ${p.productName} ($${p.premium}/month, ${p.status})`).join('\n')}`)
+  await sendText(phone, `Select the policy to renew\n\n${policies.map((p, i) => `${i + 1}. ${p.policyNumber} — ${p.productName} ($${botBillablePremium(p).toFixed(2)}/month, ${p.status})`).join('\n')}`)
   return setState(admin, session, 'CPAY_POLICY')
 }
 
@@ -67,7 +68,7 @@ const payPolicy: Handler = async ({ input, phone, session, admin, contact }) => 
   const pick = pickIndex(input, policies.length)
   if (pick === null) return sendText(phone, 'Please select one of the policies above.')
   const p = policies[pick]
-  await patchNote(admin, session, { flow: 'pay_policy', payPolicyId: p.id, payPolicyNumber: p.policyNumber, policyPremium: p.premium })
+  await patchNote(admin, session, { flow: 'pay_policy', payPolicyId: p.id, payPolicyNumber: p.policyNumber, policyPremium: botBillablePremium(p), nextPaymentDate: p.nextPaymentDate })
   await sendText(phone, `How many months of ${p.policyNumber} are you paying? (1–12)`)
   return setState(admin, session, 'CPAY_MONTHS')
 }
@@ -76,10 +77,17 @@ const payMonths: Handler = async (ctx) => {
   const { input, phone, session, admin } = ctx
   const months = Number(input.trim())
   if (!Number.isInteger(months) || months < 1 || months > 12) return sendText(phone, 'Please enter a number between 1 and 12.')
-  const amount = Number(session.note.policyPremium ?? 0) * months
+  const perPeriod = Number(session.note.policyPremium ?? 0)
+  const pays = session.note.payPolicyId
+    ? await completedPaymentsForPolicy(admin, String(session.note.payPolicyId))
+    : []
+  const due = settlement(perPeriod, 1, session.note.nextPaymentDate as string | undefined, pays)
+  const amount = defaultCharge(due, months)
   await patchNote(admin, session, {
     months,
-    payLabel: `${session.note.payPolicyNumber} x ${months} month${months === 1 ? '' : 's'}`,
+    payLabel: due.isUpgrade && months === 1
+      ? `${session.note.payPolicyNumber} dependant top-up`
+      : `${session.note.payPolicyNumber} x ${months} month${months === 1 ? '' : 's'}`,
   })
   return startTail(ctx, 'CPAY', amount)
 }

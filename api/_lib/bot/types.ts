@@ -48,7 +48,8 @@ export interface BotPolicy {
   premium: number
   coverAmount: number
   status: string
-  dependants: { name: string; relationship?: string; nationalId?: string }[]
+  nextPaymentDate?: string
+  dependants: { name: string; relationship?: string; nationalId?: string; premium?: number }[]
 }
 
 export interface Contact {
