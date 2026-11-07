@@ -99,6 +99,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const rawBody = await readRawBody(req)
+  // TEMPORARY diagnostic: every status update has failed hash verification
+  // since this endpoint shipped, and the error alone can't say why — the
+  // raw body is the only way to see what Paynow actually posts. Remove once
+  // the verification bug is found and fixed.
+  console.log('paynow-webhook raw body:', rawBody.slice(0, 2000))
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let update: any

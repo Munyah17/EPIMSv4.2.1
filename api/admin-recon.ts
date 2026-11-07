@@ -55,6 +55,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const orphanedClients = (clients ?? []).filter(c => !covered.has(c.id) && notDismissed('orphaned_client', c.id))
     .map(c => ({ id: c.id, name: c.name, phone: c.phone, createdAt: c.created_at }))
 
+  // A 'pending' paynow_transactions row can be stale bookkeeping rather
+  // than missing money: the client-side poll records the payment but has
+  // no write access to this table, and the webhook that would update it
+  // has never verified a status update. A completed payment under the
+  // same reference settles it — heal the row and don't raise the alarm.
+  const trulyStale: typeof stale = []
+  if (stale?.length) {
+    const { data: settled } = await admin.from('payments')
+      .select('reference, amount')
+      .in('reference', stale.map(t => t.reference)).eq('status', 'completed')
+    const settledRefs = new Map((settled ?? []).map(p => [p.reference, Number(p.amount)]))
+    for (const t of stale) {
+      const paidAmount = settledRefs.get(t.reference)
+      if (paidAmount === undefined) { trulyStale.push(t); continue }
+      await admin.from('paynow_transactions').update({
+        status: 'paid', confirmed_amount: paidAmount, updated_at: new Date().toISOString(),
+      }).eq('reference', t.reference)
+    }
+  }
+
   const paidButPending: { id: string; policyNumber: string; clientName: string }[] = []
   for (const p of (pending ?? []) as unknown as { id: string; policy_number: string; clients: { name: string } | null }[]) {
     if (!notDismissed('paid_but_pending', p.id)) continue
@@ -64,7 +84,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   return res.status(200).json({
     orphanedClients,
-    stalePaynow: (stale ?? []).filter(t => notDismissed('stale_paynow', t.reference))
+    stalePaynow: (trulyStale ?? []).filter(t => notDismissed('stale_paynow', t.reference))
       .map(t => ({ reference: t.reference, amount: t.expected_amount, currency: t.currency, createdAt: t.created_at })),
     paidButPending,
     checkedAt: new Date().toISOString(),

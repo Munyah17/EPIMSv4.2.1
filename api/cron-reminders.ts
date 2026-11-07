@@ -330,13 +330,34 @@ async function reconcileBook(admin: SupabaseClient): Promise<{ orphanedClients: 
   }
 
   // 2. Paynow transaction initiated >24h ago, never confirmed or failed.
+  //    The client-side poll records the payment but cannot update this
+  //    table (RLS gives it no write policy), so a settled transaction can
+  //    still sit at 'pending' — check payments by reference first: a
+  //    completed payment means the money IS recorded and the tracking row
+  //    is simply stale bookkeeping, which gets healed here rather than
+  //    raising a false "money may be missing" alarm.
   const { data: stale } = await fetchAllRows(
     () => admin.from('paynow_transactions')
       .select('reference, policy_id, expected_amount, currency, created_at')
       .eq('status', 'pending').lt('created_at', cutoff),
     { orderBy: 'id' },
   )
-  for (const t of stale ?? []) {
+  const staleTrulyUnpaid: typeof stale = []
+  if (stale?.length) {
+    const refs = stale.map(t => t.reference)
+    const { data: settled } = await admin.from('payments')
+      .select('reference, amount')
+      .in('reference', refs).eq('status', 'completed')
+    const settledRefs = new Map((settled ?? []).map(p => [p.reference, Number(p.amount)]))
+    for (const t of stale) {
+      const paidAmount = settledRefs.get(t.reference)
+      if (paidAmount === undefined) { staleTrulyUnpaid.push(t); continue }
+      await admin.from('paynow_transactions').update({
+        status: 'paid', confirmed_amount: paidAmount, updated_at: new Date().toISOString(),
+      }).eq('reference', t.reference)
+    }
+  }
+  for (const t of staleTrulyUnpaid ?? []) {
     findings.push({ kind: 'stale_paynow', ref: t.reference, line: `Paynow ref ${t.reference} (${t.currency} ${Number(t.expected_amount).toFixed(2)}, started ${new Date(t.created_at).toLocaleDateString('en-GB')}) never confirmed — check the gateway and reconcile against the payer.` })
   }
 
