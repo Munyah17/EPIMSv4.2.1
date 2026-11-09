@@ -122,7 +122,9 @@ export default function GroupMembersModal({ group, onClose, showToast, onMembers
     const safeName = group.name.replace(/[^\w -]/g, '').trim().replace(/\s+/g, '-')
     const base = `${safeName}-roster-${toIsoDate(new Date())}`
     const roleLabel = group.groupType === 'company' ? 'Position' : 'Role'
-    const headers = ['Name', `${memberWord} No.`, 'National ID', 'Date of Birth', 'Phone', roleLabel, 'Premium', 'Sum Assured', 'Added', 'Status']
+    // 'Member No.' stays generic — rosters belong to churches, schools,
+    // burial societies and carnivals as much as to companies.
+    const headers = ['Name', 'Member No.', 'National ID', 'Date of Birth', 'Phone', roleLabel, 'Premium', 'Sum Assured', 'Added', 'Status']
     const rows = members.map(m => [
       m.fullName,
       m.memberNo ?? '',
