@@ -164,9 +164,29 @@ export default function GroupMembersModal({ group, onClose, showToast, onMembers
           <button className="modal-close" onClick={onClose}>✕</button>
         </div>
         <div className="modal-body">
-          <div className="info-banner info-banner-info" style={{ marginBottom: '1rem' }}>
-            {active.length} active {active.length === 1 ? memberWord.toLowerCase() : `${memberWord.toLowerCase()}s`} on the roster.
-            Only active {memberWord.toLowerCase()}s can be added to a policy.
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '1rem' }}>
+            <div className="info-banner info-banner-info" style={{ marginBottom: 0, flex: 1 }}>
+              {active.length} active {active.length === 1 ? memberWord.toLowerCase() : `${memberWord.toLowerCase()}s`} on the roster.
+              Only active {memberWord.toLowerCase()}s can be added to a policy.
+            </div>
+            <div className="action-menu" style={{ position: 'relative' }}>
+              <button type="button" className="btn btn-ghost btn-sm" disabled={exporting || members.length === 0} onClick={() => setExportOpen(o => !o)}>
+                {exporting ? 'Exporting…' : 'Export ▾'}
+              </button>
+              {exportOpen && (
+                <>
+                  <div className="dropdown-backdrop" onClick={() => setExportOpen(false)} />
+                  <div className="profile-dropdown" style={{ minWidth: 170, right: 0, left: 'auto' }}>
+                    {([['pdf', 'PDF (.pdf)'], ['xlsx', 'Excel (.xlsx)'], ['csv', 'CSV (.csv)']] as const).map(([f, label]) => (
+                      <button key={f} type="button" className="dropdown-item" style={{ width: '100%', border: 'none', background: 'none', cursor: 'pointer' }}
+                        onClick={() => { setExportOpen(false); void handleExport(f) }}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
           </div>
 
           <div className="form-row" style={{ alignItems: 'flex-end' }}>
@@ -266,25 +286,7 @@ export default function GroupMembersModal({ group, onClose, showToast, onMembers
             </table>
           </div>
         </div>
-        <div className="modal-footer" style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <div className="action-menu" style={{ position: 'relative' }}>
-            <button type="button" className="btn btn-ghost btn-sm" disabled={exporting || members.length === 0} onClick={() => setExportOpen(o => !o)}>
-              {exporting ? 'Exporting…' : 'Export ▾'}
-            </button>
-            {exportOpen && (
-              <>
-                <div className="dropdown-backdrop" onClick={() => setExportOpen(false)} />
-                <div className="profile-dropdown" style={{ minWidth: 170, bottom: '100%', top: 'auto' }}>
-                  {([['pdf', 'PDF (.pdf)'], ['xlsx', 'Excel (.xlsx)'], ['csv', 'CSV (.csv)']] as const).map(([f, label]) => (
-                    <button key={f} type="button" className="dropdown-item" style={{ width: '100%', border: 'none', background: 'none', cursor: 'pointer' }}
-                      onClick={() => { setExportOpen(false); void handleExport(f) }}>
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
+        <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Close</button>
         </div>
       </div>
