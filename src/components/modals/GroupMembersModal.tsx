@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { Group, GroupMember, ToastMessage } from '../../types'
 import { db } from '../../lib/db'
-import { formatDate } from '../../lib/dateUtils'
+import { formatDate, toIsoDate } from '../../lib/dateUtils'
+import { exportToCsv, exportToExcel, exportReportToPdf } from '../../lib/exportUtils'
 import DateInput from '../ui/DateInput'
 import PhoneInput from '../ui/PhoneInput'
 import { isNationalId, cleanNationalIdInput, isZwPhone } from '../../lib/validation'
@@ -34,6 +35,8 @@ export default function GroupMembersModal({ group, onClose, showToast, onMembers
   const [editing, setEditing] = useState<GroupMember | null>(null)
   const [adding, setAdding] = useState(false)
   const [attempted, setAttempted] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
   const memberWord = group.groupType === 'company' ? 'Employee' : 'Member'
   const nameMissing = attempted && !fullName.trim()
   // ID and DOB are the member's identity to the insurer — a claim can't
@@ -110,6 +113,47 @@ export default function GroupMembersModal({ group, onClose, showToast, onMembers
     if (error) { showToast('error', error); return }
     await load()
     showToast('info', `${m.fullName} removed from the roster.`)
+  }
+
+  // The whole roster — removed members included, marked by status, since
+  // the exported file is usually the record of who was ever covered.
+  const handleExport = async (format: 'xlsx' | 'csv' | 'pdf') => {
+    setExporting(true)
+    const safeName = group.name.replace(/[^\w -]/g, '').trim().replace(/\s+/g, '-')
+    const base = `${safeName}-roster-${toIsoDate(new Date())}`
+    const roleLabel = group.groupType === 'company' ? 'Position' : 'Role'
+    const headers = ['Name', `${memberWord} No.`, 'National ID', 'Date of Birth', 'Phone', roleLabel, 'Premium', 'Sum Assured', 'Added', 'Status']
+    const rows = members.map(m => [
+      m.fullName,
+      m.memberNo ?? '',
+      m.nationalId ?? '',
+      m.dob ? formatDate(m.dob) : '',
+      m.phone ?? '',
+      m.position ?? '',
+      m.premium ?? '',
+      m.coverAmount ?? '',
+      formatDate(m.createdAt),
+      m.status === 'active' ? 'Active' : 'Removed',
+    ])
+    const subtitle = `${group.name} — ${active.length} active ${memberWord.toLowerCase()}${active.length === 1 ? '' : 's'}${removed.length ? `, ${removed.length} removed` : ''} — generated ${formatDate(new Date())}`
+    const stats = [
+      { label: `Active ${memberWord.toLowerCase()}s`, value: String(active.length) },
+      { label: 'Monthly premium', value: `$${active.reduce((s, m) => s + (m.premium ?? 0), 0).toFixed(2)}` },
+      { label: 'Total sum assured', value: `$${active.reduce((s, m) => s + (m.coverAmount ?? 0), 0).toLocaleString()}` },
+    ]
+    try {
+      if (format === 'csv') {
+        exportToCsv(`${base}.csv`, headers, rows)
+      } else if (format === 'xlsx') {
+        await exportToExcel(`${base}.xlsx`, group.name, headers, rows)
+      } else {
+        await exportReportToPdf(`${base}.pdf`, `${group.name} — ${memberWord} Roster`, subtitle, stats, headers, rows)
+      }
+      showToast('success', `Roster exported as ${format.toUpperCase()}.`)
+    } catch {
+      showToast('error', `Failed to export as ${format.toUpperCase()}.`)
+    }
+    setExporting(false)
   }
 
   return (
@@ -222,7 +266,25 @@ export default function GroupMembersModal({ group, onClose, showToast, onMembers
             </table>
           </div>
         </div>
-        <div className="modal-footer">
+        <div className="modal-footer" style={{ display: 'flex', justifyContent: 'space-between' }}>
+          <div className="action-menu" style={{ position: 'relative' }}>
+            <button type="button" className="btn btn-ghost btn-sm" disabled={exporting || members.length === 0} onClick={() => setExportOpen(o => !o)}>
+              {exporting ? 'Exporting…' : 'Export ▾'}
+            </button>
+            {exportOpen && (
+              <>
+                <div className="dropdown-backdrop" onClick={() => setExportOpen(false)} />
+                <div className="profile-dropdown" style={{ minWidth: 170, bottom: '100%', top: 'auto' }}>
+                  {([['pdf', 'PDF (.pdf)'], ['xlsx', 'Excel (.xlsx)'], ['csv', 'CSV (.csv)']] as const).map(([f, label]) => (
+                    <button key={f} type="button" className="dropdown-item" style={{ width: '100%', border: 'none', background: 'none', cursor: 'pointer' }}
+                      onClick={() => { setExportOpen(false); void handleExport(f) }}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
           <button className="btn btn-ghost" onClick={onClose}>Close</button>
         </div>
       </div>

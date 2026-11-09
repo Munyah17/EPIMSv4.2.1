@@ -4,7 +4,8 @@ import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { notifyGroupRegistered } from '../lib/signupNotifications'
 import { serverReachable } from '../lib/notify'
-import { formatDate } from '../lib/dateUtils'
+import { formatDate, toIsoDate } from '../lib/dateUtils'
+import { exportToCsv, exportToExcel, exportReportToPdf } from '../lib/exportUtils'
 import { useAuth } from '../contexts/AuthContext'
 import GroupModal, { groupTypeLabel, type GroupInput } from '../components/modals/GroupModal'
 import GroupMembersModal from '../components/modals/GroupMembersModal'
@@ -30,6 +31,8 @@ export default function Groups({ showToast }: Props) {
   const [showAdd, setShowAdd] = useState(false)
   const [editGroup, setEditGroup] = useState<Group | null>(null)
   const [rosterGroup, setRosterGroup] = useState<Group | null>(null)
+  const [exporting, setExporting] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
 
   useEffect(() => {
     db.groups.list().then(({ data, error }) => {
@@ -89,6 +92,41 @@ export default function Groups({ showToast }: Props) {
     showToast('success', `${group.name} was deleted.`)
   }
 
+  // Exports the rows currently on screen — the search filter carries into
+  // the file, so "export what you see" needs no second control.
+  const handleExport = async (format: 'xlsx' | 'csv' | 'pdf') => {
+    setExporting(true)
+    const base = `groups-${toIsoDate(new Date())}`
+    const headers = ['Name', 'Registration No.', 'Type', 'Contact Person', 'Phone', 'Members', 'Registered', 'Status']
+    const rows = filtered.map(g => [
+      g.name,
+      g.registrationNumber ?? '',
+      groupTypeLabel(g),
+      g.contactName ?? '',
+      g.contactPhone ?? '',
+      g.memberCount ?? 0,
+      formatDate(g.createdAt),
+      g.active ? 'Active' : 'Inactive',
+    ])
+    const subtitle = `${filtered.length} group${filtered.length === 1 ? '' : 's'}${search.trim() ? ` matching “${search.trim()}”` : ''} — generated ${formatDate(new Date())}`
+    try {
+      if (format === 'csv') {
+        exportToCsv(`${base}.csv`, headers, rows)
+      } else if (format === 'xlsx') {
+        await exportToExcel(`${base}.xlsx`, 'Groups', headers, rows)
+      } else {
+        await exportReportToPdf(`${base}.pdf`, 'Group Insurance — Organisations', subtitle, [
+          { label: 'Groups', value: String(filtered.length) },
+          { label: 'Total members', value: String(filtered.reduce((s, g) => s + (g.memberCount ?? 0), 0)) },
+        ], headers, rows)
+      }
+      showToast('success', `Group list exported as ${format.toUpperCase()}.`)
+    } catch {
+      showToast('error', `Failed to export as ${format.toUpperCase()}.`)
+    }
+    setExporting(false)
+  }
+
   return (
     <div className="panel">
       <div className="panel-toolbar">
@@ -98,6 +136,24 @@ export default function Groups({ showToast }: Props) {
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
+        <div className="action-menu" style={{ position: 'relative' }}>
+          <button type="button" className="btn btn-ghost" disabled={exporting || filtered.length === 0} onClick={() => setExportOpen(o => !o)}>
+            {exporting ? 'Exporting…' : 'Export ▾'}
+          </button>
+          {exportOpen && (
+            <>
+              <div className="dropdown-backdrop" onClick={() => setExportOpen(false)} />
+              <div className="profile-dropdown" style={{ minWidth: 170 }}>
+                {([['pdf', 'PDF (.pdf)'], ['xlsx', 'Excel (.xlsx)'], ['csv', 'CSV (.csv)']] as const).map(([f, label]) => (
+                  <button key={f} type="button" className="dropdown-item" style={{ width: '100%', border: 'none', background: 'none', cursor: 'pointer' }}
+                    onClick={() => { setExportOpen(false); void handleExport(f) }}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
         <button type="button" className="btn btn-primary" onClick={() => { setEditGroup(null); setShowAdd(true) }}>+ Add Group</button>
       </div>
 
