@@ -76,6 +76,25 @@ describe('per-head premiums', () => {
     expect(billableHeadCount(policy)).toBe(1)
   })
 
+  it('bills a once-off package across participants for the term', () => {
+    const policy: Policy = {
+      ...base,
+      coverScope: 'group',
+      onceOff: true,
+      groupId: 'grp-school',
+      groupName: 'Glen View High School',
+      premium: 25,
+      nextPaymentDate: undefined,
+      dependants: [
+        { name: 'Tendai', relationship: 'Participant', dob: '2010-04-02', nationalId: 'A', premium: 30 },
+        { name: 'Rudo', relationship: 'Participant', dob: '2011-09-14', nationalId: 'B' },
+      ],
+    }
+    expect(policyBillablePremium(policy)).toBe(55)
+    expect(billableHeadCount(policy)).toBe(2)
+    expect(formatBillablePremium(policy)).toBe('$55.00/term (2 participants)')
+  })
+
   it('labels monthly products /mo and agriculture /yr', () => {
     const policy: Policy = {
       ...base,

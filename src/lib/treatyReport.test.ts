@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { treatyRows, TREATY_HEADERS } from './treatyReport'
+import { treatyRows, treatyHeaders, TREATY_HEADERS } from './treatyReport'
 import type { Policy, Client } from '../types'
 
 const client: Client = {
@@ -44,5 +44,29 @@ describe('treaty report export', () => {
     // 500 assured at 40% retained / 60% ceded; 1 premium likewise
     expect([rows[1][13], rows[1][15]]).toEqual([200, 300])
     expect([rows[1][14], rows[1][16]]).toEqual([0.4, 0.6])
+  })
+
+  it('exports package participants as insured heads for the negotiated term', () => {
+    const schoolTrip: Policy = {
+      ...policy,
+      coverScope: 'group',
+      onceOff: true,
+      groupId: 'grp-school',
+      groupName: 'Glen View High School',
+      productCategory: 'accident',
+      startDate: '2026-12-10',
+      endDate: '2026-12-20',
+      dependants: [
+        { name: 'Tendai Chikafu', relationship: 'Participant', dob: '2010-04-02', nationalId: 'A', premium: 30, coverAmount: 1000 },
+        { name: 'Rudo Moyo', relationship: 'Participant', dob: '2011-09-14', nationalId: 'B', premium: 25, coverAmount: 1000 },
+      ],
+    }
+    const packageRows = treatyRows([schoolTrip], byId)
+    expect(packageRows).toHaveLength(2)
+    expect(packageRows.map(r => r[7])).toEqual(['PRINCIPAL MEMBER', 'PRINCIPAL MEMBER'])
+    expect(packageRows.map(r => r[9])).toEqual([1, 1])
+    expect(packageRows.map(r => r[11])).toEqual([30, 25])
+    expect(treatyHeaders('term')).toContain('TERM PREMIUM')
+    expect(treatyHeaders('mixed')).toContain('PREMIUM')
   })
 })

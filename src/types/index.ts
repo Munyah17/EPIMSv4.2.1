@@ -244,8 +244,8 @@ export interface Policy {
   productId: string
   productName: string
   /** Denormalized from the linked product, for category-aware display
-   *  (e.g. agriculture premiums are annual, everything else is monthly)
-   *  without an extra fetch. */
+   *  (agriculture premiums are annual, once-off packages are per term,
+   *  everything else is monthly) without an extra fetch. */
   productCategory?: string
   /** Denormalized from the linked product — the policy excess/deductible, free text (e.g. "10% of claim, min $50"). */
   excess?: string
@@ -290,6 +290,10 @@ export interface Policy {
    *  policyholder and is NOT billed, only the roster members are. See
    *  premium.ts. */
   coverScope?: CoverScope
+  /** Once-off finite-term package (school tour, event, negotiated group
+   *  cover). Billing happens once for startDate→endDate; the row archives
+   *  at endDate instead of entering monthly reminders/arrears. */
+  onceOff?: boolean
   /** Team scope only — the named activity, season or event the cover is
    *  for (e.g. "2026 Soccer Season"). Printed on the policy document. */
   teamActivity?: string
@@ -306,10 +310,10 @@ export interface Policy {
 /** The kind of organisation a Group record describes. */
 export type GroupType = 'company' | 'church' | 'union' | 'sports' | 'club' | 'society' | 'other'
 
-/** What a policy covers: a person ('individual', the default) or an
+/** Who a policy covers: a person ('individual', the default) or an
  *  organisation's roster — 'corporate' (employees), 'group' (association
- *  members) or 'team' (an activity/event-bound team: roles carried on
- *  the roster, immediate activation, a named activity). */
+ *  members), or 'team' (an activity/event-bound team). A negotiated
+ *  once-off package keeps one of these scopes and sets Policy.onceOff. */
 export type CoverScope = 'individual' | 'corporate' | 'group' | 'team'
 
 /** An organisation — company, church, union, club — registered once and

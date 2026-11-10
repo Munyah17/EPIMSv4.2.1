@@ -87,6 +87,15 @@ function explainWriteError(error: string | null): string | null {
   if (/invalid input syntax for type numeric/i.test(error)) {
     return 'Premium and cover amount must be numbers.'
   }
+  if (/policies_once_off_package_check/i.test(error)) {
+    return 'A once-off package must be linked to an organisation, use an end date after its start date, and carry no recurring payment date.'
+  }
+  if (/policies_one_live_package_term/i.test(error)) {
+    return 'This organisation already has a live package for the same product and dates. Restore the archived package or use different term dates.'
+  }
+  if (/policies_one_live_per_client_product/i.test(error)) {
+    return 'This client already holds a live policy for this product. Add a different product, or upgrade the existing policy instead of issuing a second one.'
+  }
   return error
 }
 
@@ -130,7 +139,7 @@ async function hasColumn(table: string, column: string): Promise<boolean> {
 }
 
 const policySelect = async () => {
-  const [groupCols, medCols, hectarageCol, capturedCol] = await Promise.all([
+  const [groupCols, medCols, hectarageCol, capturedCol, onceOffCol] = await Promise.all([
     hasColumn('policies', 'group_id'),
     hasColumn('policies', 'has_chronic_illness'),
     // The med block grew hectarage after contractor — probe the newest
@@ -140,10 +149,12 @@ const policySelect = async () => {
     // captured_by records the staff member who captured the policy —
     // probed so a database before that migration still reads fine.
     hasColumn('policies', 'captured_by'),
+    hasColumn('policies', 'once_off'),
   ])
-  if (groupCols && medCols && hectarageCol) return POLICY_SELECT + (capturedCol ? POLICY_SELECT_CAP : '')
-  if (groupCols) return POLICY_SELECT_GROUP + (capturedCol ? POLICY_SELECT_CAP : '')
-  return POLICY_SELECT_BASE + (capturedCol ? POLICY_SELECT_CAP : '')
+  const onceOffSelect = onceOffCol ? ', once_off' : ''
+  if (groupCols && medCols && hectarageCol) return POLICY_SELECT + onceOffSelect + (capturedCol ? POLICY_SELECT_CAP : '')
+  if (groupCols) return POLICY_SELECT_GROUP + onceOffSelect + (capturedCol ? POLICY_SELECT_CAP : '')
+  return POLICY_SELECT_BASE + onceOffSelect + (capturedCol ? POLICY_SELECT_CAP : '')
 }
 /** Optional columns are probed (hasColumn) so the select survives an
  *  env where a migration hasn't run — transaction_id, pop_url and
@@ -610,11 +621,17 @@ export const policies = {
     const groupColsReady = await hasColumn('policies', 'group_id')
     if (policy.groupId || (policy.coverScope && policy.coverScope !== 'individual')) {
       if (!groupColsReady) {
-        return { data: null, error: 'Corporate/group policies need a database update first — run database/add_group_cover.sql in the Supabase SQL editor, then try again.' }
+        return { data: null, error: policy.onceOff
+          ? 'Once-off packages need a database update first — run database/add_group_cover.sql and database/add_once_off_packages.sql in the Supabase SQL editor, then try again.'
+          : 'Corporate/group policies need a database update first — run database/add_group_cover.sql in the Supabase SQL editor, then try again.' }
+      }
+      if (policy.onceOff && !(await hasColumn('policies', 'once_off'))) {
+        return { data: null, error: 'Once-off packages need a database update first — run database/add_once_off_packages.sql in the Supabase SQL editor, then try again.' }
       }
       ;(row as Record<string, unknown>).group_id = policy.groupId ?? null
       ;(row as Record<string, unknown>).cover_scope = policy.coverScope ?? 'individual'
       ;(row as Record<string, unknown>).team_activity = policy.teamActivity ?? null
+      if (policy.onceOff) (row as Record<string, unknown>).once_off = true
     } else if (groupColsReady) {
       ;(row as Record<string, unknown>).cover_scope = 'individual'
     }
@@ -629,6 +646,9 @@ export const policies = {
 
     if (!error && data) return { data: toPolicy(data), error: null }
     if (error?.code === '23505') {
+      if (error.message.includes('policies_one_live_package_term')) {
+        return { data: null, error: 'This organisation already has a live package for the same product and dates. Restore the archived package or use different term dates.' }
+      }
       const duplicateProduct = error.message.includes('policies_one_live_per_client_product')
       return {
         data: null,
@@ -637,6 +657,15 @@ export const policies = {
           : 'That would duplicate an existing record. Check whether this client or policy is already on the system.',
       }
     }
+    if (error && /once_off/i.test(error.message ?? '') && /does not exist|could not find|schema cache/i.test(error.message)) {
+      return { data: null, error: 'Once-off packages need a database update first — run database/add_once_off_packages.sql in the Supabase SQL editor, then try again.' }
+    }
+    if (error?.code === '23514' && /policies_once_off_package_check/i.test(error.message)) {
+      return { data: null, error: 'A once-off package must be linked to an organisation, use an end date after its start date, and carry no recurring payment date.' }
+    }
+    if (error?.code === '23514' && /cover_scope/i.test(error.message)) {
+      return { data: null, error: 'Corporate/group policies need a database update first — run database/add_group_cover.sql in the Supabase SQL editor, then try again.' }
+    }
     // Anything else is a genuine failure: the policy does not exist.
     return writeFailed('policies', error?.message ?? null)
   },
@@ -644,6 +673,10 @@ export const policies = {
   async update(id: string, updates: Partial<Policy>) {
     const row: Record<string, unknown> = {}
     if (updates.status)                              row.status             = updates.status
+    if (updates.startDate !== undefined) {
+      if (!updates.startDate) return { data: null, error: 'A policy must have a start date.' }
+      row.start_date = updates.startDate
+    }
     if (updates.paymentMethod)                       row.payment_method     = updates.paymentMethod
     if (updates.insurer !== undefined)               row.insurer            = updates.insurer || null
     if (updates.growerNumber !== undefined)          row.grower_number      = updates.growerNumber || null
@@ -679,6 +712,12 @@ export const policies = {
       if (updates.groupId !== undefined)             row.group_id           = updates.groupId ?? null
       if (updates.coverScope)                        row.cover_scope        = updates.coverScope
       if (updates.teamActivity !== undefined)        row.team_activity      = updates.teamActivity ?? null
+    }
+    if (updates.onceOff !== undefined) {
+      if (!(await hasColumn('policies', 'once_off'))) {
+        return { data: null, error: 'Once-off packages need a database update first — run database/add_once_off_packages.sql in the Supabase SQL editor, then try again.' }
+      }
+      row.once_off = updates.onceOff
     }
     if (Object.keys(row).length === 0) return { data: null, error: 'No changes to save.' }
     const { ok, data, error } = await sb('policies', 'write',
@@ -1297,6 +1336,13 @@ async function applyCompletedPaymentToPolicy(policyId: string, amountPaid: numbe
    * up inside the current window first.
    */
   const today = new Date()
+  // A once-off package is paid for its negotiated term up front — money
+  // received is recorded, but there is no monthly cursor to advance and
+  // no waiting-period machinery to trigger.
+  if (policy.onceOff) {
+    await policies.update(policyId, { lastPaymentDate: toIsoDate(today) })
+    return
+  }
   const prior = await completedPaymentsForPolicy(policyId)
   // The row we just inserted is already in `prior`. Strip this payment's
   // amount out of the current window so allocatePayment sees the ledger
@@ -1465,6 +1511,7 @@ export async function capturePayment(input: {
 }): Promise<{ payment: Payment | null; policy: Policy | null; error: string | null }> {
   const { data: policy } = await policies.get(input.policyId)
   if (!policy) return { payment: null, policy: null, error: 'Policy not found.' }
+  if (policy.onceOff) return { payment: null, policy: null, error: 'Once-off packages have no monthly paid-up-to date — record a completed payment or update the package terms instead.' }
   if (!input.paidUntil) return { payment: null, policy: null, error: 'Set the date cover is paid up to.' }
 
   const reference = `CAP${input.date.replace(/-/g, '')}${String(Date.now()).slice(-4)}`
@@ -3219,19 +3266,31 @@ async function syncGroupRosterToPolicies(groupId: string) {
     health.record({ ts: Date.now(), type: 'read', table: 'group_members', success: false, duration: 0, source: 'supabase', detail: `roster sync read: ${mErr.message}` })
     return
   }
-  const { data: prows, error: pErr } = await fetchAllRows(
-    () => supabase.from('policies')
-      .select('id, cover_scope, product_id, products!product_id(name, premium, cover_amount)')
-      .eq('group_id', groupId)
-      .in('cover_scope', ['corporate', 'group', 'team'])
-      .in('status', ['active', 'waiting_period', 'lapsed', 'defaulted']),
-    { orderBy: 'id' },
-  )
+  const policyRosterQuery = (columns: string) => supabase.from('policies')
+    .select(columns)
+    .eq('group_id', groupId)
+    .in('cover_scope', ['corporate', 'group', 'team'])
+    .in('status', ['active', 'waiting_period', 'lapsed', 'defaulted'])
+  const withOnceOff = 'id, cover_scope, product_id, once_off, products!product_id(name, premium, cover_amount)'
+  let { data: prows, error: pErr } = await fetchAllRows(() => policyRosterQuery(withOnceOff), { orderBy: 'id' })
+  if (pErr && /once_off/i.test(pErr.message)) {
+    // A database before add_once_off_packages.sql cannot have a package to
+    // preserve — keep the recurring-group roster sync alive there.
+    const retry = await fetchAllRows(
+      () => policyRosterQuery(withOnceOff.replace(', once_off,', ',')),
+      { orderBy: 'id' },
+    )
+    prows = retry.data; pErr = retry.error
+  }
   if (pErr || !prows) {
     health.record({ ts: Date.now(), type: 'read', table: 'policies', success: false, duration: 0, source: 'supabase', detail: `roster sync read: ${pErr?.message ?? 'no rows'}` })
     return
   }
-  for (const p of prows as Array<{ id: string; cover_scope: string; product_id: string; products: { name?: string; premium?: number; cover_amount?: number } | null }>) {
+  for (const p of prows as Array<{ id: string; cover_scope: string; product_id: string; once_off?: boolean | null; products: { name?: string; premium?: number; cover_amount?: number } | null }>) {
+    // A once-off package is a snapshot of the roster selected for that
+    // term — later staff/traveller changes must not silently reprice or
+    // re-cover the already negotiated package.
+    if (p.once_off) continue
     const prod = p.products
     const deps = (mrows ?? []).map(m => ({
       name: m.full_name,
@@ -3463,6 +3522,7 @@ export const invoices = {
    * issued (callers use it to decide whether to notify).
    */
   async create(policy: Policy, period: string, createdBy: string): Promise<{ data: Invoice | null; error: string | null; created: boolean }> {
+    if (policy.onceOff) return { data: null, error: 'Once-off packages are settled for their negotiated term — there is no monthly invoice to issue.', created: false }
     const heads = billableHeadCount(policy, policy.productCategory)
     const amount = policyBillablePremium(policy, policy.productCategory)
     if (amount <= 0) return { data: null, error: 'Nothing to bill — the policy has no payable premium.', created: false }

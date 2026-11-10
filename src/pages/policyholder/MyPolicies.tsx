@@ -61,6 +61,7 @@ export default function MyPolicies({ showToast, setActivePanel }: Props) {
         <div className="products-grid">
           {myPolicies.map(p => {
             const category = p.productCategory ?? ''
+            const isPackage = p.onceOff === true
             const lines = premiumLines(p, category)
             const expanded = expandedId === p.id
             const due = settlement(
@@ -96,8 +97,8 @@ export default function MyPolicies({ showToast, setActivePanel }: Props) {
                     <span className="product-stat-value">{formatDate(p.startDate)}</span>
                   </div>
                   <div className="product-stat">
-                    <span className="product-stat-label">Next Payment</span>
-                    <span className="product-stat-value">{formatDate(p.nextPaymentDate)}</span>
+                    <span className="product-stat-label">{isPackage ? 'Package Ends' : 'Next Payment'}</span>
+                    <span className="product-stat-value">{formatDate(isPackage ? p.endDate : p.nextPaymentDate)}</span>
                   </div>
                 </div>
                 <button type="button" className="btn btn-ghost btn-sm" style={{ alignSelf: 'flex-start' }} onClick={() => setExpandedId(expanded ? null : p.id)}>
@@ -105,7 +106,7 @@ export default function MyPolicies({ showToast, setActivePanel }: Props) {
                 </button>
                 {expanded && (
                   <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    <div className="detail-label">Premium billed per person{premiumPeriodLabel(category, p.productName, p.paymentMethod)}</div>
+                    <div className="detail-label">{isPackage ? 'Package premium per participant /term' : `Premium billed per person${premiumPeriodLabel(category, p.productName, p.paymentMethod, p.onceOff)}`}</div>
                     {lines.map((l, i) => (
                       <div key={i} style={{ display: 'flex', justifyContent: 'space-between', gap: 8, fontSize: '0.85rem' }}>
                         <span style={{ minWidth: 0 }}>
@@ -118,13 +119,14 @@ export default function MyPolicies({ showToast, setActivePanel }: Props) {
                     {lines.length > 1 && (
                       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', fontWeight: 600, borderTop: '1px dashed var(--border)', paddingTop: 6 }}>
                         <span>Total</span>
-                        <span className="mono">${policyBillablePremium(p, category).toFixed(2)}{premiumPeriodLabel(category, p.productName, p.paymentMethod)}</span>
+                        <span className="mono">${policyBillablePremium(p, category).toFixed(2)}{premiumPeriodLabel(category, p.productName, p.paymentMethod, p.onceOff)}</span>
                       </div>
                     )}
                     <div style={{ fontSize: '0.85rem', color: 'var(--muted)', marginTop: 4 }}>
                       {/* Monthly cover doesn't end on a date — it runs
-                          while paid. Only agriculture has a season end. */}
-                      {category === 'agriculture'
+                          while paid. Agriculture and once-off packages
+                          have a real term end. */}
+                      {category === 'agriculture' || isPackage
                         ? `Ends ${formatDate(p.endDate)}`
                         : `Paid up to ${formatDate(p.nextPaymentDate)}`}
                       {' '}· Payment via <strong>{p.paymentMethod}</strong>
@@ -133,7 +135,7 @@ export default function MyPolicies({ showToast, setActivePanel }: Props) {
                       {due.isUpgrade && due.dueNow > 0 ? ` · $${due.dueNow.toFixed(2)} still due for newly added dependants` : ''}
                     </div>
 
-                    {categoryIssuesMemberCards(category) && (
+                    {categoryIssuesMemberCards(category, p.onceOff) && (
                       <div style={{ marginTop: 10 }}>
                         <div className="detail-label" style={{ marginBottom: 6 }}>Card photos</div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>

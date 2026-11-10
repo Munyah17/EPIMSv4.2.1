@@ -20,8 +20,10 @@ import { premiumPeriodLabel } from './productUtils.js'
  * Corporate/group cover is the other exception: the organisation is the
  * policyholder but is NOT a billed head — only the members on its roster
  * pay, one premium each. Roster members ride in the same `dependants`
- * array (relationship 'Employee'/'Member') so everything downstream —
- * billing, documents, member numbers — treats them uniformly.
+ * array (relationship 'Employee'/'Member'/'Participant') so everything
+ * downstream — billing, documents, member numbers — treats them
+ * uniformly. Once-off packages use the same roster billing, but the
+ * negotiated figure covers the package TERM, not a recurring month.
  */
 
 export function isPerHeadCategory(category?: string): boolean {
@@ -98,8 +100,10 @@ export function formatBillablePremium(policy: Policy, category?: string): string
   const cat = category ?? policy.productCategory
   const total = policyBillablePremium(policy, cat)
   const heads = billableHeadCount(policy, cat)
-  // Agriculture bills annually, every other product monthly — the label
-  // comes from the category, never the payment method.
-  const period = premiumPeriodLabel(cat ?? '', policy.productName, policy.paymentMethod)
-  return heads > 1 ? `$${total.toFixed(2)}${period} (${heads} people)` : `$${total.toFixed(2)}${period}`
+  // Agriculture bills annually, once-off packages once per negotiated
+  // term, every other product monthly — the label comes from the category
+  // and once-off lifecycle, never the payment method.
+  const period = premiumPeriodLabel(cat ?? '', policy.productName, policy.paymentMethod, policy.onceOff)
+  const headLabel = policy.onceOff ? 'participants' : 'people'
+  return heads > 1 ? `$${total.toFixed(2)}${period} (${heads} ${headLabel})` : `$${total.toFixed(2)}${period}`
 }

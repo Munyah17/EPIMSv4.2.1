@@ -4,6 +4,7 @@ import { reportOutcome } from './notify'
 import { sendEmail, getNotifSettings, getSmsRecipientsForEvent } from './mailService'
 import { MAILBOXES } from './mailboxes'
 import { premiumPeriodLabel } from './productUtils'
+import { policyBillablePremium } from './premium'
 import { COMPANY_NAME } from './company'
 import {
   isTobaccoFieldToFloor, fieldToFloorCover, fieldToFloorCoverLine,
@@ -183,9 +184,13 @@ export async function notifyGroupRegistered(group: Group): Promise<void> {
 
 export async function notifyPolicyRegistered(policy: Policy, client: Client | null): Promise<void> {
   const cfg = getNotifSettings()
-  const period = premiumPeriodLabel(policy.productCategory ?? '', policy.productName, policy.paymentMethod)
+  const period = premiumPeriodLabel(policy.productCategory ?? '', policy.productName, policy.paymentMethod, policy.onceOff)
   const cover = money(policy.coverAmount)
-  const premium = `${money(policy.premium)}${period}`
+  // Registration notices quote the amount actually billed for the period —
+  // roster policies total their participants rather than quoting the
+  // package/member default on the policy row.
+  const billedPremium = policyBillablePremium(policy, policy.productCategory)
+  const premium = `${money(billedPremium)}${period}`
 
   // Field-to-Floor messages quote the per-peril breakdown, never a bare
   // sum insured — the grower needs to know Barn Fire pays $500, not that
@@ -209,13 +214,13 @@ export async function notifyPolicyRegistered(policy: Policy, client: Client | nu
       coverAmount: smsVarMoney(policy.coverAmount),
       coverLine: fieldToFloor ? fieldToFloorCoverLine(policy.productName, policy.premium) : smsVarMoney(policy.coverAmount),
       coverClause: policyCoverClause(policy.productName, policy.coverAmount, policy.premium),
-      premium: smsVarMoney(policy.premium),
+      premium: smsVarMoney(fieldToFloor ? policy.premium : billedPremium),
       // Tobacco texts carry no period label — a template for an F2F
       // product must not be able to put "/yr" back in. The trailing
       // dot lives INSIDE premiumWithPeriod for non-tobacco so the
       // tobacco text can end bare: "… Stop Order $60".
       period: fieldToFloor ? '' : period,
-      premiumWithPeriod: fieldToFloor ? smsVarMoney(policy.premium) : `${smsVarMoney(policy.premium)}${period}.`,
+      premiumWithPeriod: fieldToFloor ? smsVarMoney(policy.premium) : `${smsVarMoney(billedPremium)}${period}.`,
       paymentMethod: policy.paymentMethod,
     },
     fallback: policyRegisteredSms({
@@ -223,8 +228,9 @@ export async function notifyPolicyRegistered(policy: Policy, client: Client | nu
       policyNumber: policy.policyNumber,
       productName: policy.productName,
       productCategory: policy.productCategory,
+      onceOff: policy.onceOff,
       coverAmount: policy.coverAmount,
-      premium: policy.premium,
+      premium: fieldToFloor ? policy.premium : billedPremium,
       paymentMethod: policy.paymentMethod,
       clientPhone: client?.phone,
     }),
@@ -246,7 +252,7 @@ ${coverEmail}
 Premium:        ${premium}
 Payment Method: ${policy.paymentMethod}
 Start Date:     ${policy.startDate}
-Status:         ${policy.status.replace('_', ' ').toUpperCase()}
+${policy.onceOff ? `Package End:   ${policy.endDate}\n` : ''}Status:         ${policy.status.replace('_', ' ').toUpperCase()}
 
 ${policy.status === 'waiting_period'
   ? 'Your policy is in its waiting period. We will let you know as soon as cover becomes active.'
@@ -280,7 +286,7 @@ Product:        ${policy.productName}
 Cover Amount:   ${cover}
 Premium:        ${premium}
 Start Date:     ${policy.startDate}
-Status:         ${policy.status.replace('_', ' ').toUpperCase()}
+${policy.onceOff ? `Package End:   ${policy.endDate}\n` : ''}Status:         ${policy.status.replace('_', ' ').toUpperCase()}
 Payment Method: ${policy.paymentMethod}
 ${policy.agentName ? `Issued by:      ${policy.agentName}` : 'Issued through the public website.'}${cfg.signature ? `\n\n---\n${cfg.signature}` : ''}`,
     }).catch(() => { /**/ })

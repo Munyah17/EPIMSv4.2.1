@@ -30,5 +30,7 @@ recent deployments.
 - Policy terms live in `src/lib/policyTerms.ts` verbatim — every policy
   document appends ITS OWN product's exclusion schedule plus the shared
   General Conditions via `drawTermsPages` (`termsPagesFor`).
-- Premiums are per head except agriculture (`policyBillablePremium`).
+- Premiums are per head except agriculture (`policyBillablePremium`); a
+  `Policy.onceOff` package bills its group/corporate/team roster once for
+  the negotiated term and archives at `endDate`.
 - Secrets stay in `.env*` / server env — never in `src/`.

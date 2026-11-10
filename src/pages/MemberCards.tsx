@@ -89,7 +89,7 @@ export default function MemberCards({ showToast }: Props) {
   const cardablePolicies = useMemo(
     () => policies.filter(p =>
       (p.status === 'active' || p.status === 'waiting_period') &&
-      categoryIssuesMemberCards(p.productCategory)),
+      categoryIssuesMemberCards(p.productCategory, p.onceOff)),
     [policies],
   )
   // The browse view is organised by policyholder: each row is the person

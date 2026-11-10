@@ -134,7 +134,16 @@ export async function canonicalizeSmsText(admin: SupabaseClient | null, message:
       if (!productCategory && prod?.category) productCategory = String(prod.category)
     }
     if (!productName) productName = 'Policy'
-    const premium = Number(row.premium ?? 0)
+    const basePremium = Number(row.premium ?? 0)
+    const packageDeps = Array.isArray(row.dependants) ? row.dependants as { name?: string; premium?: number }[] : []
+    const isPackage = row.once_off === true || row.once_off === 'true'
+    const premium = isPackage
+      ? packageDeps.reduce((sum, d) => {
+        if (!String(d.name ?? '').trim()) return sum
+        const participantPremium = Number(d.premium)
+        return sum + (Number.isFinite(participantPremium) && participantPremium > 0 ? participantPremium : basePremium)
+      }, 0)
+      : basePremium
     const paymentMethod = (row.payment_method ?? row.paymentMethod) as string | undefined
     // Rebuild through the template resolver, not just the default builder —
     // otherwise the border would overwrite a staff-authored registration
@@ -155,9 +164,10 @@ export async function canonicalizeSmsText(admin: SupabaseClient | null, message:
         // Tobacco texts carry no period label and no closing dot — see
         // smsText.ts. Non-tobacco keeps the trailing period inside the
         // var so one template body serves both product classes; the
-        // label is /yr for agriculture, /mo for every monthly product.
-        period: isTobaccoFieldToFloor(productName) ? '' : (productCategory === 'agriculture' ? '/yr' : '/mo'),
-        premiumWithPeriod: isTobaccoFieldToFloor(productName) ? smsVarMoney(premium) : `${smsVarMoney(premium)}${productCategory === 'agriculture' ? '/yr' : '/mo'}.`,
+        // label is /yr for agriculture, /term for once-off packages,
+        // /mo for every monthly product.
+        period: isTobaccoFieldToFloor(productName) ? '' : (productCategory === 'agriculture' ? '/yr' : isPackage ? '/term' : '/mo'),
+        premiumWithPeriod: isTobaccoFieldToFloor(productName) ? smsVarMoney(premium) : `${smsVarMoney(premium)}${productCategory === 'agriculture' ? '/yr' : isPackage ? '/term' : '/mo'}.`,
         paymentMethod,
       },
       fallback: policyRegisteredSms({
@@ -165,6 +175,7 @@ export async function canonicalizeSmsText(admin: SupabaseClient | null, message:
         policyNumber,
         productName,
         productCategory: (productCategory || undefined) as string | undefined,
+        onceOff: isPackage,
         coverAmount: Number(row.cover_amount ?? row.coverAmount ?? 0),
         premium,
         paymentMethod,

@@ -3,7 +3,7 @@ import type { Policy } from '../../types'
 import {
   initiateEcoCash, initiatePaynow, getZipitDetails, isZipitConfigured, pollEcoCash, pollPaynow, CURRENCY_SYMBOL,
 } from '../../lib/paymentGateways'
-import { toIsoDate } from '../../lib/dateUtils'
+import { toIsoDate, formatDate } from '../../lib/dateUtils'
 import type { PaymentResponse, PaymentCurrency } from '../../lib/paymentGateways'
 import {
   getCurrencySettings, isActive, DEFAULT_CURRENCY_SETTINGS, CURRENCY_UNAVAILABLE_MESSAGE,
@@ -13,6 +13,7 @@ import { convertUsdToZig } from '../../lib/exchangeRate'
 import { taggedReference } from '../../lib/originTag'
 import { db } from '../../lib/db'
 import { policyBillablePremium, billableHeadCount } from '../../lib/premium'
+import { premiumPeriodLabel } from '../../lib/productUtils'
 import { settlement, defaultCharge, completedPays } from '../../lib/paymentAllocation'
 import { recordActivity } from '../../lib/activityLog'
 import { notifyPaymentReceived, notifyPaymentFailed } from '../../lib/signupNotifications'
@@ -120,6 +121,7 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
     })
   }, [policy.clientId, policy.productId, policy.id])
   const isAgriculture = category === 'agriculture'
+  const isPackage = policy.onceOff === true
   const ref = taggedReference(`${policy.policyNumber}${Date.now().toString(36).toUpperCase()}`)
   // Premiums are per head: the amount collected covers the policyholder and
   // every dependant on the policy, not the policyholder alone. When the
@@ -130,7 +132,14 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
   const heads = billableHeadCount(policy, category)
   const cycleMonths = isAgriculture ? 12 : 1
   const due = settlement(perPeriod, cycleMonths, policy.nextPaymentDate, completed)
-  const totalAmount = defaultCharge(due, periods)
+  // A once-off package is a single negotiated term — only money paid from
+  // its current start date counts, so restoring a package for a new trip
+  // charges the new term instead of inheriting the old payment.
+  const packagePaidForTerm = isPackage
+    ? completed.reduce((sum, p) => sum + (p.date >= policy.startDate.slice(0, 10) && p.date <= policy.endDate.slice(0, 10) ? p.amount : 0), 0)
+    : 0
+  const packageOutstanding = Math.max(0, perPeriod - packagePaidForTerm)
+  const totalAmount = isPackage ? packageOutstanding : defaultCharge(due, periods)
 
   const req = {
     policyId: policy.id,
@@ -280,6 +289,7 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
     // Only EcoCash Instant needs a number up front — it pushes the prompt to
     // that handset. Paynow collects whatever it needs on its own page.
     setPhoneAttempted(true)
+    if (isPackage && totalAmount <= 0) { showToast('info', 'This package term is already paid — restore/edit it for a new term before collecting again.'); return }
     if (!phone && method === 'ecocash') { showToast('warning', "Enter the client's phone number — the EcoCash prompt is sent to it."); return }
     if (method === 'ecocash' && !isZwPhone(phone)) { showToast('warning', `That isn't a Zimbabwean number — ${PHONE_HINT}.`); return }
     setStep('processing')
@@ -354,7 +364,9 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
                 <div style={{ fontSize: 11, color: 'var(--muted)' }}>{policy.productName} · {policy.policyNumber}</div>
                 {heads > 1 && (
                   <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>
-                    Covers {heads} people (policyholder + {heads - 1} dependant{heads === 2 ? '' : 's'}) · ${perPeriod.toFixed(2)}{isAgriculture ? '/yr' : '/mo'}
+                    {isPackage
+                      ? `Covers ${heads} participant${heads === 1 ? '' : 's'} · $${perPeriod.toFixed(2)}/term`
+                      : `Covers ${heads} people (policyholder + ${heads - 1} dependant${heads === 2 ? '' : 's'}) · $${perPeriod.toFixed(2)}${premiumPeriodLabel(category, policy.productName, policy.paymentMethod, policy.onceOff)}`}
                   </div>
                 )}
                 {due.isUpgrade && (
@@ -369,18 +381,26 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
                 )}
               </div>
 
-              <div className="form-group" style={{ marginBottom: 14 }}>
-                <label>Number of {isAgriculture ? 'Years' : 'Months'} to Pay</label>
-                <select className="form-control" value={periods} onChange={e => setPeriods(Number(e.target.value))}>
-                  {Array.from({ length: 12 }, (_, i) => i + 1).map(n => (
-                    <option key={n} value={n}>
-                      {due.isUpgrade && n === 1
-                        ? `Dependant top-up this ${isAgriculture ? 'year' : 'month'} ($${defaultCharge(due, n).toFixed(2)})`
-                        : `${n} ${isAgriculture ? (n === 1 ? 'year' : 'years') : (n === 1 ? 'month' : 'months')} ($${defaultCharge(due, n).toFixed(2)})`}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {isPackage ? (
+                <div className={`info-banner ${packageOutstanding <= 0 ? 'info-banner-success' : 'info-banner-info'}`} style={{ marginBottom: 14 }}>
+                  {packageOutstanding <= 0
+                    ? `Once-off package paid for the full term (${formatDate(policy.startDate)} to ${formatDate(policy.endDate)}).`
+                    : `Once-off package — $${packageOutstanding.toFixed(2)} is still due for the full term (${formatDate(policy.startDate)} to ${formatDate(policy.endDate)}).`}
+                </div>
+              ) : (
+                <div className="form-group" style={{ marginBottom: 14 }}>
+                  <label>Number of {isAgriculture ? 'Years' : 'Months'} to Pay</label>
+                  <select className="form-control" value={periods} onChange={e => setPeriods(Number(e.target.value))}>
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map(n => (
+                      <option key={n} value={n}>
+                        {due.isUpgrade && n === 1
+                          ? `Dependant top-up this ${isAgriculture ? 'year' : 'month'} ($${defaultCharge(due, n).toFixed(2)})`
+                          : `${n} ${isAgriculture ? (n === 1 ? 'year' : 'years') : (n === 1 ? 'month' : 'months')} ($${defaultCharge(due, n).toFixed(2)})`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div className="form-group" style={{ marginBottom: 14 }}>
                 <label>Payment Method</label>
@@ -538,7 +558,7 @@ export default function OnlinePaymentModal({ policy, onClose, onSuccess, showToa
           {step === 'select' && (
             <>
               <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-              <button className="btn btn-primary" onClick={handlePay}>Continue →</button>
+              <button className="btn btn-primary" onClick={handlePay} disabled={isPackage && totalAmount <= 0}>Continue →</button>
             </>
           )}
           {step === 'confirm' && (

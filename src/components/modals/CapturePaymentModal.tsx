@@ -38,11 +38,14 @@ const LIVE = new Set(['active', 'waiting_period', 'lapsed', 'defaulted', 'pendin
  */
 export default function CapturePaymentModal({ policy: initialPolicy, policies, clientName, onClose, onCaptured, showToast }: Props) {
   const { user } = useAuth()
+  // Once-off packages are not arrears-driven — they are excluded from the
+  // capture-payment picker entirely.
+  const selectableInitial = initialPolicy?.onceOff ? undefined : initialPolicy
   const candidates = useMemo(
-    () => (initialPolicy ? [initialPolicy] : (policies ?? []).filter(p => LIVE.has(p.status))),
-    [initialPolicy, policies],
+    () => (selectableInitial ? [selectableInitial] : (policies ?? []).filter(p => LIVE.has(p.status) && !p.onceOff)),
+    [selectableInitial, policies],
   )
-  const [policyId, setPolicyId] = useState(initialPolicy?.id ?? (candidates.length === 1 ? candidates[0].id : ''))
+  const [policyId, setPolicyId] = useState(selectableInitial?.id ?? (candidates.length === 1 ? candidates[0].id : ''))
   const policy = candidates.find(p => p.id === policyId) ?? null
   const [products, setProducts] = useState<Product[]>([])
   const [completed, setCompleted] = useState<{ amount: number; date: string }[]>([])
@@ -191,7 +194,7 @@ export default function CapturePaymentModal({ policy: initialPolicy, policies, c
           {policy && (
             <div className={`info-banner ${arrears.periods > 0 ? 'info-banner-warning' : 'info-banner-info'}`} style={{ marginBottom: '1rem' }}>
               <strong>{policy.policyNumber}</strong> · {policy.clientName} · {policy.productName}<br />
-              Premium: ${perPeriod.toFixed(2)}{premiumPeriodLabel(category, policy.productName, policy.paymentMethod)}
+              Premium: ${perPeriod.toFixed(2)}{premiumPeriodLabel(category, policy.productName, policy.paymentMethod, policy.onceOff)}
               {billableHeadCount(policy, category) > 1 && <span style={{ fontSize: 11 }}> ({billableHeadCount(policy, category)} people)</span>}
               <br />
               Currently paid up to: <strong>{formatDate(policy.nextPaymentDate)}</strong>

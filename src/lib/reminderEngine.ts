@@ -264,6 +264,7 @@ export async function runReminderCheck() {
   // today, the grace window having closed.
   const policies = (allPolicies ?? []).filter(p =>
     (p.status === 'active' || p.status === 'waiting_period' || p.status === 'defaulted')
+    && !p.onceOff
     && categoryByProductId.get(p.productId) !== 'agriculture'
     && (p.nextPaymentDate
       ? (type === 'lapse' ? p.nextPaymentDate < todayISO : p.nextPaymentDate <= dueISO)
@@ -291,6 +292,7 @@ export async function checkWaitingPeriodElapsed() {
 
   for (const policy of allPolicies ?? []) {
     if (policy.status !== 'waiting_period') continue
+    if (policy.onceOff) continue
     if (categoryByProductId.get(policy.productId) === 'agriculture') continue
     const daysSinceStart = Math.round((today.getTime() - new Date(policy.startDate).getTime()) / 86400000)
     if (daysSinceStart < WAITING_PERIOD_DAYS) continue
@@ -300,20 +302,22 @@ export async function checkWaitingPeriodElapsed() {
   }
 }
 
-/** Agriculture policies expire when their season ends — the sweep to
+/** Term-bound policies expire when their end date passes — the sweep to
  *  'expired' (the archive state) exists for the tobacco book rolling off
- *  on 31 Aug. Monthly products — funeral, hospital cash, life, motor —
- *  have no fixed term: their stored end_date is a start+1yr bookkeeping
- *  artifact set at creation, and cover continues while payments come in.
- *  Sweeping them by end_date archived live paid-up policies and then
- *  re-archived them after every restore; they are excluded exactly like
+ *  on 31 Aug and for once-off packages ending their negotiated term.
+ *  Monthly products — funeral, hospital cash, life, motor — have no fixed
+ *  term: their stored end_date is a start+1yr bookkeeping artifact set at
+ *  creation, and cover continues while payments come in. Sweeping them by
+ *  end_date archived live paid-up policies and then re-archived them
+ *  after every restore; they are excluded exactly like
  *  checkWaitingPeriodElapsed excludes agriculture — wrong lifecycle. */
 export async function archiveExpiredPolicies() {
   const [{ data: allPolicies }, { data: allProducts }] = await Promise.all([db.policies.list(), db.products.list()])
   const categoryByProductId = new Map((allProducts ?? []).map(p => [p.id, p.category]))
   const todayISO = toIsoDate(new Date())
   for (const policy of allPolicies ?? []) {
-    if (categoryByProductId.get(policy.productId) !== 'agriculture') continue
+    const termBound = categoryByProductId.get(policy.productId) === 'agriculture' || policy.onceOff
+    if (!termBound) continue
     if (!policy.endDate || policy.endDate >= todayISO) continue
     if (!['active', 'waiting_period', 'lapsed', 'defaulted'].includes(policy.status)) continue
     await db.policies.update(policy.id, { status: 'expired' })

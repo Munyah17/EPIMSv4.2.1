@@ -26,12 +26,16 @@ export const TREATY_HEADERS = [
 ]
 
 /** Premium-column heading for the export's actual contents. Agriculture
- *  premiums are the whole season's figure settled by stop order — labelling
- *  them 'MONTHLY PREMIUM' has a reinsurer dividing an annual premium by 12.
- *  A mixed book says 'PREMIUM' and lets the product column disambiguate;
- *  a pure agriculture book says so outright. */
-export function treatyHeaders(allAgriculture: boolean): string[] {
-  const premium = allAgriculture ? 'ANNUAL PREMIUM' : 'MONTHLY PREMIUM'
+ *  premiums are the whole season's figure settled by stop order, and
+ *  once-off packages are the whole negotiated term — labelling either
+ *  'MONTHLY PREMIUM' has a reinsurer dividing it by 12. A mixed book says
+ *  'PREMIUM' and lets the product column disambiguate. */
+export type TreatyPeriodKind = 'monthly' | 'annual' | 'term' | 'mixed'
+export function treatyHeaders(kind: TreatyPeriodKind): string[] {
+  const premium = kind === 'annual' ? 'ANNUAL PREMIUM'
+    : kind === 'term' ? 'TERM PREMIUM'
+    : kind === 'mixed' ? 'PREMIUM'
+    : 'MONTHLY PREMIUM'
   return TREATY_HEADERS.map(h => h === 'MONTHLY PREMIUM' ? premium : h)
 }
 
@@ -54,6 +58,21 @@ function canonicalId(id: string | undefined | null): string {
 
 function money(n: number): number {
   return Math.round(n * 100) / 100
+}
+
+/** Treaty period in whole months. Monthly cover is 1; agriculture is a
+ *  12-month season; a once-off package is its negotiated start→end term. */
+function periodMonths(policy: Policy): number {
+  if (policy.onceOff) {
+    const start = new Date(policy.startDate)
+    const end = new Date(policy.endDate)
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) return 1
+    return Math.max(1,
+      (end.getFullYear() - start.getFullYear()) * 12 + (end.getMonth() - start.getMonth()) +
+      (end.getDate() > start.getDate() ? 1 : 0),
+    )
+  }
+  return policy.productCategory === 'agriculture' ? 12 : 1
 }
 
 /** surname = last word, NAME = everything before it — matches the
@@ -84,8 +103,8 @@ function row(
     name, surname, reportDate(person.dob), canonicalId(person.nationalId),
     person.gender ?? '',
     policy.productName, policy.policyNumber, desig,
-    reportDate(policy.startDate), 1,
-    money(assured), money(premium), money(premium * 1),
+    reportDate(policy.startDate), periodMonths(policy),
+    money(assured), money(premium), money(premium),
     money(retainedA), money(retainedP),
     money(assured - retainedA), money(premium - retainedP),
   ]
@@ -99,14 +118,20 @@ export function treatyRows(policies: Policy[], clientsById: Map<string, Client>)
   const rows: (string | number)[][] = []
   for (const p of policies) {
     const c = clientsById.get(p.clientId)
-    rows.push(row(
-      { name: p.clientName, nationalId: c?.nationalId, dob: c?.dob, gender: c?.gender },
-      'PRINCIPAL MEMBER', p, p.premium, p.coverAmount,
-    ))
+    const rosterScoped = !!p.coverScope && p.coverScope !== 'individual'
+    // An organisation is the account holder, never an insured head. Its
+    // roster entries are each a principal insured member (employee,
+    // member, team participant, package traveller).
+    if (!rosterScoped) {
+      rows.push(row(
+        { name: p.clientName, nationalId: c?.nationalId, dob: c?.dob, gender: c?.gender },
+        'PRINCIPAL MEMBER', p, p.premium, p.coverAmount,
+      ))
+    }
     for (const d of p.dependants ?? []) {
       rows.push(row(
         { name: d.name, nationalId: d.nationalId, dob: d.dob, gender: d.gender },
-        designation(d.relationship), p,
+        rosterScoped ? 'PRINCIPAL MEMBER' : designation(d.relationship), p,
         d.premium ?? p.premium, d.coverAmount ?? p.coverAmount,
       ))
     }

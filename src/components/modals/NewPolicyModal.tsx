@@ -71,6 +71,13 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   // The commencement date is entered by the capturer — it is never
   // auto-assigned, so every policy starts on the date agreed at sale.
   const [startDate, setStartDate] = useState('')
+  // Once-off packages carry their own negotiated term: an explicit end
+  // date, a package-level default premium/sum assured per participant,
+  // and optional per-participant overrides captured on the roster below.
+  const [endDate, setEndDate] = useState('')
+  const [packagePremium, setPackagePremium] = useState('')
+  const [packageCover, setPackageCover] = useState('')
+  const [participantTerms, setParticipantTerms] = useState<Record<string, { premium: string; coverAmount: string }>>({})
   // Optional — a policy can carry zero dependants, so this starts empty
   // rather than seeding a mandatory first row.
   const [dependants, setDependants] = useState<Dependant[]>(
@@ -88,6 +95,9 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   // the org is the policyholder and is NOT a billed head, only the
   // selected members are (see src/lib/premium.ts).
   const [coverScope, setCoverScope] = useState<CoverScope>(qd?.coverScope ?? 'individual')
+  // Once-off is a lifecycle flag, not a cover scope: the package keeps the
+  // organisation's roster scope ('group' by default) and adds a finite term.
+  const [isPackageScope, setIsPackageScope] = useState(false)
   const [groups, setGroups] = useState<Group[]>([])
   const [groupId, setGroupId] = useState(qd?.groupId ?? '')
   // Team scope: the named activity/season the cover is for (e.g. "2026
@@ -189,6 +199,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   // member — the normal case is the whole roster covered, with staff
   // unticking exceptions rather than ticking one by one.
   useEffect(() => {
+    setParticipantTerms({})
     if (!groupId) { setRoster([]); setSelectedMemberIds(new Set()); return }
     setRosterLoading(true)
     db.groupMembers.list(groupId).then(({ data, error }) => {
@@ -210,8 +221,23 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   }
 
   const isGroupScope = coverScope !== 'individual'
-  const memberLabel = coverScope === 'corporate' ? 'employee' : coverScope === 'team' ? 'player/member' : 'member'
-  const membersCoveredLabel = coverScope === 'corporate' ? 'Employees Covered' : coverScope === 'team' ? 'Team Roster Covered' : 'Members Covered'
+  const memberLabel = isPackageScope ? 'participant' : coverScope === 'corporate' ? 'employee' : coverScope === 'team' ? 'player/member' : 'member'
+  const membersCoveredLabel = isPackageScope ? 'Participants Covered' : coverScope === 'corporate' ? 'Employees Covered' : coverScope === 'team' ? 'Team Roster Covered' : 'Members Covered'
+
+  // Package pricing is negotiated at package level and overridable per
+  // participant — these helpers are the single read of that negotiation.
+  const packagePremiumValue = Number(packagePremium)
+  const packageCoverValue = Number(packageCover)
+  const participantPremium = (m: GroupMember) => {
+    const override = Number(participantTerms[m.id]?.premium)
+    return Number.isFinite(override) && override > 0 ? override : packagePremiumValue
+  }
+  const selectedRoster = roster.filter(m => selectedMemberIds.has(m.id))
+  const finitePremium = (value: number) => Number.isFinite(value) && value > 0 ? value : 0
+  const packageBilledTotal = selectedRoster.reduce((sum, m) => sum + finitePremium(participantPremium(m)), 0)
+  const rosterBilledTotal = isPackageScope
+    ? packageBilledTotal
+    : selectedRoster.reduce((sum, m) => sum + (m.premium ?? product?.premium ?? 0), 0)
 
   /** Same shape as the picker description — the org created inline lands
    *  in the same list and is selected immediately, checkout-flow style. */
@@ -254,7 +280,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
     // registration text — the channel shouldn't change the record.
     void notifyGroupRegistered(data)
     setOrgName(''); setOrgCustomType(''); setOrgDesc(''); setOrgLinePhone(''); setOrgEmail(''); setOrgAddress(''); setOrgContactName(''); setOrgPhone(''); setOrgContactEmail('')
-    showToast?.('success', `${data.name} registered — add its ${coverScope === 'corporate' ? 'employees' : 'members'} below, then finish the policy.`)
+    showToast?.('success', `${data.name} registered — add its ${isPackageScope ? 'participants' : coverScope === 'corporate' ? 'employees' : 'members'} below, then finish the policy.`)
   }
 
   const addRosterMember = async () => {
@@ -266,7 +292,11 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
     }
     if (!isNationalId(memberNatId)) { showToast?.('error', `National ID: ${NATIONAL_ID_HINT}.`); return }
     if (memberPhone.trim() && !isZwPhone(memberPhone)) { showToast?.('error', `Member phone: ${PHONE_HINT}.`); return }
-    if (!(Number(memberPremium) > 0) || !(Number(memberCover) > 0)) {
+    // Once-off packages price per participant on the policy form below —
+    // roster members only need identity here; the group roster's own
+    // negotiated columns stay untouched.
+    const packageScope = isPackageScope
+    if (!packageScope && (!(Number(memberPremium) > 0) || !(Number(memberCover) > 0))) {
       showToast?.('error', 'Group terms are negotiated per member — enter the agreed premium and sum assured.')
       return
     }
@@ -278,8 +308,8 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
       dob: memberDob || undefined,
       phone: memberPhone.trim() || undefined,
       position: memberRole.trim() || undefined,
-      premium: Number(memberPremium),
-      coverAmount: Number(memberCover),
+      premium: packageScope ? undefined : Number(memberPremium),
+      coverAmount: packageScope ? undefined : Number(memberCover),
     })
     setMemberSaving(false)
     if (error || !data) { showToast?.('error', error ?? 'Could not add the member.'); return }
@@ -289,10 +319,19 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
     setMemberPremium(''); setMemberCover('')
   }
 
-  const switchScope = (scope: CoverScope) => {
-    setCoverScope(scope)
+  const switchScope = (scope: CoverScope | 'package') => {
+    const packageScope = scope === 'package'
+    setCoverScope(packageScope ? 'group' : scope)
+    setIsPackageScope(packageScope)
+    if (packageScope && product?.category === 'agriculture') setProductId('')
     // Sensible org-type default for the inline registration form.
     setOrgType(scope === 'corporate' ? 'company' : scope === 'team' ? 'sports' : 'other')
+    // Package terms belong to the package flow only — don't let them leak
+    // into a monthly group policy if the capturer changes scope midway.
+    setEndDate('')
+    setPackagePremium('')
+    setPackageCover('')
+    setParticipantTerms({})
   }
 
   // The file itself is only held — the upload happens inside doSave once
@@ -431,10 +470,24 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
   if (!productId) missing.push({ key: 'productId', label: 'Product' })
   // Required for every role — staff must enter the commencement date.
   if (!startDate) missing.push({ key: 'startDate', label: 'Start Date' })
+  if (isPackageScope) {
+    if (product?.category === 'agriculture') missing.push({ key: 'productId', label: 'Product', hint: 'Once-off packages use ordinary group products — agriculture keeps its own seasonal flow' })
+    if (!endDate) missing.push({ key: 'endDate', label: 'Package End Date' })
+    else if (startDate && endDate <= startDate) missing.push({ key: 'endDate', label: 'Package End Date', hint: 'Must be after the start date' })
+    if (!(Number(packagePremium) > 0)) missing.push({ key: 'packagePremium', label: 'Package Premium', hint: 'Negotiated premium per participant for the whole term' })
+    if (!(Number(packageCover) > 0)) missing.push({ key: 'packageCover', label: 'Package Sum Assured', hint: 'Negotiated cover per participant for the whole term' })
+    if (selectedRoster.some(m => {
+      const term = participantTerms[m.id]
+      return (term?.premium.trim() && !(Number(term.premium) > 0)) || (term?.coverAmount.trim() && !(Number(term.coverAmount) > 0))
+    })) {
+      missing.push({ key: 'members', label: 'Participant terms', hint: 'Any override entered must be a positive premium and sum assured' })
+    }
+  }
   // One live policy per client per product (DB partial unique index:
   // active | waiting_period). Warn before the save hits it — the staff
-  // member picks another product, or lapses the old one first.
-  const liveProductClash = existingClientId && productId
+  // member picks another product, or lapses the old one first. Once-off
+  // packages are exempt: the same organisation can hold several terms.
+  const liveProductClash = !isPackageScope && existingClientId && productId
     ? clientPolicies.find(p => p.productId === productId && (p.status === 'active' || p.status === 'waiting_period'))
     : undefined
   if (liveProductClash) missing.push({ key: 'productId', label: 'Product', hint: `Already holds ${liveProductClash.policyNumber} (${liveProductClash.status.replace(/_/g, ' ')}) on this product` })
@@ -574,19 +627,30 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
     // team document read like a squad sheet.
     const selectedGroup = groups.find(g => g.id === groupId)
     const memberDependants: Dependant[] = isGroupScope
-      ? roster.filter(m => selectedMemberIds.has(m.id)).map(m => ({
-          name: m.fullName,
-          relationship: coverScope === 'corporate' ? 'Employee'
-            : coverScope === 'team' ? (m.position?.trim() || 'Team Member')
-            : 'Member',
-          dob: m.dob ?? '',
-          nationalId: m.nationalId ?? '',
-          phone: m.phone,
-          productId, productName: product!.name,
-          // Group terms are negotiated per member — the roster's agreed
-          // figures, not the product defaults.
-          premium: m.premium ?? product!.premium, coverAmount: m.coverAmount ?? product!.coverAmount,
-        }))
+      ? roster.filter(m => selectedMemberIds.has(m.id)).map(m => {
+          const term = isPackageScope ? participantTerms[m.id] : undefined
+          return {
+            name: m.fullName,
+            relationship: isPackageScope ? 'Participant'
+              : coverScope === 'corporate' ? 'Employee'
+              : coverScope === 'team' ? (m.position?.trim() || 'Team Member')
+              : 'Member',
+            dob: m.dob ?? '',
+            nationalId: m.nationalId ?? '',
+            phone: m.phone,
+            productId, productName: product!.name,
+            // Group terms are negotiated per member — the roster's agreed
+            // figures, not the product defaults. Package participants use
+            // the package-level negotiated terms, carrying only explicit
+            // per-participant overrides so the package default stays live.
+            premium: isPackageScope
+              ? (term?.premium.trim() && Number(term.premium) > 0 ? Number(term.premium) : undefined)
+              : (m.premium ?? product!.premium),
+            coverAmount: isPackageScope
+              ? (term?.coverAmount.trim() && Number(term.coverAmount) > 0 ? Number(term.coverAmount) : undefined)
+              : (m.coverAmount ?? product!.coverAmount),
+          }
+        })
       : product!.category === 'agriculture'
         ? dependants.filter(d => d.name.trim()).slice(0, 1).map(d => ({ ...d, relationship: 'Spouse' }))
         : dependants.filter(d => d.name.trim())
@@ -599,11 +663,11 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
     // above, so no auto-assignment. Tobacco Field-to-Floor ignores it:
     // cover runs with the fixed tobacco season, the same window the
     // policy document prints.
-    const isTobacco = product!.category === 'agriculture' && isTobaccoFieldToFloor(product!.name)
+    const isTobacco = !isPackageScope && product!.category === 'agriculture' && isTobaccoFieldToFloor(product!.name)
     const effectiveStartDate = isTobacco ? TOBACCO_SEASON_ISO.start : (startDate || computeAssignedStartDate())
-    const endDate = new Date(effectiveStartDate)
-    endDate.setFullYear(endDate.getFullYear() + 1)
-    const effectiveEndDate = isTobacco ? TOBACCO_SEASON_ISO.end : toIsoDate(endDate)
+    const derivedEnd = new Date(effectiveStartDate)
+    derivedEnd.setFullYear(derivedEnd.getFullYear() + 1)
+    const effectiveEndDate = isPackageScope ? endDate : isTobacco ? TOBACCO_SEASON_ISO.end : toIsoDate(derivedEnd)
     const policy: Policy = {
       id: `pol${Date.now()}`,
       policyNumber,
@@ -612,30 +676,32 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
       productId,
       productName: product!.name,
       // A converted quotation carries its agreed figures — the negotiated
-      // price, not the catalogue default.
-      premium: initialQuotation?.premium ?? product!.premium,
-      coverAmount: initialQuotation?.coverAmount ?? product!.coverAmount,
+      // price, not the catalogue default. Once-off packages are negotiated
+      // package-level terms entered by staff, not product defaults.
+      premium: isPackageScope ? packagePremiumValue : (initialQuotation?.premium ?? product!.premium),
+      coverAmount: isPackageScope ? packageCoverValue : (initialQuotation?.coverAmount ?? product!.coverAmount),
       startDate: effectiveStartDate,
       endDate: effectiveEndDate,
       // Every new policy starts in a waiting period, lifted to active after
       // 90 days — except agriculture, which has NO waiting period at all,
-      // and team cover, which is bound to a named activity/event and so
-      // can't sit in a waiting period — a team insured for a match on
-      // Saturday needs cover from the day it is issued.
-      status: product!.category === 'agriculture' || coverScope === 'team' ? 'active' : 'waiting_period',
+      // team cover, which is bound to a named activity/event and so can't
+      // sit in a waiting period, and once-off packages, which are live
+      // for their negotiated term from the agreed start date.
+      status: product!.category === 'agriculture' || coverScope === 'team' || isPackageScope ? 'active' : 'waiting_period',
       dependants: memberDependants,
       groupId: isGroupScope ? groupId : undefined,
       groupName: isGroupScope ? selectedGroup?.name : undefined,
       coverScope,
+      onceOff: isPackageScope || undefined,
       teamActivity: coverScope === 'team' ? teamActivity.trim() : undefined,
       paymentMethod,
       growerNumber: product!.category === 'agriculture' ? (growerNumber || undefined) : undefined,
       contractor: product!.category === 'agriculture' ? (contractor.trim() || undefined) : undefined,
       hectarage: product!.category === 'agriculture' ? (Number(hectarage) || undefined) : undefined,
       createdAt: toIsoDate(new Date()),
-      // Agriculture is stop-order insurance — the premium comes off the
-      // crop proceeds once, so there is no monthly billing date at all.
-      nextPaymentDate: product!.category === 'agriculture' ? undefined : toIsoDate(new Date(new Date(effectiveStartDate).setMonth(new Date(effectiveStartDate).getMonth() + 1))),
+      // Agriculture is stop-order insurance and once-off packages are a
+      // single negotiated term — neither has a recurring billing date.
+      nextPaymentDate: product!.category === 'agriculture' || isPackageScope ? undefined : toIsoDate(new Date(new Date(effectiveStartDate).setMonth(new Date(effectiveStartDate).getMonth() + 1))),
       agentId: agentId || undefined,
       source,
       hasChronicIllness: isMedical ? hasChronic ?? undefined : undefined,
@@ -745,8 +811,9 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                 <div className="bubble-toggle">
                   <button type="button" className={`bubble-toggle-btn${coverScope === 'individual' ? ' active' : ''}`} onClick={() => switchScope('individual')}>Individual / Family</button>
                   <button type="button" className={`bubble-toggle-btn${coverScope === 'corporate' ? ' active' : ''}`} onClick={() => switchScope('corporate')}>Corporate</button>
-                  <button type="button" className={`bubble-toggle-btn${coverScope === 'group' ? ' active' : ''}`} onClick={() => switchScope('group')}>Group</button>
+                  <button type="button" className={`bubble-toggle-btn${!isPackageScope && coverScope === 'group' ? ' active' : ''}`} onClick={() => switchScope('group')}>Group</button>
                   <button type="button" className={`bubble-toggle-btn${coverScope === 'team' ? ' active' : ''}`} onClick={() => switchScope('team')}>Teams</button>
+                  <button type="button" className={`bubble-toggle-btn${isPackageScope ? ' active' : ''}`} onClick={() => switchScope('package')}>Once-off Package</button>
                 </div>
                 {isGroupScope && (
                   <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
@@ -754,7 +821,9 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                       ? 'A company covering its employees under one policy. The client below is the account holder (e.g. HR contact); the company is the insured organisation.'
                       : coverScope === 'team'
                         ? 'A team — sports squad, work crew, tour group — covered for a named activity or season. Roster members carry a role (player, coach…), and cover activates immediately: a match this weekend can\'t wait out a 90-day waiting period.'
-                        : 'An association — church, union, sports club — covering its members under one policy. The client below is the account holder (e.g. secretary).'}
+                        : isPackageScope
+                          ? 'A negotiated once-off package for a fixed term — school tour, event, short-term group cover. The organisation is the policyholder, participants are billed once for the package dates, and the policy archives itself when the term ends.'
+                          : 'An association — church, union, sports club — covering its members under one policy. The client below is the account holder (e.g. secretary).'}
                   </p>
                 )}
               </div>
@@ -777,7 +846,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                       <div className="form-row" style={{ marginBottom: 8 }}>
                         <div className="form-group" style={{ marginBottom: 0 }}>
                           <label style={{ fontSize: 11 }}>Organisation Name *</label>
-                          <input className="form-control" placeholder={coverScope === 'corporate' ? 'e.g. Acme Pvt Ltd' : coverScope === 'team' ? 'e.g. Dynamos FC — Senior Squad' : 'e.g. Glen View Church'} value={orgName} onChange={e => setOrgName(e.target.value)} />
+                          <input className="form-control" placeholder={coverScope === 'corporate' ? 'e.g. Acme Pvt Ltd' : coverScope === 'team' ? 'e.g. Dynamos FC — Senior Squad' : isPackageScope ? 'e.g. Glen View High School' : 'e.g. Glen View Church'} value={orgName} onChange={e => setOrgName(e.target.value)} />
                         </div>
                         <div className="form-group" style={{ marginBottom: 0 }}>
                           <label style={{ fontSize: 11 }}>Type *</label>
@@ -821,7 +890,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                       <div className="form-row" style={{ marginBottom: 8 }}>
                         <div className="form-group" style={{ marginBottom: 0 }}>
                           <label style={{ fontSize: 11 }}>Representative Name *</label>
-                          <input className="form-control" placeholder={coverScope === 'corporate' ? 'HR officer' : coverScope === 'team' ? 'Coach or manager' : 'Secretary, chairperson'} value={orgContactName} onChange={e => setOrgContactName(e.target.value)} />
+                          <input className="form-control" placeholder={coverScope === 'corporate' ? 'HR officer' : coverScope === 'team' ? 'Coach or manager' : isPackageScope ? 'Principal or tour organiser' : 'Secretary, chairperson'} value={orgContactName} onChange={e => setOrgContactName(e.target.value)} />
                         </div>
                         <div className="form-group" style={{ marginBottom: 0 }}>
                           <label style={{ fontSize: 11 }}>Representative Phone</label>
@@ -854,7 +923,7 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                 <label>Product *</label>
                 <select className={invalidClass(missing, attempted, 'productId')} value={productId} onChange={e => setProductId(e.target.value)} disabled={productsLoading}>
                   <option value="">{productsLoading ? 'Loading products…' : 'Select product…'}</option>
-                  {products.filter(p => p.active).map(p => <option key={p.id} value={p.id}>{p.name} (${p.premium}{premiumPeriodLabel(p.category, p.name, paymentMethod)})</option>)}
+                  {products.filter(p => p.active && (!isPackageScope || p.category !== 'agriculture')).map(p => <option key={p.id} value={p.id}>{isPackageScope ? p.name : `${p.name} ($${p.premium}${premiumPeriodLabel(p.category, p.name, paymentMethod, isPackageScope)})`}</option>)}
                 </select>
                 {liveProductClash && (
                   <p style={{ fontSize: 11, color: 'var(--danger)', marginTop: 4 }}>
@@ -864,7 +933,22 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
               </div>
               {product && (
                 <div className="info-banner info-banner-info">
-                  Cover: ${product.coverAmount.toLocaleString()} · Premium: ${product.premium}{premiumPeriodLabel(product.category, product.name, paymentMethod)} · Commission: {product.commissionPct}%
+                  {isPackageScope
+                    ? <>Product: {product.name} · Commission: {product.commissionPct}% — premium and sum assured are negotiated below, once for the package term.</>
+                    : <>Cover: ${product.coverAmount.toLocaleString()} · Premium: ${product.premium}{premiumPeriodLabel(product.category, product.name, paymentMethod, isPackageScope)} · Commission: {product.commissionPct}%</>}
+                </div>
+              )}
+              {isPackageScope && (
+                <div className="form-row">
+                  <div className="form-group" id={fieldId('packagePremium')} style={{ marginBottom: 0 }}>
+                    <label>Package Premium per Participant *</label>
+                    <input type="number" min={0} step="0.01" className={invalidClass(missing, attempted, 'packagePremium')} placeholder="Negotiated for the whole term" value={packagePremium} onChange={e => setPackagePremium(e.target.value)} />
+                    <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>Billed once for the package dates — not monthly.</p>
+                  </div>
+                  <div className="form-group" id={fieldId('packageCover')} style={{ marginBottom: 0 }}>
+                    <label>Package Sum Assured per Participant *</label>
+                    <input type="number" min={0} step="0.01" className={invalidClass(missing, attempted, 'packageCover')} placeholder="Negotiated for the whole term" value={packageCover} onChange={e => setPackageCover(e.target.value)} />
+                  </div>
                 </div>
               )}
               {product?.category === 'agriculture' && (
@@ -924,10 +1008,19 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                   )}
                 </div>
               )}
-              <div className="form-group" id={fieldId('startDate')} style={isMissing(missing, attempted, 'startDate') ? { outline: '1px solid var(--danger)', borderRadius: 7, outlineOffset: 2 } : undefined}>
-                <label>Start Date *</label>
-                <DateInput value={startDate} onChange={setStartDate} />
-                <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>The date cover commences — enter it as agreed with the client.</p>
+              <div className={isPackageScope ? 'form-row' : undefined}>
+                <div className="form-group" id={fieldId('startDate')} style={isMissing(missing, attempted, 'startDate') ? { outline: '1px solid var(--danger)', borderRadius: 7, outlineOffset: 2 } : undefined}>
+                  <label>Start Date *</label>
+                  <DateInput value={startDate} onChange={setStartDate} />
+                  <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>The date cover commences — enter it as agreed with the client.</p>
+                </div>
+                {isPackageScope && (
+                  <div className="form-group" id={fieldId('endDate')} style={isMissing(missing, attempted, 'endDate') ? { outline: '1px solid var(--danger)', borderRadius: 7, outlineOffset: 2 } : undefined}>
+                    <label>Package End Date *</label>
+                    <DateInput value={endDate} onChange={setEndDate} />
+                    <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>Cover and billing end on this date — the policy then moves to the archive.</p>
+                  </div>
+                )}
               </div>
               <div className="form-group">
                 <label>Payment Method *</label>
@@ -1053,18 +1146,27 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                       <PhoneInput value={memberPhone} onChange={setMemberPhone} />
                     </div>
                   </div>
-                  <div className="form-row" style={{ marginBottom: 8 }}>
-                    {/* Negotiated per member — the agreed figures, not
-                        product defaults. */}
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label style={{ fontSize: 11 }}>Premium *</label>
-                      <input type="number" min={0} step="0.01" className="form-control" placeholder="Agreed premium" value={memberPremium} onChange={e => setMemberPremium(e.target.value)} />
+                  {!isPackageScope && (
+                    <div className="form-row" style={{ marginBottom: 8 }}>
+                      {/* Negotiated per member — the agreed figures, not
+                          product defaults. Package participants inherit the
+                          package terms above and can be overridden per row
+                          in the roster list instead. */}
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label style={{ fontSize: 11 }}>Premium *</label>
+                        <input type="number" min={0} step="0.01" className="form-control" placeholder="Agreed premium" value={memberPremium} onChange={e => setMemberPremium(e.target.value)} />
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label style={{ fontSize: 11 }}>Sum Assured *</label>
+                        <input type="number" min={0} step="0.01" className="form-control" placeholder="Agreed cover" value={memberCover} onChange={e => setMemberCover(e.target.value)} />
+                      </div>
                     </div>
-                    <div className="form-group" style={{ marginBottom: 0 }}>
-                      <label style={{ fontSize: 11 }}>Sum Assured *</label>
-                      <input type="number" min={0} step="0.01" className="form-control" placeholder="Agreed cover" value={memberCover} onChange={e => setMemberCover(e.target.value)} />
-                    </div>
-                  </div>
+                  )}
+                  {isPackageScope && (
+                    <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8 }}>
+                      Package participants inherit the negotiated package terms — override any participant's premium or sum assured in the roster list below.
+                    </p>
+                  )}
                   <button type="button" className="btn btn-primary btn-sm" disabled={memberSaving} onClick={() => void addRosterMember()}>
                     {memberSaving ? 'Adding…' : `Add ${memberLabel}`}
                   </button>
@@ -1076,12 +1178,38 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                 <p style={{ fontSize: 12, color: 'var(--muted)' }}>Loading roster…</p>
               ) : roster.length === 0 ? (
                 <p style={{ fontSize: 12, color: 'var(--muted)' }}>
-                  This organisation has no active {coverScope === 'corporate' ? 'employees' : 'members'} yet — use "+ Add {coverScope === 'corporate' ? 'Employee' : 'Member'}" above to enrol the first one.
+                  This organisation has no active {isPackageScope ? 'participants' : coverScope === 'corporate' ? 'employees' : 'members'} yet — use "+ Add {isPackageScope ? 'Participant' : coverScope === 'corporate' ? 'Employee' : 'Member'}" above to enrol the first one.
                 </p>
               ) : (
                 <>
                   <div style={{ maxHeight: 260, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
-                    {roster.map(m => (
+                    {roster.map(m => isPackageScope ? (
+                      <div key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: '1px solid var(--border)' }}>
+                        <input type="checkbox" checked={selectedMemberIds.has(m.id)} onChange={() => toggleMember(m.id)} />
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          <strong>{m.fullName}</strong>
+                          {m.position && <span style={{ color: 'var(--muted)', fontSize: 12 }}> · {m.position}</span>}
+                          <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+                            {[m.memberNo, m.nationalId].filter(Boolean).join(' · ') || 'No ID on file'}
+                          </div>
+                        </span>
+                        <input
+                          type="number" min={0} step="0.01" className="form-control" style={{ width: 92 }}
+                          placeholder={packagePremium || 'Premium'} title="Package premium override — blank uses the package default"
+                          value={participantTerms[m.id]?.premium ?? ''}
+                          onChange={e => setParticipantTerms(prev => ({ ...prev, [m.id]: { premium: e.target.value, coverAmount: prev[m.id]?.coverAmount ?? '' } }))}
+                        />
+                        <input
+                          type="number" min={0} step="0.01" className="form-control" style={{ width: 112 }}
+                          placeholder={packageCover || 'Sum assured'} title="Package sum assured override — blank uses the package default"
+                          value={participantTerms[m.id]?.coverAmount ?? ''}
+                          onChange={e => setParticipantTerms(prev => ({ ...prev, [m.id]: { premium: prev[m.id]?.premium ?? '', coverAmount: e.target.value } }))}
+                        />
+                        <span className="mono" style={{ fontSize: 12, color: 'var(--muted)', minWidth: 62, textAlign: 'right' }}>
+                          {finitePremium(participantPremium(m)) > 0 ? `$${participantPremium(m).toFixed(2)}` : '—'}
+                        </span>
+                      </div>
+                    ) : (
                       <label key={m.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: '1px solid var(--border)', cursor: 'pointer' }}>
                         <input type="checkbox" checked={selectedMemberIds.has(m.id)} onChange={() => toggleMember(m.id)} />
                         <span style={{ flex: 1 }}>
@@ -1099,8 +1227,10 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
                   </div>
                   {product && selectedMemberIds.size > 0 && (
                     <p style={{ fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
-                      Billed: <strong style={{ color: 'var(--text)' }}>${(product.premium * selectedMemberIds.size).toFixed(2)}{premiumPeriodLabel(product.category, product.name, paymentMethod)}</strong>
-                      {' '}({selectedMemberIds.size} {selectedMemberIds.size === 1 ? 'member' : 'members'} × ${product.premium.toFixed(2)} — the organisation itself is not a billed head)
+                      Billed: <strong style={{ color: 'var(--text)' }}>${rosterBilledTotal.toFixed(2)}{premiumPeriodLabel(product.category, product.name, paymentMethod, isPackageScope)}</strong>
+                      {isPackageScope
+                        ? ` (${selectedMemberIds.size} participant${selectedMemberIds.size === 1 ? '' : 's'} — negotiated once for the package term, the organisation itself is not a billed head)`
+                        : ` (${selectedMemberIds.size} ${selectedMemberIds.size === 1 ? 'member' : 'members'} — the organisation itself is not a billed head)`}
                     </p>
                   )}
                 </>

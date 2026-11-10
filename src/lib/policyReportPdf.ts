@@ -44,23 +44,29 @@ const DEFAULT_POLICY_EXCESS = '15% of loss'
 const TOBACCO_SEASON = { start: '15-NOV-2026', end: '31-AUG-2027' }
 
 /** Schedule strip on page 1. Agriculture keeps Commencement / Expiration
- *  (season window). Every other product prints Payment Date = when the last
+ *  (season window); once-off packages print their negotiated term the
+ *  same way. Every other product prints Payment Date = when the last
  *  premium actually landed, and Renewal Date = next due date. */
 export function policyDocumentSchedule(
-  policy: Pick<Policy, 'lastPaymentDate' | 'nextPaymentDate' | 'endDate' | 'productName'>,
+  policy: Pick<Policy, 'lastPaymentDate' | 'nextPaymentDate' | 'endDate' | 'productName'> & Partial<Pick<Policy, 'startDate' | 'coverScope' | 'onceOff'>>,
   category: string,
 ): { paymentLabel: string; untilLabel: string; paidWhen: string; renewsWhen: string } {
   const isAgriculture = category === 'agriculture'
+  const isPackage = policy.onceOff === true
   const isFieldToFloor = isAgriculture && isTobaccoFieldToFloor(policy.productName)
   return {
-    paymentLabel: isAgriculture ? 'Commencement Date' : 'Payment Date',
-    untilLabel: isAgriculture ? 'Expiration Date' : 'Renewal Date',
-    paidWhen: isAgriculture ? TOBACCO_SEASON.start : formatDate(policy.lastPaymentDate),
-    renewsWhen: isFieldToFloor
-      ? TOBACCO_SEASON.end
-      : isAgriculture
-        ? formatDate(policy.endDate)
-        : formatDate(policy.nextPaymentDate),
+    paymentLabel: isAgriculture || isPackage ? 'Commencement Date' : 'Payment Date',
+    untilLabel: isAgriculture || isPackage ? 'Expiration Date' : 'Renewal Date',
+    paidWhen: isPackage
+      ? formatDate(policy.startDate)
+      : isAgriculture ? TOBACCO_SEASON.start : formatDate(policy.lastPaymentDate),
+    renewsWhen: isPackage
+      ? formatDate(policy.endDate)
+      : isFieldToFloor
+        ? TOBACCO_SEASON.end
+        : isAgriculture
+          ? formatDate(policy.endDate)
+          : formatDate(policy.nextPaymentDate),
   }
 }
 
@@ -274,10 +280,11 @@ export async function buildPolicyReportDoc(policy: Policy, client: Client, categ
   // Agriculture is billed once a year (Stop Order), never monthly -- the
   // whole reason it's handled separately from every other category.
   const isAgriculture = category === 'agriculture'
+  const isPackage = policy.onceOff === true
   // Field-to-Floor is bound to the tobacco season, not the capture date —
   // the document prints the fixed season window regardless.
   const isFieldToFloor = isAgriculture && isTobaccoFieldToFloor(policy.productName)
-  const premiumHeading = isAgriculture ? 'Annual Premium' : 'Monthly Premium'
+  const premiumHeading = isAgriculture ? 'Annual Premium' : isPackage ? 'Package Premium' : 'Monthly Premium'
   // Agriculture documents run shorter than page 1 — wider gaps spread the
   // sections so the sheet reads full instead of ending two-thirds down.
   const sectionGap = isAgriculture ? 5 : 4
@@ -381,14 +388,14 @@ export async function buildPolicyReportDoc(policy: Policy, client: Client, categ
   // INFORMATION above still shows the account-holder contact, not the
   // insured party.
   if (policy.groupName) {
-    sectionBand(policy.coverScope === 'corporate' ? 'ORGANISATION' : policy.coverScope === 'team' ? 'TEAM' : 'GROUP')
+    sectionBand(isPackage ? 'PACKAGE' : policy.coverScope === 'corporate' ? 'ORGANISATION' : policy.coverScope === 'team' ? 'TEAM' : 'GROUP')
     autoTable(doc, {
       startY: y,
       head: [[policy.coverScope === 'corporate' ? 'Company' : 'Organisation', ...(policy.coverScope === 'team' ? ['Activity / Season'] : []), 'Cover Type']],
       body: [[
         up(policy.groupName),
         ...(policy.coverScope === 'team' ? [up(policy.teamActivity) || '—'] : []),
-        policy.coverScope === 'corporate' ? 'Corporate — employees covered' : policy.coverScope === 'team' ? 'Team — activity cover, immediate' : 'Group — members covered',
+        isPackage ? 'Once-off package — negotiated term' : policy.coverScope === 'corporate' ? 'Corporate — employees covered' : policy.coverScope === 'team' ? 'Team — activity cover, immediate' : 'Group — members covered',
       ]],
       styles: { fontSize: 9, lineColor: [220, 226, 240], lineWidth: 0.3, cellPadding: 2 },
       headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold', fontSize: 9.5 },
@@ -402,8 +409,9 @@ export async function buildPolicyReportDoc(policy: Policy, client: Client, categ
   // policy covers employees, a group policy covers members, an individual
   // policy covers dependants. Roster members ride in the same dependants
   // array, so the per-person sub-tables below need no other changes —
-  // their RELATIONSHIP already reads 'Employee'/'Member'.
-  const coveredBand = policy.coverScope === 'corporate' ? 'EMPLOYEES COVERED'
+  // their RELATIONSHIP already reads 'Employee'/'Member'/'Participant'.
+  const coveredBand = isPackage ? 'PARTICIPANTS COVERED'
+    : policy.coverScope === 'corporate' ? 'EMPLOYEES COVERED'
     : policy.coverScope === 'team' ? 'TEAM ROSTER COVERED'
     : policy.coverScope === 'group' ? 'MEMBERS COVERED'
     : 'DEPENDANTS'
@@ -414,6 +422,7 @@ export async function buildPolicyReportDoc(policy: Policy, client: Client, categ
     doc.setTextColor(...MUTED)
     doc.text(
       policy.coverScope === 'corporate' ? 'No employees on this policy.'
+        : isPackage ? 'No participants on this package.'
         : policy.coverScope === 'team' || policy.coverScope === 'group' ? 'No members on this policy.'
         : 'No dependants on this policy.',
       14, y,
@@ -463,7 +472,7 @@ export async function buildPolicyReportDoc(policy: Policy, client: Client, categ
       doc.setFont('helvetica', 'bold')
       doc.setTextColor(...TEXT)
       doc.text(
-        `TOTAL ${premiumHeading.toUpperCase()} (${heads} MEMBERS): ${money(billedPremium)}`,
+        `TOTAL ${premiumHeading.toUpperCase()} (${heads} ${isPackage ? 'PARTICIPANTS' : 'MEMBERS'}): ${money(billedPremium)}`,
         pageWidth - 14, y, { align: 'right' },
       )
       doc.setFont('helvetica', 'normal')
@@ -531,6 +540,12 @@ export async function buildPolicyReportDoc(policy: Policy, client: Client, categ
     conditions.push('Cover applies only to the insured crop and the perils listed above.')
     if (policy.hectarage != null) conditions.push(`Cover applies to the insured ${policy.hectarage} ha of crop only — any planted area beyond it is not covered.`)
     conditions.push(`Cover runs with the tobacco season (${TOBACCO_SEASON.start} to ${TOBACCO_SEASON.end}).`)
+  } else if (isPackage) {
+    conditions.push(`This once-off package covers the named participants for the term ${formatDate(policy.startDate)} to ${formatDate(policy.endDate)}.`)
+    conditions.push('The premium shown is the negotiated amount payable once for the full term — it does not renew monthly.')
+    if (billedDependants.length > 0) {
+      conditions.push(`Only the ${billedDependants.length} participant${billedDependants.length === 1 ? '' : 's'} named above are covered.`)
+    }
   } else {
     conditions.push(policy.status === 'waiting_period'
       ? 'This policy is in its waiting period — claims arising during it are not payable.'

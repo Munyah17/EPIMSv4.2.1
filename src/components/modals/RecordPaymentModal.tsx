@@ -80,11 +80,19 @@ export default function RecordPaymentModal({ policyId: initialPolicyId, payment:
   const splitTotal = splits.reduce((sum, s) => sum + (s.amount || 0), 0)
   const splitMismatch = useSplit && Math.abs(splitTotal - Number(amount || 0)) > 0.01
   const perPeriod = policy ? policyBillablePremium(policy, policyCategory) : 0
-  const due = policy ? settlement(perPeriod, policyCategory === 'agriculture' ? 12 : 1, policy.nextPaymentDate, completed) : null
+  const packagePaidForTerm = policy?.onceOff
+    ? completed.reduce((sum, p) => sum + (p.date >= policy.startDate.slice(0, 10) && p.date <= policy.endDate.slice(0, 10) ? p.amount : 0), 0)
+    : 0
+  const packageOutstanding = policy?.onceOff ? Math.max(0, perPeriod - packagePaidForTerm) : 0
+  const due = policy
+    ? policy.onceOff
+      ? { perPeriod, dueNow: packageOutstanding, credit: 0, paidTowardCurrent: packagePaidForTerm, isUpgrade: false }
+      : settlement(perPeriod, policyCategory === 'agriculture' ? 12 : 1, policy.nextPaymentDate, completed)
+    : null
 
   useEffect(() => {
     if (editing || !due || !perPeriod) return
-    setAmount(String(defaultCharge(due, 1)))
+    setAmount(policy?.onceOff && packageOutstanding <= 0 ? '' : String(defaultCharge(due, 1)))
   }, [editing, due?.dueNow, due?.credit, due?.isUpgrade, perPeriod]) // eslint-disable-line react-hooks/exhaustive-deps
 
   /**
@@ -193,9 +201,9 @@ export default function RecordPaymentModal({ policyId: initialPolicyId, payment:
             <div className="info-banner info-banner-info" style={{ marginBottom: '1rem' }}>
               Policy: {policy.policyNumber} ({policy.clientName})<br />
               {/* Per head: the policyholder plus every dependant. */}
-              Monthly premium: ${perPeriod.toFixed(2)}{premiumPeriodLabel(policyCategory, policy.productName, policy.paymentMethod)}
+              {policy.onceOff ? 'Package premium' : 'Monthly premium'}: ${perPeriod.toFixed(2)}{premiumPeriodLabel(policyCategory, policy.productName, policy.paymentMethod, policy.onceOff)}
               {billableHeadCount(policy, policyCategory) > 1 && (
-                <> &nbsp;<span style={{ fontSize: 11 }}>({billableHeadCount(policy, policyCategory)} people on this policy)</span></>
+                <> &nbsp;<span style={{ fontSize: 11 }}>({billableHeadCount(policy, policyCategory)} {policy.onceOff ? 'participants' : 'people'} on this policy)</span></>
               )}
               {due?.isUpgrade && (
                 <><br />Due now: ${due.dueNow.toFixed(2)} for newly added dependants (holder already paid this month).</>
@@ -205,6 +213,9 @@ export default function RecordPaymentModal({ policyId: initialPolicyId, payment:
               )}
               {due && !due.isUpgrade && due.dueNow > 0 && (
                 <><br />Amount due now: ${due.dueNow.toFixed(2)}</>
+              )}
+              {policy.onceOff && packageOutstanding <= 0 && (
+                <><br />This package term is already fully paid.</>
               )}
             </div>
           )}

@@ -1,15 +1,17 @@
-/** Billing period label — the split is by product CATEGORY, never by
- *  how the client pays: agriculture products are annual (the figure on
- *  the product is the whole season's premium, settled by stop order),
+/** Billing period label — the split is by product CATEGORY and lifecycle,
+ *  never by how the client pays: agriculture products are annual (the
+ *  figure on the product is the whole season's premium, settled by stop
+ *  order), once-off packages bill once for their negotiated term, and
  *  every other product — funeral, hospital cash, life, motor — bills
  *  MONTHLY. Anywhere a premium is shown next to its period, use this
  *  instead of hardcoding "/yr" or "/mo". */
-export function premiumPeriodLabel(category: string, _productName?: string, _paymentMethod?: string | null): '/yr' | '/mo' {
+export function premiumPeriodLabel(category: string, _productName?: string, _paymentMethod?: string | null, onceOff?: boolean | null): '/yr' | '/mo' | '/term' {
+  if (onceOff) return '/term'
   return category === 'agriculture' ? '/yr' : '/mo'
 }
 
-export function formatPremium(premium: number, category: string, productName?: string, paymentMethod?: string | null): string {
-  return `$${premium.toFixed(2)}${premiumPeriodLabel(category, productName, paymentMethod)}`
+export function formatPremium(premium: number, category: string, productName?: string, paymentMethod?: string | null, onceOff?: boolean | null): string {
+  return `$${premium.toFixed(2)}${premiumPeriodLabel(category, productName, paymentMethod, onceOff)}`
 }
 
 /**
@@ -24,7 +26,10 @@ export function formatPremium(premium: number, category: string, productName?: s
  */
 const MEMBER_CARD_CATEGORIES = ['funeral', 'life', 'health', 'accident']
 
-export function categoryIssuesMemberCards(category?: string): boolean {
+export function categoryIssuesMemberCards(category?: string, onceOff?: boolean | null): boolean {
+  // A once-off package is bound to its term and group, not to a person —
+  // no membership card should imply otherwise.
+  if (onceOff) return false
   return !!category && MEMBER_CARD_CATEGORIES.includes(category)
 }
 

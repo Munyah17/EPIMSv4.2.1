@@ -5,7 +5,7 @@ import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
 import { supabase } from '../lib/supabase'
 import { exportPolicyReport, getPolicyReportPdfBase64, exportToExcel, exportToCsv, exportReportToPdf } from '../lib/exportUtils'
-import { treatyRows, treatyHeaders } from '../lib/treatyReport'
+import { treatyRows, treatyHeaders, type TreatyPeriodKind } from '../lib/treatyReport'
 import { policyBillablePremium, billableHeadCount } from '../lib/premium'
 import { toIsoDate } from '../lib/dateUtils'
 import { notifyPolicyRegistered, notifyRegistrationFailed } from '../lib/signupNotifications'
@@ -54,12 +54,13 @@ export default function Policies({ showToast, setActivePanel, initialCategory }:
   // Individual vs group/corporate — the two books are kept on separate
   // tabs: different billing (monthly client debit vs org invoice),
   // different people to phone, different rows to reconcile.
-  const [scopeFilter, setScopeFilter] = useState<'all' | 'individual' | 'group'>('all')
+  const [scopeFilter, setScopeFilter] = useState<'all' | 'individual' | 'group' | 'package'>('all')
   // Archives are split: agriculture (tobacco/small-crop — a whole season
-  // rolls off at once and comes BACK for renewals) vs everything else.
-  // Monthly books almost never expire — their archive is a museum, the
-  // agriculture archive is a working season-to-season roster.
-  const [archiveView, setArchiveView] = useState<'off' | 'general' | 'agriculture'>('off')
+  // rolls off at once and comes BACK for renewals), once-off packages
+  // (negotiated terms that end and are restored for the next trip/event),
+  // and everything else. Monthly books almost never expire — their archive
+  // is a museum, the term-bound archives are working rosters.
+  const [archiveView, setArchiveView] = useState<'off' | 'general' | 'agriculture' | 'package'>('off')
   const [showProductSummary, setShowProductSummary] = useState(false)
   const [allProducts, setAllProducts] = useState<Product[]>([])
   const categoryFilter = initialCategory && !initialCategory.startsWith('__') ? initialCategory : undefined
@@ -148,22 +149,27 @@ export default function Policies({ showToast, setActivePanel, initialCategory }:
     return -1
   }
 
-  const isGroupPolicy = (p: Policy) => !!p.coverScope && p.coverScope !== 'individual'
+  const isPackagePolicy = (p: Policy) => p.onceOff === true
+  const isGroupPolicy = (p: Policy) => !isPackagePolicy(p) && !!p.coverScope && p.coverScope !== 'individual'
 
   const isAgri = (p: Policy) => p.productCategory === 'agriculture'
+  const archiveKind = (p: Policy) => isPackagePolicy(p) ? 'package' : isAgri(p) ? 'agriculture' : 'general'
 
   const filtered = policies.filter(p => {
     const matchSearch = matchScore(p) >= 0
     const matchStatus = archiveView === 'off'
       ? (statusFilter === 'all' ? p.status !== 'expired' : p.status === statusFilter)
-      : p.status === 'expired' && (archiveView === 'agriculture') === isAgri(p)
+      : p.status === 'expired' && archiveKind(p) === archiveView
     const matchProduct = productFilter === 'all' || p.productName === productFilter
     const matchCapturedBy = capturedByFilter === 'all' ||
       (capturedByFilter === '__self' ? !p.capturedByName : p.capturedByName === capturedByFilter)
     const matchAgent = agentFilter === 'all' ||
       (agentFilter === '__none' ? !p.agentId : p.agentId === agentFilter)
     const matchCategory = !categoryFilter || p.productCategory === categoryFilter
-    const matchScope = scopeFilter === 'all' || (scopeFilter === 'group') === isGroupPolicy(p)
+    const matchScope = scopeFilter === 'all' ||
+      (scopeFilter === 'group' && isGroupPolicy(p)) ||
+      (scopeFilter === 'package' && isPackagePolicy(p)) ||
+      (scopeFilter === 'individual' && !isGroupPolicy(p) && !isPackagePolicy(p))
     return matchSearch && matchStatus && matchProduct && matchCapturedBy && matchAgent && matchCategory && matchScope
   })
 
@@ -191,8 +197,9 @@ export default function Policies({ showToast, setActivePanel, initialCategory }:
 
   const statusCounts = {
     all: policies.filter(p => p.status !== 'expired').length,
-    archived: policies.filter(p => p.status === 'expired' && !isAgri(p)).length,
-    archivedAgri: policies.filter(p => p.status === 'expired' && isAgri(p)).length,
+    archived: policies.filter(p => p.status === 'expired' && archiveKind(p) === 'general').length,
+    archivedAgri: policies.filter(p => p.status === 'expired' && archiveKind(p) === 'agriculture').length,
+    archivedPackage: policies.filter(p => p.status === 'expired' && archiveKind(p) === 'package').length,
     active: policies.filter(p => p.status === 'active').length,
     waiting_period: policies.filter(p => p.status === 'waiting_period').length,
     lapsed: policies.filter(p => p.status === 'lapsed').length,
@@ -222,10 +229,11 @@ export default function Policies({ showToast, setActivePanel, initialCategory }:
       const { data: clients } = await db.clients.list()
       const byId = new Map((clients ?? []).map(c => [c.id, c]))
       const rows = treatyRows(filtered, byId)
-      // Agriculture premiums are annual and settled by stop order — the
-      // heading has to say that or the reinsurer reads a yearly figure
-      // as monthly. A mixed book gets the neutral label.
-      const headers = treatyHeaders(filtered.every(p => isAgri(p)))
+      // Agriculture premiums are annual and packages are a negotiated
+      // term — the heading has to say that or the reinsurer reads a term
+      // figure as monthly. A mixed book gets the neutral label.
+      const periodKinds = new Set<TreatyPeriodKind>(filtered.map(p => isPackagePolicy(p) ? 'term' : isAgri(p) ? 'annual' : 'monthly'))
+      const headers = treatyHeaders(periodKinds.size === 1 ? [...periodKinds][0] : 'mixed')
       const base = `policy-report-${toIsoDate(new Date())}`
       if (format === 'xlsx') {
         await exportToExcel(`${base}.xlsx`, 'Policy Report', headers, rows)
@@ -355,7 +363,7 @@ export default function Policies({ showToast, setActivePanel, initialCategory }:
     // Agriculture has no waiting period at all — approval activates it
     // instantly, same as a staff-created agriculture policy.
     const { category } = await getReportContext(policy)
-    const nextStatus = category === 'agriculture' ? 'active' : 'waiting_period'
+    const nextStatus = category === 'agriculture' || isPackagePolicy(policy) ? 'active' : 'waiting_period'
     const { data, error } = await db.policies.update(policy.id, { status: nextStatus })
     if (error || !data) { showToast('error', 'Failed to approve policy.'); return }
     setPolicies(prev => prev.map(p => p.id === data.id ? data : p))
@@ -370,12 +378,13 @@ export default function Policies({ showToast, setActivePanel, initialCategory }:
   }
 
   /** A defaulted policy is paused, not dead — Admin/Super Admin can put it
-   *  back into waiting_period, where it resumes the normal billing cycle. */
+   *  back into waiting_period (or active for a once-off package), where it
+   *  resumes the normal billing cycle. */
   const handleReenable = async (policy: Policy) => {
-    const { data, error } = await db.policies.update(policy.id, { status: 'waiting_period' })
+    const { data, error } = await db.policies.update(policy.id, { status: isPackagePolicy(policy) ? 'active' : 'waiting_period' })
     if (error || !data) { showToast('error', 'Failed to re-enable policy.'); return }
     setPolicies(prev => prev.map(p => p.id === data.id ? data : p))
-    showToast('success', `Policy ${data.policyNumber} re-enabled (waiting period).`)
+    showToast('success', `Policy ${data.policyNumber} re-enabled${isPackagePolicy(policy) ? ' (package active).' : ' (waiting period).'}`)
   }
 
   /** Restoring an archived (expired) policy brings it back whole — same
@@ -387,13 +396,16 @@ export default function Policies({ showToast, setActivePanel, initialCategory }:
   const handleRestore = async (policy: Policy) => {
     const { category } = await getReportContext(policy)
     const agri = category === 'agriculture' || isAgri(policy)
-    const nextStatus = agri ? 'active' : 'waiting_period'
+    const pkg = isPackagePolicy(policy)
+    const nextStatus = agri || pkg ? 'active' : 'waiting_period'
     const { data, error } = await db.policies.update(policy.id, { status: nextStatus })
     if (error || !data) { showToast('error', 'Failed to restore policy.'); return }
     setPolicies(prev => prev.map(p => p.id === data.id ? data : p))
     showToast('success', agri
       ? `Policy ${data.policyNumber} renewed — update the new season's cover dates.`
-      : `Policy ${data.policyNumber} restored — update the cover dates for the new term.`)
+      : pkg
+        ? `Package ${data.policyNumber} restored — set the new trip/event dates before it can be billed again.`
+        : `Policy ${data.policyNumber} restored — update the cover dates for the new term.`)
     void recordActivity({
       action: 'policy.updated', actor: { id: user?.id, name: user?.name ?? 'Unknown', role: user?.role ?? 'unknown' },
       entityType: 'policy', entityId: policy.id, entityLabel: policy.policyNumber,
@@ -407,6 +419,7 @@ export default function Policies({ showToast, setActivePanel, initialCategory }:
    *  (policy, period) key means generating twice just returns the first
    *  invoice, never a duplicate. */
   const handleInvoice = async (policy: Policy) => {
+    if (isPackagePolicy(policy)) { showToast('info', 'Once-off packages are billed once for their negotiated term — there is no monthly invoice to issue.'); return }
     const now = new Date()
     const period = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
     const { data, error, created } = await db.invoices.create(policy, period, user?.name ?? 'staff')
@@ -597,18 +610,26 @@ export default function Policies({ showToast, setActivePanel, initialCategory }:
         <button
           type="button"
           className={`btn ${archiveView === 'general' ? 'btn-primary' : 'btn-ghost'}`}
-          onClick={() => { setArchiveView(v => v === 'general' ? 'off' : 'general'); setStatusFilter('all') }}
-          title="Expired cover terms — everything except the agriculture book"
+          onClick={() => { setArchiveView(v => v === 'general' ? 'off' : 'general'); setStatusFilter('all'); setScopeFilter('all') }}
+          title="Expired cover terms — everything except agriculture and once-off packages"
         >
           {archiveView === 'general' ? '← Live Policies' : `Archive (${statusCounts.archived})`}
         </button>
         <button
           type="button"
           className={`btn ${archiveView === 'agriculture' ? 'btn-primary' : 'btn-ghost'}`}
-          onClick={() => { setArchiveView(v => v === 'agriculture' ? 'off' : 'agriculture'); setStatusFilter('all') }}
+          onClick={() => { setArchiveView(v => v === 'agriculture' ? 'off' : 'agriculture'); setStatusFilter('all'); setScopeFilter('all') }}
           title="Agriculture archive — last season's tobacco & small-crop book, waiting for renewal"
         >
           {archiveView === 'agriculture' ? '← Live Policies' : `🌾 Agri Archive (${statusCounts.archivedAgri})`}
+        </button>
+        <button
+          type="button"
+          className={`btn ${archiveView === 'package' ? 'btn-primary' : 'btn-ghost'}`}
+          onClick={() => { setArchiveView(v => v === 'package' ? 'off' : 'package'); setStatusFilter('all'); setScopeFilter('all') }}
+          title="Once-off package archive — expired negotiated terms, restored for the next trip or event"
+        >
+          {archiveView === 'package' ? '← Live Policies' : `Package Archive (${statusCounts.archivedPackage})`}
         </button>
         {hasPermission('policies.create') && archiveView === 'off' && (
           <button type="button" className="btn btn-primary" onClick={() => setShowNew(true)}>+ New Policy</button>
@@ -620,8 +641,9 @@ export default function Policies({ showToast, setActivePanel, initialCategory }:
       <div className="tab-row">
         {([
           ['all', 'All Policies', statusCounts.all],
-          ['individual', 'Individual', policies.filter(p => p.status !== 'expired' && !isGroupPolicy(p)).length],
+          ['individual', 'Individual', policies.filter(p => p.status !== 'expired' && !isGroupPolicy(p) && !isPackagePolicy(p)).length],
           ['group', 'Group & Corporate', policies.filter(p => p.status !== 'expired' && isGroupPolicy(p)).length],
+          ['package', 'Once-off Packages', policies.filter(p => p.status !== 'expired' && isPackagePolicy(p)).length],
         ] as const).map(([key, label, count]) => (
           <button key={key} type="button" className={`tab-item${scopeFilter === key ? ' active' : ''}`} onClick={() => setScopeFilter(key)}>
             {label} ({count})
@@ -689,7 +711,7 @@ export default function Policies({ showToast, setActivePanel, initialCategory }:
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={8} className="td-empty">{archiveView === 'general' ? 'No archived policies — expired non-agriculture cover terms land here.' : archiveView === 'agriculture' ? 'No archived agriculture policies — last season’s book lands here when terms end.' : 'No policies found.'}</td></tr>
+                <tr><td colSpan={8} className="td-empty">{archiveView === 'general' ? 'No archived policies — expired monthly cover terms land here.' : archiveView === 'agriculture' ? 'No archived agriculture policies — last season’s book lands here when terms end.' : archiveView === 'package' ? 'No archived packages — expired once-off terms land here for reuse on the next trip or event.' : 'No policies found.'}</td></tr>
               ) : filtered.map(p => (
                 <tr key={p.id}>
                   <td><span className="mono">{p.policyNumber}</span></td>
@@ -697,8 +719,8 @@ export default function Policies({ showToast, setActivePanel, initialCategory }:
                     {p.clientName}
                     {p.groupName && (
                       <div style={{ fontSize: 11, marginTop: 2 }}>
-                        <span className={`pill ${p.coverScope === 'corporate' ? 'pill-blue' : p.coverScope === 'team' ? 'pill-success' : 'pill-purple'}`}>
-                          {p.coverScope === 'corporate' ? 'Corporate' : p.coverScope === 'team' ? 'Team' : 'Group'} · {p.groupName}
+                        <span className={`pill ${isPackagePolicy(p) ? 'pill-purple' : p.coverScope === 'corporate' ? 'pill-blue' : p.coverScope === 'team' ? 'pill-success' : 'pill-purple'}`}>
+                          {isPackagePolicy(p) ? 'Package' : p.coverScope === 'corporate' ? 'Corporate' : p.coverScope === 'team' ? 'Team' : 'Group'} · {p.groupName}
                         </span>
                       </div>
                     )}
@@ -723,7 +745,7 @@ export default function Policies({ showToast, setActivePanel, initialCategory }:
                         <>
                           {hasPermission('policies.edit') && (
                             <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--success)' }} onClick={() => handleRestore(p)}>
-                              {isAgri(p) ? 'Renew & Restore' : 'Restore'}
+                              {isAgri(p) ? 'Renew & Restore' : isPackagePolicy(p) ? 'Reuse & Restore' : 'Restore'}
                             </button>
                           )}
                           {hasPermission('policies.delete') && (
@@ -745,10 +767,10 @@ export default function Policies({ showToast, setActivePanel, initialCategory }:
                         <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--success)' }} onClick={() => handleReenable(p)}>Re-enable</button>
                       )}
                       <button type="button" className="btn btn-primary btn-sm" onClick={() => setPayPolicy(p)}>Pay Online</button>
-                      {user?.role === 'super_admin' && (
+                      {!isPackagePolicy(p) && user?.role === 'super_admin' && (
                         <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--success)' }} title="Record money paid directly (EcoCash, bank transfer, cash) and clear arrears" onClick={() => setCapturePolicy(p)}>Capture Payment</button>
                       )}
-                      {p.groupId && hasPermission('payments.create') && (
+                      {p.groupId && !isPackagePolicy(p) && hasPermission('payments.create') && (
                         <button type="button" className="btn btn-ghost btn-sm" onClick={() => handleInvoice(p)}>Invoice</button>
                       )}
                       {hasPermission('policies.delete') && (

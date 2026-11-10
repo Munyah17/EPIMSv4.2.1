@@ -70,6 +70,7 @@ export function toPolicy(r: any): Policy {
     groupId:         r.groups?.id ?? r.group_id ?? undefined,
     groupName:       r.groups?.name ?? undefined,
     coverScope:      (r.cover_scope as Policy['coverScope']) ?? 'individual',
+    onceOff:         r.once_off === true || r.once_off === 'true' ? true : undefined,
     teamActivity:    r.team_activity ?? undefined,
     hasChronicIllness: r.has_chronic_illness ?? undefined,
     chronicIllnessDetails: r.chronic_illness_details ?? undefined,

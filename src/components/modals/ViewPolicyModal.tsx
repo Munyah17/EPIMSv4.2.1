@@ -38,6 +38,7 @@ export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint, show
 
   const latestPayment = policyPayments.find(p => p.status === 'completed') ?? policyPayments[0]
   const billed = policyBillablePremium(policy, category)
+  const isPackage = policy.onceOff === true
   const due = settlement(
     billed,
     category === 'agriculture' ? 12 : 1,
@@ -66,7 +67,7 @@ export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint, show
             {policy.groupName && (
               <div className="detail-item">
                 <span className="detail-label">Organisation</span>
-                <span>{policy.groupName} <span className={`pill ${policy.coverScope === 'corporate' ? 'pill-blue' : policy.coverScope === 'team' ? 'pill-success' : 'pill-purple'}`} style={{ marginLeft: 4 }}>{policy.coverScope === 'corporate' ? 'Corporate' : policy.coverScope === 'team' ? 'Team' : 'Group'}</span></span>
+                <span>{policy.groupName} <span className={`pill ${policy.coverScope === 'corporate' ? 'pill-blue' : policy.coverScope === 'team' ? 'pill-success' : 'pill-purple'}`} style={{ marginLeft: 4 }}>{isPackage ? 'Once-off Package' : policy.coverScope === 'corporate' ? 'Corporate' : policy.coverScope === 'team' ? 'Team' : 'Group'}</span></span>
               </div>
             )}
             {policy.teamActivity && (
@@ -79,21 +80,21 @@ export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint, show
                 the total is what is collected, the per-person figure is
                 what a client queries. */}
             <div className="detail-item">
-              <span className="detail-label">Premium Billed</span>
+              <span className="detail-label">{isPackage ? 'Package Premium' : 'Premium Billed'}</span>
               <span>
-                ${billed.toFixed(2)}{premiumPeriodLabel(category, policy.productName, policy.paymentMethod)}
+                ${billed.toFixed(2)}{premiumPeriodLabel(category, policy.productName, policy.paymentMethod, policy.onceOff)}
                 {billableHeadCount(policy, category) > 1 && (
-                  <span style={{ color: 'var(--muted)', fontSize: 11 }}> · {billableHeadCount(policy, category)} {(policy.coverScope && policy.coverScope !== 'individual') ? `members (${policy.coverScope === 'corporate' ? 'employees' : 'members'} × $${policy.premium.toFixed(2)})` : `people ($${policy.premium.toFixed(2)} policyholder)`}</span>
+                  <span style={{ color: 'var(--muted)', fontSize: 11 }}> · {billableHeadCount(policy, category)} {(policy.coverScope && policy.coverScope !== 'individual') ? `${isPackage ? 'participants' : policy.coverScope === 'corporate' ? 'employees' : 'members'} × $${policy.premium.toFixed(2)}` : `people ($${policy.premium.toFixed(2)} policyholder)`}</span>
                 )}
               </span>
             </div>
-            <div className="detail-item"><span className="detail-label">Cover Amount</span><span>${policy.coverAmount.toLocaleString()}</span></div>
+            <div className="detail-item"><span className="detail-label">{isPackage ? 'Sum Assured / Participant' : 'Cover Amount'}</span><span>${policy.coverAmount.toLocaleString()}</span></div>
             <div className="detail-item"><span className="detail-label">Start Date</span><span>{formatDate(policy.startDate)}</span></div>
             {/* Monthly cover has no term end — the stored end_date on a
                 non-agriculture policy is a start+1yr artifact, and shown
                 beside Next Payment it read as two different end dates.
-                Only agriculture has a real season end. */}
-            {category === 'agriculture' && (
+                Agriculture and once-off packages have a real term end. */}
+            {(category === 'agriculture' || isPackage) && (
               <div className="detail-item"><span className="detail-label">End Date</span><span>{formatDate(policy.endDate)}</span></div>
             )}
             <div className="detail-item"><span className="detail-label">Payment Method</span><span>{policy.paymentMethod}</span></div>
@@ -106,7 +107,9 @@ export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint, show
             {policy.hectarage != null && (
               <div className="detail-item"><span className="detail-label">Hectarage</span><span>{policy.hectarage} ha</span></div>
             )}
-            <div className="detail-item"><span className="detail-label">Next Payment</span><span>{formatDate(policy.nextPaymentDate)}</span></div>
+            {!isPackage && (
+              <div className="detail-item"><span className="detail-label">Next Payment</span><span>{formatDate(policy.nextPaymentDate)}</span></div>
+            )}
             {due.credit > 0 && (
               <div className="detail-item">
                 <span className="detail-label">Overpayment / Credit</span>
@@ -168,10 +171,10 @@ export default function ViewPolicyModal({ policy, onClose, onEdit, onPrint, show
 
           {policy.dependants.length > 0 && (
             <div style={{ marginTop: '1.5rem' }}>
-              <h4 style={{ marginBottom: '0.75rem' }}>{policy.coverScope === 'corporate' ? 'Employees Covered' : policy.coverScope === 'team' ? 'Team Roster Covered' : policy.coverScope === 'group' ? 'Members Covered' : 'Dependants'}</h4>
+              <h4 style={{ marginBottom: '0.75rem' }}>{isPackage ? 'Participants Covered' : policy.coverScope === 'corporate' ? 'Employees Covered' : policy.coverScope === 'team' ? 'Team Roster Covered' : policy.coverScope === 'group' ? 'Members Covered' : 'Dependants'}</h4>
               <div className="tbl-scroll">
               <table className="table">
-                <thead><tr><th>Member No.</th><th>Name</th><th>Relationship</th><th>Date of Birth</th><th>ID Number</th>{policy.hasChronicIllness !== undefined && <th>Chronic</th>}<th>Plan</th><th>Premium</th></tr></thead>
+                <thead><tr><th>Member No.</th><th>Name</th><th>Relationship</th><th>Date of Birth</th><th>ID Number</th>{policy.hasChronicIllness !== undefined && <th>Chronic</th>}<th>Plan</th><th>{isPackage ? 'Term Premium' : 'Premium'}</th></tr></thead>
                 <tbody>
                   {policy.dependants.map((d, i) => (
                     <tr key={i}>

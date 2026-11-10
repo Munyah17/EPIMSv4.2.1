@@ -31,6 +31,8 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
   const [productId, setProductId] = useState(policy.productId ?? '')
   const [isAgriculture, setIsAgriculture] = useState(false)
   const [isMedical, setIsMedical] = useState(false)
+  const isPackage = policy.onceOff === true
+  const [startDate, setStartDate] = useState(policy.startDate ?? '')
 
   useEffect(() => {
     db.staff.list().then(({ data }) => { if (data) setStaff(data.filter(s => s.active)) })
@@ -47,14 +49,14 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
 
   const addDependant = () => {
     if (isAgriculture && dependants.length >= 1) return
-    setDependants(prev => [...prev, { name: '', relationship: '', dob: '', nationalId: '' }])
+    setDependants(prev => [...prev, { name: '', relationship: isPackage ? 'Participant' : '', dob: '', nationalId: '' }])
   }
 
   const removeDependant = (i: number) => {
     setDependants(prev => prev.filter((_, idx) => idx !== i))
   }
 
-  const updateDependant = (i: number, field: keyof Dependant, value: string | boolean | undefined) => {
+  const updateDependant = (i: number, field: keyof Dependant, value: string | number | boolean | undefined) => {
     setDependants(prev => prev.map((d, idx) => {
       if (idx !== i) return d
       const next = { ...d, [field]: value }
@@ -71,6 +73,16 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
   const dependantPlanOptions = product
     ? products.filter(p => p.active && p.category === product.category)
     : []
+  // A package cannot be restored into the past or left open-ended — both
+  // dates are required and the term must run forwards.
+  const packageDatesInvalid = isPackage && (!startDate || !endDate || endDate <= startDate)
+  const packageTermsInvalid = isPackage && (
+    !(Number(premium) > 0) || !(Number(coverAmount) > 0) || dependants.some(d => d.name.trim() && (
+      (d.premium !== undefined && !(Number(d.premium) > 0)) ||
+      (d.coverAmount !== undefined && !(Number(d.coverAmount) > 0))
+    ))
+  )
+  const packageProductInvalid = isPackage && product?.category === 'agriculture'
 
   const handleSave = () => {
     // Only send fields that actually changed. Comparisons have to be
@@ -82,7 +94,13 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
     if (paymentMethod && paymentMethod !== policy.paymentMethod) updates.paymentMethod = paymentMethod
 
     const nextPay = nextPaymentDate.trim()
-    if (nextPay !== (policy.nextPaymentDate ?? '')) updates.nextPaymentDate = nextPay
+    // Once-off packages have no recurring billing cursor — clear any
+    // stray date so reminder/arrears logic can never pick the row up.
+    if (isPackage && policy.nextPaymentDate) updates.nextPaymentDate = ''
+    else if (nextPay !== (policy.nextPaymentDate ?? '')) updates.nextPaymentDate = nextPay
+
+    const nextStart = startDate.trim()
+    if (nextStart && nextStart !== (policy.startDate ?? '')) updates.startDate = nextStart
 
     const nextAgent = agentId.trim()
     if (nextAgent !== (policy.agentId ?? '')) updates.agentId = nextAgent
@@ -137,7 +155,7 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
             <label>Product</label>
             <select className="form-control" value={productId} onChange={e => setProductId(e.target.value)}>
               <option value="">Select product...</option>
-              {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {products.filter(p => !isPackage || p.category !== 'agriculture').map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
           <div className="form-row">
@@ -189,10 +207,12 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
               </div>
             </div>
           )}
-          <div className="form-group">
-            <label>Next Payment Date</label>
-            <DateInput value={nextPaymentDate} onChange={setNextPaymentDate} />
-          </div>
+          {!isPackage && (
+            <div className="form-group">
+              <label>Next Payment Date</label>
+              <DateInput value={nextPaymentDate} onChange={setNextPaymentDate} />
+            </div>
+          )}
           {/* On agriculture the agent is picked as Field Officer above —
               one agent_id, one picker. */}
           {!isAgriculture && (
@@ -211,26 +231,33 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
           )}
           <div className="form-row">
             <div className="form-group">
-              <label>Premium</label>
-              <input type="number" className="form-control" placeholder="Premium" value={premium} onChange={e => setPremium(e.target.value)} />
+              <label>{isPackage ? 'Package Premium / Participant' : 'Premium'}</label>
+              <input type="number" className="form-control" placeholder={isPackage ? 'Negotiated term premium' : 'Premium'} value={premium} onChange={e => setPremium(e.target.value)} />
             </div>
             <div className="form-group">
-              <label>Cover Amount</label>
-              <input type="number" className="form-control" placeholder="Cover Amount" value={coverAmount} onChange={e => setCoverAmount(e.target.value)} />
+              <label>{isPackage ? 'Package Sum Assured / Participant' : 'Cover Amount'}</label>
+              <input type="number" className="form-control" placeholder={isPackage ? 'Negotiated term cover' : 'Cover Amount'} value={coverAmount} onChange={e => setCoverAmount(e.target.value)} />
             </div>
           </div>
+          {isPackage && (
+            <div className="form-group">
+              <label>Package Start Date *</label>
+              <DateInput value={startDate} onChange={setStartDate} />
+            </div>
+          )}
           <div className="form-group">
-            <label>End Date</label>
+            <label>{isPackage ? 'Package End Date *' : 'End Date'}</label>
             <DateInput value={endDate} onChange={setEndDate} />
+            {isPackage && <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>The policy archives automatically once this date passes.</p>}
           </div>
           {!isAgriculture && (
             <div style={{ marginTop: '1rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <label>Dependants</label>
-                <button type="button" className="btn btn-ghost btn-sm" onClick={addDependant}>+ Add Dependant</button>
+                <label>{isPackage ? 'Participants' : 'Dependants'}</label>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={addDependant}>+ Add {isPackage ? 'Participant' : 'Dependant'}</button>
               </div>
               {dependants.length === 0 ? (
-                <p style={{ fontSize: 12, color: 'var(--muted)' }}>No dependants on this policy.</p>
+                <p style={{ fontSize: 12, color: 'var(--muted)' }}>No {isPackage ? 'participants' : 'dependants'} on this policy.</p>
               ) : (
                 <>
                   <div className="new-policy-dependant-row" style={{ marginBottom: 4 }}>
@@ -243,7 +270,7 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
                   </div>
                   {dependants.map((d, i) => (
                     <div key={i}>
-                      <div className="new-policy-dependant-row" style={{ marginBottom: isMedical ? 4 : 8, alignItems: 'center' }}>
+                      <div className="new-policy-dependant-row" style={{ marginBottom: isMedical || isPackage ? 4 : 8, alignItems: 'center' }}>
                         <input className="form-control" placeholder="Name" value={d.name} onChange={e => updateDependant(i, 'name', e.target.value)} />
                         <input className="form-control" placeholder="Relationship" value={d.relationship} onChange={e => updateDependant(i, 'relationship', e.target.value)} />
                         <DateInput value={d.dob} onChange={v => updateDependant(i, 'dob', v)} />
@@ -252,8 +279,20 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
                           <option value="">{product ? 'Select plan…' : 'Pick the product first'}</option>
                           {dependantPlanOptions.map(p => <option key={p.id} value={p.id}>{p.name} (${p.premium})</option>)}
                         </select>
-                        <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => removeDependant(i)} title="Remove dependant">✕</button>
+                        <button type="button" className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }} onClick={() => removeDependant(i)} title={`Remove ${isPackage ? 'participant' : 'dependant'}`}>✕</button>
                       </div>
+                      {isPackage && d.name.trim() && (
+                        <div className="form-row" style={{ marginBottom: 8 }}>
+                          <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label style={{ fontSize: 11 }}>Term premium for {d.name.trim()}</label>
+                            <input type="number" className="form-control" min={0} step="0.01" placeholder={premium || 'Package default'} value={d.premium ?? ''} onChange={e => updateDependant(i, 'premium', e.target.value === '' ? undefined : Number(e.target.value))} />
+                          </div>
+                          <div className="form-group" style={{ marginBottom: 0 }}>
+                            <label style={{ fontSize: 11 }}>Sum assured for {d.name.trim()}</label>
+                            <input type="number" className="form-control" min={0} step="0.01" placeholder={coverAmount || 'Package default'} value={d.coverAmount ?? ''} onChange={e => updateDependant(i, 'coverAmount', e.target.value === '' ? undefined : Number(e.target.value))} />
+                          </div>
+                        </div>
+                      )}
                       {isMedical && d.name.trim() && (
                         <div className="form-row" style={{ marginBottom: 8 }}>
                           <div className="form-group" style={{ marginBottom: 0 }}>
@@ -282,7 +321,7 @@ export default function EditPolicyModal({ policy, onClose, onSave }: Props) {
         </div>
         <div className="modal-footer">
           <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={handleSave}>Save Changes</button>
+          <button className="btn btn-primary" onClick={handleSave} disabled={packageDatesInvalid || packageTermsInvalid || packageProductInvalid} title={packageDatesInvalid ? 'Set a package start date and an end date after it' : packageTermsInvalid ? 'Participant premium and sum assured overrides must be positive' : packageProductInvalid ? 'Agriculture products keep their seasonal agriculture lifecycle — pick an ordinary package product' : undefined}>Save Changes</button>
         </div>
       </div>
     </div>

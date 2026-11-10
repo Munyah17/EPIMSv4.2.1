@@ -250,7 +250,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .eq('id', txn.policy_id)
     .maybeSingle()
 
-  let policy: { id: string; policy_number: string; product_id: string; client_id: string; premium: number; cover_amount?: number; payment_method?: string; dependants: unknown; status: string; next_payment_date: string | null; clients?: { name: string; email: string | null; phone: string | null } | null; products?: { name: string; category: string } | null } | null = null
+  type WebhookPolicy = { id: string; policy_number: string; product_id: string; client_id: string; premium: number; cover_amount?: number; payment_method?: string; dependants: unknown; status: string; next_payment_date: string | null; once_off?: boolean | null; clients?: { name: string; email: string | null; phone: string | null } | null; products?: { name: string; category: string } | null }
+  let policy: WebhookPolicy | null = null
+
+  const policySelectWithOnceOff = 'id, policy_number, product_id, client_id, premium, cover_amount, payment_method, dependants, status, next_payment_date, once_off, clients!client_id(name, email, phone), products!product_id(name, category)'
+  const fetchPolicy = async (policyId: string) => {
+    const first = await admin.from('policies').select(policySelectWithOnceOff).eq('id', policyId).maybeSingle()
+    if (!first.error || !/once_off/i.test(first.error.message ?? '')) return first
+    return admin.from('policies').select(policySelectWithOnceOff.replace(', once_off,', ',')).eq('id', policyId).maybeSingle()
+  }
 
   if (pendingPolicy) {
     // Move from pending_policies to policies table
@@ -261,20 +269,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     // Fetch the newly created policy (with product + client details for
     // the registration text — this is the moment the cover actually exists).
-    const { data: newPolicy } = await admin
-      .from('policies')
-      .select('id, policy_number, product_id, client_id, premium, cover_amount, payment_method, dependants, status, next_payment_date, clients!client_id(name, email, phone), products!product_id(name, category)')
-      .eq('id', finalizedId)
-      .maybeSingle()
-    policy = newPolicy as typeof policy
+    const { data: newPolicy } = await fetchPolicy(finalizedId as string)
+    policy = (newPolicy ?? null) as WebhookPolicy | null
   } else {
     // Fallback: policy already exists in main policies table (legacy case)
-    const { data: existingPolicy } = await admin
-      .from('policies')
-      .select('id, policy_number, product_id, client_id, premium, cover_amount, payment_method, dependants, status, next_payment_date, clients!client_id(name, email, phone), products!product_id(name, category)')
-      .eq('id', txn.policy_id)
-      .maybeSingle()
-    policy = existingPolicy as typeof policy
+    const { data: existingPolicy } = await fetchPolicy(txn.policy_id)
+    policy = (existingPolicy ?? null) as WebhookPolicy | null
   }
 
   if (!policy) {
@@ -313,44 +313,52 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!payError) {
     const { data: product } = await admin.from('products').select('category').eq('id', policy.product_id).maybeSingle()
     const category = product?.category ?? ''
-    const cycleMonths = category === 'agriculture' ? 12 : 1
-    // Premiums are held in USD. To count how many periods a payment covers,
-    // the PRICE is expressed in the currency that was charged -- the payment
-    // itself is never converted.
-    const rateUsed = Number.isFinite(txnRate) && txnRate > 0 ? txnRate : 1
-    const perPeriod = Math.round(billablePremium(policy) * rateUsed * 100) / 100
-    // Mid-cycle dependant top-ups and remainders: fill the current period's
-    // unpaid heads first, then buy whole extra periods, and keep leftover
-    // cents as overpayment rather than dropping them. Same rule as
-    // applyCompletedPaymentToPolicy in src/lib/db.ts and recordPayment in
-    // api/v1.ts.
     const today = new Date()
-    const { data: priorRows } = await admin.from('payments')
-      .select('amount, payment_date')
-      .eq('policy_id', policy.id)
-      .eq('status', 'completed')
-    const prior = (priorRows ?? [])
-      .map(r => ({ amount: Number(r.amount) || 0, date: String(r.payment_date ?? '').slice(0, 10) }))
-    const priorIdx = [...prior].reverse().findIndex(p => Math.abs(p.amount - confirmedAmount) < 0.005)
-    const priorForAlloc = priorIdx < 0 ? prior : prior.filter((_, i) => i !== prior.length - 1 - priorIdx)
-    const alloc = allocatePayment(
-      confirmedAmount, perPeriod, cycleMonths, policy.next_payment_date ?? undefined, priorForAlloc, today,
-    )
+    if (policy.once_off) {
+      // Once-off packages collect the negotiated premium for their fixed
+      // term — there is no monthly cursor or reinstatement cycle.
+      await admin.from('policies').update({
+        last_payment_date: today.toISOString().split('T')[0],
+      }).eq('id', policy.id)
+    } else {
+      const cycleMonths = category === 'agriculture' ? 12 : 1
+      // Premiums are held in USD. To count how many periods a payment covers,
+      // the PRICE is expressed in the currency that was charged -- the payment
+      // itself is never converted.
+      const rateUsed = Number.isFinite(txnRate) && txnRate > 0 ? txnRate : 1
+      const perPeriod = Math.round(billablePremium(policy) * rateUsed * 100) / 100
+      // Mid-cycle dependant top-ups and remainders: fill the current period's
+      // unpaid heads first, then buy whole extra periods, and keep leftover
+      // cents as overpayment rather than dropping them. Same rule as
+      // applyCompletedPaymentToPolicy in src/lib/db.ts and recordPayment in
+      // api/v1.ts.
+      const { data: priorRows } = await admin.from('payments')
+        .select('amount, payment_date')
+        .eq('policy_id', policy.id)
+        .eq('status', 'completed')
+      const prior = (priorRows ?? [])
+        .map(r => ({ amount: Number(r.amount) || 0, date: String(r.payment_date ?? '').slice(0, 10) }))
+      const priorIdx = [...prior].reverse().findIndex(p => Math.abs(p.amount - confirmedAmount) < 0.005)
+      const priorForAlloc = priorIdx < 0 ? prior : prior.filter((_, i) => i !== prior.length - 1 - priorIdx)
+      const alloc = allocatePayment(
+        confirmedAmount, perPeriod, cycleMonths, policy.next_payment_date ?? undefined, priorForAlloc, today,
+      )
 
-    // Reinstatement is worth a full period, same as cover: a token payment
-    // must not bring a lapsed policy back to life. Filling a dependant
-    // upgrade does not reinstate — that period was already paid.
-    let newStatus = policy.status
-    if (alloc.periodsAdvanced >= 1) {
-      if (policy.status === 'lapsed') newStatus = category === 'agriculture' ? 'active' : 'waiting_period'
-      else if (category === 'agriculture' && policy.status === 'waiting_period') newStatus = 'active'
+      // Reinstatement is worth a full period, same as cover: a token payment
+      // must not bring a lapsed policy back to life. Filling a dependant
+      // upgrade does not reinstate — that period was already paid.
+      let newStatus = policy.status
+      if (alloc.periodsAdvanced >= 1) {
+        if (policy.status === 'lapsed') newStatus = category === 'agriculture' ? 'active' : 'waiting_period'
+        else if (category === 'agriculture' && policy.status === 'waiting_period') newStatus = 'active'
+      }
+
+      await admin.from('policies').update({
+        status: newStatus,
+        last_payment_date: today.toISOString().split('T')[0],
+        next_payment_date: alloc.nextPaymentDate,
+      }).eq('id', policy.id)
     }
-
-    await admin.from('policies').update({
-      status: newStatus,
-      last_payment_date: today.toISOString().split('T')[0],
-      next_payment_date: alloc.nextPaymentDate,
-    }).eq('id', policy.id)
 
     // OUR payment confirmation — distinct from anything Paynow texted the
     // payer — goes to the client and the office on all three channels.
@@ -362,7 +370,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // The policy only NOW exists — the client gets the standard
         // registration text first (same as a counter sale), then the
         // payment receipt.
-        const regPremium = Number(policy.premium ?? 0)
+        const packageDeps = Array.isArray(policy.dependants) ? policy.dependants as { name?: string; premium?: number }[] : []
+        const regPremium = policy.once_off
+          ? packageDeps.reduce((sum, d) => {
+            if (!String(d.name ?? '').trim()) return sum
+            const premium = Number(d.premium)
+            return sum + (Number.isFinite(premium) && premium > 0 ? premium : Number(policy.premium ?? 0))
+          }, 0)
+          : Number(policy.premium ?? 0)
         const regProduct = policy.products?.name ?? 'policy'
         const regF2F = isTobaccoFieldToFloor(regProduct)
         const regSms = await resolveSmsText(admin, 'registration_confirmation', {
@@ -377,10 +392,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               : smsVarMoney(Number(policy.cover_amount ?? 0)),
             coverClause: policyCoverClause(regProduct, Number(policy.cover_amount ?? 0), regPremium),
             premium: smsVarMoney(regPremium),
-            // The label is /yr for agriculture, /mo for every monthly
-            // product — see smsText.ts.
-            period: regF2F ? '' : (category === 'agriculture' ? '/yr' : '/mo'),
-            premiumWithPeriod: regF2F ? smsVarMoney(regPremium) : `${smsVarMoney(regPremium)}${category === 'agriculture' ? '/yr' : '/mo'}.`,
+            // The label is /yr for agriculture, /term for packages, /mo
+            // for monthly products — see smsText.ts.
+            period: regF2F ? '' : (category === 'agriculture' ? '/yr' : policy.once_off ? '/term' : '/mo'),
+            premiumWithPeriod: regF2F ? smsVarMoney(regPremium) : `${smsVarMoney(regPremium)}${category === 'agriculture' ? '/yr' : policy.once_off ? '/term' : '/mo'}.`,
             paymentMethod: policy.payment_method,
           },
           fallback: policyRegisteredSms({
@@ -388,6 +403,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             policyNumber,
             productName: regProduct,
             productCategory: category,
+            onceOff: policy.once_off === true,
             coverAmount: Number(policy.cover_amount ?? 0),
             premium: regPremium,
             paymentMethod: policy.payment_method,

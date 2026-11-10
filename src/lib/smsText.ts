@@ -233,6 +233,7 @@ export interface PolicyNoticeInput {
   policyNumber: string
   productName: string
   productCategory?: string
+  onceOff?: boolean | null
   coverAmount: number
   premium: number
   paymentMethod?: string | null
@@ -254,16 +255,16 @@ export function policyRegisteredSms(p: PolicyNoticeInput): string {
   const fieldToFloor = isTobaccoFieldToFloor(p.productName)
   const cover = policyCoverClause(p.productName, p.coverAmount, p.premium)
   const method = (p.paymentMethod ?? '').trim()
-  // The period label is the product's billing cycle: agriculture is
-  // annual (/yr, settled by stop order), everything else — funeral,
-  // hospital cash, life — bills monthly (/mo).
+  // The period label is the policy's billing cycle: agriculture is
+  // annual (/yr), once-off packages are negotiated terms (/term), and
+  // everything else — funeral, hospital cash, life — bills monthly (/mo).
   if (fieldToFloor) {
     // Tobacco wording per the approved example: no "Reg.", no phone,
     // no "/yr", and NO closing period — the text ends on the premium:
     // "… Funeral $500. Stop Order $60"
     return `${p.clientName} ${p.policyNumber}. ${p.productName}. ${cover}. ${method ? `${method} ` : ''}${smsMoney(p.premium)}`
   }
-  const period = p.productCategory === 'agriculture' ? '/yr' : '/mo'
+  const period = p.productCategory === 'agriculture' ? '/yr' : p.onceOff ? '/term' : '/mo'
   // No 'Reg.' verb on any product — the policy number already says this
   // is a registration.
   return `${p.clientName} ${p.policyNumber}. ${p.productName}. ${cover}. ${method ? `${method} ` : ''}${smsMoney(p.premium)}${period}.`

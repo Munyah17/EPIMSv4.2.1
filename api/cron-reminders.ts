@@ -242,17 +242,27 @@ async function dispatch(
  *  have passed and payment is current. Agriculture activates on first
  *  payment instead, so it is excluded rather than auto-activated by date. */
 async function liftWaitingPeriods(admin: SupabaseClient): Promise<number> {
-  const { data } = await fetchAllRows(
+  let { data, error } = await fetchAllRows(
     () => admin
       .from('policies')
-      .select('id, start_date, next_payment_date, products!product_id(category)')
+      .select('id, start_date, next_payment_date, once_off, products!product_id(category)')
       .eq('status', 'waiting_period'),
     { orderBy: 'id' },
   )
+  if (error && /once_off/i.test(error.message)) {
+    const retry = await fetchAllRows(
+      () => admin
+        .from('policies')
+        .select('id, start_date, next_payment_date, products!product_id(category)')
+        .eq('status', 'waiting_period'),
+      { orderBy: 'id' },
+    )
+    data = retry.data; error = retry.error
+  }
   const today = new Date()
   let lifted = 0
-  for (const row of (data ?? []) as unknown as { id: string; start_date: string; next_payment_date: string | null; products: { category: string } | null }[]) {
-    if (row.products?.category === 'agriculture') continue
+  for (const row of (data ?? []) as unknown as { id: string; start_date: string; next_payment_date: string | null; once_off?: boolean | null; products: { category: string } | null }[]) {
+    if (row.once_off === true || row.products?.category === 'agriculture') continue
     if (Math.round((today.getTime() - new Date(row.start_date).getTime()) / 86400000) < 90) continue
     if (row.next_payment_date && new Date(row.next_payment_date) < today) continue
     await admin.from('policies').update({ status: 'active' }).eq('id', row.id)
@@ -267,17 +277,40 @@ async function liftWaitingPeriods(admin: SupabaseClient): Promise<number> {
  *  stay intact and restorable from the Policies → Archive view. */
 async function expireEndedTerms(admin: SupabaseClient): Promise<number> {
   const todayISO = new Date().toISOString().split('T')[0]
-  const { count } = await admin
+  const { data, error } = await admin
     .from('policies')
-    .select('id', { count: 'exact', head: true })
+    .select('id, once_off, products!product_id(category)')
     .lt('end_date', todayISO)
     .in('status', ['active', 'waiting_period', 'lapsed', 'defaulted'])
+  // A database one migration behind has no once_off column — keep the
+  // agriculture sweep working there instead of failing the whole cron.
+  const fallback = error ? await admin
+    .from('policies')
+    .select('id, products!product_id(category)')
+    .lt('end_date', todayISO)
+    .in('status', ['active', 'waiting_period', 'lapsed', 'defaulted']) : null
+  const rows = (data ?? fallback?.data ?? []) as Array<{ id: string; once_off?: boolean; products?: { category?: string } | null }>
+  const ids = rows
+    .filter(row => row.once_off === true || row.products?.category === 'agriculture')
+    .map(row => row.id)
+  if (ids.length === 0) return 0
   await admin
     .from('policies')
     .update({ status: 'expired' })
-    .lt('end_date', todayISO)
-    .in('status', ['active', 'waiting_period', 'lapsed', 'defaulted'])
-  return count ?? 0
+    .in('id', ids)
+  return ids.length
+}
+
+/** Once-off packages have no recurring due date — they are excluded from
+ *  reminder/lapse dispatch by id so the main policy query can stay on the
+ *  pre-group-cover column list. */
+async function onceOffPackageIds(admin: SupabaseClient): Promise<Set<string>> {
+  const { data, error } = await fetchAllRows(
+    () => admin.from('policies').select('id').eq('once_off', true).in('status', ['active', 'waiting_period', 'defaulted']),
+    { orderBy: 'id' },
+  )
+  if (error) return new Set()
+  return new Set((data ?? []).map(row => String((row as { id: string }).id)))
 }
 
 // ── Reconciliation: money/registration happened, record didn't ──────
@@ -470,8 +503,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Only the unpaid hear from us — next_payment_date says the date cover
   // is paid THROUGH, so anything past the due date means the period is
   // already settled and the policyholder gets nothing but their payment
-  // confirmation.
+  // confirmation. Once-off packages carry no next_payment_date and no
+  // recurring premium, so they are removed before the unpaid filter.
+  const packageIds = await onceOffPackageIds(admin)
   const policies = ((data ?? []) as unknown as (PolicyRow & { next_payment_date: string | null })[])
+    .filter(p => !packageIds.has(p.id))
     .filter(p => p.products?.category !== 'agriculture')
     // Reminders: still owes the period ending at the due date. Lapse: the
     // premium was due before today — the grace window to the 10th closed.
@@ -528,15 +564,24 @@ async function issueMonthlyInvoices(admin: SupabaseClient, today: Date) {
   const period = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`
   const dueDate = lastDayOfMonth(today).toISOString().split('T')[0]
 
-  const { data, error } = await fetchAllRows(
-    () => admin
-      .from('policies')
-      .select('id, policy_number, client_id, product_id, premium, status, dependants, agent_id, cover_scope, group_id, clients!client_id(name, email, phone), products!product_id(name, category), groups!group_id(name, contact_name, contact_phone, contact_email)')
-      .in('status', ['active', 'waiting_period'])
-      .not('cover_scope', 'is', null)
-      .neq('cover_scope', 'individual'),
+  const groupPolicyQuery = () => admin
+    .from('policies')
+    .select('id, policy_number, client_id, product_id, premium, status, dependants, agent_id, cover_scope, group_id, clients!client_id(name, email, phone), products!product_id(name, category), groups!group_id(name, contact_name, contact_phone, contact_email)')
+    .in('status', ['active', 'waiting_period'])
+    .not('cover_scope', 'is', null)
+    .neq('cover_scope', 'individual')
+  let { data, error } = await fetchAllRows(
+    // Once-off packages are settled for their negotiated term up front —
+    // they must never fall into the monthly invoice run.
+    () => groupPolicyQuery().or('once_off.is.null,once_off.eq.false'),
     { orderBy: 'id' },
   )
+  if (error && /once_off/i.test(error.message ?? '')) {
+    // A database one migration behind cannot have once-off packages yet —
+    // retry the pre-migration group invoice query rather than fail billing.
+    const retry = await fetchAllRows(() => groupPolicyQuery(), { orderBy: 'id' })
+    data = retry.data; error = retry.error
+  }
   if (error) {
     // cover_scope predates the group-cover migration on some databases —
     // log and skip rather than fail the whole reminder run.

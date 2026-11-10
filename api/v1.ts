@@ -634,12 +634,22 @@ async function createPolicy(admin: SupabaseClient, body: Json, dev: Record<strin
 }
 
 async function getPolicy(admin: SupabaseClient, policyNumber: string, agentId: string) {
-  const { data, error } = await admin
+  const selectWithOnceOff = 'id, policy_number, premium, cover_amount, status, start_date, end_date, dependants, once_off, products!product_id(category)'
+  const first = await admin
     .from('policies')
-    .select('id, policy_number, premium, cover_amount, status, start_date, end_date, dependants')
+    .select(selectWithOnceOff)
     .eq('policy_number', policyNumber)
     .eq('agent_id', agentId)
     .maybeSingle()
+  const { data: rawData, error } = first.error && /once_off/i.test(first.error.message ?? '')
+    ? await admin
+      .from('policies')
+      .select(selectWithOnceOff.replace(', once_off,', ','))
+      .eq('policy_number', policyNumber)
+      .eq('agent_id', agentId)
+      .maybeSingle()
+    : first
+  const data = rawData as { id: string; policy_number: string; premium: number; cover_amount: number; status: string; start_date: string; end_date: string; dependants: unknown; once_off?: boolean | null; products?: { category?: string } | null } | null
   if (error) {
     console.error('v1 getPolicy query failed', error)
     return { status: 500, body: { error: 'Internal server error.' } }
@@ -652,6 +662,8 @@ async function getPolicy(admin: SupabaseClient, policyNumber: string, agentId: s
         id: data.id, policyNumber: data.policy_number, premium: data.premium, coverAmount: data.cover_amount,
         status: data.status, startDate: data.start_date, endDate: data.end_date,
         dependants: data.dependants ?? [],
+        onceOff: data.once_off === true,
+        billingPeriod: data.once_off === true ? 'term' : (data.products as { category?: string } | null)?.category === 'agriculture' ? 'annual' : 'monthly',
       },
     },
   }
@@ -712,12 +724,22 @@ async function listClients(admin: SupabaseClient, agentId: string, nationalId?: 
  * paged for now.
  */
 async function listPolicies(admin: SupabaseClient, agentId: string) {
-  const { data, error } = await admin
+  const policySelectWithOnceOff = 'id, policy_number, client_id, product_id, premium, cover_amount, status, start_date, end_date, dependants, once_off'
+  const first = await admin
     .from('policies')
-    .select('id, policy_number, client_id, product_id, premium, cover_amount, status, start_date, end_date, dependants')
+    .select(policySelectWithOnceOff)
     .eq('agent_id', agentId)
     .order('created_at', { ascending: false })
     .limit(500)
+  const { data: rawData, error } = first.error && /once_off/i.test(first.error.message ?? '')
+    ? await admin
+      .from('policies')
+      .select(policySelectWithOnceOff.replace(', once_off', ''))
+      .eq('agent_id', agentId)
+      .order('created_at', { ascending: false })
+      .limit(500)
+    : first
+  const data = (rawData ?? []) as Array<{ id: string; policy_number: string; client_id: string; product_id: string; premium: number; cover_amount: number; status: string; start_date: string; end_date: string; dependants: unknown; once_off?: boolean | null }>
   if (error) {
     console.error('v1 listPolicies query failed', error)
     return { status: 500, body: { error: 'Internal server error.' } }
@@ -728,7 +750,7 @@ async function listPolicies(admin: SupabaseClient, agentId: string) {
   const productIds = [...new Set(rows.map(r => r.product_id as string).filter(Boolean))]
   const [clientsRes, productsRes] = await Promise.all([
     clientIds.length ? admin.from('clients').select('id, name, national_id').in('id', clientIds) : Promise.resolve({ data: [] as { id: string; name: string; national_id: string }[] }),
-    productIds.length ? admin.from('products').select('id, name').in('id', productIds) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+    productIds.length ? admin.from('products').select('id, name, category').in('id', productIds) : Promise.resolve({ data: [] as { id: string; name: string; category: string }[] }),
   ])
   const clientById = new Map((clientsRes.data ?? []).map(c => [c.id, c]))
   const productById = new Map((productsRes.data ?? []).map(p => [p.id, p]))
@@ -745,6 +767,8 @@ async function listPolicies(admin: SupabaseClient, agentId: string) {
         productName: productById.get(p.product_id)?.name,
         premium: p.premium, coverAmount: p.cover_amount, status: p.status,
         startDate: p.start_date, endDate: p.end_date, dependants: p.dependants ?? [],
+        onceOff: p.once_off === true,
+        billingPeriod: p.once_off === true ? 'term' : productById.get(p.product_id)?.category === 'agriculture' ? 'annual' : 'monthly',
       })),
     },
   }
@@ -757,9 +781,16 @@ async function recordPayment(admin: SupabaseClient, body: Json, agentId: string)
     return { status: 400, body: { error: 'policyNumber is required and amount must be a positive number.' } }
   }
 
-  const { data: policy } = await admin.from('policies')
-    .select('id, agent_id, status, product_id, premium, dependants, next_payment_date, clients!client_id(name, email, phone)')
+  const policySelectWithOnceOff = 'id, agent_id, status, product_id, premium, dependants, next_payment_date, once_off, clients!client_id(name, email, phone)'
+  const first = await admin.from('policies')
+    .select(policySelectWithOnceOff)
     .eq('policy_number', policyNumber).maybeSingle()
+  const { data: rawPolicy } = first.error && /once_off/i.test(first.error.message ?? '')
+    ? await admin.from('policies')
+      .select(policySelectWithOnceOff.replace(', once_off,', ','))
+      .eq('policy_number', policyNumber).maybeSingle()
+    : first
+  const policy = rawPolicy as { id: string; agent_id: string; status: string; product_id: string; premium: number; dependants: unknown; next_payment_date: string | null; once_off?: boolean | null; clients?: { name: string; email: string | null; phone: string | null } | null } | null
   if (!policy || policy.agent_id !== agentId) return { status: 404, body: { error: 'Policy not found.' } }
 
   // A 'pending' policy is still awaiting Admin approval (the API creates
@@ -817,30 +848,38 @@ async function recordPayment(admin: SupabaseClient, body: Json, agentId: string)
     }, own)
 
   const today = new Date()
-  const cycleMonths = category === 'agriculture' ? 12 : 1
-  const { data: priorRows } = await admin.from('payments')
-    .select('amount, payment_date')
-    .eq('policy_id', policy.id)
-    .eq('status', 'completed')
-  const prior = (priorRows ?? [])
-    .map(r => ({ amount: Number(r.amount) || 0, date: String(r.payment_date ?? '').slice(0, 10) }))
-  const priorIdx = [...prior].reverse().findIndex(p => Math.abs(p.amount - amount) < 0.005)
-  const priorForAlloc = priorIdx < 0 ? prior : prior.filter((_, i) => i !== prior.length - 1 - priorIdx)
-  const alloc = allocatePayment(
-    amount, perPeriod, cycleMonths, policy.next_payment_date ?? undefined, priorForAlloc, today,
-  )
+  if (policy.once_off) {
+    // Once-off packages are a single negotiated term — a confirmed payment
+    // updates last_payment_date only; it must not invent a monthly cursor.
+    await admin.from('policies').update({
+      last_payment_date: today.toISOString().split('T')[0],
+    }).eq('id', policy.id)
+  } else {
+    const cycleMonths = category === 'agriculture' ? 12 : 1
+    const { data: priorRows } = await admin.from('payments')
+      .select('amount, payment_date')
+      .eq('policy_id', policy.id)
+      .eq('status', 'completed')
+    const prior = (priorRows ?? [])
+      .map(r => ({ amount: Number(r.amount) || 0, date: String(r.payment_date ?? '').slice(0, 10) }))
+    const priorIdx = [...prior].reverse().findIndex(p => Math.abs(p.amount - amount) < 0.005)
+    const priorForAlloc = priorIdx < 0 ? prior : prior.filter((_, i) => i !== prior.length - 1 - priorIdx)
+    const alloc = allocatePayment(
+      amount, perPeriod, cycleMonths, policy.next_payment_date ?? undefined, priorForAlloc, today,
+    )
 
-  let nextStatus = policy.status
-  if (alloc.periodsAdvanced >= 1) {
-    if (policy.status === 'lapsed' || policy.status === 'defaulted') nextStatus = category === 'agriculture' ? 'active' : 'waiting_period'
-    else if (category === 'agriculture' && policy.status === 'waiting_period') nextStatus = 'active'
+    let nextStatus = policy.status
+    if (alloc.periodsAdvanced >= 1) {
+      if (policy.status === 'lapsed' || policy.status === 'defaulted') nextStatus = category === 'agriculture' ? 'active' : 'waiting_period'
+      else if (category === 'agriculture' && policy.status === 'waiting_period') nextStatus = 'active'
+    }
+
+    await admin.from('policies').update({
+      status: nextStatus,
+      last_payment_date: today.toISOString().split('T')[0],
+      next_payment_date: alloc.nextPaymentDate,
+    }).eq('id', policy.id)
   }
-
-  await admin.from('policies').update({
-    status: nextStatus,
-    last_payment_date: today.toISOString().split('T')[0],
-    next_payment_date: alloc.nextPaymentDate,
-  }).eq('id', policy.id)
 
   if (category !== 'agriculture') {
     const client = policy.clients as { name?: string; email?: string | null; phone?: string | null } | null

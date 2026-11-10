@@ -16,6 +16,16 @@ const tobacco = {
   endDate: '2027-08-31',
 }
 
+const schoolTourPackage = {
+  productName: 'Travel Accident Cover',
+  coverScope: 'group' as const,
+  onceOff: true,
+  startDate: '2026-12-10',
+  lastPaymentDate: '2026-11-10',
+  nextPaymentDate: undefined,
+  endDate: '2026-12-20',
+}
+
 describe('non-agriculture policy document schedule', () => {
   it('prints Payment Date as the day money landed, and Renewal Date as next due', () => {
     const s = policyDocumentSchedule(funeral, 'funeral')
@@ -31,6 +41,17 @@ describe('non-agriculture policy document schedule', () => {
     const s = policyDocumentSchedule(funeral, 'health')
     expect(s.renewsWhen).toBe(formatDate(funeral.nextPaymentDate))
     expect(s.renewsWhen).not.toBe(formatDate(funeral.endDate))
+  })
+})
+
+describe('once-off package policy document schedule', () => {
+  it('prints the negotiated commencement and expiration dates', () => {
+    const s = policyDocumentSchedule(schoolTourPackage, 'accident')
+    expect(s.paymentLabel).toBe('Commencement Date')
+    expect(s.untilLabel).toBe('Expiration Date')
+    expect(s.paidWhen).toBe(formatDate('2026-12-10'))
+    expect(s.renewsWhen).toBe(formatDate('2026-12-20'))
+    expect(s.renewsWhen).not.toBe(formatDate(schoolTourPackage.lastPaymentDate))
   })
 })
 
