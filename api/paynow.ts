@@ -1,3 +1,4 @@
+/// <reference path="./paynow.d.ts" />
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { Paynow } from 'paynow'
 import { serviceClient, requireSession } from './_lib/sessionAuth.js'

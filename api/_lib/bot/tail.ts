@@ -1,7 +1,7 @@
-import type { Handler, Ctx } from './types.js'
+import type { Handler, Ctx, BotPolicy } from './types.js'
 import { sendText, sendButtons } from './whatsapp.js'
 import { setState, patchNote, deleteSession } from './store.js'
-import { getActiveProducts, createClient, createPolicy, addDependant } from './data.js'
+import { getActiveProducts, createClient, createPolicy, createPendingPolicy, addDependant } from './data.js'
 import { isEcocashPhone, pickIndex, PAYMENT_METHODS, PORTAL_METHOD_NAMES, methodMenu, sendPaymentInstruction } from './helpers.js'
 import { policyTermDates } from '../policyTerm.js'
 
@@ -75,6 +75,7 @@ export function makeTail(prefix: string): Record<string, Handler> {
     let policyId: string
     let description: string
     let refStem: string
+    let newClientId: string | undefined
 
     if (n.flow === 'new_client_policy') {
       // Agent onboarding a brand-new client: the person and their first
@@ -87,6 +88,7 @@ export function makeTail(prefix: string): Record<string, Handler> {
         agentId: n.agentId as string | undefined,
       })
       n.clientId = client.id
+      newClientId = client.id
       await patchNote(admin, session, { clientId: client.id, clientName: client.name })
       n.flow = 'new_policy'
     }
@@ -94,17 +96,34 @@ export function makeTail(prefix: string): Record<string, Handler> {
     if (n.flow === 'new_policy') {
       const product = (await getActiveProducts(admin)).find(p => p.id === n.productId)
       if (!product || !n.clientId) {
+        if (newClientId) await admin.from('clients').delete().eq('id', newClientId)
         await deleteSession(admin, session)
         return sendText(phone, 'That product is no longer available — your session has been reset.')
       }
       const { start, end } = policyTermDates(product)
-      const policy = await createPolicy(admin, {
+      const fields = {
         clientId: String(n.clientId), product,
         paymentMethod: PORTAL_METHOD_NAMES[Number(n.methodIndex)] ?? 'Paynow',
         agentId: n.agentId as string | undefined, startDate: start, endDate: end,
+        source: 'whatsapp_chatbot',
         hasChronicIllness: n.hasChronic === 'yes',
         chronicIllnessDetails: n.chronicDetails as string | undefined,
-      })
+        growerNumber: n.growerNumber as string | undefined,
+        contractor: n.contractor as string | undefined,
+        hectarage: n.hectarage as number | undefined,
+      }
+      // Paynow rows live in pending_policies until the webhook confirms
+      // payment and finalizes them. EcoCash/office rows stay in policies so
+      // staff can approve and record the manual settlement.
+      let policy: BotPolicy
+      try {
+        policy = Number(n.methodIndex) === 1
+          ? await createPendingPolicy(admin, fields)
+          : await createPolicy(admin, fields)
+      } catch (e) {
+        if (newClientId) await admin.from('clients').delete().eq('id', newClientId)
+        throw e
+      }
       policyId = policy.id
       refStem = policy.policyNumber
       description = `${policy.policyNumber} premium`
@@ -121,14 +140,14 @@ export function makeTail(prefix: string): Record<string, Handler> {
       description = `${n.depPolicyNumber} dependant premium`
       await sendText(phone, `${dep.name} has been added to policy ${n.depPolicyNumber} — pending first premium.`)
     } else {
-      // pay_policy — months already folded into payUsd by the caller.
+      // pay_policy — periods already folded into payUsd by the caller.
       if (!n.payPolicyId) {
         await deleteSession(admin, session)
         return sendText(phone, 'No policy selected — your session has been reset.')
       }
       policyId = String(n.payPolicyId)
       refStem = String(n.payPolicyNumber)
-      description = `${n.payPolicyNumber} premium (${n.months ?? 1} month${Number(n.months) === 1 ? '' : 's'})`
+      description = String(n.payLabel ?? `${n.payPolicyNumber} premium`)
     }
 
     await sendPaymentInstruction({
@@ -136,6 +155,7 @@ export function makeTail(prefix: string): Record<string, Handler> {
       reference: `${refStem}-${Date.now().toString(36).toUpperCase()}`,
       usdAmount: Number(n.payUsd ?? 0), currency, methodIndex, ecocashNumber,
       origin: 'https://portal.motions.co.zw', description,
+      email: n.email as string | undefined,
     })
     return deleteSession(admin, session)
   }

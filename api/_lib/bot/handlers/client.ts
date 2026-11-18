@@ -1,23 +1,27 @@
+import { randomUUID } from 'node:crypto'
 import type { Handler, Ctx } from '../types.js'
 import { sendText, sendButtons } from '../whatsapp.js'
 import { setState, patchNote, deleteSession } from '../store.js'
-import { getActiveProducts, policiesForClient, createClaim, botBillablePremium, completedPaymentsForPolicy } from '../data.js'
-import { settlement, defaultCharge } from '../../../src/lib/paymentAllocation.js'
-import { isFullName, isNationalId, isDependantId, parseDob, pickIndex, normalizeNationalId } from '../helpers.js'
+import { getActiveProducts, policiesForClient, pendingPoliciesForClient, createClaim, storeClaimMedia, createDependantRemovalTask, botBillablePremium, completedPaymentsForPolicy } from '../data.js'
+import { settlement, defaultCharge } from '../../../../src/lib/paymentAllocation.js'
+import { isFullName, isDependantId, parseDob, pickIndex, normalizeNationalId } from '../helpers.js'
 import { makeTail, startTail } from '../tail.js'
-import { coverLabel, isTobaccoFieldToFloor } from '../../coverBreakdown.js'
+import { coverLabel } from '../../coverBreakdown.js'
+import {
+  RELATIONSHIPS, PERSON_CATEGORIES, payablePolicies, claimablePolicies,
+  periodLabel, periodNoun, billingCycleMonths, policyLine,
+  askAgricultureFields, makeAgricultureHandlers,
+} from './flowHelpers.js'
 
 /**
  * Policyholder menu — the Frappe CLIENT_HANDLER_MAP.
  *
- *   1. Make Payment   -> pick policy -> months -> tail
+ *   1. Make Payment   -> pick policy -> periods -> tail
  *   2. My Policies    -> list / Add New Policy -> tail (creates policy)
- *   3. Renew Policy   -> stub (same as Frappe)
+ *   3. Renew Policy   -> same paid-allocation path as Make Payment
  *   4. Claims         -> pick policy -> upload document -> claim filed
  *   5. Dependants     -> add / remove / view
  */
-
-const RELATIONSHIPS = ['Spouse', 'Child', 'Parent', 'Sibling', 'Grandparent', 'Grandchild', 'Other']
 
 const MENU = (u: string) =>
   `Hello${u ? ` ${u}` : ''}! Select an option\n\n` +
@@ -44,50 +48,63 @@ const menu: Handler = async (ctx) => {
 /* ----------------------------- 1. Make Payment ---------------------------- */
 
 const payStart: Handler = async ({ phone, session, admin, contact }) => {
-  const policies = await policiesForClient(admin, contact.client!.id)
+  const policies = payablePolicies([
+    ...(await policiesForClient(admin, contact.client!.id)),
+    ...(await pendingPoliciesForClient(admin, contact.client!.id)),
+  ])
   if (!policies.length) {
     await deleteSession(admin, session)
-    return sendText(phone, 'You have no policies to pay for.')
+    return sendText(phone, 'You have no policies that need payment.')
   }
-  await sendText(phone, `Select the policy to pay\n\n${policies.map((p, i) => `${i + 1}. ${p.policyNumber} — ${p.productName} ($${botBillablePremium(p).toFixed(2)}/month, ${p.status})`).join('\n')}`)
+  await sendText(phone, `Select the policy to pay\n\n${policies.map(policyLine).join('\n')}`)
   return setState(admin, session, 'CPAY_POLICY')
 }
 
 const renewStart: Handler = async ({ phone, session, admin, contact }) => {
-  const policies = await policiesForClient(admin, contact.client!.id)
+  const policies = payablePolicies(await policiesForClient(admin, contact.client!.id)).filter(p => !p.onceOff)
   if (!policies.length) {
     await deleteSession(admin, session)
-    return sendText(phone, 'You have no policies to renew.')
+    return sendText(phone, 'You have no recurring policies to renew.')
   }
-  await sendText(phone, `Select the policy to renew\n\n${policies.map((p, i) => `${i + 1}. ${p.policyNumber} — ${p.productName} ($${botBillablePremium(p).toFixed(2)}/month, ${p.status})`).join('\n')}`)
+  await sendText(phone, `Select the policy to renew\n\n${policies.map(policyLine).join('\n')}`)
   return setState(admin, session, 'CPAY_POLICY')
 }
 
-const payPolicy: Handler = async ({ input, phone, session, admin, contact }) => {
-  const policies = await policiesForClient(admin, contact.client!.id)
+const payPolicy: Handler = async (ctx) => {
+  const { input, phone, session, admin, contact } = ctx
+  const policies = payablePolicies([
+    ...(await policiesForClient(admin, contact.client!.id)),
+    ...(await pendingPoliciesForClient(admin, contact.client!.id)),
+  ])
   const pick = pickIndex(input, policies.length)
   if (pick === null) return sendText(phone, 'Please select one of the policies above.')
   const p = policies[pick]
-  await patchNote(admin, session, { flow: 'pay_policy', payPolicyId: p.id, payPolicyNumber: p.policyNumber, policyPremium: botBillablePremium(p), nextPaymentDate: p.nextPaymentDate })
-  await sendText(phone, `How many months of ${p.policyNumber} are you paying? (1–12)`)
+  await patchNote(admin, session, { flow: 'pay_policy', payPolicyId: p.id, payPolicyNumber: p.policyNumber, policyPremium: botBillablePremium(p), nextPaymentDate: p.nextPaymentDate, billingCycleMonths: billingCycleMonths(p) })
+  if (p.onceOff) {
+    await patchNote(admin, session, { months: 1, payLabel: `${p.policyNumber} package term` })
+    return startTail(ctx, 'CPAY', botBillablePremium(p))
+  }
+  await sendText(phone, `How many ${periodNoun(p)}s of ${p.policyNumber} are you paying? (1–12)`)
   return setState(admin, session, 'CPAY_MONTHS')
 }
 
 const payMonths: Handler = async (ctx) => {
   const { input, phone, session, admin } = ctx
-  const months = Number(input.trim())
-  if (!Number.isInteger(months) || months < 1 || months > 12) return sendText(phone, 'Please enter a number between 1 and 12.')
+  const periods = Number(input.trim())
+  if (!Number.isInteger(periods) || periods < 1 || periods > 12) return sendText(phone, 'Please enter a number between 1 and 12.')
   const perPeriod = Number(session.note.policyPremium ?? 0)
   const pays = session.note.payPolicyId
     ? await completedPaymentsForPolicy(admin, String(session.note.payPolicyId))
     : []
-  const due = settlement(perPeriod, 1, session.note.nextPaymentDate as string | undefined, pays)
-  const amount = defaultCharge(due, months)
+  const cycleMonths = Number(session.note.billingCycleMonths ?? 1)
+  const unit = cycleMonths === 12 ? 'year' : 'month'
+  const due = settlement(perPeriod, cycleMonths, session.note.nextPaymentDate as string | undefined, pays)
+  const amount = defaultCharge(due, periods)
   await patchNote(admin, session, {
-    months,
-    payLabel: due.isUpgrade && months === 1
+    months: periods,
+    payLabel: due.isUpgrade && periods === 1
       ? `${session.note.payPolicyNumber} dependant top-up`
-      : `${session.note.payPolicyNumber} x ${months} month${months === 1 ? '' : 's'}`,
+      : `${session.note.payPolicyNumber} x ${periods} ${unit}${periods === 1 ? '' : 's'}`,
   })
   return startTail(ctx, 'CPAY', amount)
 }
@@ -98,11 +115,14 @@ const viewPolicies: Handler = async ({ phone, session, admin, contact }) => {
   const policies = await policiesForClient(admin, contact.client!.id)
   const list = policies.length
     ? policies.map((p, i) =>
-        `(${i + 1}) ${p.policyNumber} — ${p.productName}\nPremium: $${p.premium}${isTobaccoFieldToFloor(p.productName) ? '/yr' : '/mo'} | ${coverLabel(p.productName, p.coverAmount, p.premium)} | Status: ${p.status}` +
+        `(${i + 1}) ${p.policyNumber} — ${p.productName}\nPremium: $${p.premium}${periodLabel(p)} | ${coverLabel(p.productName, p.coverAmount, p.premium)} | Status: ${p.status}` +
         (p.dependants.length ? `\nDependants: ${p.dependants.map(d => d.name).join(', ')}` : '')
       ).join('\n\n')
     : 'You have no policies yet.'
-  await sendButtons(phone, `Your policies\n\n${list}`, [
+  // Interactive bodies are much shorter than a policy book; send the
+  // register as ordinary chunked text, then the action buttons alone.
+  await sendText(phone, `Your policies\n\n${list}`)
+  await sendButtons(phone, 'What would you like to do?', [
     { id: 'add', title: 'Add New Policy' }, { id: 'menu', title: 'Main Menu' },
   ])
   return setState(admin, session, 'CVIEW_SEL')
@@ -127,6 +147,16 @@ const addProduct: Handler = async (ctx) => {
   const pick = pickIndex(input, products.length)
   if (pick === null) return sendText(phone, 'Please select one of the products above.')
   const p = products[pick]
+  const held = [
+    ...(await policiesForClient(admin, contact.client!.id)),
+    ...(await pendingPoliciesForClient(admin, contact.client!.id)),
+  ].find(x => x.productId === p.id && ['pending', 'waiting_period', 'active'].includes(x.status))
+  if (held) {
+    await sendText(phone,
+      `You already have ${held.policyNumber} (${held.status.replace(/_/g, ' ')}) on ${p.name}.\n` +
+      `Use Make Payment to settle it, or contact us to change the cover.`)
+    return deleteSession(admin, session)
+  }
   await patchNote(admin, session, {
     flow: 'new_policy', productId: p.id, clientId: contact.client!.id,
     payLabel: `New policy — ${p.name}`,
@@ -138,6 +168,16 @@ const addProduct: Handler = async (ctx) => {
       `Medical declaration — ${p.name}\n\nDo you have a chronic illness or existing condition? (e.g. diabetes, hypertension, asthma, HIV)`,
       [{ id: 'no', title: 'No' }, { id: 'yes', title: 'Yes' }])
     return setState(admin, session, 'CADD_CHRONIC')
+  }
+  if (p.category === 'agriculture') return askAgricultureFields(ctx, 'CADD')
+  return startTail(ctx, 'CADD', p.premium)
+}
+
+const addAgricultureDone: Handler = async (ctx) => {
+  const p = (await getActiveProducts(ctx.admin)).find(x => x.id === ctx.session.note.productId)
+  if (!p) {
+    await deleteSession(ctx.admin, ctx.session)
+    return sendText(ctx.phone, 'That product is no longer available — your session has been reset.')
   }
   return startTail(ctx, 'CADD', p.premium)
 }
@@ -168,17 +208,17 @@ const addChronicDetails: Handler = async (ctx) => {
 /* -------------------------------- 4. Claims ------------------------------- */
 
 const claimsStart: Handler = async ({ phone, session, admin, contact }) => {
-  const policies = await policiesForClient(admin, contact.client!.id)
+  const policies = claimablePolicies(await policiesForClient(admin, contact.client!.id))
   if (!policies.length) {
     await deleteSession(admin, session)
-    return sendText(phone, 'You have no policies to claim on.')
+    return sendText(phone, 'You have no active or waiting-period policies to claim on.')
   }
   await sendText(phone, `Which policy is the claim for?\n\n${policies.map((p, i) => `${i + 1}. ${p.policyNumber} — ${p.productName}`).join('\n')}`)
   return setState(admin, session, 'CCLAIM_POLICY')
 }
 
 const claimPolicy: Handler = async ({ input, phone, session, admin, contact }) => {
-  const policies = await policiesForClient(admin, contact.client!.id)
+  const policies = claimablePolicies(await policiesForClient(admin, contact.client!.id))
   const pick = pickIndex(input, policies.length)
   if (pick === null) return sendText(phone, 'Please select one of the policies above.')
   await patchNote(admin, session, { claimPolicyId: policies[pick].id, claimPolicyNumber: policies[pick].policyNumber })
@@ -191,12 +231,22 @@ const claimPolicy: Handler = async ({ input, phone, session, admin, contact }) =
 const claimDoc: Handler = async ({ input, phone, session, admin }) => {
   const m = /^filename: (.+) \|\|\|\| id: (.+)$/.exec(input)
   if (!m) return sendText(phone, 'Please attach the supporting document or photo (or send exit to cancel).')
+  const claimId = randomUUID()
+  let documentPath: string
+  try {
+    documentPath = await storeClaimMedia(admin, claimId, m[2], m[1])
+  } catch (e) {
+    const detail = e instanceof Error ? e.message : String(e)
+    console.error(`whatsapp bot: claim attachment failed for ${session.note.claimPolicyNumber}`, detail)
+    return sendText(phone, `I could not save that attachment (${detail}). Please send a PDF or a JPG/PNG/WEBP photo under 10MB, or type exit to cancel.`)
+  }
   await createClaim(admin, {
+    id: claimId,
     policyId: String(session.note.claimPolicyId),
-    description: `WhatsApp claim on ${session.note.claimPolicyNumber} — document '${m[1]}' (WhatsApp media ${m[2]}).`,
-    documents: [{ name: m[1], whatsappMediaId: m[2] }],
+    description: `WhatsApp claim on ${session.note.claimPolicyNumber} — attachment '${m[1]}' (WhatsApp media ${m[2]}).`,
+    documents: [documentPath],
   })
-  await sendText(phone, `Your claim on ${session.note.claimPolicyNumber} has been filed. Our claims team will contact you.`)
+  await sendText(phone, `Your claim on ${session.note.claimPolicyNumber} has been filed with the attachment. Our claims team will contact you.`)
   return deleteSession(admin, session)
 }
 
@@ -230,11 +280,14 @@ const depMenuSel: Handler = async (ctx) => {
 
 const depRemoveId: Handler = async ({ input, phone, session, admin, contact }) => {
   if (!isDependantId(input)) return sendText(phone, "Please enter the dependant's ID or birth record number.")
+  const wanted = normalizeNationalId(input)
   const policies = await policiesForClient(admin, contact.client!.id)
-  const found = policies.some(p => p.dependants.some(d => normalizeNationalId(String(d.nationalId ?? '')) === normalizeNationalId(input)))
-  if (!found) return sendText(phone, "That dependant was not found on your policies (send 'exit' to cancel).")
+  const policy = policies.find(p => p.dependants.some(d => normalizeNationalId(String(d.nationalId ?? '')) === wanted))
+  const dependant = policy?.dependants.find(d => normalizeNationalId(String(d.nationalId ?? '')) === wanted)
+  if (!policy || !dependant) return sendText(phone, "That dependant was not found on your policies (send 'exit' to cancel).")
+  await createDependantRemovalTask(admin, { client: contact.client!, policy, dependant })
   await deleteSession(admin, session)
-  return sendText(phone, 'Your request to remove the dependant has been sent. Our team will confirm once it is processed.')
+  return sendText(phone, 'Your request to remove the dependant has been sent to our team. Cover remains unchanged until staff approve the removal.')
 }
 
 const depName: Handler = async ({ input, phone, session, admin }) => {
@@ -284,31 +337,77 @@ const depRel: Handler = async ({ input, phone, session, admin, contact }) => {
   const pick = pickIndex(input, RELATIONSHIPS.length)
   if (pick === null) return sendText(phone, 'Please select one of the relationships above.')
   await patchNote(admin, session, { depRelationship: RELATIONSHIPS[pick] })
-  const policies = await policiesForClient(admin, contact.client!.id)
+  const policies = claimablePolicies(await policiesForClient(admin, contact.client!.id))
+    .filter(p => PERSON_CATEGORIES.includes(p.productCategory))
   if (!policies.length) {
     await deleteSession(admin, session)
-    return sendText(phone, 'You have no policy to attach a dependant to.')
+    return sendText(phone, 'You have no person-cover policy to attach a dependant to.')
   }
   await sendText(phone, `Which of your policies should cover them?\n\n${policies.map((p, i) => `${i + 1}. ${p.policyNumber} — ${p.productName}`).join('\n')}`)
   return setState(admin, session, 'CDEP_POLICY')
 }
 
 const depPolicy: Handler = async ({ input, phone, session, admin, contact }) => {
-  const policies = await policiesForClient(admin, contact.client!.id)
+  const policies = claimablePolicies(await policiesForClient(admin, contact.client!.id))
+    .filter(p => PERSON_CATEGORIES.includes(p.productCategory))
   const pick = pickIndex(input, policies.length)
   if (pick === null) return sendText(phone, 'Please select one of the policies above.')
-  await patchNote(admin, session, { depPolicyId: policies[pick].id, depPolicyNumber: policies[pick].policyNumber })
-  const products = await getActiveProducts(admin)
-  await sendText(phone, `Select the dependant's cover\n\n${products.map((p, i) => `${i + 1}. ${p.name} [$${p.premium}/month]`).join('\n')}`)
+  const p = policies[pick]
+  await patchNote(admin, session, {
+    depPolicyId: p.id, depPolicyNumber: p.policyNumber, depPolicyCategory: p.productCategory,
+  })
+  const products = (await getActiveProducts(admin)).filter(x => x.category === p.productCategory)
+  if (!products.length) {
+    await deleteSession(admin, session)
+    return sendText(phone, 'No matching dependant cover is available for that policy right now.')
+  }
+  await sendText(phone, `Select the dependant's cover\n\n${products.map((x, i) => `${i + 1}. ${x.name} [$${x.premium}/mo]`).join('\n')}`)
   return setState(admin, session, 'CDEP_PRODUCT')
 }
 
 const depProduct: Handler = async (ctx) => {
   const { input, phone, session, admin } = ctx
-  const products = await getActiveProducts(admin)
+  const products = (await getActiveProducts(admin)).filter(x => x.category === session.note.depPolicyCategory)
   const pick = pickIndex(input, products.length)
   if (pick === null) return sendText(phone, 'Please select one of the products above.')
   const p = products[pick]
+  await patchNote(admin, session, { depProductId: p.id })
+  if (p.category === 'health') {
+    await sendButtons(phone,
+      `Medical declaration — ${p.name}\n\nDoes ${session.note.depName} have a chronic illness or existing condition?`,
+      [{ id: 'no', title: 'No' }, { id: 'yes', title: 'Yes' }])
+    return setState(admin, session, 'CDEP_CHRONIC')
+  }
+  return commitDependantPick(ctx)
+}
+
+const depChronic: Handler = async (ctx) => {
+  const { input, phone, session, admin } = ctx
+  if (input !== 'yes' && input !== 'no') return sendText(phone, 'Please choose one of the buttons above.')
+  if (input === 'yes') {
+    await sendText(phone, `Please state ${session.note.depName}'s chronic condition or treatment.`)
+    return setState(admin, session, 'CDEP_CHRONIC_DETAILS')
+  }
+  await patchNote(admin, session, { depChronic: 'no' })
+  return commitDependantPick(ctx)
+}
+
+const depChronicDetails: Handler = async (ctx) => {
+  const { input, phone, session, admin } = ctx
+  const d = input.trim()
+  if (d.length < 4 || d.length > 300) return sendText(phone, 'Please state the chronic condition or treatment briefly.')
+  await patchNote(admin, session, { depChronic: 'yes', depChronicDetails: d })
+  return commitDependantPick(ctx)
+}
+
+async function commitDependantPick(ctx: Ctx) {
+  const { session, admin, phone } = ctx
+  const products = await getActiveProducts(admin)
+  const p = products.find(x => x.id === session.note.depProductId)
+  if (!p) {
+    await deleteSession(admin, session)
+    return sendText(phone, 'That cover is no longer available — your session has been reset.')
+  }
   const n = session.note
   await patchNote(admin, session, {
     flow: 'new_dependant',
@@ -316,6 +415,7 @@ const depProduct: Handler = async (ctx) => {
       name: n.depName, nationalId: n.depNationalId, dob: n.depDob, gender: n.depGender,
       relationship: n.depRelationship, productId: p.id, productName: p.name,
       premium: p.premium, coverAmount: p.coverAmount,
+      ...(n.depChronic === 'yes' ? { hasChronicIllness: true, chronicIllnessDetails: n.depChronicDetails } : {}),
     },
     payLabel: `Dependant cover — ${n.depName} (${p.name})`,
   })
@@ -329,6 +429,7 @@ export const CLIENT_HANDLERS: Record<string, Handler> = {
   ...makeTail('CPAY'),
   CVIEW_SEL: viewSel,
   CADD_PRODUCT: addProduct, CADD_CHRONIC: addChronic, CADD_CHRONIC_DETAILS: addChronicDetails,
+  ...makeAgricultureHandlers('CADD', addAgricultureDone),
   ...makeTail('CADD'),
   CCLAIM_POLICY: claimPolicy,
   CCLAIM_DOC: claimDoc,
@@ -342,5 +443,7 @@ export const CLIENT_HANDLERS: Record<string, Handler> = {
   CDEP_REL: depRel,
   CDEP_POLICY: depPolicy,
   CDEP_PRODUCT: depProduct,
+  CDEP_CHRONIC: depChronic,
+  CDEP_CHRONIC_DETAILS: depChronicDetails,
   ...makeTail('CDEP'),
 }

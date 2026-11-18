@@ -7,7 +7,9 @@ export interface WaBotStatus {
   enabled: boolean
   configured: {
     accessToken: boolean; phoneNumberId: boolean; verifyToken: boolean
-    appSecret: boolean; paynow: boolean; ecocash: boolean; graphVersion: string
+    appSecret: boolean; paynow: boolean; ecocash: boolean
+    sessionsTable: boolean; inboundDedupe: boolean; documentsBucket: boolean
+    graphVersion: string
   }
   counts: { openSessions: number; sessions24h: number; policiesViaBot: number }
 }
@@ -19,6 +21,7 @@ export interface WaSessionRow {
   state: string
   note: Record<string, unknown> | null
   created_at: string
+  updated_at?: string
 }
 
 async function call<T>(body: Record<string, unknown>): Promise<{ data?: T; error?: string }> {

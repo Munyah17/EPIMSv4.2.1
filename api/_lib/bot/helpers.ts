@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { sendText } from './whatsapp.js'
 import { initiatePaynowPayment } from '../paynowInitiate.js'
 import { chargeEip, eipConfigured, normalizeMsisdn } from '../ecocashInstant.js'
+import { promotePendingPolicy } from './data.js'
 import { isZwNationalId } from '../zwFormats.js'
 
 export { normalizeNationalId } from '../zwFormats.js'
@@ -17,7 +18,15 @@ export const isNationalId = isZwNationalId
  *  leniency. The strict national-ID shape only binds policyholders. */
 export const isDependantId = (s: string) => { const v = s.trim(); return v.length >= 4 && v.length <= 40 }
 export const isEmail = (s: string) => /^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(s.trim())
-export const isEcocashPhone = (s: string) => /^2637[0-9]{8}$/.test(s.trim()) || /^07[17][0-9]{6}$/.test(s.trim())
+export const isEcocashPhone = (s: string) => {
+  const digits = s.replace(/\D/g, '')
+  const msisdn = digits.startsWith('00263') ? digits.slice(2)
+    : digits.startsWith('2630') ? `263${digits.slice(4)}`
+    : digits.startsWith('263') ? digits
+    : digits.startsWith('0') ? `263${digits.slice(1)}`
+    : digits
+  return /^2637[78][0-9]{7}$/.test(msisdn)
+}
 
 /** DD-MM-YYYY (what the Frappe bot asked for) -> ISO date, or null. */
 export function parseDob(s: string): string | null {
@@ -82,60 +91,70 @@ export async function sendPaymentInstruction(opts: {
   ecocashNumber?: string
   origin: string
   description?: string
+  email?: string
 }): Promise<void> {
-  const { admin, phone, policyId, reference, usdAmount, currency, methodIndex, ecocashNumber, origin, description } = opts
+  const { admin, phone, policyId, reference, usdAmount, currency, ecocashNumber, origin, description, email } = opts
+  let methodIndex = opts.methodIndex
+  let resolvedPolicyId = policyId
 
-  // Office payment — nothing remote to trigger. The payer gets the
-  // reference and the amount; staff record it in the IMS, which flips
-  // the policy active exactly like an online payment.
-  if (methodIndex === 2) {
+  const officePayment = async () => {
+    // If this is still a Paynow pending_policies row, move it into the
+    // staff-visible pending queue before giving manual instructions.
+    const promoted = await promotePendingPolicy(admin, resolvedPolicyId, 'Cash')
+    if (promoted) resolvedPolicyId = promoted.id
     await sendText(phone,
       `Pay at any Motions office by cash or bank transfer.\n\n` +
       `Amount: USD ${usdAmount.toFixed(2)}\nReference: ${reference}\n\n` +
       `Quote the reference when you pay — cover starts once the payment is recorded.`)
-    return
   }
 
-  const isEcoCash = methodIndex === 0
+  if (methodIndex === 2) return officePayment()
 
-  if (isEcoCash) {
-    if (!eipConfigured() || !ecocashNumber) {
-      await sendText(phone, 'EcoCash payments are not available right now — please choose another payment method.')
-      return
-    }
+  const canUseEcoCash = methodIndex === 0 && eipConfigured() && !!ecocashNumber
+  if (methodIndex === 0 && !canUseEcoCash) {
+    await sendText(phone, 'EcoCash is not available right now — opening the secure Paynow checkout instead.')
+    methodIndex = 1
+  }
+
+  if (methodIndex === 0) {
+    // Direct pushes are reconciled by staff, so the row must be a normal
+    // pending policy rather than a Paynow checkout row.
+    const promoted = await promotePendingPolicy(admin, resolvedPolicyId, 'EcoCash')
+    if (promoted) resolvedPolicyId = promoted.id
     const amount = currency === 'ZiG'
       ? Math.round(usdAmount * ((await zwgRate(admin)) ?? 0) * 100) / 100
       : usdAmount
     if (!amount) {
       await sendText(phone, 'ZiG payments are unavailable until an exchange rate is set on the portal.')
-      return
+      return officePayment()
     }
-    const { httpStatus, result, lookupUrl } = await chargeEip({
-      phone: normalizeMsisdn(ecocashNumber), amount, reference,
+    const { httpStatus, result } = await chargeEip({
+      phone: normalizeMsisdn(ecocashNumber!), amount, reference,
       description: (description ?? 'Insurance Premium').slice(0, 100),
     })
     const rejected = result.outcome === 'failed' || (httpStatus >= 400 && httpStatus < 500)
     if (rejected) {
       await sendText(phone, `EcoCash rejected the request: ${result.message ?? `HTTP ${httpStatus}`}`)
-      return
+      return officePayment()
     }
-    await sendText(phone,
-      `A payment request for ${currency} ${amount.toFixed(2)} has been pushed to ${ecocashNumber}.\n` +
-      `Check the EcoCash PIN prompt on that phone to complete payment.${lookupUrl ? '' : ''}`)
+    await sendText(phone, result.outcome === 'pending' || httpStatus >= 500
+      ? `EcoCash did not confirm the request for ${currency} ${amount.toFixed(2)}. Do not retry yet — quote reference ${reference} if you need support, and we will verify before recording payment.`
+      : `A payment request for ${currency} ${amount.toFixed(2)} has been pushed to ${ecocashNumber}.\nCheck the EcoCash PIN prompt on that phone to complete payment.`)
     return
   }
 
   const result = await initiatePaynowPayment({
-    reference, usdAmount, policyId, origin, admin,
+    reference, usdAmount, policyId: resolvedPolicyId, origin, admin,
     currency: currency === 'ZiG' ? 'ZWG' : 'USD',
     description: description ?? 'Insurance Premium',
+    email,
   })
   if (!result.ok || !result.redirectUrl) {
-    await sendText(phone, `Could not open a checkout: ${result.error ?? 'no link returned'}`)
-    return
+    await sendText(phone, `Could not open a checkout (${result.error ?? 'no link returned'}).`)
+    return officePayment()
   }
   await sendText(phone,
-    `Tap the link to pay ${result.currency === 'ZWG' ? 'ZiG' : 'USD'} ${result.amount?.toFixed(2)}:\n${result.redirectUrl}\n\nYour policy is activated once payment confirms.`)
+    `Tap the link to pay ${result.currency === 'ZWG' ? 'ZiG' : 'USD'} ${(result.amount ?? usdAmount).toFixed(2)}:\n${result.redirectUrl}\n\nYour policy is activated once payment confirms.`)
 }
 
 export function datePlusOneYear(): { start: string; end: string } {

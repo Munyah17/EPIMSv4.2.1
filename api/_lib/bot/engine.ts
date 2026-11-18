@@ -42,7 +42,8 @@ async function botEnabled(admin: SupabaseClient): Promise<boolean> {
 export async function dispatchMessage(admin: SupabaseClient, raw: {
   phone: string; input: string; username: string
 }): Promise<void> {
-  const { phone, input, username } = raw
+  const { phone, username } = raw
+  const input = raw.input.trim()
   try {
     if (!(await botEnabled(admin))) {
       console.error(`whatsapp bot: paused — inbound message from ${phone} dropped`)
@@ -59,6 +60,11 @@ export async function dispatchMessage(admin: SupabaseClient, raw: {
     }
     if (!session) {
       session = await createSession(admin, phone, contact.type, ENTRY_STATE[contact.type])
+    } else if (session.contact_type !== contact.type) {
+      // A staff/client classification can change while a session is open
+      // (new client row, agent phone update). Drop stale flow state before
+      // dispatching to the new audience's menu.
+      await resetSession(admin, session, ENTRY_STATE[contact.type], contact.type)
     }
 
     // 'exit' anywhere: wipe the working memory and drop to the main menu —

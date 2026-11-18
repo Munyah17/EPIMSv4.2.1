@@ -19,7 +19,10 @@
 export const EIP_BASE_URL = process.env.EIP_BASE_URL || 'https://developers.ecocash.co.zw/sandbox/payment/v1'
 
 export function eipConfigured(): boolean {
-  return !!(process.env.EIP_USERNAME && process.env.EIP_PASSWORD)
+  return !!(
+    process.env.EIP_USERNAME && process.env.EIP_PASSWORD &&
+    process.env.EIP_MERCHANT_CODE && process.env.EIP_MERCHANT_PIN && process.env.EIP_MERCHANT_NUMBER
+  )
 }
 
 export function eipIsSandbox(): boolean {
@@ -33,6 +36,8 @@ function authHeader(): string {
 /** EIP wants MSISDN as 263XXXXXXXXX. */
 export function normalizeMsisdn(phone: string): string {
   const digits = phone.replace(/\D/g, '')
+  // "00263XXXXXXXXX" — international dialling prefix dropped.
+  if (digits.startsWith('00263')) return digits.slice(2)
   // "2630XXXXXXXXX" — country code + trunk 0 kept — drops the 0.
   if (digits.startsWith('2630')) return `263${digits.slice(4)}`
   if (digits.startsWith('263')) return digits

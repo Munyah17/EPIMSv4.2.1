@@ -63,12 +63,18 @@ BEGIN
   INSERT INTO public.policies (
     policy_number, client_id, product_id, premium, cover_amount,
     start_date, end_date, dependants, payment_method, source,
-    grower_number, agent_id, status, created_at, updated_at
+    grower_number, contractor, hectarage, agent_id,
+    cover_scope, team_activity,
+    has_chronic_illness, chronic_illness_details,
+    status, created_at, updated_at
   )
   SELECT 
     policy_number, client_id, product_id, premium, cover_amount,
     start_date, end_date, dependants, payment_method, source,
-    grower_number, agent_id, 'active', NOW(), NOW()
+    grower_number, contractor, hectarage, agent_id,
+    cover_scope, team_activity,
+    has_chronic_illness, chronic_illness_details,
+    'active', NOW(), NOW()
   FROM public.pending_policies
   WHERE id = pending_id
   RETURNING id INTO new_policy_id;

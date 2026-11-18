@@ -1,4 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
+
+vi.mock('./health', () => ({
+  health: { record: vi.fn() },
+  isDevOrigin: () => false,
+}))
+
 import { sendSms, sendBulkSms, getSmsLog, clearSmsLog } from './smsService'
 
 /** Replies exactly as /api/gateway-proxy does when it relays Afrosoft. */
@@ -92,7 +98,7 @@ describe('smsService', () => {
 
   it('clearSmsLog() empties the log', async () => {
     mockGateway(SUCCESS('+263771234567'))
-    await sendSms('0771234567', 'Hello')
+    await sendSms('0771234567', 'Hello — log clear test')
     expect(getSmsLog().length).toBeGreaterThan(0)
     clearSmsLog()
     expect(getSmsLog()).toEqual([])

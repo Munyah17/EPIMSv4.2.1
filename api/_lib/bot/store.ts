@@ -11,7 +11,7 @@ export const SESSION_TTL_MINUTES = 60
 
 export async function findSession(admin: SupabaseClient, phone: string): Promise<WaSession | null> {
   const { data } = await admin.from('wa_sessions')
-    .select('id, phone_number, contact_type, state, note, is_expired, created_at')
+    .select('id, phone_number, contact_type, state, note, is_expired, created_at, updated_at')
     .eq('phone_number', phone).eq('is_expired', false)
     .order('created_at', { ascending: false }).limit(1).maybeSingle()
   return (data as WaSession | null) ?? null
@@ -20,13 +20,22 @@ export async function findSession(admin: SupabaseClient, phone: string): Promise
 export async function createSession(admin: SupabaseClient, phone: string, contactType: ContactType, state: string): Promise<WaSession> {
   const { data, error } = await admin.from('wa_sessions').insert({
     phone_number: phone, contact_type: contactType, state, note: {},
-  }).select('id, phone_number, contact_type, state, note, is_expired, created_at').single()
-  if (error) throw new Error(`Could not start a session: ${error.message}`)
+  }).select('id, phone_number, contact_type, state, note, is_expired, created_at, updated_at').single()
+  if (error) {
+    // Two inbound messages can race before the unique open-session index
+    // exists; the loser takes the row the winner just created.
+    if (error.code === '23505') {
+      const existing = await findSession(admin, phone)
+      if (existing) return existing
+    }
+    throw new Error(`Could not start a session: ${error.message}`)
+  }
   return data as WaSession
 }
 
 export function sessionExpired(s: WaSession): boolean {
-  return Date.now() - new Date(s.created_at).getTime() > SESSION_TTL_MINUTES * 60 * 1000
+  const lastActivity = new Date(s.updated_at ?? s.created_at).getTime()
+  return Date.now() - lastActivity > SESSION_TTL_MINUTES * 60 * 1000
 }
 
 export async function deleteSession(admin: SupabaseClient, s: WaSession): Promise<void> {
@@ -47,8 +56,11 @@ export async function patchNote(admin: SupabaseClient, s: WaSession, patch: Reco
 
 /** Full wipe — used on 'exit' so a stale note from a half-finished flow
  *  can't leak into the next conversation. */
-export async function resetSession(admin: SupabaseClient, s: WaSession, state: string): Promise<void> {
+export async function resetSession(admin: SupabaseClient, s: WaSession, state: string, contactType?: ContactType): Promise<void> {
   s.state = state
   s.note = {}
-  await admin.from('wa_sessions').update({ state, note: {}, updated_at: new Date().toISOString() }).eq('id', s.id)
+  if (contactType) s.contact_type = contactType
+  await admin.from('wa_sessions').update({
+    state, note: {}, contact_type: s.contact_type, updated_at: new Date().toISOString(),
+  }).eq('id', s.id)
 }

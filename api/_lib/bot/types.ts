@@ -15,6 +15,7 @@ export interface WaSession {
   note: Record<string, unknown>   // working memory across steps
   is_expired: boolean
   created_at: string
+  updated_at?: string
 }
 
 export interface BotClient {
@@ -23,6 +24,8 @@ export interface BotClient {
   phone: string
   nationalId: string
   email: string
+  /** profiles.id of the agent who introduced the client, when assigned. */
+  agentId?: string
 }
 
 export interface BotAgent {
@@ -44,11 +47,18 @@ export interface BotProduct {
 export interface BotPolicy {
   id: string                // policies.id (uuid) — paynow needs it
   policyNumber: string
+  /** products.id — needed for duplicate-product and dependant-plan rules. */
+  productId: string
   productName: string
+  productCategory: string
   premium: number
   coverAmount: number
   status: string
   nextPaymentDate?: string
+  /** individual/group/corporate/team, when group-cover columns exist. */
+  coverScope?: string
+  /** True for finite-term packages: no recurring payment prompt. */
+  onceOff?: boolean
   dependants: { name: string; relationship?: string; nationalId?: string; premium?: number }[]
 }
 

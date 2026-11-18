@@ -38,6 +38,20 @@ function signatureOk(body: Buffer, header: string | undefined): boolean {
   try { return timingSafeEqual(Buffer.from(header), Buffer.from(expected)) } catch { return false }
 }
 
+/** Meta retries an event if delivery is slow. `wa_inbound_events` is the
+ *  idempotency ledger: the first delivery inserts the message id; retries
+ *  hit the primary key and are acknowledged without replaying the flow.
+ *  If the migration has not been run yet the bot still works — dedupe is
+ *  protection, not a hard dependency. */
+async function firstDelivery(admin: NonNullable<ReturnType<typeof serviceClient>>, messageId: string, phone: string): Promise<boolean> {
+  if (!messageId) return true
+  const { error } = await admin.from('wa_inbound_events').insert({ message_id: messageId, phone_number: phone })
+  if (!error) return true
+  if (error.code === '23505') return false
+  console.error('whatsapp-webhook: inbound dedupe unavailable', error.message)
+  return true
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === 'GET') {
     const { 'hub.mode': mode, 'hub.verify_token': token, 'hub.challenge': challenge } = req.query
@@ -75,15 +89,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const value = change?.value
         const messages = value?.messages
         if (!Array.isArray(messages)) continue                    // statuses etc — ignore
-        const username = value?.contacts?.[0]?.profile?.name ?? ''
+        const contacts = Array.isArray(value?.contacts) ? value.contacts : []
         for (const m of messages) {
-          const phone = String(m.from ?? '')
+          const phone = String(m.from ?? '').replace(/\D/g, '')
+          const username = String(
+            contacts.find((c: { wa_id?: string; profile?: { name?: string } }) => String(c.wa_id ?? '') === phone)?.profile?.name
+            ?? contacts[0]?.profile?.name ?? '',
+          )
           let input: string | null = null
           if (m.type === 'text' && m.text?.body != null) input = String(m.text.body)
-          else if (m.type === 'document' && m.document) input = `filename: ${m.document.filename ?? 'file'} |||| id: ${m.document.id}`
+          else if (m.type === 'document' && m.document?.id) input = `filename: ${m.document.filename ?? 'document'} |||| id: ${m.document.id}`
+          else if (m.type === 'image' && m.image?.id) input = `filename: ${m.image.caption ? `${m.image.caption}.jpg` : 'claim-photo.jpg'} |||| id: ${m.image.id}`
           else if (m.type === 'interactive' && m.interactive?.button_reply) input = String(m.interactive.button_reply.id)
           else if (m.type === 'interactive' && m.interactive?.list_reply) input = String(m.interactive.list_reply.id)
-          if (input === null || !phone) continue
+          if (input === null || !/^\d{7,15}$/.test(phone)) continue
+          if (!(await firstDelivery(admin, String(m.id ?? ''), phone))) continue
           await dispatchMessage(admin, { phone, input, username })
         }
       }

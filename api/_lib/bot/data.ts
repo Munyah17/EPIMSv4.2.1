@@ -1,7 +1,9 @@
+import { randomUUID } from 'node:crypto'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { BotClient, BotAgent, BotProduct, BotPolicy, Contact } from './types.js'
 import { normalizeNationalId } from '../zwFormats.js'
 import { fetchAllRows } from '../../../src/lib/paged.js'
+import { downloadMedia } from './whatsapp.js'
 
 /**
  * The bot's data layer — every function the Frappe version asked
@@ -36,7 +38,7 @@ async function agentByPhone(admin: SupabaseClient, phone: string): Promise<BotAg
 
 export async function clientByPhone(admin: SupabaseClient, phone: string): Promise<BotClient | null> {
   const { data } = await admin.from('clients')
-    .select('id, name, phone, national_id, email')
+    .select('id, name, phone, national_id, email, agent_id')
     .ilike('phone', `%${phoneSuffix(phone)}`)
     .limit(1).maybeSingle()
   return data ? toBotClient(data) : null
@@ -47,14 +49,18 @@ export async function clientByNationalId(admin: SupabaseClient, nationalId: stri
   // canonical form and the raw text both match the same person.
   const raw = nationalId.trim()
   const { data } = await admin.from('clients')
-    .select('id, name, phone, national_id, email')
+    .select('id, name, phone, national_id, email, agent_id')
     .in('national_id', [...new Set([normalizeNationalId(raw), raw])])
     .limit(1).maybeSingle()
   return data ? toBotClient(data) : null
 }
 
 function toBotClient(r: Record<string, unknown>): BotClient {
-  return { id: r.id as string, name: r.name as string, phone: r.phone as string, nationalId: (r.national_id as string) ?? '', email: (r.email as string) ?? '' }
+  return {
+    id: r.id as string, name: r.name as string, phone: r.phone as string,
+    nationalId: (r.national_id as string) ?? '', email: (r.email as string) ?? '',
+    agentId: (r.agent_id as string | null) ?? undefined,
+  }
 }
 
 /** Agent first, then client, then unknown — same order as
@@ -83,27 +89,34 @@ export async function getActiveProducts(admin: SupabaseClient): Promise<BotProdu
   }))
 }
 
+function toBotPolicy(r: Record<string, unknown>, status?: string): BotPolicy {
+  const product = r.products as { name?: string; category?: string } | null
+  return {
+    id: r.id as string, policyNumber: r.policy_number as string,
+    productId: (r.product_id as string) ?? '', productName: product?.name ?? '', productCategory: product?.category ?? '',
+    premium: Number(r.premium), coverAmount: Number(r.cover_amount),
+    status: status ?? r.status as string,
+    nextPaymentDate: r.next_payment_date ? String(r.next_payment_date).slice(0, 10) : undefined,
+    coverScope: (r.cover_scope as string | null) ?? undefined,
+    onceOff: r.once_off === true,
+    dependants: Array.isArray(r.dependants) ? r.dependants as BotPolicy['dependants'] : [],
+  }
+}
+
 export async function policiesForClient(admin: SupabaseClient, clientId: string): Promise<BotPolicy[]> {
   const { data } = await fetchAllRows(
     () => admin.from('policies')
-      .select('id, policy_number, premium, cover_amount, status, dependants, next_payment_date, products(name)')
+      .select('id, policy_number, product_id, premium, cover_amount, status, dependants, next_payment_date, cover_scope, once_off, products(name, category)')
       .eq('client_id', clientId),
     { orderBy: 'id' },
   )
-  return (data ?? []).map(r => ({
-    id: r.id as string, policyNumber: r.policy_number as string,
-    productName: (r.products as { name?: string } | null)?.name ?? '',
-    premium: Number(r.premium), coverAmount: Number(r.cover_amount),
-    status: r.status as string,
-    nextPaymentDate: r.next_payment_date ? String(r.next_payment_date).slice(0, 10) : undefined,
-    dependants: Array.isArray(r.dependants) ? r.dependants as BotPolicy['dependants'] : [],
-  }))
+  return (data ?? []).map(r => toBotPolicy(r as Record<string, unknown>))
 }
 
 export async function clientsOfAgent(admin: SupabaseClient, agentId: string): Promise<BotClient[]> {
   const { data } = await fetchAllRows(
     () => admin.from('clients')
-      .select('id, name, phone, national_id, email')
+      .select('id, name, phone, national_id, email, agent_id')
       .eq('agent_id', agentId).order('name'),
     { orderBy: 'id' },
   )
@@ -118,7 +131,7 @@ export async function commissionForAgent(admin: SupabaseClient, agentId: string)
   if (!clients.length) return { rows: [], total: 0 }
   const { data } = await fetchAllRows(
     () => admin.from('policies')
-      .select('policy_number, premium, status, products(name, commission_pct)')
+      .select('policy_number, premium, status, dependants, cover_scope, once_off, products(name, category, commission_pct)')
       .in('client_id', clients.map(c => c.id))
       .in('status', ['active', 'waiting_period']),
     { orderBy: 'id' },
@@ -126,11 +139,21 @@ export async function commissionForAgent(admin: SupabaseClient, agentId: string)
   const rows: string[] = []
   let total = 0
   for (const p of data ?? []) {
-    const prod = p.products as { name?: string; commission_pct?: number } | null
+    const prod = p.products as { name?: string; category?: string; commission_pct?: number } | null
     const pct = Number(prod?.commission_pct ?? 0)
-    const amount = Math.round(Number(p.premium) * pct) / 100
+    const named = Array.isArray(p.dependants)
+      ? (p.dependants as { name?: string; premium?: number }[]).filter(d => (d.name ?? '').trim())
+      : []
+    const memberPremium = (d: { premium?: number }) => Number(d.premium) > 0 ? Number(d.premium) : Number(p.premium)
+    const billed = p.cover_scope === 'corporate' || p.cover_scope === 'group' || p.cover_scope === 'team' || p.once_off
+      ? named.reduce((sum, d) => sum + memberPremium(d), 0)
+      : prod?.category === 'agriculture'
+        ? Number(p.premium)
+        : Number(p.premium) + named.reduce((sum, d) => sum + memberPremium(d), 0)
+    const amount = Math.round(billed * pct) / 100
     total += amount
-    rows.push(`${p.policy_number} (${prod?.name ?? 'policy'}): ${pct}% of $${Number(p.premium).toFixed(2)} = $${amount.toFixed(2)}/mo`)
+    const period = p.once_off ? 'term' : prod?.category === 'agriculture' ? 'yr' : 'mo'
+    rows.push(`${p.policy_number} (${prod?.name ?? 'policy'}): ${pct}% of $${billed.toFixed(2)} = $${amount.toFixed(2)}/${period}`)
   }
   return { rows, total }
 }
@@ -180,7 +203,8 @@ export async function createClient(admin: SupabaseClient, c: {
     email: c.email ?? '', dob: c.dob || null, gender: c.gender ?? null,
     address: '', status: 'active',
     agent_id: c.agentId ?? null,
-  }).select('id, name, phone, national_id, email').single()
+    captured_by: c.agentId ?? null,
+  }).select('id, name, phone, national_id, email, agent_id').single()
   if (error) throw new Error(`Could not save the client: ${error.message}`)
   return toBotClient(data)
 }
@@ -192,24 +216,28 @@ export async function createPolicy(admin: SupabaseClient, p: {
   /** Medical declaration — required by the caller for health-category
    *  products (portal validates before this is ever invoked). */
   hasChronicIllness?: boolean; chronicIllnessDetails?: string
+  /** Agriculture underwriting fields — hectarage is required by the portal. */
+  growerNumber?: string; contractor?: string; hectarage?: number
 }): Promise<BotPolicy> {
+  if (p.product.category === 'agriculture' && !(Number(p.hectarage) > 0)) {
+    throw new Error('Agriculture cover requires a planted hectarage.')
+  }
   const policyNumber = await nextPolicyNumber(admin, p.product)
   const { data, error } = await admin.from('policies').insert({
     policy_number: policyNumber, client_id: p.clientId, product_id: p.product.id,
     premium: p.product.premium, cover_amount: p.product.coverAmount,
     start_date: p.startDate, end_date: p.endDate, status: 'pending',
     dependants: [], payment_method: p.paymentMethod,
-    agent_id: p.agentId ?? null, source: p.source ?? 'whatsapp_chatbot',
+    agent_id: p.agentId ?? null, captured_by: p.agentId ?? null,
+    source: p.source ?? 'whatsapp_chatbot',
     has_chronic_illness: p.hasChronicIllness ?? null,
     chronic_illness_details: p.chronicIllnessDetails ?? null,
-  }).select('id, policy_number, premium, cover_amount, status, dependants, products(name)').single()
+    grower_number: p.growerNumber ?? null,
+    contractor: p.contractor ?? null,
+    hectarage: p.hectarage ?? null,
+  }).select('id, policy_number, product_id, premium, cover_amount, status, dependants, products(name, category)').single()
   if (error) throw new Error(`Could not save the policy: ${error.message}`)
-  return {
-    id: data.id as string, policyNumber: data.policy_number as string,
-    productName: (data.products as { name?: string } | null)?.name ?? '',
-    premium: Number(data.premium), coverAmount: Number(data.cover_amount),
-    status: data.status as string, dependants: [],
-  }
+  return toBotPolicy(data as Record<string, unknown>)
 }
 
 /** Create a policy in the pending_policies table - used for website signups
@@ -220,7 +248,12 @@ export async function createPendingPolicy(admin: SupabaseClient, p: {
   source?: string
   /** Medical declaration — required by the caller for health-category products. */
   hasChronicIllness?: boolean; chronicIllnessDetails?: string
+  /** Agriculture underwriting fields — hectarage is required by the portal. */
+  growerNumber?: string; contractor?: string; hectarage?: number
 }): Promise<BotPolicy> {
+  if (p.product.category === 'agriculture' && !(Number(p.hectarage) > 0)) {
+    throw new Error('Agriculture cover requires a planted hectarage.')
+  }
   const policyNumber = await nextPolicyNumber(admin, p.product)
   const { data, error } = await admin.from('pending_policies').insert({
     policy_number: policyNumber, client_id: p.clientId, product_id: p.product.id,
@@ -230,37 +263,65 @@ export async function createPendingPolicy(admin: SupabaseClient, p: {
     agent_id: p.agentId ?? null, source: p.source ?? 'motions_website',
     has_chronic_illness: p.hasChronicIllness ?? null,
     chronic_illness_details: p.chronicIllnessDetails ?? null,
-  }).select('id, policy_number, premium, cover_amount, dependants, products(name)').single()
+    grower_number: p.growerNumber ?? null,
+    contractor: p.contractor ?? null,
+    hectarage: p.hectarage ?? null,
+  }).select('id, policy_number, product_id, premium, cover_amount, dependants, products(name, category)').single()
   if (error) throw new Error(`Could not save the pending policy: ${error.message}`)
-  return {
-    id: data.id as string, policyNumber: data.policy_number as string,
-    productName: (data.products as { name?: string } | null)?.name ?? '',
-    premium: Number(data.premium), coverAmount: Number(data.cover_amount),
-    status: 'pending', dependants: [],
-  }
+  return toBotPolicy(data as Record<string, unknown>, 'pending')
 }
 
 /** Check for existing pending policies for a client */
 export async function pendingPoliciesForClient(admin: SupabaseClient, clientId: string): Promise<BotPolicy[]> {
   const { data } = await admin.from('pending_policies')
-    .select('id, policy_number, premium, cover_amount, dependants, products(name)')
+    .select('id, policy_number, product_id, premium, cover_amount, dependants, products(name, category)')
     .eq('client_id', clientId)
-  return (data ?? []).map(r => ({
-    id: r.id as string, policyNumber: r.policy_number as string,
-    productName: (r.products as { name?: string } | null)?.name ?? '',
-    premium: Number(r.premium), coverAmount: Number(r.cover_amount),
-    status: 'pending',
-    dependants: Array.isArray(r.dependants) ? r.dependants as BotPolicy['dependants'] : [],
-  }))
+  return (data ?? []).map(r => toBotPolicy(r as Record<string, unknown>, 'pending'))
 }
 
-/** Policyholder plus every named dependant — blank form rows are not billed. */
+/** Move a pending row back into the normal pending-policy queue when the
+ *  payer switches away from Paynow (EcoCash push or office/cash). Staff can
+ *  then approve and record it in the same place as every other pending sale. */
+export async function promotePendingPolicy(admin: SupabaseClient, pendingId: string, paymentMethod?: string): Promise<BotPolicy | null> {
+  const { data: pending } = await admin.from('pending_policies')
+    .select('id, policy_number, client_id, product_id, premium, cover_amount, start_date, end_date, dependants, payment_method, source, grower_number, contractor, hectarage, agent_id, cover_scope, team_activity, has_chronic_illness, chronic_illness_details, products(name, category)')
+    .eq('id', pendingId).maybeSingle()
+  if (!pending) return null
+  const { data: policy, error } = await admin.from('policies').insert({
+    policy_number: pending.policy_number,
+    client_id: pending.client_id, product_id: pending.product_id,
+    premium: pending.premium, cover_amount: pending.cover_amount,
+    start_date: pending.start_date, end_date: pending.end_date,
+    dependants: pending.dependants ?? [],
+    payment_method: paymentMethod ?? pending.payment_method, source: pending.source,
+    grower_number: pending.grower_number, contractor: pending.contractor,
+    hectarage: pending.hectarage, agent_id: pending.agent_id,
+    cover_scope: pending.cover_scope, team_activity: pending.team_activity,
+    has_chronic_illness: pending.has_chronic_illness,
+    chronic_illness_details: pending.chronic_illness_details,
+    status: 'pending', next_payment_date: new Date().toISOString().slice(0, 10),
+  }).select('id, policy_number, product_id, premium, cover_amount, status, dependants, cover_scope, once_off, products(name, category)').single()
+  if (error) throw new Error(`Could not move the pending policy to staff review: ${error.message}`)
+  await admin.from('pending_policies').delete().eq('id', pendingId)
+  return toBotPolicy(policy as Record<string, unknown>)
+}
+
+/** What one billing period costs — the server-side twin of
+ *  src/lib/premium.ts. Agriculture bills the crop once; group/corporate/
+ *  team and once-off packages bill only the roster members the organisation
+ *  named; ordinary products bill the policyholder plus every named
+ *  dependant. Blank roster rows are never billed. */
 export function botBillablePremium(policy: BotPolicy): number {
   const named = policy.dependants.filter(d => (d.name ?? '').trim().length > 0)
-  const total = named.reduce((sum, d) => {
+  const memberPremium = (d: BotPolicy['dependants'][number]) => {
     const p = Number(d.premium)
-    return sum + (Number.isFinite(p) && p > 0 ? p : policy.premium)
-  }, policy.premium)
+    return Number.isFinite(p) && p > 0 ? p : policy.premium
+  }
+  if (policy.coverScope === 'corporate' || policy.coverScope === 'group' || policy.coverScope === 'team' || policy.onceOff) {
+    return Math.round(named.reduce((sum, d) => sum + memberPremium(d), 0) * 100) / 100
+  }
+  if (policy.productCategory === 'agriculture') return Math.round(policy.premium * 100) / 100
+  const total = named.reduce((sum, d) => sum + memberPremium(d), policy.premium)
   return Math.round(total * 100) / 100
 }
 
@@ -272,25 +333,66 @@ export async function completedPaymentsForPolicy(admin: SupabaseClient, policyId
   return (data ?? []).map(r => ({ amount: Number(r.amount) || 0, date: String(r.payment_date ?? '').slice(0, 10) }))
 }
 
-/** Append a dependant to a policy's JSONB dependants array. */
+/** Append a dependant to a policy's JSONB dependants array. The same ID /
+ *  birth-record number cannot be added twice. */
 export async function addDependant(admin: SupabaseClient, policyId: string, dependant: Record<string, unknown>): Promise<void> {
   const { data: pol } = await admin.from('policies').select('dependants').eq('id', policyId).single()
-  const list = Array.isArray(pol?.dependants) ? (pol!.dependants as unknown[]) : []
+  const list = Array.isArray(pol?.dependants) ? (pol!.dependants as Record<string, unknown>[]) : []
+  const incomingId = normalizeNationalId(String(dependant.nationalId ?? ''))
+  if (incomingId && list.some(d => normalizeNationalId(String(d.nationalId ?? '')) === incomingId)) {
+    throw new Error('That dependant is already on this policy.')
+  }
   const { error } = await admin.from('policies').update({ dependants: [...list, dependant] }).eq('id', policyId)
   if (error) throw new Error(`Could not add the dependant: ${error.message}`)
 }
 
-/** A WhatsApp-filed claim — intake stage, staff enrich it on the portal. */
-export async function createClaim(admin: SupabaseClient, c: {
-  policyId: string; description: string; documents?: unknown
+/** Staff-visible work item for a dependant-removal request — the bot never
+ *  deletes cover silently. */
+export async function createDependantRemovalTask(admin: SupabaseClient, opts: {
+  client: BotClient; policy: BotPolicy; dependant: BotPolicy['dependants'][number]
 }): Promise<void> {
+  const { error } = await admin.from('tasks').insert({
+    title: `Remove dependant from ${opts.policy.policyNumber}`,
+    description:
+      `Requested through WhatsApp.\n\n` +
+      `Client: ${opts.client.name} (${opts.client.nationalId})\n` +
+      `Dependant: ${opts.dependant.name} (${opts.dependant.nationalId ?? 'no id'})\n` +
+      `Policy: ${opts.policy.policyNumber} — ${opts.policy.productName}\n\n` +
+      `Verify the request, remove the dependant only after staff approval, then tell the policyholder.`,
+    priority: 'medium', status: 'open', assignee_id: null, assignee_name: '',
+    created_by: null, created_by_name: 'WhatsApp Bot', due_date: null,
+  })
+  if (error) throw new Error(`Could not send the removal request: ${error.message}`)
+}
+
+/** Download a WhatsApp attachment and put it in the private documents
+ *  bucket under the claim id. Returns the path to store in claims.documents. */
+export async function storeClaimMedia(admin: SupabaseClient, claimId: string, mediaId: string, filename: string): Promise<string> {
+  const media = await downloadMedia(mediaId, filename)
+  const path = `claims/${claimId}/${Date.now()}-${media.filename}`
+  const { error } = await admin.storage.from('documents').upload(path, media.bytes, {
+    contentType: media.mimeType, upsert: false,
+  })
+  if (error) throw new Error(`Could not store the claim attachment: ${error.message}`)
+  return path
+}
+
+/** A WhatsApp-filed claim — intake stage, staff enrich it on the portal.
+ *  `id` is generated before the media is downloaded so the stored file can
+ *  sit under documents/claims/<claim id>/, the same path rule the portal's
+ *  signed-document reader expects. */
+export async function createClaim(admin: SupabaseClient, c: {
+  id?: string; policyId: string; description: string; documents?: string[]
+}): Promise<string> {
+  const id = c.id ?? randomUUID()
   const claimNumber = `CLM${new Date().getFullYear()}${String(Date.now()).slice(-4)}${Math.random().toString(36).slice(2, 5).toUpperCase()}`
   const { error } = await admin.from('claims').insert({
-    claim_number: claimNumber, policy_id: c.policyId, claim_type: 'general',
-    amount: 0, status: 'submitted', stage: 'intake',
+    id, claim_number: claimNumber, policy_id: c.policyId, claim_type: 'general',
+    amount: 0, status: 'pending', stage: 'intake',
     date_of_event: new Date().toISOString().slice(0, 10),
     date_submitted: new Date().toISOString(),
     description: c.description, fraud_score: 0, documents: c.documents ?? [],
   })
   if (error) throw new Error(`Could not file the claim: ${error.message}`)
+  return id
 }

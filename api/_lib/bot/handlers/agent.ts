@@ -1,11 +1,16 @@
 import type { Handler, Ctx, BotProduct } from '../types.js'
 import { sendText, sendButtons } from '../whatsapp.js'
 import { setState, patchNote, deleteSession } from '../store.js'
-import { getActiveProducts, policiesForClient, clientByNationalId, clientsOfAgent, commissionForAgent, botBillablePremium, completedPaymentsForPolicy } from '../data.js'
-import { settlement, defaultCharge } from '../../../src/lib/paymentAllocation.js'
+import { getActiveProducts, policiesForClient, pendingPoliciesForClient, clientByNationalId, clientsOfAgent, commissionForAgent, botBillablePremium, completedPaymentsForPolicy } from '../data.js'
+import { settlement, defaultCharge } from '../../../../src/lib/paymentAllocation.js'
 import { isFullName, isNationalId, isDependantId, isEmail, parseDob, pickIndex, normalizeNationalId } from '../helpers.js'
 import { makeTail, startTail } from '../tail.js'
 import { coverLabel } from '../../coverBreakdown.js'
+import {
+  RELATIONSHIPS, PERSON_CATEGORIES, payablePolicies, claimablePolicies,
+  periodNoun, billingCycleMonths, policyLine,
+  askAgricultureFields, makeAgricultureHandlers,
+} from './flowHelpers.js'
 
 /**
  * Agent menu — the Frappe AGENT_HANDLER_MAP.
@@ -15,11 +20,9 @@ import { coverLabel } from '../../coverBreakdown.js'
  *   2. Add New Dependant  -> sponsor's national ID -> sponsor policy ->
  *                          dependant wizard -> tail
  *   3. View Clients       -> clients where agent_id = their profile
- *   4. Commission         -> stub (same as Frappe)
- *   5. Make Payment       -> client's national ID -> policy -> months -> tail
+ *   4. Commission         -> billable premium x commission_pct on live book
+ *   5. Make Payment       -> client's national ID -> policy -> periods -> tail
  */
-
-const RELATIONSHIPS = ['Spouse', 'Child', 'Parent', 'Sibling', 'Grandparent', 'Grandchild', 'Other']
 
 const MENU = (u: string) =>
   `Hello${u ? ` ${u}` : ''}! Select an option\n\n` +
@@ -138,6 +141,16 @@ const acProduct: Handler = async (ctx) => {
       [{ id: 'no', title: 'No' }, { id: 'yes', title: 'Yes' }])
     return setState(admin, session, 'AC_CHRONIC')
   }
+  if (p.category === 'agriculture') return askAgricultureFields(ctx, 'AC')
+  return startTail(ctx, 'AC', p.premium)
+}
+
+const acAgricultureDone: Handler = async (ctx) => {
+  const p = (await getActiveProducts(ctx.admin)).find(x => x.id === ctx.session.note.productId)
+  if (!p) {
+    await deleteSession(ctx.admin, ctx.session)
+    return sendText(ctx.phone, 'That product is no longer available — your session has been reset.')
+  }
   return startTail(ctx, 'AC', p.premium)
 }
 
@@ -166,25 +179,34 @@ const acChronicDetails: Handler = async (ctx) => {
 
 /* ------------------------- 2. Add New Dependant ---------------------------- */
 
-const adHolderId: Handler = async ({ input, phone, session, admin }) => {
+const adHolderId: Handler = async ({ input, phone, session, admin, contact }) => {
   if (!isNationalId(input)) return sendText(phone, 'Please enter a valid national ID (e.g. 632118532K12).')
   const holder = await clientByNationalId(admin, input)
   if (!holder) return sendText(phone, 'No client with that national ID exists (send exit to cancel).')
+  if (holder.agentId && holder.agentId !== contact.agent!.id) {
+    await deleteSession(admin, session)
+    return sendText(phone, `${holder.name} is assigned to another agent. A secondary-agent request needs office approval before you can change their policy.`)
+  }
   await patchNote(admin, session, { holderId: holder.id, holderName: holder.name })
-  const policies = await policiesForClient(admin, holder.id)
+  const policies = claimablePolicies(await policiesForClient(admin, holder.id))
+    .filter(p => PERSON_CATEGORIES.includes(p.productCategory))
   if (!policies.length) {
     await deleteSession(admin, session)
-    return sendText(phone, `${holder.name} has no policies to attach a dependant to.`)
+    return sendText(phone, `${holder.name} has no person-cover policy to attach a dependant to.`)
   }
   await sendText(phone, `Select ${holder.name}'s policy\n\n${policies.map((p, i) => `${i + 1}. ${p.policyNumber} — ${p.productName}`).join('\n')}`)
   return setState(admin, session, 'AD_POLICY')
 }
 
 const adPolicy: Handler = async ({ input, phone, session, admin }) => {
-  const policies = await policiesForClient(admin, String(session.note.holderId))
+  const policies = claimablePolicies(await policiesForClient(admin, String(session.note.holderId)))
+    .filter(p => PERSON_CATEGORIES.includes(p.productCategory))
   const pick = pickIndex(input, policies.length)
   if (pick === null) return sendText(phone, 'Please select one of the policies above.')
-  await patchNote(admin, session, { depPolicyId: policies[pick].id, depPolicyNumber: policies[pick].policyNumber })
+  await patchNote(admin, session, {
+    depPolicyId: policies[pick].id, depPolicyNumber: policies[pick].policyNumber,
+    depPolicyCategory: policies[pick].productCategory,
+  })
   await sendText(phone, "*Please only register relatives.*\n\nEnter the dependant's full name.")
   return setState(admin, session, 'AD_NAME')
 }
@@ -236,14 +258,18 @@ const adRel: Handler = async ({ input, phone, session, admin }) => {
   const pick = pickIndex(input, RELATIONSHIPS.length)
   if (pick === null) return sendText(phone, 'Please select one of the relationships above.')
   await patchNote(admin, session, { depRelationship: RELATIONSHIPS[pick] })
-  const products = await getActiveProducts(admin)
-  await sendText(phone, `Select the dependant's cover\n\n${products.map((p, i) => `${i + 1}. ${p.name} [$${p.premium}/month]`).join('\n')}`)
+  const products = (await getActiveProducts(admin)).filter(p => p.category === session.note.depPolicyCategory)
+  if (!products.length) {
+    await deleteSession(admin, session)
+    return sendText(phone, 'No matching dependant cover is available for that policy right now.')
+  }
+  await sendText(phone, `Select the dependant's cover\n\n${products.map((p, i) => `${i + 1}. ${p.name} [$${p.premium}/mo]`).join('\n')}`)
   return setState(admin, session, 'AD_PRODUCT')
 }
 
 const adProduct: Handler = async (ctx) => {
   const { input, phone, session, admin } = ctx
-  const products = await getActiveProducts(admin)
+  const products = (await getActiveProducts(admin)).filter(p => p.category === session.note.depPolicyCategory)
   const pick = pickIndex(input, products.length)
   if (pick === null) return sendText(phone, 'Please select one of the products above.')
   const p = products[pick]
@@ -286,7 +312,7 @@ const adChronicDetails: Handler = async (ctx) => {
 }
 
 async function commitDependantPick(ctx: Ctx, p: BotProduct) {
-  const { phone, session, admin } = ctx
+  const { session, admin } = ctx
   const n = session.note
   await patchNote(admin, session, {
     flow: 'new_dependant',
@@ -317,51 +343,68 @@ const viewClients: Handler = async ({ phone, admin, contact }) => {
 const commission: Handler = async ({ phone, admin, contact }) => {
   const { rows, total } = await commissionForAgent(admin, contact.agent!.id)
   return sendText(phone, rows.length
-    ? `Your commission book (per month)\n\n${rows.join('\n')}\n\nTotal: $${total.toFixed(2)}/month`
+    ? `Your commission book\n\n${rows.join('\n')}\n\nTotal for the listed billing periods: $${total.toFixed(2)}`
     : 'No live policies on your book yet — commission shows here once your clients are covered.')
 }
 
 /* --------------------------- 5. Make Payment ------------------------------ */
 
-const apayId: Handler = async ({ input, phone, session, admin }) => {
+const apayId: Handler = async ({ input, phone, session, admin, contact }) => {
   if (!isNationalId(input)) return sendText(phone, 'Please enter a valid national ID (e.g. 632118532K12).')
   const client = await clientByNationalId(admin, input)
   if (!client) return sendText(phone, 'No client with that national ID exists (send exit to cancel).')
+  if (client.agentId && client.agentId !== contact.agent!.id) {
+    await deleteSession(admin, session)
+    return sendText(phone, `${client.name} is assigned to another agent. Office approval is required before collecting on their policy.`)
+  }
   await patchNote(admin, session, { payClientId: client.id, payClientName: client.name })
-  const policies = await policiesForClient(admin, client.id)
+  const policies = payablePolicies([
+    ...(await policiesForClient(admin, client.id)),
+    ...(await pendingPoliciesForClient(admin, client.id)),
+  ])
   if (!policies.length) {
     await deleteSession(admin, session)
-    return sendText(phone, `${client.name} has no policies to pay for.`)
+    return sendText(phone, `${client.name} has no policies that need payment.`)
   }
-  await sendText(phone, `Select ${client.name}'s policy\n\n${policies.map((p, i) => `${i + 1}. ${p.policyNumber} — ${p.productName} ($${botBillablePremium(p).toFixed(2)}/month, ${p.status})`).join('\n')}`)
+  await sendText(phone, `Select ${client.name}'s policy\n\n${policies.map(policyLine).join('\n')}`)
   return setState(admin, session, 'APAY_POLICY')
 }
 
-const apayPolicy: Handler = async ({ input, phone, session, admin }) => {
-  const policies = await policiesForClient(admin, String(session.note.payClientId))
+const apayPolicy: Handler = async (ctx) => {
+  const { input, phone, session, admin } = ctx
+  const policies = payablePolicies([
+    ...(await policiesForClient(admin, String(session.note.payClientId))),
+    ...(await pendingPoliciesForClient(admin, String(session.note.payClientId))),
+  ])
   const pick = pickIndex(input, policies.length)
   if (pick === null) return sendText(phone, 'Please select one of the policies above.')
   const p = policies[pick]
-  await patchNote(admin, session, { flow: 'pay_policy', payPolicyId: p.id, payPolicyNumber: p.policyNumber, policyPremium: botBillablePremium(p), nextPaymentDate: p.nextPaymentDate })
-  await sendText(phone, `How many months of ${p.policyNumber}? (1–12)`)
+  await patchNote(admin, session, { flow: 'pay_policy', payPolicyId: p.id, payPolicyNumber: p.policyNumber, policyPremium: botBillablePremium(p), nextPaymentDate: p.nextPaymentDate, billingCycleMonths: billingCycleMonths(p) })
+  if (p.onceOff) {
+    await patchNote(admin, session, { months: 1, payLabel: `${p.policyNumber} package term` })
+    return startTail(ctx, 'APAY', botBillablePremium(p))
+  }
+  await sendText(phone, `How many ${periodNoun(p)}s of ${p.policyNumber}? (1–12)`)
   return setState(admin, session, 'APAY_MONTHS')
 }
 
 const apayMonths: Handler = async (ctx) => {
   const { input, phone, session, admin } = ctx
-  const months = Number(input.trim())
-  if (!Number.isInteger(months) || months < 1 || months > 12) return sendText(phone, 'Please enter a number between 1 and 12.')
+  const periods = Number(input.trim())
+  if (!Number.isInteger(periods) || periods < 1 || periods > 12) return sendText(phone, 'Please enter a number between 1 and 12.')
   const perPeriod = Number(session.note.policyPremium ?? 0)
   const pays = session.note.payPolicyId
     ? await completedPaymentsForPolicy(admin, String(session.note.payPolicyId))
     : []
-  const due = settlement(perPeriod, 1, session.note.nextPaymentDate as string | undefined, pays)
-  const amount = defaultCharge(due, months)
+  const cycleMonths = Number(session.note.billingCycleMonths ?? 1)
+  const unit = cycleMonths === 12 ? 'year' : 'month'
+  const due = settlement(perPeriod, cycleMonths, session.note.nextPaymentDate as string | undefined, pays)
+  const amount = defaultCharge(due, periods)
   await patchNote(admin, session, {
-    months,
-    payLabel: due.isUpgrade && months === 1
+    months: periods,
+    payLabel: due.isUpgrade && periods === 1
       ? `${session.note.payPolicyNumber} (${session.note.payClientName}) dependant top-up`
-      : `${session.note.payPolicyNumber} (${session.note.payClientName}) x ${months} month${months === 1 ? '' : 's'}`,
+      : `${session.note.payPolicyNumber} (${session.note.payClientName}) x ${periods} ${unit}${periods === 1 ? '' : 's'}`,
   })
   return startTail(ctx, 'APAY', amount)
 }
@@ -371,6 +414,7 @@ export const AGENT_HANDLERS: Record<string, Handler> = {
   AC_NAME: acName, AC_ID: acId, AC_GENDER: acGender, AC_GENDER_OTHER: acGenderOther,
   AC_DOB: acDob, AC_EMAIL: acEmail, AC_PHONE: acPhone, AC_PRODUCT: acProduct,
   AC_CHRONIC: acChronic, AC_CHRONIC_DETAILS: acChronicDetails,
+  ...makeAgricultureHandlers('AC', acAgricultureDone),
   ...makeTail('AC'),
   AD_HOLDER_ID: adHolderId, AD_POLICY: adPolicy, AD_NAME: adName, AD_ID: adId,
   AD_GENDER: adGender, AD_GENDER_OTHER: adGenderOther, AD_DOB: adDob,

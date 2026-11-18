@@ -1,10 +1,11 @@
-import type { Handler } from '../types.js'
+import type { Handler, BotPolicy } from '../types.js'
 import { sendText, sendButtons } from '../whatsapp.js'
 import { setState, patchNote, deleteSession } from '../store.js'
-import { getActiveProducts, createClient, createPolicy } from '../data.js'
-import { isFullName, isNationalId, isEmail, parseDob, isEcocashPhone, pickIndex, PAYMENT_METHODS, methodMenu, sendPaymentInstruction, normalizeNationalId } from '../helpers.js'
+import { getActiveProducts, createClient, createPolicy, createPendingPolicy, clientByNationalId } from '../data.js'
+import { isFullName, isNationalId, isEmail, parseDob, isEcocashPhone, pickIndex, PAYMENT_METHODS, PORTAL_METHOD_NAMES, methodMenu, sendPaymentInstruction, normalizeNationalId } from '../helpers.js'
 import { policyTermDates } from '../../policyTerm.js'
 import { coverLabel } from '../../coverBreakdown.js'
+import { askAgricultureFields, makeAgricultureHandlers } from './flowHelpers.js'
 
 /**
  * New-client registration — the Frappe CLIENT_REG_HANDLER_MAP.
@@ -55,6 +56,9 @@ const name_: Handler = async ({ input, phone, session, admin }) => {
 
 const id: Handler = async ({ input, phone, session, admin }) => {
   if (!isNationalId(input)) return sendText(phone, 'Please enter a valid national ID (e.g. 632118532K12).')
+  if (await clientByNationalId(admin, input)) {
+    return sendText(phone, 'A client with that national ID already exists. Please contact Motions or message us from the phone number on your client record (send exit to cancel).')
+  }
   await patchNote(admin, session, { nationalId: normalizeNationalId(input) })
   await sendButtons(phone, 'Select your gender', [
     { id: 'male', title: 'Male' }, { id: 'female', title: 'Female' }, { id: 'other', title: 'Other' },
@@ -105,7 +109,8 @@ const email: Handler = async ({ input, phone, session, admin }) => {
   return setState(admin, session, 'REG_PRODUCT')
 }
 
-const product: Handler = async ({ input, phone, session, admin }) => {
+const product: Handler = async (ctx) => {
+  const { input, phone, session, admin } = ctx
   const products = await getActiveProducts(admin)
   const pick = pickIndex(input, products.length)
   if (pick === null) return sendText(phone, 'Please select one of the products above.')
@@ -120,8 +125,11 @@ const product: Handler = async ({ input, phone, session, admin }) => {
       [{ id: 'no', title: 'No' }, { id: 'yes', title: 'Yes' }])
     return setState(admin, session, 'REG_CHRONIC')
   }
+  if (chosen.category === 'agriculture') return askAgricultureFields(ctx, 'REG')
   return askCurrency(admin, session, phone)
 }
+
+const agricultureDone: Handler = async ({ session, admin, phone }) => askCurrency(admin, session, phone)
 
 const chronic: Handler = async ({ input, phone, session, admin }) => {
   if (input !== 'yes' && input !== 'no') return sendText(phone, 'Please choose one of the buttons above.')
@@ -175,7 +183,7 @@ const ecocash: Handler = async ({ input, phone, session, admin }) => {
   return setState(admin, session, 'REG_CONFIRM')
 }
 
-const confirm: Handler = async ({ input, phone, session, admin, username }) => {
+const confirm: Handler = async ({ input, phone, session, admin }) => {
   if (input !== 'pay' && input !== 'cancel') return sendText(phone, 'Please choose one of the buttons above.')
   if (input === 'cancel') {
     await deleteSession(admin, session)
@@ -195,18 +203,36 @@ const confirm: Handler = async ({ input, phone, session, admin, username }) => {
     gender: n.gender as string | undefined,
   })
   const { start, end } = policyTermDates(product)
-  const policy = await createPolicy(admin, {
-    clientId: client.id, product, paymentMethod: String(n.method ?? ''),
+  const fields = {
+    clientId: client.id, product,
+    paymentMethod: PORTAL_METHOD_NAMES[Number(n.methodIndex)] ?? 'Paynow',
     startDate: start, endDate: end,
+    source: 'whatsapp_chatbot',
     hasChronicIllness: n.hasChronic === 'yes',
     chronicIllnessDetails: n.chronicDetails as string | undefined,
-  })
+    growerNumber: n.growerNumber as string | undefined,
+    contractor: n.contractor as string | undefined,
+    hectarage: n.hectarage as number | undefined,
+  }
+  let policy: BotPolicy
+  try {
+    policy = Number(n.methodIndex) === 1
+      ? await createPendingPolicy(admin, fields)
+      : await createPolicy(admin, fields)
+  } catch (e) {
+    // Match website-register's compensation rule: a failed application
+    // should not leave a client row nobody can see or use.
+    await admin.from('clients').delete().eq('id', client.id)
+    throw e
+  }
 
   await sendPaymentInstruction({
-    admin, phone, policyId: policy.id, reference: `${policy.policyNumber}`,
+    admin, phone, policyId: policy.id,
+    reference: `${policy.policyNumber}-${Date.now().toString(36).toUpperCase()}`,
     usdAmount: policy.premium, currency: (n.currency as 'USD' | 'ZiG') ?? 'USD',
     methodIndex: Number(n.methodIndex ?? 1), ecocashNumber: n.ecocashNumber as string | undefined,
     origin: 'https://portal.motions.co.zw', description: `${policy.policyNumber} premium`,
+    email: n.email as string | undefined,
   })
   await sendText(phone,
     `Registration complete — policy ${policy.policyNumber} (${product.name}) is pending first payment.\n\n` +
@@ -221,8 +247,9 @@ async function confirmPrompt(admin: Parameters<Handler>[0]['admin'], session: Pa
   await sendButtons(phone,
     `Confirm your registration\n\n` +
     `Name: ${n.name}\nNational ID: ${n.nationalId}\n` +
-    `Product: ${p?.name ?? ''} ($${p?.premium}/month)\n` +
+    `Product: ${p?.name ?? ''} ($${p?.premium}${p?.category === 'agriculture' ? '/yr' : '/mo'})\n` +
     (p?.category === 'health' ? `Chronic condition: ${n.hasChronic === 'yes' ? `Yes — ${n.chronicDetails}` : 'No'}\n` : '') +
+    (p?.category === 'agriculture' ? `Grower: ${n.growerNumber ?? 'not supplied'}\nContractor: ${n.contractor ?? 'not supplied'}\nHectarage: ${n.hectarage} ha\n` : '') +
     `Payment: ${n.method ?? ''}${n.ecocashNumber ? ` (${n.ecocashNumber})` : ''}`,
     [{ id: 'pay', title: 'Register & Pay' }, { id: 'cancel', title: 'Cancel' }])
 }
@@ -238,6 +265,7 @@ export const REG_HANDLERS: Record<string, Handler> = {
   REG_PRODUCT: product,
   REG_CHRONIC: chronic,
   REG_CHRONIC_DETAILS: chronicDetails,
+  ...makeAgricultureHandlers('REG', agricultureDone),
   REG_CURRENCY: currency,
   REG_METHOD: method,
   REG_ECOCASH: ecocash,

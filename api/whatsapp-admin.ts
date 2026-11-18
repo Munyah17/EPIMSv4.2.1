@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { serviceClient, requireSession } from './_lib/sessionAuth.js'
 import { sendText } from './_lib/bot/whatsapp.js'
+import { eipConfigured } from './_lib/ecocashInstant.js'
 
 /**
  * POST /api/whatsapp-admin — the WhatsApp Bot page's backend.
@@ -40,11 +41,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (action === 'status') {
       const { data: setting } = await admin.from('app_settings').select('value').eq('key', BOT_SETTINGS_KEY).maybeSingle()
       const enabled = (setting?.value as { enabled?: boolean } | null)?.enabled !== false
-      const [open, today, botPolicies] = await Promise.all([
+      const [open, today, botPolicies, inboundTable, documentsBucket] = await Promise.all([
         admin.from('wa_sessions').select('id', { count: 'exact', head: true }).eq('is_expired', false),
         admin.from('wa_sessions').select('id', { count: 'exact', head: true })
           .gte('created_at', new Date(Date.now() - 24 * 3600e3).toISOString()),
         admin.from('policies').select('id', { count: 'exact', head: true }).eq('source', 'whatsapp_chatbot'),
+        admin.from('wa_inbound_events').select('message_id', { count: 'exact', head: true }),
+        admin.storage.getBucket('documents'),
       ])
       return res.status(200).json({
         enabled,
@@ -54,7 +57,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           verifyToken: !!process.env.WHATSAPP_VERIFY_TOKEN,
           appSecret: !!process.env.WHATSAPP_APP_SECRET,
           paynow: !!(process.env.PAYNOW_INTEGRATION_ID && process.env.PAYNOW_INTEGRATION_KEY),
-          ecocash: !!(process.env.EIP_USERNAME && process.env.EIP_PASSWORD),
+          ecocash: eipConfigured(),
+          sessionsTable: !open.error,
+          inboundDedupe: !inboundTable.error,
+          documentsBucket: !documentsBucket.error,
           graphVersion: process.env.WHATSAPP_GRAPH_VERSION || 'v21.0',
         },
         counts: {
@@ -67,7 +73,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (action === 'sessions') {
       const { data } = await admin.from('wa_sessions')
-        .select('id, phone_number, contact_type, state, note, created_at')
+        .select('id, phone_number, contact_type, state, note, created_at, updated_at')
         .eq('is_expired', false).order('created_at', { ascending: false }).limit(50)
       return res.status(200).json({ sessions: data ?? [] })
     }

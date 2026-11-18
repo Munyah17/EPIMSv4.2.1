@@ -18,6 +18,9 @@ const CHECK_LABELS: [keyof WaBotStatus['configured'], string][] = [
   ['appSecret', 'WHATSAPP_APP_SECRET'],
   ['paynow', 'PAYNOW_* (payment links)'],
   ['ecocash', 'EIP_* (EcoCash push)'],
+  ['sessionsTable', 'wa_sessions table'],
+  ['inboundDedupe', 'wa_inbound_events dedupe'],
+  ['documentsBucket', 'documents storage bucket'],
 ]
 
 const CODE_STYLE: React.CSSProperties = { fontSize: 12, overflowWrap: 'anywhere' }
@@ -131,7 +134,7 @@ export default function WhatsAppBot({ showToast }: Props) {
               </div>
               {missing.length > 0 && (
                 <div className="info-banner info-banner-danger" style={{ marginTop: 10, borderRadius: 8, padding: '10px 13px', fontSize: 12 }}>
-                  {missing.length} variable{missing.length === 1 ? '' : 's'} missing — set in Vercel → Settings → Environment Variables (Production), then redeploy. Values are never shown here.
+                  {missing.length} requirement{missing.length === 1 ? '' : 's'} missing — set env vars in Vercel and run the latest bot/storage SQL in Supabase. Values are never shown here.
                 </div>
               )}
             </>
@@ -172,7 +175,7 @@ export default function WhatsAppBot({ showToast }: Props) {
           <div className="tbl-scroll">
             <table className="table">
               <thead>
-                <tr><th>Phone</th><th>Audience</th><th>Step</th><th>Started</th><th>Details</th><th /></tr>
+                <tr><th>Phone</th><th>Audience</th><th>Step</th><th>Last activity</th><th>Details</th><th /></tr>
               </thead>
               <tbody>
                 {sessions.map(s => (
@@ -180,7 +183,7 @@ export default function WhatsAppBot({ showToast }: Props) {
                     <td style={{ whiteSpace: 'nowrap' }}>{s.phone_number}</td>
                     <td><span className="pill pill-blue">{s.contact_type}</span></td>
                     <td><code style={CODE_STYLE}>{s.state}</code></td>
-                    <td style={{ whiteSpace: 'nowrap' }}>{new Date(s.created_at).toLocaleString()}</td>
+                    <td style={{ whiteSpace: 'nowrap' }}>{new Date(s.updated_at ?? s.created_at).toLocaleString()}</td>
                     <td style={{ maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12 }}>
                       {s.note && Object.keys(s.note).length > 0 ? Object.keys(s.note).join(', ') : '—'}
                     </td>
