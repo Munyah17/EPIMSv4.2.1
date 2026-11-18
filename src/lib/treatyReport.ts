@@ -32,7 +32,6 @@ export const TREATY_HEADERS = [
   'RETAINED SUM ASSURED', 'RETAINED PREMIUM', 'SUM REASSURED', 'REASS PREMIUM',
   'PAYMENT METHOD', 'NEXT PAYMENT DATE', 'LAST PAYMENT DATE',
   'AGENT', 'CAPTURED BY', 'SOURCE', 'INSURER', 'CREATED AT',
-  'CLIENT ID', 'PRODUCT ID', 'GROUP ID', 'AGENT ID',
 ]
 
 /** Premium-column heading for the export's actual contents. Agriculture
@@ -138,7 +137,6 @@ function row(
     policy.paymentMethod ?? '', reportDate(policy.nextPaymentDate), reportDate(policy.lastPaymentDate),
     policy.agentName ?? '', policy.capturedByName ?? '', policy.source ?? '', policy.insurer ?? '',
     reportDate(policy.createdAt),
-    policy.clientId, policy.productId, policy.groupId ?? '', policy.agentId ?? '',
   ]
 }
 
