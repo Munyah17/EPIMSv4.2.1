@@ -24,7 +24,7 @@ const policy: Policy = {
 
 const COL = {
   designation: 4,
-  accountHolder: 5,
+  grower: 5,
   clientPhone: 6,
   clientStatus: 10,
   policyId: 16,
@@ -34,18 +34,17 @@ const COL = {
   startDate: 21,
   period: 23,
   status: 24,
-  grower: 29,
-  hectarage: 30,
-  contractor: 31,
-  sumAssured: 36,
-  premium: 37,
-  retainedAssured: 39,
-  retainedPremium: 40,
-  reassured: 41,
-  reassuredPremium: 42,
-  agent: 46,
-  createdAt: 50,
-  clientId: 51,
+  hectarage: 29,
+  contractor: 30,
+  sumAssured: 35,
+  premium: 36,
+  retainedAssured: 38,
+  retainedPremium: 39,
+  reassured: 40,
+  reassuredPremium: 41,
+  agent: 45,
+  createdAt: 49,
+  clientId: 50,
 }
 
 describe('major policy report export', () => {
@@ -54,7 +53,7 @@ describe('major policy report export', () => {
 
   it('emits one row per insured head with the complete policy register headers', () => {
     expect(rows).toHaveLength(2)
-    expect(TREATY_HEADERS).toHaveLength(56)
+    expect(TREATY_HEADERS).toHaveLength(55)
     expect(TREATY_HEADERS).not.toContain('GENDER')
     expect(TREATY_HEADERS).toContain('HECTARAGE')
     expect(TREATY_HEADERS).toContain('GROWER NO.')
@@ -66,7 +65,7 @@ describe('major policy report export', () => {
     expect(principal[2]).toBe('26-Nov-1982')
     expect(principal[3]).toBe('38210897H38')
     expect(principal[COL.designation]).toBe('PRINCIPAL MEMBER')
-    expect(principal[COL.accountHolder]).toBe('Caroline Kabaya')
+    expect(principal[COL.grower]).toBe('')
     expect(principal[COL.clientPhone]).toBe('0772000000')
     expect(principal[COL.clientStatus]).toBe('active')
     expect(principal[COL.policyId]).toBe('p1')
@@ -105,8 +104,8 @@ describe('major policy report export', () => {
     expect(agriRows[0][COL.grower]).toBe('AGR-12345')
     expect(agriRows[0][COL.hectarage]).toBe(1.5)
     expect(agriRows[0][COL.contractor]).toBe('Tobacco Merchant')
-    expect(agriRows[0][32]).toBe(-17.8)
-    expect(agriRows[0][33]).toBe(31.05)
+    expect(agriRows[0][31]).toBe(-17.8)
+    expect(agriRows[0][32]).toBe(31.05)
   })
 
   it('exports package participants as insured heads for the negotiated term', () => {
@@ -127,7 +126,7 @@ describe('major policy report export', () => {
     const packageRows = treatyRows([schoolTrip], byId)
     expect(packageRows).toHaveLength(2)
     expect(packageRows.map(r => r[COL.designation])).toEqual(['PRINCIPAL MEMBER', 'PRINCIPAL MEMBER'])
-    expect(packageRows.map(r => r[COL.accountHolder])).toEqual(['Glen View High School', 'Glen View High School'])
+    expect(packageRows.map(r => r[COL.grower])).toEqual(['', ''])
     expect(packageRows.map(r => r[COL.period])).toEqual([1, 1])
     expect(packageRows.map(r => r[COL.premium])).toEqual([30, 25])
     expect(treatyHeaders('term')).toContain('TERM PREMIUM')

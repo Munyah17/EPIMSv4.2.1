@@ -20,13 +20,13 @@ export const RETENTION_SHARE = 0.4
 
 export const TREATY_HEADERS = [
   'NAME', 'Surname', 'DOB', 'ID', 'DESIGNATION',
-  'ACCOUNT HOLDER', 'CLIENT PHONE', 'CLIENT EMAIL', 'CLIENT ADDRESS',
+  'GROWER NO.', 'CLIENT PHONE', 'CLIENT EMAIL', 'CLIENT ADDRESS',
   'CLIENT OCCUPATION', 'CLIENT STATUS', 'CLIENT AGENT', 'CLIENT CAPTURED BY',
   'CLIENT REGISTERED', 'CLIENT POLICY COUNT', 'CLIENT INSURER',
   'POLICY ID', 'POLICY NUMBER', 'POLICY', 'PRODUCT CATEGORY', 'EXCESS',
   'COMMENCE DATE', 'END DATE', 'PERIOD (in months)', 'STATUS',
   'COVER SCOPE', 'PACKAGE TYPE', 'GROUP', 'TEAM ACTIVITY',
-  'GROWER NO.', 'HECTARAGE', 'CONTRACTOR', 'GPS LATITUDE', 'GPS LONGITUDE',
+  'HECTARAGE', 'CONTRACTOR', 'GPS LATITUDE', 'GPS LONGITUDE',
   'CHRONIC ILLNESS', 'CHRONIC ILLNESS DETAILS',
   'SUM ASSURED', 'MONTHLY PREMIUM', 'TOTAL PREMIUM',
   'RETAINED SUM ASSURED', 'RETAINED PREMIUM', 'SUM REASSURED', 'REASS PREMIUM',
@@ -118,7 +118,7 @@ function row(
   const retainedP = premium * RETENTION_SHARE
   return [
     name, surname, reportDate(person.dob), canonicalId(person.nationalId), desig,
-    policy.groupName ?? policy.clientName,
+    policy.growerNumber ?? '',
     client?.phone ?? '', client?.email ?? '', client?.address ?? '',
     client?.occupation ?? '', client?.status ?? '', client?.agentName ?? '',
     client?.capturedByName ?? '', reportDate(client?.createdAt),
@@ -129,7 +129,7 @@ function row(
     policy.status.replace(/_/g, ' '), policy.coverScope ?? 'individual',
     policy.onceOff ? 'ONCE-OFF PACKAGE' : 'RECURRING',
     policy.groupName ?? '', policy.teamActivity ?? '',
-    policy.growerNumber ?? '', policy.hectarage ?? '', policy.contractor ?? '',
+    policy.hectarage ?? '', policy.contractor ?? '',
     policy.gpsLat ?? '', policy.gpsLng ?? '',
     yesNo(policy.hasChronicIllness), policy.chronicIllnessDetails ?? '',
     money(assured), money(premium), money(premium),
