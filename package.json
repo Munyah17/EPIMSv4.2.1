@@ -8,6 +8,8 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
+    "typecheck:api": "tsc --project api/tsconfig.json",
+    "check:migrations": "node scripts/check-migrations.mjs",
     "test": "vitest run"
   },
   "devDependencies": {

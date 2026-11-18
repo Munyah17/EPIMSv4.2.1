@@ -17,9 +17,22 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Typecheck frontend
+        run: npm run typecheck
+
+      - name: Typecheck API
+        run: npm run typecheck:api
+
+      - name: Check migration naming
+        run: npm run check:migrations
+
+      - name: Run tests
+        run: npx vitest run --pool=threads
 
       - name: Build project
         run: npm run build

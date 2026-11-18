@@ -24,12 +24,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
   let session = null
-  let isServiceRole = false
 
-  if (authHeader.startsWith('Bearer ') && authHeader.slice(7) === serviceRoleKey) {
-    // Service role key provided - skip session check
-    isServiceRole = true
-  } else {
+  // Service role key is accepted for script execution; otherwise require
+  // an authenticated Super Admin session.
+  if (!(authHeader.startsWith('Bearer ') && authHeader.slice(7) === serviceRoleKey)) {
     // Normal session auth
     session = await requireSession(req, admin)
     if (!session) return res.status(401).json({ error: 'Sign-in required.' })

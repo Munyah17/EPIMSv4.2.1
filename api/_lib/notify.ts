@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { sendMailDirect } from './mailTransport.js'
 import { serviceClient } from './sessionAuth.js'
 import { canonicalizeSmsText } from './smsCanon.js'
-import { normalizeZwMobile, parseRecipientPhones, smsParts, smsEventLabel, dedupeMessage, DEFAULT_OFFICE_SMS } from '../../src/lib/smsText.js'
+import { normalizeZwMobile, parseRecipientPhones, smsParts, smsEventLabel, DEFAULT_OFFICE_SMS } from '../../src/lib/smsText.js'
 
 /**
  * One place every notification goes through.

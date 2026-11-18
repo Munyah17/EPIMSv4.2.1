@@ -53,12 +53,6 @@ function formatDate(d: Date): string {
   return `${String(d.getDate()).padStart(2, '0')}-${MONTHS[d.getMonth()]}-${d.getFullYear()}`
 }
 
-/** Whole days from `from` to `to`, comparing dates only. */
-function daysDiff(from: Date, to: Date): number {
-  const a = new Date(from.getFullYear(), from.getMonth(), from.getDate())
-  const b = new Date(to.getFullYear(), to.getMonth(), to.getDate())
-  return Math.round((b.getTime() - a.getTime()) / 86400000)
-}
 
 type ReminderType = 'r1' | 'r2' | 'r3' | 'lapse'
 

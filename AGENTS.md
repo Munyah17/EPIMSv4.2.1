@@ -5,7 +5,9 @@ React 19 + TypeScript + Vite app backed by Supabase, deployed to Vercel
 
 ## Commands
 
-- `npm run typecheck` — tsc --noEmit over `src/` (api/ has its own scope)
+- `npm run typecheck` — tsc --noEmit over `src/`
+- `npm run typecheck:api` — tsc over `api/` and its imported shared modules
+- `npm run check:migrations` — validates versioned SQL migration filenames
 - `npm run build` — typecheck + Vite production build
 - `npx vitest run --pool=threads` — tests; the default fork pool times out
   on this Windows machine (worker startup, not assertions) — always use
@@ -34,3 +36,8 @@ recent deployments.
   `Policy.onceOff` package bills its group/corporate/team roster once for
   the negotiated term and archives at `endDate`.
 - Secrets stay in `.env*` / server env — never in `src/`.
+- New schema changes belong in `database/migrations/YYYYMMDD_NNN_description.sql`;
+  files directly under `database/` are historical references. Migrations are
+  immutable once applied — add a follow-up migration instead of editing one.
+- New data-access code belongs under `src/lib/repositories/`; keep
+  `src/lib/db.ts` as a compatibility facade rather than growing it.
