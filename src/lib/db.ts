@@ -26,6 +26,7 @@ import type {
   FloatEntry, FloatEntryType, PettyCashEntry, PettyCashEntryType,
   FdmsReceipt, FdmsReceiptStatus, FdmsDocType, FdmsFiscalDay, FdmsFiscalDayStatus,
   QuotePolicyDetails, Task, TaskStatus, TaskPriority, TaskMilestone, TaskUpdate,
+  LockedLogin,
 } from '../types'
 import { STAFF_ROLES } from '../types'
 
@@ -2644,6 +2645,39 @@ export const loginAttempts = {
       else byEmail.set(row.email, { email: row.email, count: 1, lastAttempt: row.ts })
     }
     return { data: [...byEmail.values()].sort((a, b) => b.count - a.count), error: null }
+  },
+
+  /** Emails whose newest five attempts all failed — Super Admin only via RPC. */
+  async locked(): Promise<{ data: LockedLogin[]; error: string | null }> {
+    const { data, error } = await supabase.rpc('list_locked_logins')
+    if (error) return { data: [], error: error.message }
+    return {
+      data: ((data ?? []) as {
+        email: string
+        profile_id?: string
+        name?: string
+        role?: LockedLogin['role']
+        active?: boolean
+        failed_attempts: number
+        last_attempt: string
+      }[]).map(r => ({
+        email: r.email,
+        profileId: r.profile_id ?? undefined,
+        name: r.name ?? undefined,
+        role: r.role ?? undefined,
+        active: r.active ?? undefined,
+        failedAttempts: r.failed_attempts,
+        lastAttempt: r.last_attempt,
+      })),
+      error: null,
+    }
+  },
+
+  /** Clears the failed-attempt rows that hold an email under the 5-fail lock. */
+  async unlock(email: string): Promise<{ data: number; error: string | null }> {
+    const { data, error } = await supabase.rpc('unlock_login', { p_email: email })
+    if (error) return { data: 0, error: error.message }
+    return { data: typeof data === 'number' ? data : 0, error: null }
   },
 
   /** Real sign-in history for one account — powers Profile > Audit Log,

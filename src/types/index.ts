@@ -145,6 +145,16 @@ export interface AppUser {
   password?: string
 }
 
+export interface LockedLogin {
+  email: string
+  profileId?: string
+  name?: string
+  role?: UserRole
+  active?: boolean
+  failedAttempts: number
+  lastAttempt: string
+}
+
 export interface CustomRole {
   id: string
   name: string
