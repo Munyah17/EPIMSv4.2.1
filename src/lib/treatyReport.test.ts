@@ -43,6 +43,7 @@ const COL = {
   reassured: 40,
   reassuredPremium: 41,
   agent: 45,
+  capturedBy: 46,
   createdAt: 49,
   clientId: 50,
 }
@@ -53,8 +54,9 @@ describe('major policy report export', () => {
 
   it('emits one row per insured head with the complete policy register headers', () => {
     expect(rows).toHaveLength(2)
-    expect(TREATY_HEADERS).toHaveLength(55)
+    expect(TREATY_HEADERS).toHaveLength(54)
     expect(TREATY_HEADERS).not.toContain('GENDER')
+    expect(TREATY_HEADERS).not.toContain('CAPTURED BY ID')
     expect(TREATY_HEADERS).toContain('HECTARAGE')
     expect(TREATY_HEADERS).toContain('GROWER NO.')
   })
@@ -76,6 +78,7 @@ describe('major policy report export', () => {
     expect(principal[COL.period]).toBe(1)
     expect(principal[COL.status]).toBe('active')
     expect(principal[COL.agent]).toBe('Agent One')
+    expect(principal[COL.capturedBy]).toBe('Staff One')
     expect(principal[COL.clientId]).toBe('c1')
   })
 
