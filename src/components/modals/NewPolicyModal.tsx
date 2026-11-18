@@ -539,6 +539,45 @@ export default function NewPolicyModal({ onClose, onSave, showToast, initialClie
       }
     }
 
+    const boundClient = customerMode === 'existing' && existingClientId
+      ? existingClients.find(c => c.id === existingClientId) ?? (initialClient?.id === existingClientId ? initialClient : undefined)
+      : undefined
+    if (boundClient?.agentId && agentId && boundClient.agentId !== agentId) {
+      const { data: allowed, error: allowedError } = await db.agentGovernance.clientAgentAllowed(boundClient.id, agentId)
+      if (allowedError) {
+        if (showToast) showToast('error', allowedError)
+        return
+      }
+      if (!allowed) {
+        const current = staff.find(s => s.id === boundClient.agentId)
+        const requested = staff.find(s => s.id === agentId)
+        const { data: existingRequest } = await db.agentGovernance.clientAgentRequest(boundClient.id, boundClient.agentId, agentId)
+        if (existingRequest?.status === 'pending') {
+          if (showToast) showToast('warning', `${boundClient.name} already has ${current?.name ?? 'an assigned agent'}. Secondary-agent request ${existingRequest.id} is awaiting approval.`)
+          return
+        }
+        const { data: request, error: requestError } = await db.agentGovernance.request({
+          requestType: 'client_agent',
+          clientId: boundClient.id,
+          currentAgentId: boundClient.agentId,
+          requestedAgentId: agentId,
+          reason: `Policy sale requested by ${requested?.name ?? 'a second agent'} for ${boundClient.name}.`,
+          payload: {
+            mode: 'secondary',
+            client_name: boundClient.name,
+            current_agent_name: current?.name ?? boundClient.agentId,
+            requested_agent_name: requested?.name ?? agentId,
+          },
+        })
+        if (requestError || !request) {
+          if (showToast) showToast('error', requestError ?? 'Failed to request secondary-agent approval.')
+          return
+        }
+        if (showToast) showToast('warning', `${boundClient.name} is bound to ${current?.name ?? 'another agent'}. Secondary-agent approval ${request.id} is required before this policy can be created.`)
+        return
+      }
+    }
+
     // Server-side rule: a registration is owed a confirmation, and the
     // confirmation is a server call. If the server can't even be
     // reached, nothing is written — the capturer retries instead of a

@@ -83,6 +83,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (target.role === 'super_admin') {
     return res.status(403).json({ error: 'Super Admin accounts cannot be deleted from here.' })
   }
+  if (target.role === 'agent') {
+    return res.status(409).json({ error: 'Agent accounts cannot be deleted from here — use Agent Reconciliation to merge the account into the surviving agent profile.' })
+  }
 
   const { error: deleteError } = await admin.auth.admin.deleteUser(body.staffId)
   if (deleteError) {

@@ -20,7 +20,7 @@ import type {
   PolicyStatus, ClaimStatus, PaymentStatus, PaymentMethod,
   TicketStatus, TicketPriority, LeadStatus, FraudCaseStatus, CustomRole,
   ClaimAssessment, PolicyAssessment, AssessmentPhoto, CropType, FraudSignalRule, HeroSlide,
-  PolicyCard, Group, GroupMember, Invoice, InvoiceStatus, AgentProfile,
+  PolicyCard, Group, GroupMember, Invoice, InvoiceStatus, AgentProfile, AgentGovernanceRequest,
   MarketingContact, MarketingTemplate, MarketingCampaign, CampaignRecipient,
   Quotation, QuotationStatus, Requisition, RequisitionStatus,
   FloatEntry, FloatEntryType, PettyCashEntry, PettyCashEntryType,
@@ -195,7 +195,32 @@ function toProfile(r: Record<string, unknown>): AppUser {
     permissions: (r.permissions as string[]) ?? [],
     customRoleId:   (r.custom_role_id as string | null) ?? undefined,
     customRoleName: (r.custom_roles as { name?: string } | null)?.name ?? undefined,
+    mergedInto:  (r.merged_into as string | null) ?? undefined,
+    mergedAt:    (r.merged_at as string | null) ?? undefined,
     lastLogin:   r.last_login as string | undefined,
+  }
+}
+
+function toAgentGovernanceRequest(r: Record<string, unknown>): AgentGovernanceRequest {
+  return {
+    id:               r.id as string,
+    requestType:      r.request_type as AgentGovernanceRequest['requestType'],
+    status:           r.status as AgentGovernanceRequest['status'],
+    clientId:         (r.client_id as string | null) ?? undefined,
+    currentAgentId:   (r.current_agent_id as string | null) ?? undefined,
+    requestedAgentId: (r.requested_agent_id as string | null) ?? undefined,
+    mergeSourceId:    (r.merge_source_id as string | null) ?? undefined,
+    mergeTargetId:    (r.merge_target_id as string | null) ?? undefined,
+    payload:          (r.payload as Record<string, unknown>) ?? {},
+    reason:           (r.reason as string | null) ?? undefined,
+    requestedBy:      (r.requested_by as string | null) ?? undefined,
+    requestedByName:  (r.requested_by_name as string | null) ?? undefined,
+    reviewedBy:       (r.reviewed_by as string | null) ?? undefined,
+    reviewedByName:   (r.reviewed_by_name as string | null) ?? undefined,
+    reviewedAt:       (r.reviewed_at as string | null) ?? undefined,
+    reviewNotes:      (r.review_notes as string | null) ?? undefined,
+    usedAt:           (r.used_at as string | null) ?? undefined,
+    createdAt:        r.created_at as string,
   }
 }
 
@@ -1976,7 +2001,7 @@ export const staff = {
    * that only exists in browser state was never real, so a failure must be
    * surfaced as an error rather than silently faked.
    */
-  async create(input: { name: string; username?: string; email: string; password: string; phone?: string; role: string; department: string; customRoleId?: string; permissions?: string[] }) {
+  async create(input: { name: string; username?: string; email: string; password: string; phone?: string; role: string; department: string; customRoleId?: string; permissions?: string[]; agentProfile?: { nationalId?: string } }) {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) return { data: null, error: 'Not signed in.' }
     try {
@@ -1986,7 +2011,7 @@ export const staff = {
         body: JSON.stringify(input),
       })
       const body = await res.json().catch(() => ({}))
-      if (!res.ok) return { data: null, error: body?.error ?? `Failed to create staff account (HTTP ${res.status}).` }
+      if (!res.ok) return { data: null, error: body?.error ?? `Failed to create staff account (HTTP ${res.status}).`, approvalRequestId: body?.approvalRequestId as string | undefined }
       return { data: toProfile(body.profile as Record<string, unknown>), error: null }
     } catch (e) {
       return { data: null, error: `Could not reach the server: ${e}` }
@@ -3451,6 +3476,80 @@ export const agentProfiles = {
   },
 }
 
+export const agentGovernance = {
+  async list() {
+    const { ok, data, error } = await sb('agent_governance_requests', 'read',
+      () => fetchAllRows(() => supabase.from('agent_governance_requests').select('*').order('created_at', { ascending: false }), { orderBy: 'created_at' }),
+      d => Array.isArray(d),
+    )
+    if (ok && data) return { data: (data as Record<string, unknown>[]).map(toAgentGovernanceRequest), error: null }
+    return { data: [] as AgentGovernanceRequest[], error: error ?? 'Could not load agent governance requests — run database/add_agent_governance.sql if the table is missing.' }
+  },
+
+  async request(input: {
+    requestType: AgentGovernanceRequest['requestType']
+    clientId?: string
+    currentAgentId?: string
+    requestedAgentId?: string
+    mergeSourceId?: string
+    mergeTargetId?: string
+    payload?: Record<string, unknown>
+    reason?: string
+  }) {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) return { data: null, error: 'Not signed in.' }
+    const { data, error } = await supabase.from('agent_governance_requests').insert({
+      request_type: input.requestType,
+      status: 'pending',
+      client_id: input.clientId ?? null,
+      current_agent_id: input.currentAgentId ?? null,
+      requested_agent_id: input.requestedAgentId ?? null,
+      merge_source_id: input.mergeSourceId ?? null,
+      merge_target_id: input.mergeTargetId ?? null,
+      payload: input.payload ?? {},
+      reason: input.reason?.trim() || null,
+      requested_by: session.user.id,
+    }).select('*').single()
+    if (error || !data) return { data: null, error: error?.message ?? 'Failed to create the approval request.' }
+    return { data: toAgentGovernanceRequest(data as Record<string, unknown>), error: null }
+  },
+
+  async clientAgentAllowed(clientId: string, agentId: string) {
+    const { ok, data, error } = await sb('client_agent_overrides', 'read',
+      () => supabase.from('client_agent_overrides').select('client_id').eq('client_id', clientId).eq('agent_id', agentId).limit(1),
+      d => Array.isArray(d),
+    )
+    if (ok && data) return { data: (data as unknown[]).length > 0, error: null }
+    return { data: false, error: error ?? 'Could not check approved secondary-agent exceptions.' }
+  },
+
+  async clientAgentRequest(clientId: string, currentAgentId: string, requestedAgentId: string) {
+    const { ok, data, error } = await sb('agent_governance_requests', 'read',
+      () => supabase.from('agent_governance_requests')
+        .select('*')
+        .eq('request_type', 'client_agent')
+        .eq('client_id', clientId)
+        .eq('current_agent_id', currentAgentId)
+        .eq('requested_agent_id', requestedAgentId)
+        .order('created_at', { ascending: false })
+        .limit(1),
+      d => Array.isArray(d),
+    )
+    if (ok && data) return { data: (data as Record<string, unknown>[]).map(toAgentGovernanceRequest)[0] ?? null, error: null }
+    return { data: null, error: error ?? 'Could not check the agent-assignment queue.' }
+  },
+
+  async review(requestId: string, decision: 'approved' | 'rejected', reviewNotes?: string) {
+    const { data, error } = await supabase.rpc('review_agent_governance_request', {
+      request_id: requestId,
+      decision,
+      review_notes: reviewNotes?.trim() || null,
+    })
+    if (error || !data) return { data: null, error: error?.message ?? 'Failed to review the request.' }
+    return { data: toAgentGovernanceRequest(data as Record<string, unknown>), error: null }
+  },
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function toAgentProfile(r: any): AgentProfile {
   return {
@@ -4473,7 +4572,7 @@ export const db = {
   signupEvidence,
   exchangeRates,
   customRoles, claimAssessments, policyAssessments, photoHashes, cropTypes, fraudSignalRules, heroSlides,
-  policyCards, groups, groupMembers, agentProfiles,
+  policyCards, groups, groupMembers, agentProfiles, agentGovernance,
   dashboardStats, sidebarCounts, notificationLog, invoices,
   quotations, requisitions, floatEntries, pettyCashEntries, fdmsReceipts, fdmsFiscalDays,
   tasks, taskMilestones, taskUpdates,

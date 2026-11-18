@@ -63,6 +63,30 @@ export interface AgentProfile {
   notes?: string
 }
 
+export type AgentGovernanceRequestType = 'duplicate_account' | 'merge' | 'client_agent'
+export type AgentGovernanceStatus = 'pending' | 'approved' | 'rejected' | 'used' | 'cancelled'
+
+export interface AgentGovernanceRequest {
+  id: string
+  requestType: AgentGovernanceRequestType
+  status: AgentGovernanceStatus
+  clientId?: string
+  currentAgentId?: string
+  requestedAgentId?: string
+  mergeSourceId?: string
+  mergeTargetId?: string
+  payload: Record<string, unknown>
+  reason?: string
+  requestedBy?: string
+  requestedByName?: string
+  reviewedBy?: string
+  reviewedByName?: string
+  reviewedAt?: string
+  reviewNotes?: string
+  usedAt?: string
+  createdAt: string
+}
+
 export interface CropType {
   id: string
   name: string
@@ -114,6 +138,9 @@ export interface AppUser {
    *  PermissionsModal are still possible and will diverge from the role. */
   customRoleId?: string
   customRoleName?: string
+  /** Set when this duplicate login was reconciled into another account. */
+  mergedInto?: string
+  mergedAt?: string
   lastLogin?: string
   password?: string
 }

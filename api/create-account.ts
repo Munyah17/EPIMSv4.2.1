@@ -36,11 +36,18 @@ interface CreateAccountBody {
   department: string
   customRoleId?: string
   permissions?: string[]
+  agentProfile?: {
+    nationalId?: string
+  }
 }
 
 /** Sign-in identity is the person's full name or their email — nickname
  *  usernames ("Munyah", "Admin 3") were retired; the `username` column now
  *  stores the full name so resolve_login_email keeps working unchanged. */
+
+const normalizeName = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
+const normalizePhone = (value?: string) => (value ?? '').replace(/\D/g, '')
+const normalizeNationalId = (value?: string) => (value ?? '').toUpperCase().replace(/[^A-Z0-9]/g, '')
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -97,7 +104,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { data: callerProfile, error: profileError } = await admin
     .from('profiles')
-    .select('role, active')
+    .select('role, name, active')
     .eq('id', caller.id)
     .single()
   if (profileError || !callerProfile || !callerProfile.active) {
@@ -157,6 +164,102 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   if (isStaffRole && !['admin', 'super_admin'].includes(callerProfile.role)) {
     return res.status(403).json({ error: 'You do not have permission to create staff accounts.' })
+  }
+
+  let approvedDuplicateRequestId: string | null = null
+  if (body.role === 'agent') {
+    const wantedName = normalizeName(body.name)
+    const wantedPhone = normalizePhone(body.phone)
+    const wantedNationalId = normalizeNationalId(body.agentProfile?.nationalId)
+    const dedupeKey = [wantedName, wantedPhone, wantedNationalId].join('|')
+
+    const [{ data: agentRows, error: agentsError }, { data: agentFiles, error: filesError }] = await Promise.all([
+      admin.from('profiles').select('id, name, email, phone, active').eq('role', 'agent'),
+      admin.from('agent_profiles').select('profile_id, national_id'),
+    ])
+    if (agentsError || filesError) {
+      return res.status(500).json({ error: 'Could not check for an existing agent with the same identity.' })
+    }
+
+    const nationalIdByProfile = new Map(
+      (agentFiles ?? [])
+        .filter(row => normalizeNationalId(row.national_id as string | undefined))
+        .map(row => [row.profile_id as string, normalizeNationalId(row.national_id as string | undefined)]),
+    )
+    const conflicts = (agentRows ?? []).filter(row => {
+      const sameName = normalizeName(row.name ?? '') === wantedName
+      const samePhone = !!wantedPhone && normalizePhone(row.phone as string | undefined) === wantedPhone
+      const sameNationalId = !!wantedNationalId && nationalIdByProfile.get(row.id as string) === wantedNationalId
+      return sameName || samePhone || sameNationalId
+    })
+
+    if (conflicts.length > 0) {
+      const { data: existingRequests, error: requestError } = await admin
+        .from('agent_governance_requests')
+        .select('id, status')
+        .eq('request_type', 'duplicate_account')
+        .eq('payload->>dedupe_key', dedupeKey)
+        .in('status', ['pending', 'approved'])
+        .order('created_at', { ascending: false })
+        .limit(1)
+
+      if (requestError) {
+        return res.status(500).json({ error: 'A possible duplicate agent was found, but the approval queue is unavailable — run database/add_agent_governance.sql first.' })
+      }
+
+      const existing = existingRequests?.[0]
+      if (existing?.status === 'approved') {
+        approvedDuplicateRequestId = existing.id as string
+      } else {
+        if (!existing) {
+          const { data: requested, error: createRequestError } = await admin
+            .from('agent_governance_requests')
+            .insert({
+              request_type: 'duplicate_account',
+              status: 'pending',
+              reason: `Possible duplicate agent account: ${body.name}`,
+              requested_by: caller.id,
+              requested_by_name: (callerProfile as { name?: string }).name ?? null,
+              payload: {
+                dedupe_key: dedupeKey,
+                name: body.name.trim(),
+                email: body.email?.trim() || null,
+                phone: body.phone?.trim() || null,
+                national_id: body.agentProfile?.nationalId?.trim() || null,
+                conflicts: conflicts.map(c => ({
+                  id: c.id,
+                  name: c.name,
+                  email: c.email,
+                  phone: c.phone,
+                  active: c.active,
+                })),
+              },
+            })
+            .select('id')
+            .single()
+          if (createRequestError) {
+            const { data: raced } = await admin.from('agent_governance_requests')
+              .select('id')
+              .eq('request_type', 'duplicate_account')
+              .eq('payload->>dedupe_key', dedupeKey)
+              .eq('status', 'pending')
+              .limit(1)
+            if (raced?.[0]) {
+              return res.status(409).json({ error: `Possible duplicate agent account found. Approval request ${raced[0].id} is still pending.`, approvalRequestId: raced[0].id })
+            }
+            return res.status(500).json({ error: 'A possible duplicate agent was found, but the approval request could not be created.' })
+          }
+          return res.status(409).json({
+            error: `Possible duplicate agent account found (${conflicts.map(c => c.name).join(', ')}). Approval request ${requested.id} is pending.`,
+            approvalRequestId: requested.id,
+          })
+        }
+        return res.status(409).json({
+          error: `Possible duplicate agent account found (${conflicts.map(c => c.name).join(', ')}). Approval request ${existing.id} is still pending.`,
+          approvalRequestId: existing.id,
+        })
+      }
+    }
   }
 
   const authEmail = body.email?.trim().toLowerCase()
@@ -219,6 +322,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const { data: profile } = await admin.from('profiles').select('*, custom_roles!profiles_custom_role_id_fkey(name)').eq('id', created.user.id).single()
+
+  if (approvedDuplicateRequestId) {
+    await admin.from('agent_governance_requests')
+      .update({ status: 'used', used_at: new Date().toISOString() })
+      .eq('id', approvedDuplicateRequestId)
+  }
 
   return res.status(200).json({ success: true, profile: { ...profile, email: body.email?.trim() ?? null } })
 }

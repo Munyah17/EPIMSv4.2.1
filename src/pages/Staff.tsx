@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import type { ToastMessage, AppUser, CustomRole, AgentProfile } from '../types'
+import type { ToastMessage, AppUser, CustomRole, AgentProfile, AgentGovernanceRequest } from '../types'
 import { SYSTEM_ROLES } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
@@ -8,6 +8,7 @@ import { useAuth } from '../contexts/AuthContext'
 import AddStaffModal from '../components/modals/AddStaffModal'
 import PermissionsModal from '../components/modals/PermissionsModal'
 import RoleManagerModal from '../components/modals/RoleManagerModal'
+import AgentGovernanceModal from '../components/modals/AgentGovernanceModal'
 import ActionMenu from '../components/ui/ActionMenu'
 
 interface Props {
@@ -45,6 +46,8 @@ export default function Staff({ showToast }: Props) {
   const [agentProfiles, setAgentProfiles] = useState<Map<string, AgentProfile>>(new Map())
   const [agentStats, setAgentStats] = useState<Map<string, { clients: number; policies: number; premium: number }>>(new Map())
   const [editAgentProfile, setEditAgentProfile] = useState<AgentProfile | null>(null)
+  const [governanceRequests, setGovernanceRequests] = useState<AgentGovernanceRequest[]>([])
+  const [showGovernance, setShowGovernance] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
   const [addAsAgent, setAddAsAgent] = useState(false)
   const [editStaff, setEditStaff] = useState<AppUser | null>(null)
@@ -57,7 +60,15 @@ export default function Staff({ showToast }: Props) {
     db.customRoles.list().then(({ data }) => setRoles(data))
   }, [])
 
-  useEffect(() => {
+  const loadGovernance = useCallback(() => {
+    void db.agentGovernance.list().then(({ data, error }) => {
+      if (error) showToast('error', error)
+      else setGovernanceRequests(data)
+    })
+  }, [showToast])
+
+  const loadStaff = useCallback(() => {
+    setLoading(true)
     db.staff.list().then(({ data, error }) => {
       if (error) showToast('error', 'Failed to load staff.')
       else if (data) {
@@ -73,8 +84,11 @@ export default function Staff({ showToast }: Props) {
       }
       setLoading(false)
     }).catch(() => { showToast('error', 'Failed to load staff.'); setLoading(false) })
+    loadGovernance()
     if (user?.role === 'super_admin') loadRoles()
-  }, [showToast, user?.role, loadRoles])
+  }, [showToast, user?.role, loadRoles, loadGovernance])
+
+  useEffect(() => { loadStaff() }, [loadStaff])
 
   const employees = staff.filter(s => s.role !== 'agent')
   const agents = staff.filter(s => s.role === 'agent')
@@ -108,11 +122,21 @@ export default function Staff({ showToast }: Props) {
       setStaff(prev => prev.map(x => x.id === data.id ? data : x))
       saved = data
     } else {
-      const { data, error } = await db.staff.create({
+      const { data, error, approvalRequestId } = await db.staff.create({
         name: s.name, email: s.email, password, phone: s.phone, role: s.role, department: s.department,
         customRoleId: s.customRoleId, permissions: s.permissions,
+        agentProfile: agentInput ? { nationalId: agentInput.nationalId } : undefined,
       })
-      if (error || !data) { showToast('error', error ?? 'Failed to add staff member.'); return }
+      if (error || !data) {
+        if (approvalRequestId) {
+          showToast('warning', error ?? 'Duplicate-agent approval requested. An admin must approve it before this account can be created.')
+          loadGovernance()
+          setShowGovernance(true)
+        } else {
+          showToast('error', error ?? 'Failed to add staff member.')
+        }
+        return
+      }
       setStaff(prev => [...prev, data])
       saved = data
     }
@@ -172,6 +196,45 @@ export default function Staff({ showToast }: Props) {
     showToast('success', 'Password reset successfully.')
   }
 
+  const handleRequestMerge = async (sourceId: string, targetId: string, reason: string) => {
+    const source = staff.find(s => s.id === sourceId)
+    const target = staff.find(s => s.id === targetId)
+    if (!source || !target || sourceId === targetId) {
+      showToast('error', 'Choose two different agent accounts to merge.')
+      return
+    }
+    const { data, error } = await db.agentGovernance.request({
+      requestType: 'merge',
+      mergeSourceId: sourceId,
+      mergeTargetId: targetId,
+      reason,
+      payload: {
+        source: { id: source.id, name: source.name, email: source.email, phone: source.phone, active: source.active },
+        target: { id: target.id, name: target.name, email: target.email, phone: target.phone, active: target.active },
+      },
+    })
+    if (error || !data) { showToast('error', error ?? 'Failed to create the merge request.'); return }
+    setGovernanceRequests(prev => [data, ...prev])
+    showToast('info', `Merge request created — ${source.name} will move into ${target.name} after approval.`)
+  }
+
+  const handleReviewGovernance = async (request: AgentGovernanceRequest, decision: 'approved' | 'rejected', notes?: string) => {
+    const label = request.requestType === 'merge' ? 'merge these agent accounts' : request.requestType === 'client_agent' ? 'allow this secondary agent' : 'allow this duplicate-account exception'
+    if (!window.confirm(`${decision === 'approved' ? 'Approve' : 'Reject'} request to ${label}?`)) return
+    const { data, error } = await db.agentGovernance.review(request.id, decision, notes)
+    if (error || !data) { showToast('error', error ?? 'Failed to review the request.'); return }
+    setGovernanceRequests(prev => prev.map(r => r.id === data.id ? data : r))
+    if (decision === 'approved' && request.requestType === 'merge') {
+      showToast('success', 'Agent accounts merged — the surviving account now carries the full book.')
+      loadStaff()
+    } else {
+      showToast(decision === 'approved' ? 'success' : 'info', `Request ${decision}.`)
+      loadGovernance()
+    }
+  }
+
+  const pendingGovernance = governanceRequests.filter(r => r.status === 'pending').length
+
   return (
     <div className="panel">
       <div className="panel-toolbar">
@@ -181,6 +244,11 @@ export default function Staff({ showToast }: Props) {
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
+        {tab === 'agents' && (
+          <button type="button" className="btn btn-ghost" onClick={() => setShowGovernance(true)}>
+            Reconcile / Approvals{pendingGovernance > 0 ? ` (${pendingGovernance})` : ''}
+          </button>
+        )}
         {user?.role === 'super_admin' && (
           <button type="button" className="btn btn-ghost" onClick={() => { setEditRole(null); setShowRoles(true) }}>Manage Roles</button>
         )}
@@ -306,12 +374,16 @@ export default function Staff({ showToast }: Props) {
                       </div>
                     ) : '—'}
                   </td>
-                  <td><span className={`pill ${s.active ? 'pill-active' : 'pill-cancelled'}`}>{s.active ? 'Active' : 'Inactive'}</span></td>
+                  <td>
+                    <span className={`pill ${s.active ? 'pill-active' : s.mergedInto ? 'pill-pending' : 'pill-cancelled'}`}>
+                      {s.active ? 'Active' : s.mergedInto ? 'Merged' : 'Inactive'}
+                    </span>
+                  </td>
                   <td>
                     <ActionMenu items={[
                       { label: 'Edit', onClick: () => openEdit(s) },
-                      { label: s.active ? 'Suspend' : 'Reactivate', onClick: () => toggleActive(s.id) },
-                      { label: 'Delete', onClick: () => handleDelete(s), danger: true, hidden: !(user?.role === 'super_admin' && s.id !== user.id) },
+                      { label: s.active ? 'Suspend' : 'Reactivate', onClick: () => toggleActive(s.id), hidden: !!s.mergedInto },
+                      { label: 'Reconcile / Approvals', onClick: () => setShowGovernance(true) },
                     ]} />
                   </td>
                 </tr>
@@ -388,6 +460,18 @@ export default function Staff({ showToast }: Props) {
           staff={permStaff}
           onClose={() => setPermStaff(null)}
           onSave={handlePermissions}
+        />
+      )}
+      {showGovernance && (
+        <AgentGovernanceModal
+          agents={agents}
+          agentProfiles={agentProfiles}
+          agentStats={agentStats}
+          requests={governanceRequests}
+          canReview={user?.role === 'admin' || user?.role === 'super_admin'}
+          onClose={() => setShowGovernance(false)}
+          onRequestMerge={handleRequestMerge}
+          onReview={handleReviewGovernance}
         />
       )}
       {showRoles && (
