@@ -6,6 +6,7 @@ import { sendSms, pingSmsGateway } from '../lib/smsService'
 import { supabase } from '../lib/supabase'
 import { runSystemCheck, type SystemCheckResult, type SystemCheckFix } from '../lib/aiService'
 import { useAuth } from '../contexts/AuthContext'
+import LockedAccountsPanel from '../components/Auth/LockedAccountsPanel'
 
 interface ReconData {
   orphanedClients: { id: string; name: string; phone: string | null; createdAt: string }[]
@@ -13,7 +14,7 @@ interface ReconData {
   paidButPending: { id: string; policyNumber: string; clientName: string }[]
   checkedAt: string
 }
-import type { ToastMessage, LockedLogin } from '../types'
+import type { ToastMessage } from '../types'
 import type { ActivePanel } from '../App'
 
 const QUOTA_ALERT_PATTERN = /rate.?limit|429|quota|expired|401|403|unauthorized|jwt/i
@@ -106,9 +107,6 @@ export default function SystemHealthPage({ showToast, setActivePanel }: Props) {
   const [dlTo, setDlTo] = useState('')
   const [ticker, setTicker] = useState(0)
   const [failedLogins, setFailedLogins] = useState<{ email: string; count: number; lastAttempt: string }[]>([])
-  const [lockedLogins, setLockedLogins] = useState<LockedLogin[]>([])
-  const [lockedError, setLockedError] = useState<string | null>(null)
-  const [unlocking, setUnlocking] = useState<string | null>(null)
   const [testNumber, setTestNumber] = useState('')
   const [testMessage, setTestMessage] = useState('')
   const [testSending, setTestSending] = useState(false)
@@ -202,32 +200,7 @@ export default function SystemHealthPage({ showToast, setActivePanel }: Props) {
 
   const loadSecurity = useCallback(() => {
     void db.loginAttempts.recentFailures(15).then(({ data }) => setFailedLogins(data))
-    if (user?.role !== 'super_admin') {
-      setLockedLogins([])
-      setLockedError(null)
-      return
-    }
-    void db.loginAttempts.locked().then(({ data, error }) => {
-      if (error) setLockedError(error)
-      else {
-        setLockedLogins(data)
-        setLockedError(null)
-      }
-    })
-  }, [user?.role])
-
-  const unlockLogin = async (email: string) => {
-    if (!window.confirm(`Unlock ${email}? This clears its failed sign-in attempts so the user can try again.`)) return
-    setUnlocking(email)
-    const { data: cleared, error } = await db.loginAttempts.unlock(email)
-    if (error) showToast('error', error)
-    else {
-      setLockedLogins(prev => prev.filter(l => l.email !== email))
-      showToast('success', `${email} unlocked — ${cleared} failed attempt${cleared === 1 ? '' : 's'} cleared.`)
-      loadSecurity()
-    }
-    setUnlocking(null)
-  }
+  }, [])
 
   useEffect(() => {
     const unsub = health.subscribe(() => setStats(health.stats as Stats))
@@ -586,52 +559,7 @@ export default function SystemHealthPage({ showToast, setActivePanel }: Props) {
         )}
       </div>
 
-      {user?.role === 'super_admin' && (
-        <div className="card" style={{ marginBottom: 20 }}>
-          <div className="card-header">
-            <span className="card-title">🔓 Locked Accounts</span>
-            <button type="button" className="btn btn-ghost btn-sm" onClick={loadSecurity}>Refresh</button>
-          </div>
-          {lockedError ? (
-            <div className="info-banner info-banner-danger" style={{ borderRadius: 8, padding: '10px 13px', fontSize: 12 }}>
-              Could not load locked accounts: {lockedError}. Run database/add_login_unlock.sql first.
-            </div>
-          ) : lockedLogins.length === 0 ? (
-            <div className="empty-state" style={{ padding: '20px 0' }}>No accounts are currently locked.</div>
-          ) : (
-            <div className="tbl-scroll">
-            <table className="table">
-              <thead><tr><th>Email</th><th>Account</th><th>Failed Attempts</th><th>Last Attempt</th><th>Status</th><th>Action</th></tr></thead>
-              <tbody>
-                {lockedLogins.map(l => (
-                  <tr key={l.email}>
-                    <td>{l.email}</td>
-                    <td>
-                      {l.name ? (
-                        <>
-                          <strong>{l.name}</strong>
-                          <div style={{ fontSize: 11, color: 'var(--muted)' }}>
-                            {l.role?.replace(/_/g, ' ')}{l.active === false ? ' · profile inactive' : ''}
-                          </div>
-                        </>
-                      ) : 'No matching profile'}
-                    </td>
-                    <td>{l.failedAttempts}</td>
-                    <td>{new Date(l.lastAttempt).toLocaleString('en-GB')}</td>
-                    <td><span className="pill pill-lapsed">Locked</span></td>
-                    <td>
-                      <button type="button" className="btn btn-primary btn-sm" disabled={unlocking === l.email} onClick={() => void unlockLogin(l.email)}>
-                        {unlocking === l.email ? 'Unlocking…' : 'Unlock'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            </div>
-          )}
-        </div>
-      )}
+      <LockedAccountsPanel showToast={showToast} refreshInterval={30000} />
 
       <div className="sh-page-body">
         {/* Metrics panel */}

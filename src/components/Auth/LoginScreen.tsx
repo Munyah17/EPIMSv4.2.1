@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
+import { supabase } from '../../lib/supabase'
 import Copyright from '../Layout/Copyright'
 import ChatWidget from '../chat/ChatWidget'
 import ForgotPasswordForm from './ForgotPasswordForm'
@@ -18,7 +19,16 @@ export default function LoginScreen() {
     setLoading(true)
     const { profile, error: loginError } = await login(email, password)
     setLoading(false)
-    if (!profile) setError(loginError ?? 'Invalid credentials. Please try again.')
+    if (profile) {
+      if (profile.role !== 'policyholder') {
+        await supabase.auth.signOut()
+        setError(profile.role === 'super_admin'
+          ? 'Access denied. Super Admins must use the /super-admin sign-in link.'
+          : 'Access denied. Staff members must use the /admin sign-in link.')
+      }
+    } else {
+      setError(loginError ?? 'Invalid credentials. Please try again.')
+    }
   }
 
   return (
@@ -28,7 +38,7 @@ export default function LoginScreen() {
           <div className="logo-mark">T</div>
           <div>
             <div className="logo-name">TARIQIFYIMS</div>
-            <div className="logo-sub">Motions Microinsurance</div>
+            <div className="logo-sub">Client Portal</div>
           </div>
         </div>
 
@@ -38,7 +48,7 @@ export default function LoginScreen() {
             <input
               id="email"
               type="text"
-              placeholder="Enter your email or full name"
+              placeholder="Enter client email or full name"
               value={email}
               onChange={e => setEmail(e.target.value)}
               required
@@ -61,7 +71,7 @@ export default function LoginScreen() {
           {error && <div className="login-error">{error}</div>}
 
           <button type="submit" className="btn btn-primary btn-full" disabled={loading}>
-            {loading ? 'Signing in…' : 'Sign In'}
+            {loading ? 'Signing in…' : 'Sign In as Client'}
           </button>
         </form>
 

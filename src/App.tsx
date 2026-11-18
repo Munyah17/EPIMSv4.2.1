@@ -308,7 +308,8 @@ function AuthGate() {
     <Routes>
       <Route path="/super-admin" element={user ? <Navigate to="/" replace /> : <SuperAdminLogin />} />
       <Route path="/admin" element={user ? <Navigate to="/" replace /> : <AdminLogin />} />
-      <Route path="/*" element={user ? <AppInner /> : <LoginScreen />} />
+      <Route path="/login" element={user ? <Navigate to="/" replace /> : <LoginScreen />} />
+      <Route path="/*" element={user ? <AppInner /> : <Navigate to="/login" replace />} />
     </Routes>
   )
 }

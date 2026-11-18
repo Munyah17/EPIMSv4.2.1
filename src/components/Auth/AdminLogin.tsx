@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { supabase } from '../../lib/supabase'
+import { STAFF_ROLES } from '../../types'
 import Copyright from '../Layout/Copyright'
 import ForgotPasswordForm from './ForgotPasswordForm'
 
@@ -27,11 +28,13 @@ export default function AdminLogin() {
     const { profile, error: loginError } = await login(email, password)
     setLoading(false)
     if (profile) {
-      if (profile.role === 'admin') {
+      if (STAFF_ROLES.includes(profile.role) && profile.role !== 'super_admin') {
         navigate('/', { replace: true })
       } else {
         await supabase.auth.signOut()
-        setError('Access denied. Admin credentials required.')
+        setError(profile.role === 'super_admin'
+          ? 'Access denied. Super Admins must use the /super-admin sign-in link.'
+          : 'Access denied. Staff credentials required.')
       }
     } else {
       setError(loginError ?? 'Invalid credentials. Please try again.')
@@ -45,7 +48,7 @@ export default function AdminLogin() {
           <div className="logo-mark">T</div>
           <div>
             <div className="logo-name">TARIQIFYIMS</div>
-            <div className="logo-sub">Admin Portal</div>
+            <div className="logo-sub">Staff Portal</div>
           </div>
         </div>
 
@@ -60,7 +63,7 @@ export default function AdminLogin() {
             padding: '0.25rem 0.75rem',
             borderRadius: '999px',
             textTransform: 'uppercase',
-          }}>Admin Login</span>
+          }}>Staff Login</span>
         </div>
 
         <form onSubmit={handleSubmit} className="login-form">
@@ -69,7 +72,7 @@ export default function AdminLogin() {
             <input
               id="email"
               type="text"
-              placeholder="Enter admin email or full name"
+              placeholder="Enter staff email or full name"
               value={email}
               onChange={e => setEmail(e.target.value)}
               required
@@ -92,7 +95,7 @@ export default function AdminLogin() {
           {error && <div className="login-error">{error}</div>}
 
           <button type="submit" className="btn btn-primary btn-full" disabled={loading}>
-            {loading ? 'Authenticating…' : 'Sign In as Admin'}
+            {loading ? 'Authenticating…' : 'Sign In as Staff'}
           </button>
         </form>
 

@@ -9,6 +9,7 @@ import AddStaffModal from '../components/modals/AddStaffModal'
 import PermissionsModal from '../components/modals/PermissionsModal'
 import RoleManagerModal from '../components/modals/RoleManagerModal'
 import AgentGovernanceModal from '../components/modals/AgentGovernanceModal'
+import LockedAccountsPanel from '../components/Auth/LockedAccountsPanel'
 import ActionMenu from '../components/ui/ActionMenu'
 
 interface Props {
@@ -270,6 +271,8 @@ export default function Staff({ showToast }: Props) {
           </button>
         ))}
       </div>
+
+      <LockedAccountsPanel showToast={showToast} />
 
       <div className="card">
         {loading ? (
