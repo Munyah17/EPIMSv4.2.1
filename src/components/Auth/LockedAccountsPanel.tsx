@@ -22,13 +22,14 @@ function loginPortal(role: UserRole | undefined): string {
     : '/admin'
 }
 
-/** The five-failed-attempt lock is released only through the
- *  list_locked_logins/unlock_login RPCs — never a broad DELETE permission
- *  on login_attempts. Those functions re-check super_admin at the DB. */
+/** The five-failed-attempt lock is released only through the session-gated
+ *  login-lock endpoint (or its equivalent checked RPCs) — never a broad
+ *  DELETE permission on login_attempts. */
 export default function LockedAccountsPanel({ showToast, refreshInterval }: Props) {
   const { user } = useAuth()
   const [lockedLogins, setLockedLogins] = useState<LockedLogin[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [manualEmail, setManualEmail] = useState('')
   const [unlocking, setUnlocking] = useState<string | null>(null)
   const isSuperAdmin = user?.role === 'super_admin'
 
@@ -57,6 +58,7 @@ export default function LockedAccountsPanel({ showToast, refreshInterval }: Prop
     if (unlockError) showToast('error', unlockError)
     else {
       setLockedLogins(prev => prev.filter(l => l.email !== email))
+      if (manualEmail.toLowerCase() === email.toLowerCase()) setManualEmail('')
       showToast('success', `${email} unlocked — ${cleared} failed attempt${cleared === 1 ? '' : 's'} cleared.`)
       load()
     }
@@ -74,11 +76,29 @@ export default function LockedAccountsPanel({ showToast, refreshInterval }: Prop
       <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>
         Staff, Super Admin and client logins that reach five consecutive failed attempts can be re-enabled here.
       </div>
-      {error ? (
-        <div className="info-banner info-banner-danger" style={{ borderRadius: 8, padding: '10px 13px', fontSize: 12 }}>
-          Could not load locked accounts: {error}. Run database/add_login_unlock.sql in Supabase first.
+      <div className="filter-row" style={{ marginBottom: 14 }}>
+        <input
+          className="search-input"
+          type="email"
+          placeholder="Account email to unlock"
+          value={manualEmail}
+          onChange={e => setManualEmail(e.target.value)}
+        />
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={!manualEmail.trim() || unlocking === manualEmail.trim().toLowerCase()}
+          onClick={() => void unlockLogin(manualEmail.trim().toLowerCase())}
+        >
+          {unlocking === manualEmail.trim().toLowerCase() ? 'Unlocking…' : 'Unlock'}
+        </button>
+      </div>
+      {error && (
+        <div className="info-banner info-banner-danger" style={{ borderRadius: 8, padding: '10px 13px', fontSize: 12, marginBottom: 14 }}>
+          Could not load the locked-account list: {error}
         </div>
-      ) : lockedLogins.length === 0 ? (
+      )}
+      {lockedLogins.length === 0 ? (
         <div className="empty-state" style={{ padding: '20px 0' }}>No accounts are currently locked.</div>
       ) : (
         <div className="tbl-scroll">
