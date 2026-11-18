@@ -31,12 +31,16 @@ export const TREATY_HEADERS = [
  *  'MONTHLY PREMIUM' has a reinsurer dividing it by 12. A mixed book says
  *  'PREMIUM' and lets the product column disambiguate. */
 export type TreatyPeriodKind = 'monthly' | 'annual' | 'term' | 'mixed'
-export function treatyHeaders(kind: TreatyPeriodKind): string[] {
+export function treatyHeaders(kind: TreatyPeriodKind, includeGrower = false): string[] {
   const premium = kind === 'annual' ? 'ANNUAL PREMIUM'
     : kind === 'term' ? 'TERM PREMIUM'
     : kind === 'mixed' ? 'PREMIUM'
     : 'MONTHLY PREMIUM'
-  return TREATY_HEADERS.map(h => h === 'MONTHLY PREMIUM' ? premium : h)
+  const headers = TREATY_HEADERS.map(h => h === 'MONTHLY PREMIUM' ? premium : h)
+  const policyIndex = headers.indexOf('POLICY NUMBER')
+  return includeGrower
+    ? [...headers.slice(0, policyIndex + 1), 'GROWER NO.', ...headers.slice(policyIndex + 1)]
+    : headers
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -94,7 +98,7 @@ function designation(rel: string | undefined | null): string {
 /** One row: a person, their designation, cover and premium share. */
 function row(
   person: { name: string; nationalId?: string; dob?: string; gender?: string },
-  desig: string, policy: Policy, premium: number, assured: number,
+  desig: string, policy: Policy, premium: number, assured: number, includeGrower: boolean,
 ): (string | number)[] {
   const { name, surname } = splitName(person.name)
   const retainedA = assured * RETENTION_SHARE
@@ -102,8 +106,9 @@ function row(
   return [
     name, surname, reportDate(person.dob), canonicalId(person.nationalId),
     person.gender ?? '',
-    policy.productName, policy.policyNumber, desig,
-    reportDate(policy.startDate), periodMonths(policy),
+    policy.productName, policy.policyNumber,
+    ...(includeGrower ? [policy.growerNumber ?? ''] : []),
+    desig, reportDate(policy.startDate), periodMonths(policy),
     money(assured), money(premium), money(premium),
     money(retainedA), money(retainedP),
     money(assured - retainedA), money(premium - retainedP),
@@ -114,7 +119,11 @@ function row(
  *  holder's ID/DOB/gender live on the client row, so callers pass a
  *  clientId→Client lookup; a holder whose client isn't loaded still
  *  exports — identity columns just come out blank. */
-export function treatyRows(policies: Policy[], clientsById: Map<string, Client>): (string | number)[][] {
+export function treatyRows(
+  policies: Policy[],
+  clientsById: Map<string, Client>,
+  includeGrower = policies.some(p => p.productCategory === 'agriculture' || !!p.growerNumber),
+): (string | number)[][] {
   const rows: (string | number)[][] = []
   for (const p of policies) {
     const c = clientsById.get(p.clientId)
@@ -125,14 +134,14 @@ export function treatyRows(policies: Policy[], clientsById: Map<string, Client>)
     if (!rosterScoped) {
       rows.push(row(
         { name: p.clientName, nationalId: c?.nationalId, dob: c?.dob, gender: c?.gender },
-        'PRINCIPAL MEMBER', p, p.premium, p.coverAmount,
+        'PRINCIPAL MEMBER', p, p.premium, p.coverAmount, includeGrower,
       ))
     }
     for (const d of p.dependants ?? []) {
       rows.push(row(
         { name: d.name, nationalId: d.nationalId, dob: d.dob, gender: d.gender },
         rosterScoped ? 'PRINCIPAL MEMBER' : designation(d.relationship), p,
-        d.premium ?? p.premium, d.coverAmount ?? p.coverAmount,
+        d.premium ?? p.premium, d.coverAmount ?? p.coverAmount, includeGrower,
       ))
     }
   }

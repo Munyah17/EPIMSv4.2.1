@@ -228,12 +228,13 @@ export default function Policies({ showToast, setActivePanel, initialCategory }:
       // demand so a page that never exports never pays for the join.
       const { data: clients } = await db.clients.list()
       const byId = new Map((clients ?? []).map(c => [c.id, c]))
-      const rows = treatyRows(filtered, byId)
+      const includeGrower = filtered.some(p => isAgri(p) || !!p.growerNumber)
+      const rows = treatyRows(filtered, byId, includeGrower)
       // Agriculture premiums are annual and packages are a negotiated
       // term — the heading has to say that or the reinsurer reads a term
       // figure as monthly. A mixed book gets the neutral label.
       const periodKinds = new Set<TreatyPeriodKind>(filtered.map(p => isPackagePolicy(p) ? 'term' : isAgri(p) ? 'annual' : 'monthly'))
-      const headers = treatyHeaders(periodKinds.size === 1 ? [...periodKinds][0] : 'mixed')
+      const headers = treatyHeaders(periodKinds.size === 1 ? [...periodKinds][0] : 'mixed', includeGrower)
       const base = `policy-report-${toIsoDate(new Date())}`
       if (format === 'xlsx') {
         await exportToExcel(`${base}.xlsx`, 'Policy Report', headers, rows)
@@ -242,13 +243,15 @@ export default function Policies({ showToast, setActivePanel, initialCategory }:
       } else {
         // The PDF carries the book's totals so a reinsurer reads the
         // bottom line before the rows.
+        const assuredIndex = headers.indexOf('SUM ASSURED')
+        const premiumIndex = headers.indexOf('TOTAL PREMIUM')
         const stats = [
           { label: 'Policies', value: String(filtered.length) },
           { label: 'Insured Heads', value: String(rows.length) },
-          { label: 'Total Sum Assured', value: `$${rows.reduce((s, r) => s + Number(r[10] || 0), 0).toLocaleString()}` },
-          { label: 'Total Premium', value: `$${rows.reduce((s, r) => s + Number(r[12] || 0), 0).toFixed(2)}` },
+          { label: 'Total Sum Assured', value: `$${rows.reduce((s, r) => s + Number(r[assuredIndex] || 0), 0).toLocaleString()}` },
+          { label: 'Total Premium', value: `$${rows.reduce((s, r) => s + Number(r[premiumIndex] || 0), 0).toFixed(2)}` },
         ]
-        // 17 columns can't fit one landscape page — overflow flows to a
+        // These columns can't fit one landscape page — overflow flows to a
         // second page set. NAME and Surname both repeat on every set so
         // every half still identifies the person (a single repeat column
         // put PERIOD in the visual surname position — the page-40 bug).

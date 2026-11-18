@@ -147,6 +147,8 @@ interface Fact {
   method?: string
   clientId?: string
   clientName?: string
+  hasAgriculture: boolean
+  growerNumbers: string[]
   entity: Policy | Claim | Payment | Client
 }
 
@@ -160,6 +162,8 @@ function policyFacts(policies: Policy[]): Fact[] {
     productId: p.productId, productName: p.productName,
     category: p.productCategory, status: p.status, source: p.source,
     clientId: p.clientId, clientName: p.clientName,
+    hasAgriculture: p.productCategory === 'agriculture',
+    growerNumbers: p.growerNumber?.trim() ? [p.growerNumber.trim()] : [],
     entity: p,
   }))
 }
@@ -178,6 +182,8 @@ function claimFacts(claims: Claim[], policyById: Map<string, Policy>): Fact[] {
       category: c.category ?? policy?.productCategory,
       status: c.status,
       clientId: c.clientId, clientName: c.clientName,
+      hasAgriculture: (c.category ?? policy?.productCategory) === 'agriculture',
+      growerNumbers: policy?.growerNumber?.trim() ? [policy.growerNumber.trim()] : [],
       entity: c,
     }
   })
@@ -196,22 +202,29 @@ function paymentFacts(payments: Payment[], policyById: Map<string, Policy>): Fac
       category: policy?.productCategory,
       status: p.status, method: p.method,
       clientName: p.clientName,
+      hasAgriculture: policy?.productCategory === 'agriculture',
+      growerNumbers: policy?.growerNumber?.trim() ? [policy.growerNumber.trim()] : [],
       entity: p,
     }
   })
 }
 
-function clientFacts(clients: Client[]): Fact[] {
-  return clients.map(c => ({
-    id: c.id,
-    date: c.createdAt,
-    amount: 0,
-    heads: c.policyCount,
-    agentId: c.agentId,
-    status: c.status,
-    clientId: c.id, clientName: c.name,
-    entity: c,
-  }))
+function clientFacts(clients: Client[], agriPoliciesByClient: Map<string, Policy[]>): Fact[] {
+  return clients.map(c => {
+    const agriPolicies = agriPoliciesByClient.get(c.id) ?? []
+    return {
+      id: c.id,
+      date: c.createdAt,
+      amount: 0,
+      heads: c.policyCount,
+      agentId: c.agentId,
+      status: c.status,
+      clientId: c.id, clientName: c.name,
+      hasAgriculture: agriPolicies.length > 0,
+      growerNumbers: agriPolicies.map(p => p.growerNumber?.trim()).filter((n): n is string => !!n),
+      entity: c,
+    }
+  })
 }
 
 // ── Filtering ───────────────────────────────────────────────────────
@@ -347,6 +360,16 @@ const GROUPED_COLUMNS = (itemLabel: string, amountLabel: string): ReportColumn[]
   { label: 'Lives', kind: 'number' }, { label: amountLabel, kind: 'money' },
 ]
 
+const GROWER_COLUMN: ReportColumn = { label: 'Grower No.', kind: 'text' }
+
+function growerList(values: Iterable<string>): string {
+  return [...new Set([...values].map(v => v.trim()).filter(Boolean))].join(', ')
+}
+
+function growerListFor(facts: Fact[]): string {
+  return growerList(facts.flatMap(f => f.growerNumbers))
+}
+
 // ── Trend ───────────────────────────────────────────────────────────
 
 function monthlyTrend(facts: Fact[], months = 12): { label: string; value: number }[] {
@@ -368,11 +391,18 @@ function monthlyTrend(facts: Fact[], months = 12): { label: string; value: numbe
  *  payments joined through the policy, claims from the claim's agent. */
 function collectFacts(data: ReportData): { policies: Fact[]; claims: Fact[]; payments: Fact[]; clients: Fact[] } {
   const policyById = new Map(data.policies.map(p => [p.id, p]))
+  const agriPoliciesByClient = new Map<string, Policy[]>()
+  for (const p of data.policies) {
+    if (p.productCategory !== 'agriculture') continue
+    const existing = agriPoliciesByClient.get(p.clientId) ?? []
+    existing.push(p)
+    agriPoliciesByClient.set(p.clientId, existing)
+  }
   return {
     policies: policyFacts(data.policies),
     claims: claimFacts(data.claims, policyById),
     payments: paymentFacts(data.payments, policyById),
-    clients: clientFacts(data.clients),
+    clients: clientFacts(data.clients, agriPoliciesByClient),
   }
 }
 
@@ -384,10 +414,12 @@ interface Bucket {
   collected: number
   claims: number
   claimsPaid: number
+  hasAgriculture: boolean
+  growerNumbers: Set<string>
 }
 
 function newBucket(label: string): Bucket {
-  return { label, policies: 0, heads: 0, billed: 0, collected: 0, claims: 0, claimsPaid: 0 }
+  return { label, policies: 0, heads: 0, billed: 0, collected: 0, claims: 0, claimsPaid: 0, hasAgriculture: false, growerNumbers: new Set() }
 }
 
 /** Buckets keyed by an arbitrary dimension across policies, with the
@@ -418,6 +450,10 @@ function aggregate(
     b.policies += 1
     b.heads += p.heads
     b.billed += p.amount
+    if (p.hasAgriculture) {
+      b.hasAgriculture = true
+      p.growerNumbers.forEach(n => b.growerNumbers.add(n))
+    }
   }
   // Collections: completed payments in the filtered window, credited to
   // the bucket of the policy they paid — skipped when that policy itself
@@ -462,6 +498,7 @@ export function buildReport(dataset: ReportDataset, data: ReportData, f: ReportF
       fact => dataset === 'digital_agents' ? (isDev(fact.agentId) ? fact.agentId! : undefined) : (fact.agentId ?? '∅'),
       key => key === '∅' ? 'Unassigned' : (data.developers.find(d => d.agentProfileId === key)?.companyName ?? data.staff.find(s => s.id === key)?.name ?? 'Unknown agent'))
     const rows = [...buckets.values()].sort((a, b) => b.billed - a.billed)
+    const includeGrower = rows.some(b => b.hasAgriculture)
     const columns: ReportColumn[] = dataset === 'digital_agents'
       ? [
           { label: 'Digital Agent', kind: 'text' }, { label: 'Status', kind: 'text' }, { label: 'Policies', kind: 'number' },
@@ -473,6 +510,7 @@ export function buildReport(dataset: ReportDataset, data: ReportData, f: ReportF
           { label: 'Lives', kind: 'number' }, { label: 'Billed Premium', kind: 'money' }, { label: 'Collected', kind: 'money' },
           { label: 'Claims', kind: 'number' }, { label: 'Claims Paid', kind: 'money' },
         ]
+    if (includeGrower) columns.push(GROWER_COLUMN)
     return {
       title: dataset === 'agents' ? 'Agent Performance' : 'Digital Agent (API) Performance',
       columns,
@@ -480,10 +518,17 @@ export function buildReport(dataset: ReportDataset, data: ReportData, f: ReportF
         const key = [...buckets.entries()].find(([, v]) => v === b)![0]
         if (dataset === 'digital_agents') {
           const dev = data.developers.find(d => d.agentProfileId === key)
-          return [b.label, dev?.status ?? '', b.policies, b.heads, MONEY(b.billed), MONEY(b.collected), dev ? Number(dev.walletBalance) : 0, b.claims, MONEY(b.claimsPaid)]
+          return [
+            b.label, dev?.status ?? '', b.policies, b.heads, MONEY(b.billed), MONEY(b.collected),
+            dev ? Number(dev.walletBalance) : 0, b.claims, MONEY(b.claimsPaid),
+            ...(includeGrower ? [growerList(b.growerNumbers)] : []),
+          ]
         }
         const role = data.staff.find(s => s.id === key)?.role.replace(/_/g, ' ') ?? (key === '∅' ? '' : 'digital agent')
-        return [b.label, role, b.policies, b.heads, MONEY(b.billed), MONEY(b.collected), b.claims, MONEY(b.claimsPaid)]
+        return [
+          b.label, role, b.policies, b.heads, MONEY(b.billed), MONEY(b.collected), b.claims, MONEY(b.claimsPaid),
+          ...(includeGrower ? [growerList(b.growerNumbers)] : []),
+        ]
       }),
       stats: [
         { label: dataset === 'agents' ? 'Agents' : 'Digital Agents', value: String(rows.length) },
@@ -503,6 +548,7 @@ export function buildReport(dataset: ReportDataset, data: ReportData, f: ReportF
         ? (data.products.find(p => p.id === key)?.name ?? 'Unknown product')
         : policySourceLabel(key))
     const rows = [...buckets.values()].sort((a, b) => b.billed - a.billed)
+    const includeGrower = rows.some(b => b.hasAgriculture)
     const columns: ReportColumn[] = dataset === 'products'
       ? [
           { label: 'Product', kind: 'text' }, { label: 'Category', kind: 'text' }, { label: 'Policies', kind: 'number' },
@@ -514,14 +560,22 @@ export function buildReport(dataset: ReportDataset, data: ReportData, f: ReportF
           { label: 'Billed Premium', kind: 'money' }, { label: 'Collected', kind: 'money' },
           { label: 'Claims', kind: 'number' }, { label: 'Claims Paid', kind: 'money' },
         ]
+    if (includeGrower) columns.push(GROWER_COLUMN)
     return {
       title: dataset === 'products' ? 'Product Performance' : 'Registrations by Channel',
       columns,
       rows: rows.map(b => {
         const key = [...buckets.entries()].find(([, v]) => v === b)![0]
         return dataset === 'products'
-          ? [b.label, (data.products.find(p => p.id === key)?.category ?? '').replace(/_/g, ' '), b.policies, b.heads, MONEY(b.billed), MONEY(b.collected), b.claims, MONEY(b.claimsPaid)]
-          : [b.label, b.policies, b.heads, MONEY(b.billed), MONEY(b.collected), b.claims, MONEY(b.claimsPaid)]
+          ? [
+              b.label, (data.products.find(p => p.id === key)?.category ?? '').replace(/_/g, ' '), b.policies, b.heads,
+              MONEY(b.billed), MONEY(b.collected), b.claims, MONEY(b.claimsPaid),
+              ...(includeGrower ? [growerList(b.growerNumbers)] : []),
+            ]
+          : [
+              b.label, b.policies, b.heads, MONEY(b.billed), MONEY(b.collected), b.claims, MONEY(b.claimsPaid),
+              ...(includeGrower ? [growerList(b.growerNumbers)] : []),
+            ]
       }),
       stats: [
         { label: dataset === 'products' ? 'Products' : 'Channels', value: String(rows.length) },
@@ -560,12 +614,18 @@ export function buildReport(dataset: ReportDataset, data: ReportData, f: ReportF
       arr.push(x)
       groups.set(key, arr)
     }
-    const rows = [...groups.entries()]
-      .map(([key, arr]) => [groupLabelOf(key, groupBy, data), arr.length, arr.reduce((s, x) => s + x.heads, 0), MONEY(arr.reduce((s, x) => s + x.amount, 0))])
+    const grouped = [...groups.entries()]
+    const includeGrower = grouped.some(([, arr]) => arr.some(x => x.hasAgriculture))
+    const rows = grouped
+      .map(([key, arr]) => [
+        groupLabelOf(key, groupBy, data), arr.length, arr.reduce((s, x) => s + x.heads, 0),
+        MONEY(arr.reduce((s, x) => s + x.amount, 0)),
+        ...(includeGrower ? [growerListFor(arr)] : []),
+      ])
       .sort((a, b) => (b[3] as number) - (a[3] as number) || String(a[0]).localeCompare(String(b[0])))
     return {
       title: `${cap(dataset)} Report — grouped ${GROUP_OPTIONS[dataset].find(g => g.value === groupBy)?.label.replace(/^By /, 'by ') ?? ''}`,
-      columns: GROUPED_COLUMNS(spec.itemLabel, spec.amountLabel),
+      columns: includeGrower ? [...GROUPED_COLUMNS(spec.itemLabel, spec.amountLabel), GROWER_COLUMN] : GROUPED_COLUMNS(spec.itemLabel, spec.amountLabel),
       rows,
       stats: detailStats(dataset, filtered, totalAmount, totalHeads),
       // Clients carry no money measure — chart their headcount instead of
@@ -575,10 +635,11 @@ export function buildReport(dataset: ReportDataset, data: ReportData, f: ReportF
     }
   }
 
-  const rows = filtered.map(x => spec.row(x))
+  const includeGrower = filtered.some(x => x.hasAgriculture)
+  const rows = filtered.map(x => [...spec.row(x), ...(includeGrower ? [growerList(x.growerNumbers)] : [])])
   return {
     title: `${cap(dataset)} Report`,
-    columns: spec.columns,
+    columns: includeGrower ? [...spec.columns, GROWER_COLUMN] : spec.columns,
     rows,
     stats: detailStats(dataset, filtered, totalAmount, totalHeads),
     // An ungrouped detail list still deserves a picture — pick the natural

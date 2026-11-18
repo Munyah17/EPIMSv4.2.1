@@ -46,6 +46,25 @@ describe('treaty report export', () => {
     expect([rows[1][14], rows[1][16]]).toEqual([0.4, 0.6])
   })
 
+  it('adds the grower number whenever an agriculture policy is exported', () => {
+    const agriPolicy: Policy = {
+      ...policy,
+      productCategory: 'agriculture',
+      growerNumber: 'AGR-12345',
+    }
+    const agriRows = treatyRows([agriPolicy], byId)
+    expect(treatyHeaders('annual', true)).toContain('GROWER NO.')
+    expect(agriRows[0]).toHaveLength(18)
+    expect(agriRows[0][7]).toBe('AGR-12345')
+
+    const mixedRows = treatyRows([agriPolicy, policy], byId)
+    expect(mixedRows.map(r => r[7])).toEqual(['AGR-12345', 'AGR-12345', '', ''])
+
+    const legacyGrowerRows = treatyRows([{ ...policy, productCategory: undefined, growerNumber: 'AGR-LEGACY' }], byId)
+    expect(legacyGrowerRows[0]).toHaveLength(18)
+    expect(legacyGrowerRows[0][7]).toBe('AGR-LEGACY')
+  })
+
   it('exports package participants as insured heads for the negotiated term', () => {
     const schoolTrip: Policy = {
       ...policy,

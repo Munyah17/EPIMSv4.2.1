@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import type { ToastMessage, Payment, Invoice, Claim, PettyCashEntry, Requisition } from '../../types'
+import type { ToastMessage, Payment, Invoice, Claim, PettyCashEntry, Requisition, Policy } from '../../types'
 import { db } from '../../lib/db'
 import { exportToCsv } from '../../lib/exportUtils'
 
@@ -27,6 +27,7 @@ export default function MoneyReportsPanel({ showToast }: Props) {
   const [range, setRange] = useState<RangeKey>('ytd')
   const [loading, setLoading] = useState(true)
   const [payments, setPayments] = useState<Payment[]>([])
+  const [policies, setPolicies] = useState<Policy[]>([])
   const [invoices, setInvoices] = useState<Invoice[]>([])
   const [claims, setClaims] = useState<Claim[]>([])
   const [petty, setPetty] = useState<PettyCashEntry[]>([])
@@ -34,12 +35,14 @@ export default function MoneyReportsPanel({ showToast }: Props) {
 
   useEffect(() => {
     setLoading(true)
-    Promise.all([db.payments.list(), db.invoices.list(), db.claims.list(), db.pettyCashEntries.list(), db.requisitions.list()])
-      .then(([p, i, c, pc, r]) => {
+    Promise.all([db.payments.list(), db.policies.list(), db.invoices.list(), db.claims.list(), db.pettyCashEntries.list(), db.requisitions.list()])
+      .then(([p, pol, i, c, pc, r]) => {
         if (p.error) showToast('error', p.error)
+        if (pol.error) showToast('error', pol.error)
         if (i.error) showToast('error', i.error)
         if (pc.error) showToast('error', pc.error)
         setPayments(p.data ?? [])
+        setPolicies(pol.data ?? [])
         setInvoices(i.data ?? [])
         setClaims(c.data ?? [])
         setPetty(pc.data)
@@ -87,15 +90,31 @@ export default function MoneyReportsPanel({ showToast }: Props) {
   }
 
   const exportReport = () => {
+    const policyById = new Map(policies.map(p => [p.id, p]))
+    const isAgriClaim = (c: Claim) => (c.category ?? policyById.get(c.policyId)?.productCategory) === 'agriculture'
+    const includeGrower = paidPayments.some(p => policyById.get(p.policyId)?.productCategory === 'agriculture')
+      || issuedInvoices.some(i => policyById.get(i.policyId)?.productCategory === 'agriculture')
+      || paidClaims.some(isAgriClaim)
+    const growerFor = (policy: Policy | undefined, agricultural = false) =>
+      includeGrower ? [agricultural ? policy?.growerNumber ?? '' : ''] : []
     exportToCsv(
       `money-report-${range}-${new Date().toISOString().slice(0, 10)}.csv`,
-      ['Type', 'Reference', 'Party', 'Amount', 'Status', 'Date'],
+      ['Type', 'Reference', 'Party', 'Amount', 'Status', 'Date', ...(includeGrower ? ['Grower No.'] : [])],
       [
-        ...paidPayments.map(p => ['collection', p.reference, p.clientName, p.amount.toFixed(2), p.status, (p.recordedAt ?? p.date).slice(0, 10)]),
-        ...issuedInvoices.map(i => ['invoice', i.invoiceNumber, i.groupName ?? i.clientName, i.amount.toFixed(2), i.status, i.issuedAt.slice(0, 10)]),
-        ...paidClaims.map(c => ['claim_paid', c.claimNumber, c.clientName, c.amount.toFixed(2), c.status, c.dateSubmitted.slice(0, 10)]),
-        ...reqsPaid.map(r => ['requisition', r.requisitionNumber, r.payee, r.amount.toFixed(2), r.status, (r.paidAt ?? r.createdAt).slice(0, 10)]),
-        ...pettySpent.map(e => ['petty_cash', e.receiptRef ?? e.category, e.payee ?? e.description, e.amount.toFixed(2), 'spent', e.createdAt.slice(0, 10)]),
+        ...paidPayments.map(p => {
+          const policy = policyById.get(p.policyId)
+          return ['collection', p.reference, p.clientName, p.amount.toFixed(2), p.status, (p.recordedAt ?? p.date).slice(0, 10), ...growerFor(policy, policy?.productCategory === 'agriculture')]
+        }),
+        ...issuedInvoices.map(i => {
+          const policy = policyById.get(i.policyId)
+          return ['invoice', i.invoiceNumber, i.groupName ?? i.clientName, i.amount.toFixed(2), i.status, i.issuedAt.slice(0, 10), ...growerFor(policy, policy?.productCategory === 'agriculture')]
+        }),
+        ...paidClaims.map(c => {
+          const policy = policyById.get(c.policyId)
+          return ['claim_paid', c.claimNumber, c.clientName, c.amount.toFixed(2), c.status, c.dateSubmitted.slice(0, 10), ...growerFor(policy, isAgriClaim(c))]
+        }),
+        ...reqsPaid.map(r => ['requisition', r.requisitionNumber, r.payee, r.amount.toFixed(2), r.status, (r.paidAt ?? r.createdAt).slice(0, 10), ...growerFor(undefined)]),
+        ...pettySpent.map(e => ['petty_cash', e.receiptRef ?? e.category, e.payee ?? e.description, e.amount.toFixed(2), 'spent', e.createdAt.slice(0, 10), ...growerFor(undefined)]),
       ],
     )
     showToast('success', 'Money report exported.')
