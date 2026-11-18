@@ -83,7 +83,7 @@ export async function exportToExcelMulti(
  * printed report can't be mistaken for a different cut of the data),
  * the headline stats as a boxed strip, then the data table.
  *
- * Wide tables (the 17-column treaty layout) get landscape +
+ * Wide tables (the comprehensive policy-register layout) get landscape +
  * horizontalPageBreak: the columns flow onto a second page set at full
  * readable width instead of being crushed into one cramped grid — the
  * same row appears across the page sets, so reading order is preserved.
@@ -95,7 +95,7 @@ export async function exportReportToPdf(
   stats: { label: string; value: string }[],
   headers: string[],
   rows: (string | number)[][],
-  /** Wide reports (the 17-column treaty layout) need the extra width.
+  /** Wide reports (the comprehensive policy-register layout) need the extra width.
    *  repeatColumns: the identity columns re-printed on every overflow
    *  page set — a single repeat drops Surname on later sets and puts
    *  whatever follows in its visual slot. */

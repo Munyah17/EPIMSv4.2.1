@@ -1,12 +1,12 @@
 import type { Policy, Client } from '../types'
 
 /**
- * Policy (treaty/cession) report — the column layout of the reinsurer's
- * "Report Template.xlsx". One row per INSURED HEAD: the holder as
- * PRINCIPAL MEMBER, each dependant as their own DEPENDENT row, since
- * cover and premium are priced per head.
+ * Major policy report — one row per INSURED HEAD with the complete policy
+ * context attached: the holder as PRINCIPAL MEMBER, each dependant or
+ * roster member as their own row, and every policy/client attribution
+ * field repeated so the export stands alone across all product types.
  *
- * Formatting rules (fixed — a treaty file is compared across months):
+ * Formatting rules (fixed — reports are compared across exports):
  *   - dates:      d-MMM-yyyy   ("7-Dec-2026")
  *   - national ID: upper-case, no spaces/dashes
  *   - designation: PRINCIPAL MEMBER | DEPENDENT <RELATIONSHIP>
@@ -19,10 +19,20 @@ import type { Policy, Client } from '../types'
 export const RETENTION_SHARE = 0.4
 
 export const TREATY_HEADERS = [
-  'NAME', 'Surname', 'DOB', 'ID', 'GENDER', 'POLICY', 'POLICY NUMBER',
-  'DESIGNATION', 'COMMENCE DATE', 'PERIOD (in months)',
+  'NAME', 'Surname', 'DOB', 'ID', 'DESIGNATION',
+  'ACCOUNT HOLDER', 'CLIENT PHONE', 'CLIENT EMAIL', 'CLIENT ADDRESS',
+  'CLIENT OCCUPATION', 'CLIENT STATUS', 'CLIENT AGENT', 'CLIENT CAPTURED BY',
+  'CLIENT REGISTERED', 'CLIENT POLICY COUNT', 'CLIENT INSURER',
+  'POLICY ID', 'POLICY NUMBER', 'POLICY', 'PRODUCT CATEGORY', 'EXCESS',
+  'COMMENCE DATE', 'END DATE', 'PERIOD (in months)', 'STATUS',
+  'COVER SCOPE', 'PACKAGE TYPE', 'GROUP', 'TEAM ACTIVITY',
+  'GROWER NO.', 'HECTARAGE', 'CONTRACTOR', 'GPS LATITUDE', 'GPS LONGITUDE',
+  'CHRONIC ILLNESS', 'CHRONIC ILLNESS DETAILS',
   'SUM ASSURED', 'MONTHLY PREMIUM', 'TOTAL PREMIUM',
   'RETAINED SUM ASSURED', 'RETAINED PREMIUM', 'SUM REASSURED', 'REASS PREMIUM',
+  'PAYMENT METHOD', 'NEXT PAYMENT DATE', 'LAST PAYMENT DATE',
+  'AGENT', 'CAPTURED BY', 'SOURCE', 'INSURER', 'CREATED AT',
+  'CLIENT ID', 'PRODUCT ID', 'GROUP ID', 'AGENT ID', 'CAPTURED BY ID',
 ]
 
 /** Premium-column heading for the export's actual contents. Agriculture
@@ -31,16 +41,12 @@ export const TREATY_HEADERS = [
  *  'MONTHLY PREMIUM' has a reinsurer dividing it by 12. A mixed book says
  *  'PREMIUM' and lets the product column disambiguate. */
 export type TreatyPeriodKind = 'monthly' | 'annual' | 'term' | 'mixed'
-export function treatyHeaders(kind: TreatyPeriodKind, includeGrower = false): string[] {
+export function treatyHeaders(kind: TreatyPeriodKind): string[] {
   const premium = kind === 'annual' ? 'ANNUAL PREMIUM'
     : kind === 'term' ? 'TERM PREMIUM'
     : kind === 'mixed' ? 'PREMIUM'
     : 'MONTHLY PREMIUM'
-  const headers = TREATY_HEADERS.map(h => h === 'MONTHLY PREMIUM' ? premium : h)
-  const policyIndex = headers.indexOf('POLICY NUMBER')
-  return includeGrower
-    ? [...headers.slice(0, policyIndex + 1), 'GROWER NO.', ...headers.slice(policyIndex + 1)]
-    : headers
+  return TREATY_HEADERS.map(h => h === 'MONTHLY PREMIUM' ? premium : h)
 }
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
@@ -95,23 +101,44 @@ function designation(rel: string | undefined | null): string {
   return `DEPENDENT ${r.toUpperCase()}`
 }
 
-/** One row: a person, their designation, cover and premium share. */
+function yesNo(value: boolean | undefined): string {
+  return value === undefined ? '' : value ? 'YES' : 'NO'
+}
+
+/** One row: an insured head, their designation, and the complete policy
+ *  context that applies to that row. Person-level fields stay in the
+ *  identity columns; client fields remain marked as client details so a
+ *  dependant row never masquerades as the account holder. */
 function row(
-  person: { name: string; nationalId?: string; dob?: string; gender?: string },
-  desig: string, policy: Policy, premium: number, assured: number, includeGrower: boolean,
+  person: { name: string; nationalId?: string; dob?: string },
+  desig: string, policy: Policy, premium: number, assured: number, client?: Client,
 ): (string | number)[] {
   const { name, surname } = splitName(person.name)
   const retainedA = assured * RETENTION_SHARE
   const retainedP = premium * RETENTION_SHARE
   return [
-    name, surname, reportDate(person.dob), canonicalId(person.nationalId),
-    person.gender ?? '',
-    policy.productName, policy.policyNumber,
-    ...(includeGrower ? [policy.growerNumber ?? ''] : []),
-    desig, reportDate(policy.startDate), periodMonths(policy),
+    name, surname, reportDate(person.dob), canonicalId(person.nationalId), desig,
+    policy.groupName ?? policy.clientName,
+    client?.phone ?? '', client?.email ?? '', client?.address ?? '',
+    client?.occupation ?? '', client?.status ?? '', client?.agentName ?? '',
+    client?.capturedByName ?? '', reportDate(client?.createdAt),
+    client?.policyCount ?? '', client?.insurer ?? '',
+    policy.id, policy.policyNumber, policy.productName,
+    policy.productCategory ?? '', policy.excess ?? '',
+    reportDate(policy.startDate), reportDate(policy.endDate), periodMonths(policy),
+    policy.status.replace(/_/g, ' '), policy.coverScope ?? 'individual',
+    policy.onceOff ? 'ONCE-OFF PACKAGE' : 'RECURRING',
+    policy.groupName ?? '', policy.teamActivity ?? '',
+    policy.growerNumber ?? '', policy.hectarage ?? '', policy.contractor ?? '',
+    policy.gpsLat ?? '', policy.gpsLng ?? '',
+    yesNo(policy.hasChronicIllness), policy.chronicIllnessDetails ?? '',
     money(assured), money(premium), money(premium),
     money(retainedA), money(retainedP),
     money(assured - retainedA), money(premium - retainedP),
+    policy.paymentMethod ?? '', reportDate(policy.nextPaymentDate), reportDate(policy.lastPaymentDate),
+    policy.agentName ?? '', policy.capturedByName ?? '', policy.source ?? '', policy.insurer ?? '',
+    reportDate(policy.createdAt),
+    policy.clientId, policy.productId, policy.groupId ?? '', policy.agentId ?? '', policy.capturedById ?? '',
   ]
 }
 
@@ -122,7 +149,6 @@ function row(
 export function treatyRows(
   policies: Policy[],
   clientsById: Map<string, Client>,
-  includeGrower = policies.some(p => p.productCategory === 'agriculture' || !!p.growerNumber),
 ): (string | number)[][] {
   const rows: (string | number)[][] = []
   for (const p of policies) {
@@ -133,15 +159,15 @@ export function treatyRows(
     // member, team participant, package traveller).
     if (!rosterScoped) {
       rows.push(row(
-        { name: p.clientName, nationalId: c?.nationalId, dob: c?.dob, gender: c?.gender },
-        'PRINCIPAL MEMBER', p, p.premium, p.coverAmount, includeGrower,
+        { name: p.clientName, nationalId: c?.nationalId, dob: c?.dob },
+        'PRINCIPAL MEMBER', p, p.premium, p.coverAmount, c,
       ))
     }
     for (const d of p.dependants ?? []) {
       rows.push(row(
-        { name: d.name, nationalId: d.nationalId, dob: d.dob, gender: d.gender },
+        { name: d.name, nationalId: d.nationalId, dob: d.dob },
         rosterScoped ? 'PRINCIPAL MEMBER' : designation(d.relationship), p,
-        d.premium ?? p.premium, d.coverAmount ?? p.coverAmount, includeGrower,
+        d.premium ?? p.premium, d.coverAmount ?? p.coverAmount, c,
       ))
     }
   }
