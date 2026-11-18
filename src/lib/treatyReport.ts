@@ -3,8 +3,8 @@ import type { Policy, Client } from '../types'
 /**
  * Major policy report — one row per INSURED HEAD with the complete policy
  * context attached: the holder as PRINCIPAL MEMBER, each dependant or
- * roster member as their own row, and every policy/client attribution
- * field repeated so the export stands alone across all product types.
+ * roster member as their own row, and every policy attribution field
+ * repeated so the export stands alone across all product types.
  *
  * Formatting rules (fixed — reports are compared across exports):
  *   - dates:      d-MMM-yyyy   ("7-Dec-2026")
@@ -20,9 +20,7 @@ export const RETENTION_SHARE = 0.4
 
 export const TREATY_HEADERS = [
   'NAME', 'Surname', 'DOB', 'ID', 'DESIGNATION',
-  'GROWER NO.', 'CLIENT PHONE', 'CLIENT EMAIL', 'CLIENT ADDRESS',
-  'CLIENT OCCUPATION', 'CLIENT STATUS', 'CLIENT AGENT', 'CLIENT CAPTURED BY',
-  'CLIENT REGISTERED', 'CLIENT POLICY COUNT', 'CLIENT INSURER',
+  'GROWER NO.',
   'POLICY ID', 'POLICY NUMBER', 'POLICY', 'PRODUCT CATEGORY', 'EXCESS',
   'COMMENCE DATE', 'END DATE', 'PERIOD (in months)', 'STATUS',
   'COVER SCOPE', 'PACKAGE TYPE', 'GROUP', 'TEAM ACTIVITY',
@@ -105,12 +103,10 @@ function yesNo(value: boolean | undefined): string {
 }
 
 /** One row: an insured head, their designation, and the complete policy
- *  context that applies to that row. Person-level fields stay in the
- *  identity columns; client fields remain marked as client details so a
- *  dependant row never masquerades as the account holder. */
+ *  context that applies to that row. */
 function row(
   person: { name: string; nationalId?: string; dob?: string },
-  desig: string, policy: Policy, premium: number, assured: number, client?: Client,
+  desig: string, policy: Policy, premium: number, assured: number,
 ): (string | number)[] {
   const { name, surname } = splitName(person.name)
   const retainedA = assured * RETENTION_SHARE
@@ -118,10 +114,6 @@ function row(
   return [
     name, surname, reportDate(person.dob), canonicalId(person.nationalId), desig,
     policy.growerNumber ?? '',
-    client?.phone ?? '', client?.email ?? '', client?.address ?? '',
-    client?.occupation ?? '', client?.status ?? '', client?.agentName ?? '',
-    client?.capturedByName ?? '', reportDate(client?.createdAt),
-    client?.policyCount ?? '', client?.insurer ?? '',
     policy.id, policy.policyNumber, policy.productName,
     policy.productCategory ?? '', policy.excess ?? '',
     reportDate(policy.startDate), reportDate(policy.endDate), periodMonths(policy),
@@ -141,7 +133,7 @@ function row(
 }
 
 /** The whole book, or whatever filtered set the caller passes. The
- *  holder's ID/DOB/gender live on the client row, so callers pass a
+ *  holder's ID/DOB live on the client row, so callers pass a
  *  clientId→Client lookup; a holder whose client isn't loaded still
  *  exports — identity columns just come out blank. */
 export function treatyRows(
@@ -158,14 +150,14 @@ export function treatyRows(
     if (!rosterScoped) {
       rows.push(row(
         { name: p.clientName, nationalId: c?.nationalId, dob: c?.dob },
-        'PRINCIPAL MEMBER', p, p.premium, p.coverAmount, c,
+        'PRINCIPAL MEMBER', p, p.premium, p.coverAmount,
       ))
     }
     for (const d of p.dependants ?? []) {
       rows.push(row(
         { name: d.name, nationalId: d.nationalId, dob: d.dob },
         rosterScoped ? 'PRINCIPAL MEMBER' : designation(d.relationship), p,
-        d.premium ?? p.premium, d.coverAmount ?? p.coverAmount, c,
+        d.premium ?? p.premium, d.coverAmount ?? p.coverAmount,
       ))
     }
   }

@@ -25,26 +25,26 @@ const policy: Policy = {
 const COL = {
   designation: 4,
   grower: 5,
-  clientPhone: 6,
-  clientStatus: 10,
-  policyId: 16,
-  policyNumber: 17,
-  product: 18,
-  category: 19,
-  startDate: 21,
-  period: 23,
-  status: 24,
-  hectarage: 29,
-  contractor: 30,
-  sumAssured: 35,
-  premium: 36,
-  retainedAssured: 38,
-  retainedPremium: 39,
-  reassured: 40,
-  reassuredPremium: 41,
-  agent: 45,
-  capturedBy: 46,
-  createdAt: 49,
+  policyId: 6,
+  policyNumber: 7,
+  product: 8,
+  category: 9,
+  startDate: 11,
+  period: 13,
+  status: 14,
+  hectarage: 19,
+  contractor: 20,
+  gpsLat: 21,
+  gpsLng: 22,
+  sumAssured: 25,
+  premium: 26,
+  retainedAssured: 28,
+  retainedPremium: 29,
+  reassured: 30,
+  reassuredPremium: 31,
+  agent: 35,
+  capturedBy: 36,
+  createdAt: 39,
 }
 
 describe('major policy report export', () => {
@@ -53,7 +53,8 @@ describe('major policy report export', () => {
 
   it('emits one row per insured head with the complete policy register headers', () => {
     expect(rows).toHaveLength(2)
-    expect(TREATY_HEADERS).toHaveLength(50)
+    expect(TREATY_HEADERS).toHaveLength(40)
+    expect(TREATY_HEADERS.filter(h => h.startsWith('CLIENT '))).toHaveLength(0)
     expect(TREATY_HEADERS).not.toContain('GENDER')
     expect(TREATY_HEADERS).not.toContain('CAPTURED BY ID')
     expect(TREATY_HEADERS).not.toContain('CLIENT ID')
@@ -64,15 +65,13 @@ describe('major policy report export', () => {
     expect(TREATY_HEADERS).toContain('GROWER NO.')
   })
 
-  it('carries person, client and policy details on every row', () => {
+  it('carries person and policy details on every row', () => {
     const principal = rows[0]
     expect([principal[0], principal[1]]).toEqual(['Caroline', 'Kabaya'])
     expect(principal[2]).toBe('26-Nov-1982')
     expect(principal[3]).toBe('38210897H38')
     expect(principal[COL.designation]).toBe('PRINCIPAL MEMBER')
     expect(principal[COL.grower]).toBe('')
-    expect(principal[COL.clientPhone]).toBe('0772000000')
-    expect(principal[COL.clientStatus]).toBe('active')
     expect(principal[COL.policyId]).toBe('p1')
     expect(principal[COL.policyNumber]).toBe('FND-001')
     expect(principal[COL.product]).toBe('Funeral')
@@ -87,7 +86,6 @@ describe('major policy report export', () => {
 
   it('designates dependants and splits the 40/60 retention', () => {
     expect(rows[1][COL.designation]).toBe('DEPENDENT SPOUSE')
-    expect(rows[1][COL.clientPhone]).toBe('0772000000')
     // 500 assured at 40% retained / 60% ceded; 1 premium likewise
     expect([rows[1][COL.retainedAssured], rows[1][COL.reassured]]).toEqual([200, 300])
     expect([rows[1][COL.retainedPremium], rows[1][COL.reassuredPremium]]).toEqual([0.4, 0.6])
@@ -110,8 +108,8 @@ describe('major policy report export', () => {
     expect(agriRows[0][COL.grower]).toBe('AGR-12345')
     expect(agriRows[0][COL.hectarage]).toBe(1.5)
     expect(agriRows[0][COL.contractor]).toBe('Tobacco Merchant')
-    expect(agriRows[0][31]).toBe(-17.8)
-    expect(agriRows[0][32]).toBe(31.05)
+    expect(agriRows[0][COL.gpsLat]).toBe(-17.8)
+    expect(agriRows[0][COL.gpsLng]).toBe(31.05)
   })
 
   it('exports package participants as insured heads for the negotiated term', () => {

@@ -224,7 +224,7 @@ export default function Policies({ showToast, setActivePanel, initialCategory }:
   const handleTreatyExport = async (format: 'xlsx' | 'csv' | 'pdf') => {
     setExporting(true)
     try {
-      // The holder's ID/DOB/gender live on the client row — fetched on
+      // The holder's ID/DOB live on the client row — fetched on
       // demand so a page that never exports never pays for the join.
       const { data: clients } = await db.clients.list()
       const byId = new Map((clients ?? []).map(c => [c.id, c]))
