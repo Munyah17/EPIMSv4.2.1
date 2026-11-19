@@ -321,7 +321,7 @@ export default function Staff({ showToast }: Props) {
         )}
         {tab === 'agents' && user?.role === 'super_admin' && (
           <button type="button" className="btn btn-ghost" onClick={() => void handleDistributeReferrals()} disabled={distributingReferrals}>
-            {distributingReferrals ? 'Sending Links…' : 'Email Referral Links'}
+            {distributingReferrals ? 'Sending Links…' : 'Distribute Referral Links'}
           </button>
         )}
         {user?.role === 'super_admin' && (
