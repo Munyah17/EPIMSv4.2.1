@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { isInternalAuthEmail, roleChain, rolesInChain, sameRoleChain, signInSuffix } from './accountIdentity.js'
+import { isInternalAuthEmail, roleChain, rolesInChain, sameRoleChain, signInSuffix, suffixedSignInName } from './accountIdentity.js'
 
 describe('account identity role chains', () => {
   it('separates customers from staff and agents', () => {
@@ -20,6 +20,8 @@ describe('account identity role chains', () => {
   it('uses role-specific sign-in suffixes and internal auth domains', () => {
     expect(signInSuffix('agent')).toBe('Agent')
     expect(signInSuffix('policyholder')).toBe('Client')
+    expect(suffixedSignInName('Justice Choga', 'agent')).toBe('Justice Choga Agent')
+    expect(suffixedSignInName('Justice Choga', 'policyholder')).toBe('Justice Choga Client')
     expect(isInternalAuthEmail('agent-jane-doe-x1y2z3@agent.motions.local')).toBe(true)
     expect(isInternalAuthEmail('staff-jane-doe-x1y2z3@account.motions.local')).toBe(true)
     expect(isInternalAuthEmail('jane@example.com')).toBe(false)

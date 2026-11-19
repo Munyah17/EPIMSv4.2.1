@@ -60,7 +60,7 @@ interface CreateAccountBody {
 
 /** Sign-in identity is the person's unique display name or their email.
  *  Cross-role identities may share the same personal name, so the login
- *  username gains a role suffix instead of treating the account as a
+ *  username gains a plain role suffix instead of treating the account as a
  *  duplicate. */
 
 const normalizeName = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()

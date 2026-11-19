@@ -2043,7 +2043,7 @@ export const staff = {
     if (updates.username    !== undefined) row.username    = updates.username?.trim() || null
     // Keep display name and sign-in name in step only when they were in
     // step already. A cross-role account can legitimately carry
-    // "Name (Agent)" / "Name (Client)" aliases that must not be flattened.
+    // "Name Agent" / "Name Client" aliases that must not be flattened.
     else if (updates.name   !== undefined) {
       const { data: current } = await supabase.from('profiles').select('name, username').eq('id', id).maybeSingle()
       if (current?.username && String(current.username).toLowerCase() === String(current.name ?? '').toLowerCase()) {

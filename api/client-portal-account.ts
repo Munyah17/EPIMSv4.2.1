@@ -19,7 +19,7 @@ import { auditLog } from './_lib/audit.js'
  * case-sensitive while auth lowercases every email it stores.
  *
  * Login identifier: the client signs in with that email or their unique
- * sign-in name — normally their full name, or a "(Client)" alias when the
+ * sign-in name — normally their full name, or a "Client" suffix when the
  * same person has an account in another role chain.
  *
  * Safety: only the policyholder may own the real auth email because RLS

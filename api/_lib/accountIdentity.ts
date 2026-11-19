@@ -35,6 +35,10 @@ export function signInSuffix(role: string): string {
   return 'Staff'
 }
 
+export function suffixedSignInName(name: string, role: string): string {
+  return `${name} ${signInSuffix(role)}`
+}
+
 export function internalAuthEmail(name: string, role: string): string {
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 28) || 'account'
   const tail = Math.random().toString(36).slice(2, 8)
@@ -54,7 +58,7 @@ interface UsernameHolder {
 
 /** Choose a globally unique sign-in name without letting a customer row
  * block the same person from becoming staff/agent (or vice versa). The
- * display name stays untouched; only the login alias gets a suffix. */
+ * display name stays untouched; only the login alias gets a role suffix. */
 export async function chooseSignInName(
   admin: SupabaseClient,
   wanted: string,
@@ -76,7 +80,7 @@ export async function chooseSignInName(
   if (!exact) return { username: desired }
   if (sameRoleChain(exact.role, role) && !opts.allowSameChainAlias) return { conflict: exact }
 
-  const base = `${desired} (${signInSuffix(role)})`
+  const base = suffixedSignInName(desired, role)
   for (let i = 1; i < 100; i++) {
     const candidate = i === 1 ? base : `${base} ${i}`
     if (!holders.some(r => (r.username ?? '').toLowerCase() === candidate.toLowerCase())) {
