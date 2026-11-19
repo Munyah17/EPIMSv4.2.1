@@ -52,6 +52,7 @@ const STAFF_SECTIONS: NavSection[] = [
   {
     label: 'MAIN',
     items: [
+      { id: 'agent_portal', label: 'Agent Portal', icon: '🔗', roles: ['agent'] },
       { id: 'dashboard', label: 'Dashboard', icon: '⊞' },
       { id: 'claims', label: 'Claims', icon: '📋' },
       { id: 'payments', label: 'Payments', icon: '💳' },

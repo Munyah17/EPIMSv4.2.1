@@ -2014,7 +2014,13 @@ export const staff = {
       })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) return { data: null, error: body?.error ?? `Failed to create staff account (HTTP ${res.status}).`, approvalRequestId: body?.approvalRequestId as string | undefined }
-      return { data: toProfile(body.profile as Record<string, unknown>), error: null }
+      return {
+        data: toProfile(body.profile as Record<string, unknown>),
+        error: null,
+        referralCode: body?.referralCode as string | undefined,
+        referralLink: body?.referralLink as string | undefined,
+        warnings: Array.isArray(body?.warnings) ? body.warnings as string[] : [],
+      }
     } catch (e) {
       return { data: null, error: `Could not reach the server: ${e}` }
     }
@@ -3399,6 +3405,24 @@ export const groupMembers = {
 }
 
 // ── AGENT PROFILES (the agent file — commission intermediaries, not staff) ──
+/** Stopgap referral code for the rare save that reaches an agent file with
+ *  no code yet. The API/backfill are authoritative; this deterministic hash
+ *  keeps an old row from remaining linkless when a contract edit runs first. */
+function fallbackReferralCode(profileId: string): string {
+  const alphabet = '23456789ABCDEFGHJKMNPQRSTUVWXYZ'
+  let hash = 0x811c9dc5
+  for (const char of profileId) {
+    hash ^= char.charCodeAt(0)
+    hash = Math.imul(hash, 0x01000193) >>> 0
+  }
+  let suffix = ''
+  for (let i = 0; i < 8; i++) {
+    suffix += alphabet[hash % alphabet.length]
+    hash = Math.floor(hash / alphabet.length) + (i * 2654435761)
+  }
+  return `MOT-${suffix}`
+}
+
 export const agentProfiles = {
   async list() {
     const { ok, data } = await sb('agent_profiles', 'read',
@@ -3420,7 +3444,7 @@ export const agentProfiles = {
     if (input.ecocashNumber?.trim() && !isZwPhone(input.ecocashNumber)) {
       return { data: null, error: `EcoCash number: ${PHONE_HINT}.` }
     }
-    const row = {
+    const row: Record<string, unknown> = {
       profile_id: input.profileId,
       national_id: input.nationalId == null ? null : normalizeNationalId(input.nationalId),
       territory: input.territory ?? null,
@@ -3431,6 +3455,15 @@ export const agentProfiles = {
       ecocash_number: input.ecocashNumber ?? null,
       notes: input.notes ?? null,
       updated_at: new Date().toISOString(),
+    }
+    if (await hasColumn('agent_profiles', 'referral_code')) {
+      const { data: existing, error: existingError } = await supabase
+        .from('agent_profiles').select('referral_code').eq('profile_id', input.profileId).maybeSingle()
+      if (input.referralCode || !existingError) {
+        row.referral_code = input.referralCode ?? (existing?.referral_code as string | undefined) ?? fallbackReferralCode(input.profileId)
+      }
+      // On a read error the field is left out of the upsert rather than
+      // guessing a replacement for a code that may already exist.
     }
     const { ok, data, error } = await sb('agent_profiles', 'write',
       () => supabase.from('agent_profiles').upsert(row).select().single(),
@@ -3538,7 +3571,8 @@ export const agentGovernance = {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function toAgentProfile(r: any): AgentProfile {
   return {
-    profileId: r.profile_id, nationalId: r.national_id ?? undefined,
+    profileId: r.profile_id, referralCode: r.referral_code ?? undefined,
+    nationalId: r.national_id ?? undefined,
     territory: r.territory ?? undefined, contractStart: r.contract_start ?? undefined,
     commissionPct: r.commission_pct != null ? Number(r.commission_pct) : undefined,
     bankName: r.bank_name ?? undefined, bankAccount: r.bank_account ?? undefined,

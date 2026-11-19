@@ -13,6 +13,7 @@ interface TopBarProps {
 
 const PANEL_TITLES: Record<ActivePanel, string> = {
   dashboard: 'Dashboard',
+  agent_portal: 'Agent Portal',
   policies: 'Policies',
   lapsed_policies: 'Lapsed Policies',
   tasks: 'Tasks',

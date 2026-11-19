@@ -52,6 +52,8 @@ export type Insurer = string
  *  profiles (where they'd be NULL for every staff member). */
 export interface AgentProfile {
   profileId: string
+  /** Persistent public recruitment code used in the agent's referral link. */
+  referralCode?: string
   nationalId?: string
   territory?: string
   contractStart?: string

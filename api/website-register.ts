@@ -6,6 +6,7 @@ import { initiatePaynowPayment } from './_lib/paynowInitiate.js'
 import { chargeEip, eipConfigured, normalizeMsisdn } from './_lib/ecocashInstant.js'
 import { policyTermDates } from './_lib/policyTerm.js'
 import { isZwNationalId, isZwPhone, normalizeNationalId } from './_lib/zwFormats.js'
+import { resolveAgentByReferralCode } from './_lib/agentReferrals.js'
 
 /**
  * POST /api/website-register — the motions.co.zw → portal bridge.
@@ -53,7 +54,10 @@ interface Body {
   /** Medical declaration — REQUIRED on health-category products, same
    *  rule as the portal and the WhatsApp bot. */
   hasChronicIllness?: boolean; chronicIllnessDetails?: string
+  /** Direct profile id used by existing machine integrations. */
   agentId?: string
+  /** Public referral code from /apply?agent=MOT-XXXXXXXX — resolved here. */
+  agentCode?: string
   productCode?: string; productId?: string
   dependants?: DependantIn[]
   paymentMethod?: 'paynow' | 'ecocash'
@@ -154,6 +158,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ ok: false, code: 'MEDICAL_DECLARATION_REQUIRED', error: 'A dependant flagged with a chronic illness needs chronicIllnessDetails too.' })
   }
 
+  // Public referral links carry a code, while older machine callers pass a
+  // profile UUID. A bad/expired code must not stop a sale: it resolves to no
+  // referrer and the checkout continues unattributed.
+  const referral = await resolveAgentByReferralCode(admin, body.agentCode)
+  const requestedAgentId = referral?.profileId ?? body.agentId
+
   let createdClientId: string | null = null
   try {
     // Idempotent by national_id: a retried submission reuses the client
@@ -164,7 +174,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       client = await createClient(admin, {
         name, nationalId, phone,
         email: body.email, dob, gender: body.gender,
-        agentId: body.agentId,
+        agentId: requestedAgentId,
       })
       createdClientId = client.id
       // Address/occupation live on the client row; set when supplied.
@@ -186,7 +196,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const created = await createPendingPolicy(admin, {
         clientId: client.id, product,
         paymentMethod: paymentMethod === 'ecocash' ? 'EcoCash' : 'Paynow',
-        agentId: body.agentId ?? undefined,
+        // Existing client ownership wins — a shared referral link must never
+        // steal a client already assigned to another field agent.
+        agentId: client.agentId ?? requestedAgentId ?? undefined,
         startDate: start,
         endDate: end,
         source: 'motions_website',

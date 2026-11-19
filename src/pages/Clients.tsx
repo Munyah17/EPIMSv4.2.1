@@ -13,6 +13,7 @@ import { MAILBOXES } from '../lib/mailboxes'
 import { recordActivity } from '../lib/activityLog'
 import { COMPANY_NAME } from '../lib/company'
 import { searchMembers } from '../lib/memberNumbers'
+import { isNationalId } from '../lib/validation'
 import RegisterClientModal from '../components/modals/RegisterClientModal'
 import EditClientModal from '../components/modals/EditClientModal'
 import NewPolicyModal from '../components/modals/NewPolicyModal'
@@ -21,10 +22,11 @@ import ActionMenu from '../components/ui/ActionMenu'
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
-  setActivePanel: (panel: ActivePanel) => void
+  setActivePanel: (panel: ActivePanel, category?: string) => void
+  initialCategory?: string
 }
 
-export default function Clients({ showToast }: Props) {
+export default function Clients({ showToast, setActivePanel, initialCategory }: Props) {
   const { user, hasPermission } = useAuth()
   const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
@@ -51,7 +53,9 @@ export default function Clients({ showToast }: Props) {
     }).catch(() => showToast('error', 'Failed to load policies — dependant search may be incomplete.'))
   }, [showToast])
 
-  const filtered = clients.filter(c =>
+  const reviewInvalidIds = initialCategory === 'invalid_ids'
+  const reviewClients = reviewInvalidIds ? clients.filter(c => !isNationalId(c.nationalId)) : clients
+  const filtered = reviewClients.filter(c =>
     c.name.toLowerCase().includes(search.toLowerCase()) ||
     c.phone.includes(search) ||
     c.nationalId.includes(search) ||
@@ -66,7 +70,7 @@ export default function Clients({ showToast }: Props) {
    * result names that person and the policy they are on. Policyholders are
    * dropped from the list because they are already in the table above.
    */
-  const dependantMatches = search.trim().length >= 2
+  const dependantMatches = !reviewInvalidIds && search.trim().length >= 2
     ? searchMembers(policies, search, 12).filter(m => m.role === 'dependant')
     : []
 
@@ -404,6 +408,15 @@ export default function Clients({ showToast }: Props) {
         </div>
         <button type="button" className="btn btn-primary" onClick={() => setShowRegister(true)}>+ Register Client</button>
       </div>
+
+      {reviewInvalidIds && (
+        <div className="info-banner info-banner-warning" style={{ marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ flex: 1 }}>
+            Showing {reviewClients.length} client{reviewClients.length === 1 ? '' : 's'} with invalid National ID format.
+          </span>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setActivePanel('clients')}>Show All Clients</button>
+        </div>
+      )}
 
       {dependantMatches.length > 0 && (
         <div className="dependant-matches">

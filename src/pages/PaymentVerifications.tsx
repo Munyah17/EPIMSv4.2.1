@@ -45,6 +45,8 @@ interface CheckoutSession {
   pop_path: string | null
   pop_filename: string | null
   transaction_reference: string | null
+  referral_code: string | null
+  referral_agent_id: string | null
   created_at: string
 }
 
@@ -100,13 +102,17 @@ export default function PaymentVerifications({ showToast }: Props) {
       // Client: the national ID is the dedupe key — a returning buyer must
       // land on their existing profile, never a second one.
       const { data: existing } = await supabase
-        .from('clients').select('id, name').eq('national_id', s.client_national_id).maybeSingle()
+        .from('clients').select('id, name, agent_id').eq('national_id', s.client_national_id).maybeSingle()
       let clientId = existing?.id as string | undefined
+      // Existing client ownership wins; the referral only fills an
+      // unassigned/new client and is never allowed to steal a booked client.
+      const attributedAgentId = (existing?.agent_id as string | null) ?? s.referral_agent_id ?? undefined
       if (!clientId) {
         const { data: created, error } = await db.clients.create({
           name: s.client_name, email: s.client_email ?? '', phone: s.client_phone,
           nationalId: s.client_national_id, dob: s.client_dob ?? '',
           address: s.client_address ?? '', occupation: s.client_occupation ?? undefined,
+          agentId: attributedAgentId,
           createdAt: toIsoDate(new Date()), status: 'active',
         })
         if (error || !created) { showToast('error', error ?? 'Could not create the client profile.'); return }
@@ -134,6 +140,7 @@ export default function PaymentVerifications({ showToast }: Props) {
           status: 'pending',
           dependants: sel.dependants ?? [],
           paymentMethod: method,
+          agentId: attributedAgentId,
           source: 'motions_website',
           createdAt: toIsoDate(new Date()),
           nextPaymentDate: toIsoDate(nextPayment),
@@ -215,6 +222,7 @@ export default function PaymentVerifications({ showToast }: Props) {
                   <th>Cover</th>
                   <th>Amount</th>
                   <th>Method</th>
+                  <th>Referral</th>
                   <th>Txn Ref</th>
                   <th>Submitted</th>
                   <th>PoP</th>
@@ -232,6 +240,7 @@ export default function PaymentVerifications({ showToast }: Props) {
                     <td>{sessionSelections(s).map(sel => productFor(sel.productId)?.name ?? sel.productId).join(', ')}</td>
                     <td>${s.amount.toFixed(2)}</td>
                     <td>{GATEWAY_LABEL[s.gateway] ?? s.gateway}</td>
+                    <td><span className="mono">{s.referral_code ?? '—'}</span></td>
                     <td><span className="mono">{s.transaction_reference ?? '—'}</span></td>
                     <td>{formatDate(s.created_at)}</td>
                     <td>

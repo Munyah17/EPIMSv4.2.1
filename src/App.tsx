@@ -62,6 +62,7 @@ const CampaignComposer = lazyWithRecovery('CampaignComposer', () => import('./pa
 const SmsTemplates = lazyWithRecovery('SmsTemplates', () => import('./pages/SmsTemplates'))
 const Accounting = lazyWithRecovery('Accounting', () => import('./pages/Accounting'))
 const Tasks = lazyWithRecovery('Tasks', () => import('./pages/Tasks'))
+const AgentPortal = lazyWithRecovery('AgentPortal', () => import('./pages/AgentPortal'))
 
 export type ActivePanel =
   | 'dashboard' | 'policies' | 'lapsed_policies' | 'claims' | 'payments' | 'products'
@@ -69,7 +70,7 @@ export type ActivePanel =
   | 'email' | 'tickets' | 'fraud' | 'profile'
   | 'system_health' | 'settings' | 'developer_api' | 'integrations' | 'mass_messaging' | 'billing_reminders' | 'pre_loss_assessments' | 'agriculture_insurance' | 'member_cards' | 'whatsapp_bot'
   | 'marketing_contacts' | 'campaign_composer' | 'sms_templates' | 'accounting' | 'tasks'
-  | 'my_policies' | 'my_claims' | 'my_payments' | 'live_chat'
+  | 'my_policies' | 'my_claims' | 'my_payments' | 'live_chat' | 'agent_portal'
 
 // Earlier demo builds seeded invented clients/policies/payments into
 // localStorage under tqfy_*, and the simulated NetOne page used tqfy_mno_*.
@@ -93,7 +94,7 @@ function purgeLegacyMockStores() {
 function AppInner() {
   const { user, loading } = useAuth()
   const [activePanel, setActivePanelRaw] = useState<ActivePanel>(() =>
-    user?.role === 'policyholder' ? 'my_policies' : 'dashboard'
+    user?.role === 'policyholder' ? 'my_policies' : user?.role === 'agent' ? 'agent_portal' : 'dashboard'
   )
   // Lets a page hand the next one a starting filter, so "View Agriculture
   // Policies" from the Agriculture view opens Policies already narrowed to
@@ -215,6 +216,7 @@ function AppInner() {
   const renderPanel = () => {
     switch (activePanel) {
       case 'dashboard': return <Dashboard {...panelProps} />
+      case 'agent_portal': return <AgentPortal {...panelProps} />
       case 'policies': return <Policies {...panelProps} initialCategory={panelCategory} />
       case 'lapsed_policies': return <LapsedPolicies {...panelProps} />
       case 'tasks': return <Tasks {...panelProps} />
@@ -222,7 +224,7 @@ function AppInner() {
       case 'payments': return <Payments {...panelProps} />
       case 'payment_verifications': return <PaymentVerifications {...panelProps} />
       case 'products': return <Products {...panelProps} initialCategory={panelCategory} />
-      case 'clients': return <Clients {...panelProps} />
+      case 'clients': return <Clients {...panelProps} initialCategory={panelCategory} />
       case 'clients_no_policy': return <ClientsNoPolicy {...panelProps} />
       case 'groups': return <Groups {...panelProps} />
       case 'staff': return <Staff {...panelProps} />

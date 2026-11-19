@@ -1,6 +1,15 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 import { isZwPhone } from './_lib/zwFormats.js'
+import {
+  AGENT_REFERRAL_EMAILS,
+  agentReferralLink,
+  agentReferralSms,
+  ensureAgentReferralCode,
+  newAgentReferralEmailText,
+} from './_lib/agentReferrals.js'
+import { logDelivery, sendEmailDirect, sendSmsAfrosoft } from './_lib/notify.js'
+import { auditLog } from './_lib/audit.js'
 
 /**
  * Creates a real Supabase Auth user + profiles row — merges what used to be
@@ -329,5 +338,55 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .eq('id', approvedDuplicateRequestId)
   }
 
-  return res.status(200).json({ success: true, profile: { ...profile, email: body.email?.trim() ?? null } })
+  let referralCode: string | undefined
+  let referralLink: string | undefined
+  const notificationWarnings: string[] = []
+  if (body.role === 'agent') {
+    const ensured = await ensureAgentReferralCode(admin, created.user.id)
+    if (ensured.error || !ensured.referralCode) {
+      notificationWarnings.push(`Referral link was not issued: ${ensured.error ?? 'unknown error'}`)
+    } else {
+      referralCode = ensured.referralCode
+      referralLink = agentReferralLink(referralCode)
+      const referralAgent = {
+        profileId: created.user.id,
+        name: body.name.trim(),
+        email: body.email?.trim() || null,
+        phone: body.phone?.trim() || null,
+        active: true,
+        territory: null,
+        referralCode,
+      }
+      const directoryEmail = await sendEmailDirect(
+        AGENT_REFERRAL_EMAILS.join(', '),
+        `New field-agent referral link — ${body.name.trim()}`,
+        newAgentReferralEmailText(referralAgent),
+      )
+      await logDelivery(admin, 'system', referralCode, directoryEmail)
+      if (directoryEmail.status === 'failed') notificationWarnings.push(`Company email failed: ${directoryEmail.detail ?? 'failed'}`)
+
+      if (body.phone?.trim()) {
+        const sms = await sendSmsAfrosoft(body.phone, agentReferralSms(referralAgent))
+        await logDelivery(admin, 'system', referralCode, sms)
+        if (sms.status === 'failed') notificationWarnings.push(`Agent SMS failed: ${sms.detail ?? 'failed'}`)
+      }
+
+      await auditLog({
+        operatorId: caller.id,
+        entityType: 'agent',
+        entityId: created.user.id,
+        action: 'agent_referral_link_issued',
+        changes: { referralCode: { old: null, new: referralCode } },
+        source: 'web',
+      })
+    }
+  }
+
+  return res.status(200).json({
+    success: true,
+    profile: { ...profile, email: body.email?.trim() ?? null },
+    referralCode,
+    referralLink,
+    warnings: notificationWarnings,
+  })
 }

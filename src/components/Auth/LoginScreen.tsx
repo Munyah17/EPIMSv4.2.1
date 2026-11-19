@@ -20,7 +20,7 @@ export default function LoginScreen() {
     const { profile, error: loginError } = await login(email, password)
     setLoading(false)
     if (profile) {
-      if (profile.role !== 'policyholder') {
+      if (profile.role !== 'policyholder' && profile.role !== 'agent') {
         await supabase.auth.signOut()
         setError(profile.role === 'super_admin'
           ? 'Access denied. Super Admins must use the /super-admin sign-in link.'
@@ -38,7 +38,7 @@ export default function LoginScreen() {
           <div className="logo-mark">T</div>
           <div>
             <div className="logo-name">TARIQIFYIMS</div>
-            <div className="logo-sub">Client Portal</div>
+            <div className="logo-sub">Client & Agent Portal</div>
           </div>
         </div>
 
@@ -48,7 +48,7 @@ export default function LoginScreen() {
             <input
               id="email"
               type="text"
-              placeholder="Enter client email or full name"
+              placeholder="Enter client/agent email or full name"
               value={email}
               onChange={e => setEmail(e.target.value)}
               required
@@ -71,7 +71,7 @@ export default function LoginScreen() {
           {error && <div className="login-error">{error}</div>}
 
           <button type="submit" className="btn btn-primary btn-full" disabled={loading}>
-            {loading ? 'Signing in…' : 'Sign In as Client'}
+            {loading ? 'Signing in…' : 'Sign In'}
           </button>
         </form>
 

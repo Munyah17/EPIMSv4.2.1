@@ -5,6 +5,7 @@ import PhoneInput from '../ui/PhoneInput'
 import DateInput from '../ui/DateInput'
 import ValidationSummary, { MissingField, invalidClass, fieldId, isMissing } from '../ui/ValidationSummary'
 import { isNationalId, cleanNationalIdInput, isZwPhone, NATIONAL_ID_HINT, PHONE_HINT } from '../../lib/validation'
+import { agentReferralLink } from '../../lib/agentReferrals'
 
 interface Props {
   staff: AppUser | null
@@ -173,6 +174,15 @@ export default function AddStaffModal({ staff, agentProfile, fixedRole, onClose,
           </div>
           {isAgent && (
             <div style={{ border: '1px solid var(--border)', borderRadius: 8, padding: '0.9rem', marginBottom: '0.75rem' }}>
+              {agentProfile?.referralCode && (
+                <div className="form-group">
+                  <label>Persistent Referral Link</label>
+                  <input className="form-control" value={agentReferralLink(agentProfile.referralCode)} readOnly onFocus={e => e.currentTarget.select()} />
+                  <p style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>
+                    Share this link to attribute website applications to this agent.
+                  </p>
+                </div>
+              )}
               <div className="form-row">
                 <div className="form-group" id={fieldId('nationalId')}>
                   <label>National ID</label>

@@ -5,6 +5,7 @@ import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
 import { buildAgentPolicyReport } from '../lib/agentPolicyReport'
+import { agentReferralLink, copyAgentReferralLink, distributeAgentReferralLinks } from '../lib/agentReferrals'
 import { exportToCsvWithMeta, exportToExcelWithMeta, exportReportToPdf } from '../lib/exportUtils'
 import { useAuth } from '../contexts/AuthContext'
 import AddStaffModal from '../components/modals/AddStaffModal'
@@ -51,6 +52,7 @@ export default function Staff({ showToast }: Props) {
   const [editAgentProfile, setEditAgentProfile] = useState<AgentProfile | null>(null)
   const [governanceRequests, setGovernanceRequests] = useState<AgentGovernanceRequest[]>([])
   const [showGovernance, setShowGovernance] = useState(false)
+  const [distributingReferrals, setDistributingReferrals] = useState(false)
   const [showAdd, setShowAdd] = useState(false)
   const [addAsAgent, setAddAsAgent] = useState(false)
   const [editStaff, setEditStaff] = useState<AppUser | null>(null)
@@ -125,7 +127,7 @@ export default function Staff({ showToast }: Props) {
       setStaff(prev => prev.map(x => x.id === data.id ? data : x))
       saved = data
     } else {
-      const { data, error, approvalRequestId } = await db.staff.create({
+      const { data, error, approvalRequestId, warnings } = await db.staff.create({
         name: s.name, email: s.email, password, phone: s.phone, role: s.role, department: s.department,
         customRoleId: s.customRoleId, permissions: s.permissions,
         agentProfile: agentInput ? { nationalId: agentInput.nationalId } : undefined,
@@ -142,6 +144,7 @@ export default function Staff({ showToast }: Props) {
       }
       setStaff(prev => [...prev, data])
       saved = data
+      warnings?.forEach(message => showToast('warning', message))
     }
     // The agent file follows the role — an agent without one has no
     // contract, no territory, no payout rails on record.
@@ -233,6 +236,36 @@ export default function Staff({ showToast }: Props) {
         : `${agent.name}'s policy report exported.`)
   }
 
+  const copyReferralLink = async (agent: AppUser) => {
+    const code = agentProfiles.get(agent.id)?.referralCode
+    if (!code) { showToast('warning', `${agent.name} does not have a referral link yet — distribute the register to backfill links.`); return }
+    await copyAgentReferralLink(code)
+    showToast('success', `${agent.name}'s referral link copied.`)
+  }
+
+  const handleDistributeReferrals = async () => {
+    if (!window.confirm('Backfill referral links for every field agent, email the complete register to the company mailboxes, and SMS each active agent their own link?')) return
+    setDistributingReferrals(true)
+    const result = await distributeAgentReferralLinks()
+    setDistributingReferrals(false)
+    if (result.error) { showToast('error', result.error); return }
+    if (result.agents.length) {
+      setAgentProfiles(prev => {
+        const next = new Map(prev)
+        for (const agent of result.agents) {
+          next.set(agent.profileId, { ...(next.get(agent.profileId) ?? { profileId: agent.profileId }), referralCode: agent.referralCode, territory: agent.territory ?? next.get(agent.profileId)?.territory })
+        }
+        return next
+      })
+    }
+    const failures = result.deliveries.filter(d => d.status !== 'sent')
+    showToast(failures.length ? 'warning' : 'success',
+      failures.length
+        ? `Referral links backfilled; ${result.deliveries.length - failures.length}/${result.deliveries.length} notifications were delivered. Check notification health for the failures.`
+        : `Referral register emailed to the company mailboxes and ${result.agents.length} agent link${result.agents.length === 1 ? '' : 's'} are ready.`)
+    result.warnings.forEach(message => showToast('warning', message))
+  }
+
   const handleRequestMerge = async (sourceId: string, targetId: string, reason: string) => {
     const source = staff.find(s => s.id === sourceId)
     const target = staff.find(s => s.id === targetId)
@@ -284,6 +317,11 @@ export default function Staff({ showToast }: Props) {
         {tab === 'agents' && (
           <button type="button" className="btn btn-ghost" onClick={() => setShowGovernance(true)}>
             Reconcile / Approvals{pendingGovernance > 0 ? ` (${pendingGovernance})` : ''}
+          </button>
+        )}
+        {tab === 'agents' && user?.role === 'super_admin' && (
+          <button type="button" className="btn btn-ghost" onClick={() => void handleDistributeReferrals()} disabled={distributingReferrals}>
+            {distributingReferrals ? 'Sending Links…' : 'Email Referral Links'}
           </button>
         )}
         {user?.role === 'super_admin' && (
@@ -372,6 +410,7 @@ export default function Staff({ showToast }: Props) {
               <tr>
                 <th>Agent</th>
                 <th>Contact</th>
+                <th>Referral Link</th>
                 <th>Territory</th>
                 <th>Contract Start</th>
                 <th>Commission</th>
@@ -382,7 +421,7 @@ export default function Staff({ showToast }: Props) {
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={8} className="td-empty">No agents onboarded yet — use "+ Onboard Agent".</td></tr>
+                <tr><td colSpan={9} className="td-empty">No agents onboarded yet — use "+ Onboard Agent".</td></tr>
               ) : filtered.map(s => {
                 const ap = agentProfiles.get(s.id)
                 const book = agentStats.get(s.id)
@@ -403,6 +442,21 @@ export default function Staff({ showToast }: Props) {
                     <div style={{ fontSize: 12 }}>{s.phone ?? '—'}</div>
                     <div style={{ fontSize: 11, color: 'var(--muted)' }}>{s.email}</div>
                   </td>
+                  <td>
+                    {ap?.referralCode ? (
+                      <div style={{ minWidth: 150 }}>
+                        <div style={{ fontWeight: 700, fontSize: 12 }}>{ap.referralCode}</div>
+                        <a href={agentReferralLink(ap.referralCode)} target="_blank" rel="noreferrer" style={{ fontSize: 11 }}>
+                          Open link
+                        </a>
+                        <button type="button" className="btn btn-ghost btn-sm" style={{ marginLeft: 6, padding: '2px 8px' }} onClick={() => void copyReferralLink(s)}>
+                          Copy
+                        </button>
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: 11, color: 'var(--muted)' }}>Not issued</span>
+                    )}
+                  </td>
                   <td>{ap?.territory ?? '—'}</td>
                   <td>{ap?.contractStart ? formatDate(ap.contractStart) : '—'}</td>
                   <td>{ap?.commissionPct != null ? `${ap.commissionPct}%` : <span style={{ color: 'var(--muted)' }}>product default</span>}</td>
@@ -421,6 +475,7 @@ export default function Staff({ showToast }: Props) {
                   <td>
                     <ActionMenu items={[
                       { label: 'Edit', onClick: () => openEdit(s) },
+                      { label: 'Copy Referral Link', onClick: () => void copyReferralLink(s) },
                       { label: 'Export Report — Excel', onClick: () => void handleExportAgentReport(s, 'xlsx') },
                       { label: 'Export Report — CSV', onClick: () => void handleExportAgentReport(s, 'csv') },
                       { label: 'Export Report — PDF', onClick: () => void handleExportAgentReport(s, 'pdf') },

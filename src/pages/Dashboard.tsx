@@ -13,7 +13,7 @@ import { isGatewayFlaggedDown, getGatewayWatchStatus, pingSmsGateway, sendSms, S
 
 interface Props {
   showToast: (type: ToastMessage['type'], message: string) => void
-  setActivePanel: (panel: ActivePanel) => void
+  setActivePanel: (panel: ActivePanel, category?: string) => void
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -440,7 +440,7 @@ export default function Dashboard({ showToast, setActivePanel }: Props) {
               </>
             )}
           </span>
-          <button type="button" className="btn btn-primary btn-sm" onClick={() => setActivePanel('clients')}>Review Clients</button>
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => setActivePanel('clients', 'invalid_ids')}>Review Clients</button>
         </div>
       )}
 
