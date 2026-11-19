@@ -128,8 +128,9 @@ export async function exportReportToPdf(
   /** Wide reports (the comprehensive policy-register layout) need the extra width.
    *  repeatColumns: the identity columns re-printed on every overflow
    *  page set — a single repeat drops Surname on later sets and puts
-   *  whatever follows in its visual slot. */
-  opts?: { landscape?: boolean; repeatColumns?: number[] },
+   *  whatever follows in its visual slot. horizontalPageBreak can be
+   *  disabled when a report prefers wrapped cells over split columns. */
+  opts?: { landscape?: boolean; repeatColumns?: number[]; horizontalPageBreak?: boolean; fontSize?: number },
 ) {
   const [{ jsPDF }, { default: autoTable }, { MOTIONS_LOGO_PNG_BASE64 }] = await Promise.all([
     import('jspdf'), import('jspdf-autotable'), import('../assets/motionsLogo'),
@@ -172,12 +173,12 @@ export async function exportReportToPdf(
     body: rows.map(r => r.map((c, i) => i === 0 ? String(c).toUpperCase() : String(c))),
     startY: y,
     styles: {
-      fontSize: opts?.landscape ? 7.5 : 8.5,
+      fontSize: opts?.fontSize ?? (opts?.landscape ? 7.5 : 8.5),
       cellPadding: 1.8,
       valign: 'middle',
       lineColor: [220, 226, 240], lineWidth: 0.15,
       textColor: TEXT,
-      minCellWidth: opts?.landscape ? 14 : undefined,
+      minCellWidth: opts?.landscape && opts?.horizontalPageBreak !== false ? 14 : undefined,
     },
     headStyles: { fillColor: TABLE_HEAD, textColor: TEXT, fontStyle: 'bold' },
     alternateRowStyles: { fillColor: [247, 249, 253] },
@@ -187,8 +188,8 @@ export async function exportReportToPdf(
     // next columns — instead of being squeezed unreadably onto one page.
     // Column 0 (the member's name) repeats on every set so each half
     // still tells you WHO the row is about.
-    horizontalPageBreak: opts?.landscape ?? false,
-    horizontalPageBreakRepeat: opts?.landscape ? (opts.repeatColumns ?? 0) : undefined,
+    horizontalPageBreak: opts?.horizontalPageBreak ?? (opts?.landscape ?? false),
+    horizontalPageBreakRepeat: (opts?.horizontalPageBreak ?? (opts?.landscape ?? false)) ? (opts?.repeatColumns ?? 0) : undefined,
     didParseCell: data => {
       // Numbers right-align like every other money column in the system.
       const v = data.cell.raw

@@ -216,17 +216,21 @@ export default function Staff({ showToast }: Props) {
       await exportReportToPdf(
         filename,
         'Field Agent Policy Report',
-        `Field Agent: ${agent.name}`,
+        `Field Agent: ${agent.name}${report.notices.length ? ` — NOTICE: ${report.notices.join('; ')}` : ''}`,
         [
           { label: 'Clients', value: String(data.clients.length) },
           { label: 'Policies', value: String(data.policies.length) },
+          ...(report.notices.length ? [{ label: 'Notices', value: String(report.notices.length) }] : []),
         ],
         report.headers,
         report.rows,
-        { landscape: true, repeatColumns: [0, 1] },
+        { landscape: true, horizontalPageBreak: false, fontSize: 7 },
       )
     }
-    showToast('success', `${agent.name}'s policy report exported.`)
+    showToast(report.notices.length ? 'warning' : 'success',
+      report.notices.length
+        ? `${agent.name}'s policy report exported with a data-quality notice: ${report.notices[0]}`
+        : `${agent.name}'s policy report exported.`)
   }
 
   const handleRequestMerge = async (sourceId: string, targetId: string, reason: string) => {

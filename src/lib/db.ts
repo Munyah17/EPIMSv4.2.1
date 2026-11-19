@@ -10,7 +10,7 @@ import { hammingDistance, DUPLICATE_THRESHOLD } from './photoHash'
 import { policyBillablePremium, billableHeadCount, namedDependants } from './premium'
 import { allocatePayment } from './paymentAllocation'
 import { toIsoDate } from './dateUtils'
-import { normalizeNationalId, isZwPhone, PHONE_HINT } from './validation'
+import { normalizeNationalId, isNationalId, isZwPhone, PHONE_HINT } from './validation'
 import { fetchAllRows } from './paged'
 import { loginAttempts } from './repositories/loginAttempts'
 import { agentBook } from './repositories/agentBook'
@@ -2679,6 +2679,10 @@ export interface DashboardStats {
    *  names. */
   clientsNoPolicyCount: number
   clientsNoPolicy: { id: string; name: string; phone: string; createdAt: string }[]
+  /** Client rows whose National ID fails the system's canonical format
+   *  check — a data-quality notice, never an operational blocker. */
+  invalidNationalIdCount: number
+  invalidNationalIds: { id: string; name: string; nationalId: string }[]
   productBreakdown: { category: string; count: number }[]
   recentPolicies: Policy[]
   latestClaim: { claimNumber: string; clientName: string; at: string } | null
@@ -2693,7 +2697,7 @@ async function loadDashboardStatsLight(): Promise<DashboardStats | null> {
   const [
     activeRes, pendingRes, leadsRes, fraudRes, lapsedRes, totalRes, premiumsRes, categoryRes, recentRes,
     latestClaimRes, latestPaymentRes, latestLeadRes, latestFraudRes, clientsCountRes, latestClientRes,
-    unpaidInvoicesRes, noPolicyRes,
+    unpaidInvoicesRes, noPolicyRes, invalidIdsRes,
   ] = await Promise.all([
     supabase.from('policies').select('*', { count: 'exact', head: true }).eq('status', 'active'),
     supabase.from('claims').select('*', { count: 'exact', head: true }).in('status', ['pending', 'under_review']),
@@ -2726,6 +2730,10 @@ async function loadDashboardStatsLight(): Promise<DashboardStats | null> {
       .is('policies.id', null)
       .order('created_at', { ascending: false })
       .limit(5),
+    // Narrow client scan for the dashboard's data-quality notice. Stored
+    // IDs can carry legacy separators, so validation happens through the
+    // canonical frontend rule rather than a raw SQL regex.
+    fetchAllRows(() => supabase.from('clients').select('id, name, national_id'), { orderBy: 'id' }),
   ])
 
   const anyError = activeRes.error || pendingRes.error || leadsRes.error || fraudRes.error
@@ -2737,6 +2745,9 @@ async function loadDashboardStatsLight(): Promise<DashboardStats | null> {
   const unpaidInvoicesRows = unpaidInvoicesRes.error ? [] : (unpaidInvoicesRes.data ?? []) as { amount: number }[]
   const noPolicyRows = noPolicyRes.error ? [] : (noPolicyRes.data ?? []) as { id: string; name: string; phone: string | null; created_at: string }[]
   const clientsNoPolicyCount = noPolicyRes.error ? 0 : (noPolicyRes.count ?? noPolicyRows.length)
+  const invalidNationalIds = invalidIdsRes.error ? [] : ((invalidIdsRes.data ?? []) as { id: string; name: string | null; national_id: string | null }[])
+    .filter(r => !isNationalId(r.national_id ?? ''))
+    .map(r => ({ id: r.id, name: r.name ?? '', nationalId: r.national_id ?? '' }))
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const c = latestClaimRes.data?.[0] as any
@@ -2772,6 +2783,8 @@ async function loadDashboardStatsLight(): Promise<DashboardStats | null> {
     unpaidInvoiceAmount: Math.round(unpaidInvoicesRows.reduce((s, r) => s + (Number(r.amount) || 0), 0) * 100) / 100,
     clientsNoPolicyCount,
     clientsNoPolicy: noPolicyRows.map(r => ({ id: r.id, name: r.name, phone: r.phone ?? '', createdAt: r.created_at })),
+    invalidNationalIdCount: invalidNationalIds.length,
+    invalidNationalIds: invalidNationalIds.slice(0, 5),
     productBreakdown: [...categoryCounts.entries()].map(([category, count]) => ({ category, count })),
     recentPolicies: ((recentRes.data ?? []) as unknown[]).map(toPolicy),
     latestClaim: c ? { claimNumber: c.claim_number, clientName: c.policies?.clients?.name ?? '', at: c.created_at } : null,
@@ -2788,6 +2801,9 @@ async function loadDashboardStatsFallback(): Promise<DashboardStats> {
   ])
   const pol = allPolicies ?? [], cla = allClaims ?? [], pay = allPayments ?? [], lea = allLeads ?? [], fra = allFraud ?? [], cli = allClients ?? []
   const uncovered = cli.filter(c => (c.policyCount ?? 0) === 0)
+  const invalidNationalIds = cli
+    .filter(c => !isNationalId(c.nationalId))
+    .map(c => ({ id: c.id, name: c.name, nationalId: c.nationalId }))
   const unpaid = (allInvoices ?? []).filter(i => i.status === 'issued')
   const total = pol.length
   const lapsed = pol.filter(p => p.status === 'lapsed' || p.status === 'defaulted').length
@@ -2812,6 +2828,8 @@ async function loadDashboardStatsFallback(): Promise<DashboardStats> {
     unpaidInvoiceAmount: Math.round(unpaid.reduce((s, i) => s + i.amount, 0) * 100) / 100,
     clientsNoPolicyCount: uncovered.length,
     clientsNoPolicy: uncovered.slice(0, 5).map(c => ({ id: c.id, name: c.name, phone: c.phone, createdAt: c.createdAt })),
+    invalidNationalIdCount: invalidNationalIds.length,
+    invalidNationalIds: invalidNationalIds.slice(0, 5),
     productBreakdown: [...categoryCounts.entries()].map(([category, count]) => ({ category, count })),
     recentPolicies: [...pol].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 5),
     latestClaim: cla[0] ? { claimNumber: cla[0].claimNumber, clientName: cla[0].clientName, at: cla[0].dateSubmitted } : null,

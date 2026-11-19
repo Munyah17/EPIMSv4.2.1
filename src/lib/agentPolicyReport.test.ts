@@ -80,13 +80,16 @@ describe('personalised field-agent policy report', () => {
     expect(data?.rows[0][9]).toBe('')
   })
 
-  it('rejects malformed national IDs instead of exporting them', () => {
+  it('flags malformed national IDs in the report instead of stopping export', () => {
     const { data, error } = buildAgentPolicyReport('Kelvin Chigodo', [
       { ...client, nationalId: 'BAD-ID' },
     ], [])
-    expect(data).toBeNull()
-    expect(error).toContain('Report not exported')
-    expect(error).toContain('BAD-ID')
+    expect(error).toBeNull()
+    expect(data?.rows).toHaveLength(1)
+    expect(data?.rows[0][3]).toBe('INVALID: BAD-ID')
+    expect(data?.notices[0]).toContain('1 invalid National ID')
+    expect(data?.notices[0]).toContain('BAD-ID')
+    expect(data?.metadata).toContainEqual(['Notice', data?.notices[0]])
   })
 
   it('normalises a grower number to always carry the V prefix', () => {

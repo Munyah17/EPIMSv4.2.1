@@ -39,6 +39,7 @@ export interface AgentPolicyReport {
   headers: string[]
   metadata: [string, string][]
   rows: (string | number)[][]
+  notices: string[]
 }
 
 export { normalizeGrowerNumber }
@@ -58,24 +59,20 @@ function statusLabel(status: string): string {
 
 /** One row per policy; a client with no policy still appears with a
  *  No Policy row so the agent's whole book is not silently shortened.
- *  Bad National IDs stop the export instead of producing a report that
- *  silently certifies unusable identity data. */
+ *  Bad National IDs stay visible and are flagged: an export is an
+ *  operational document, so data-quality issues must never stop the
+ *  business from getting the full report. */
 export function buildAgentPolicyReport(
   agentName: string,
   clients: AgentBookClient[],
   policies: AgentBookPolicy[],
 ): { data: AgentPolicyReport | null; error: string | null } {
-  const invalid = clients
-    .filter(c => !isNationalId(c.nationalId))
-    .map(c => `${c.name || c.id} (${c.nationalId.trim() || 'missing'})`)
-  if (invalid.length > 0) {
-    const shown = invalid.slice(0, 4).join(', ')
-    const more = invalid.length > 4 ? ` and ${invalid.length - 4} more` : ''
-    return {
-      data: null,
-      error: `Report not exported — fix the National ID format for ${shown}${more} first.`,
-    }
-  }
+  const invalidClients = clients.filter(c => !isNationalId(c.nationalId))
+  const invalidById = new Map(invalidClients.map(c => [c.id, c]))
+  const notices = invalidClients.length === 0 ? [] : [
+    `${invalidClients.length} invalid National ID${invalidClients.length === 1 ? '' : 's'}: ` +
+    invalidClients.map(c => `${c.name || c.id} (${c.nationalId.trim() || 'missing'})`).join(', '),
+  ]
 
   const policiesByClient = new Map<string, AgentBookPolicy[]>()
   for (const policy of policies) {
@@ -93,7 +90,9 @@ export function buildAgentPolicyReport(
       name,
       surname,
       formatDate(client.dob),
-      normalizeNationalId(client.nationalId),
+      invalidById.has(client.id)
+        ? `INVALID: ${client.nationalId.trim() || 'MISSING'}`
+        : normalizeNationalId(client.nationalId),
       '', // filled per policy below
       client.phone,
       client.address,
@@ -121,8 +120,10 @@ export function buildAgentPolicyReport(
       metadata: [
         ['Field Agent', agentName],
         ['Generated', formatDate(new Date())],
+        ...notices.map(notice => ['Notice', notice] as [string, string]),
       ],
       rows,
+      notices,
     },
     error: null,
   }

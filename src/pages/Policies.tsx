@@ -246,7 +246,7 @@ export default function Policies({ showToast, setActivePanel, initialCategory }:
         await exportReportToPdf(`${base}.pdf`, 'All Policies',
           `Generated ${formatDate(new Date())} by Motions IMS`,
           [{ label: 'Policies', value: String(policiesRes.data.length) }],
-          headers, rows, { landscape: true, repeatColumns: [0, 1] })
+          headers, rows, { landscape: true, horizontalPageBreak: false, fontSize: 6.5 })
       }
       showToast('success', `All policies exported — ${policiesRes.data.length} policies.`)
     } catch {

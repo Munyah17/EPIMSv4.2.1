@@ -50,7 +50,7 @@ function timeAgo(iso: string | undefined): string {
 const EMPTY_STATS: DashboardStats = {
   totalPolicies: 0, activePolicies: 0, pendingClaims: 0, totalPremiums: 0, newLeads: 0, fraudAlerts: 0, lapseRate: 0, totalClients: 0,
   unpaidInvoices: 0, unpaidInvoiceAmount: 0,
-  clientsNoPolicyCount: 0, clientsNoPolicy: [],
+  clientsNoPolicyCount: 0, clientsNoPolicy: [], invalidNationalIdCount: 0, invalidNationalIds: [],
   productBreakdown: [], recentPolicies: [], latestClaim: null, latestPayment: null, latestLead: null, latestFraud: null, latestClient: null,
 }
 
@@ -427,6 +427,21 @@ export default function Dashboard({ showToast, setActivePanel }: Props) {
             {' '}No money was taken — follow up to convert them, or confirm the registration itself is wrong.
           </span>
           <button type="button" className="btn btn-primary btn-sm" onClick={() => setActivePanel('clients_no_policy')}>View All</button>
+        </div>
+      )}
+
+      {stats.invalidNationalIdCount > 0 && (
+        <div className="info-banner info-banner-warning" style={{ marginBottom: 20, display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ flex: 1 }}>
+            ⚠ {stats.invalidNationalIdCount} client National ID{stats.invalidNationalIdCount === 1 ? '' : 's'} need correction.
+            {stats.invalidNationalIds.length > 0 && (
+              <> {stats.invalidNationalIds.map(c => `${c.name} (${c.nationalId || 'missing'})`).join(', ')}
+                {stats.invalidNationalIdCount > stats.invalidNationalIds.length && ` and ${stats.invalidNationalIdCount - stats.invalidNationalIds.length} more`}.
+              </>
+            )}
+            {' '}Reports still export; affected rows are flagged instead of blocking operations.
+          </span>
+          <button type="button" className="btn btn-primary btn-sm" onClick={() => setActivePanel('clients')}>Review Clients</button>
         </div>
       )}
 
