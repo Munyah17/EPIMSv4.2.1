@@ -15,8 +15,6 @@ import {
   chooseSignInName,
   internalAuthEmail,
   isInternalAuthEmail,
-  rolesInChain,
-  sameRoleChain,
 } from './_lib/accountIdentity.js'
 
 /**
@@ -59,9 +57,8 @@ interface CreateAccountBody {
 }
 
 /** Sign-in identity is the person's unique display name or their email.
- *  Cross-role identities may share the same personal name, so the login
- *  username gains a plain role suffix instead of treating the account as a
- *  duplicate. */
+ *  A customer may also be an agent, so that pairing gets a plain Agent
+ *  suffix instead of treating the shared name as a duplicate. */
 
 const normalizeName = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 const normalizePhone = (value?: string) => (value ?? '').replace(/\D/g, '')
@@ -300,63 +297,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  // Cross-role identity is legitimate: a customer can also be an agent or
-  // staff member. Only duplicates inside the same chain are suspicious.
-  if (body.role !== 'agent') {
-    const wantedName = normalizeName(body.name)
-    const wantedPhone = normalizePhone(body.phone)
-    const wantedEmail = body.email?.trim().toLowerCase() ?? ''
-    const { data: chainRows, error: chainError } = await admin
-      .from('profiles')
-      .select('*')
-      .in('role', rolesInChain(body.role))
-    if (chainError) {
-      return res.status(500).json({ error: 'Could not check for an existing account with the same identity.' })
-    }
-    const conflicts = (chainRows ?? []).filter(row => {
-      const sameEmail = !!wantedEmail && (((row.contact_email as string | null) ?? row.email) as string | null)?.toLowerCase() === wantedEmail
-      return normalizeName(row.name ?? '') === wantedName || sameEmail || (!!wantedPhone && normalizePhone(row.phone as string | undefined) === wantedPhone)
-    })
-    if (conflicts.length) {
-      return res.status(409).json({
-        error: `Possible duplicate ${body.role.replace(/_/g, ' ')} account found (${conflicts.map(c => c.name).join(', ')}). A customer account is allowed alongside this role, but not a second account in the same role chain.`,
-      })
-    }
-  }
-
-  // Supabase Auth requires globally unique emails. If this person's email
-  // already authenticates a customer account, the new staff/agent account
-  // receives an internal auth address while their real address is kept in
-  // profiles.contact_email. Sign-in is then by the unique role-suffixed name.
+  // Supabase Auth requires globally unique emails. Only the customer →
+  // agent pairing may share one right now: the real email stays on the
+  // eventual policyholder login, while the agent uses an internal auth
+  // address and keeps the shared address as contact_email.
   const requestedEmail = body.email?.trim().toLowerCase() ?? ''
   let authEmail = requestedEmail || internalAuthEmail(body.name, body.role)
   if (requestedEmail) {
     const owner = await authEmailOwner(admin, requestedEmail)
-    if (owner && sameRoleChain(owner.role, body.role)) {
-      return res.status(409).json({ error: `That email already belongs to ${owner.name} in the same role chain.` })
+    if (owner) {
+      if (body.role !== 'agent' || (owner.role !== 'policyholder' && owner.role !== 'agent')) {
+        return res.status(409).json({ error: `That email already belongs to ${owner.name} (${String(owner.role ?? '').replace(/_/g, ' ')}).` })
+      }
+      if (owner.role === 'agent' && !approvedDuplicateRequestId) {
+        return res.status(409).json({ error: `That email already belongs to agent ${owner.name}.` })
+      }
+      authEmail = internalAuthEmail(body.name, body.role)
+    } else if (body.role === 'agent') {
+      // A matching client record must keep the email free for the eventual
+      // policyholder login — its RLS ownership check requires auth email ==
+      // clients.email.
+      const { data: linkedClient } = await admin
+        .from('clients')
+        .select('id')
+        .eq('email', requestedEmail)
+        .limit(1)
+      if ((linkedClient ?? []).length > 0) authEmail = internalAuthEmail(body.name, body.role)
     }
-    // A matching client record must keep the email free for the eventual
-    // policyholder login — its RLS ownership check requires auth email ==
-    // clients.email. Staff/agent contact email goes in contact_email instead.
-    const { data: linkedClient } = await admin
-      .from('clients')
-      .select('id')
-      .eq('email', requestedEmail)
-      .limit(1)
-    if (owner || (linkedClient ?? []).length > 0) authEmail = internalAuthEmail(body.name, body.role)
   }
   if (requestedEmail && authEmail !== requestedEmail && !contactEmailSupported) {
     return res.status(503).json({ error: 'Cross-role email sharing needs migration 20261119_003_cross_role_account_identities.sql first.' })
   }
 
-  // An approved same-chain agent duplicate still needs a distinct sign-in
-  // name; an unapproved duplicate never reaches this point. Different chains
-  // may share a display name, so the alias carries the role.
+  // An approved agent duplicate still needs a distinct sign-in name. For
+  // now, only a customer may share a display name with a new agent account.
   const wantedUsername = body.username?.trim() || body.name.trim()
   let signIn: { username?: string; conflict?: { name?: string | null; role?: string | null } }
   try {
     signIn = await chooseSignInName(admin, wantedUsername, body.role, {
       allowSameChainAlias: body.role === 'agent' && !!approvedDuplicateRequestId,
+      allowedCrossChains: body.role === 'agent' ? ['policyholder'] : [],
     })
   } catch (e) {
     return res.status(500).json({ error: e instanceof Error ? e.message : 'Could not choose a unique sign-in name.' })

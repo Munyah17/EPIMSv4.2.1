@@ -1,8 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 /** Role chains represent separate relationships one real person may hold.
- * A customer may also be staff or an agent; duplicates are only suspicious
- * within the same chain. */
+ * Only the policyholder ↔ agent pairing is enabled for shared identity
+ * today; other cross-role combinations still follow their existing rules. */
 const SYSTEM_IDENTITY_ROLES = ['super_admin', 'admin', 'tech_support']
 const STAFF_IDENTITY_ROLES = ['claims_officer', 'policy_admin', 'finance', 'client_relations']
 
@@ -63,7 +63,7 @@ export async function chooseSignInName(
   admin: SupabaseClient,
   wanted: string,
   role: string,
-  opts: { allowSameChainAlias?: boolean; excludeProfileId?: string } = {},
+  opts: { allowSameChainAlias?: boolean; allowedCrossChains?: RoleChain[]; excludeProfileId?: string } = {},
 ): Promise<{ username?: string; conflict?: UsernameHolder }> {
   const desired = wanted.trim()
   if (!desired) return {}
@@ -78,7 +78,10 @@ export async function chooseSignInName(
   const holders = ((rows ?? []) as UsernameHolder[]).filter(r => r.id !== opts.excludeProfileId)
   const exact = holders.find(r => (r.username ?? '').toLowerCase() === desired.toLowerCase())
   if (!exact) return { username: desired }
-  if (sameRoleChain(exact.role, role) && !opts.allowSameChainAlias) return { conflict: exact }
+  const sameChain = sameRoleChain(exact.role, role)
+  if ((sameChain && !opts.allowSameChainAlias) || (!sameChain && !(opts.allowedCrossChains ?? []).includes(roleChain(exact.role)))) {
+    return { conflict: exact }
+  }
 
   const base = suffixedSignInName(desired, role)
   for (let i = 1; i < 100; i++) {
