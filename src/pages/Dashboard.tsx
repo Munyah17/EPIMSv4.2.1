@@ -439,7 +439,6 @@ export default function Dashboard({ showToast, setActivePanel }: Props) {
                 {stats.invalidNationalIdCount > stats.invalidNationalIds.length && ` and ${stats.invalidNationalIdCount - stats.invalidNationalIds.length} more`}.
               </>
             )}
-            {' '}Reports still export; affected rows are flagged instead of blocking operations.
           </span>
           <button type="button" className="btn btn-primary btn-sm" onClick={() => setActivePanel('clients')}>Review Clients</button>
         </div>

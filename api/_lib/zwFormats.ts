@@ -14,8 +14,10 @@ export function normalizeNationalId(raw: string): string {
   return raw.replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
 }
 
+const NATIONAL_ID_PATTERN = /^(?:\d{8}|\d{9})[A-Z]\d{2}$/
+
 export function isZwNationalId(raw: string): boolean {
-  return /^\d{8,9}[A-Z]\d{2}$/.test(normalizeNationalId(raw))
+  return NATIONAL_ID_PATTERN.test(normalizeNationalId(raw))
 }
 
 export function isZwPhone(raw: string): boolean {

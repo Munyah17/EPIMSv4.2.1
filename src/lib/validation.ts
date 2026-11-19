@@ -25,8 +25,10 @@ export function normalizeNationalId(raw: string): string {
  *  typed, so a pasted "63-1234567-A-89" lands as "631234567A89". */
 export const cleanNationalIdInput = normalizeNationalId
 
+const NATIONAL_ID_PATTERN = /^(?:\d{8}|\d{9})[A-Z]\d{2}$/
+
 export function isNationalId(raw: string): boolean {
-  return /^\d{8,9}[A-Z]\d{2}$/.test(normalizeNationalId(raw))
+  return NATIONAL_ID_PATTERN.test(normalizeNationalId(raw))
 }
 
 export function isZwPhone(raw: string): boolean {
