@@ -26,13 +26,43 @@ function csvEscape(value: unknown): string {
 }
 
 export function exportToCsv(filename: string, headers: string[], rows: (string | number)[][]) {
-  const lines = [headers.map(csvEscape).join(','), ...rows.map(r => r.map(csvEscape).join(','))]
-  triggerDownload(new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' }), filename)
+  exportToCsvWithMeta(filename, [], headers, rows)
+}
+
+/** CSV reports that belong to one owner/scope carry their identifying
+ *  metadata before the column header row, so no repeated Agent column is
+ *  needed on every record. */
+export function exportToCsvWithMeta(
+  filename: string,
+  metadata: (string | number)[][],
+  headers: string[],
+  rows: (string | number)[][],
+) {
+  const meta = metadata.map(r => r.map(csvEscape).join(','))
+  const table = [headers.map(csvEscape).join(','), ...rows.map(r => r.map(csvEscape).join(','))]
+  triggerDownload(new Blob([[...meta, ...(meta.length ? [''] : []), ...table].join('\n')], { type: 'text/csv;charset=utf-8;' }), filename)
 }
 
 export async function exportToExcel(filename: string, sheetName: string, headers: string[], rows: (string | number)[][]) {
+  return exportToExcelWithMeta(filename, sheetName, [], headers, rows)
+}
+
+/** Same metadata preamble as CSV, written as workbook rows above the
+ *  table headers. */
+export async function exportToExcelWithMeta(
+  filename: string,
+  sheetName: string,
+  metadata: (string | number)[][],
+  headers: string[],
+  rows: (string | number)[][],
+) {
   const XLSX = await import('xlsx')
-  const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows])
+  const worksheet = XLSX.utils.aoa_to_sheet([
+    ...metadata,
+    ...(metadata.length ? [[]] : []),
+    headers,
+    ...rows,
+  ])
   const workbook = XLSX.utils.book_new()
   XLSX.utils.book_append_sheet(workbook, worksheet, sheetName.slice(0, 31))
   const buffer = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' })

@@ -13,6 +13,7 @@ import { toIsoDate } from './dateUtils'
 import { normalizeNationalId, isZwPhone, PHONE_HINT } from './validation'
 import { fetchAllRows } from './paged'
 import { loginAttempts } from './repositories/loginAttempts'
+import { agentBook } from './repositories/agentBook'
 import { toClient, toPolicy, date } from './rowMappers'
 import type { ExchangeRate } from './exchangeRate'
 import type {
@@ -4538,7 +4539,7 @@ export const db = {
   signupEvidence,
   exchangeRates,
   customRoles, claimAssessments, policyAssessments, photoHashes, cropTypes, fraudSignalRules, heroSlides,
-  policyCards, groups, groupMembers, agentProfiles, agentGovernance,
+  policyCards, groups, groupMembers, agentProfiles, agentBook, agentGovernance,
   dashboardStats, sidebarCounts, notificationLog, invoices,
   quotations, requisitions, floatEntries, pettyCashEntries, fdmsReceipts, fdmsFiscalDays,
   tasks, taskMilestones, taskUpdates,

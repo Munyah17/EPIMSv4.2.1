@@ -4,6 +4,8 @@ import { SYSTEM_ROLES } from '../types'
 import type { ActivePanel } from '../App'
 import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
+import { buildAgentPolicyReport } from '../lib/agentPolicyReport'
+import { exportToCsvWithMeta, exportToExcelWithMeta, exportReportToPdf } from '../lib/exportUtils'
 import { useAuth } from '../contexts/AuthContext'
 import AddStaffModal from '../components/modals/AddStaffModal'
 import PermissionsModal from '../components/modals/PermissionsModal'
@@ -197,6 +199,36 @@ export default function Staff({ showToast }: Props) {
     showToast('success', 'Password reset successfully.')
   }
 
+  const handleExportAgentReport = async (agent: AppUser, format: 'csv' | 'xlsx' | 'pdf') => {
+    showToast('info', `Preparing ${agent.name}'s policy report…`)
+    const { data, error } = await db.agentBook.report(agent.id)
+    if (error || !data) { showToast('error', error ?? `Could not load ${agent.name}'s policy report.`); return }
+    const { data: report, error: reportError } = buildAgentPolicyReport(agent.name, data.clients, data.policies)
+    if (reportError || !report) { showToast('error', reportError ?? `Could not build ${agent.name}'s policy report.`); return }
+
+    const safeName = agent.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'field-agent'
+    const filename = `${safeName}-policy-report.${format === 'xlsx' ? 'xlsx' : format}`
+    if (format === 'csv') {
+      exportToCsvWithMeta(filename, report.metadata, report.headers, report.rows)
+    } else if (format === 'xlsx') {
+      await exportToExcelWithMeta(filename, 'Field Agent Report', report.metadata, report.headers, report.rows)
+    } else {
+      await exportReportToPdf(
+        filename,
+        'Field Agent Policy Report',
+        `Field Agent: ${agent.name}`,
+        [
+          { label: 'Clients', value: String(data.clients.length) },
+          { label: 'Policies', value: String(data.policies.length) },
+        ],
+        report.headers,
+        report.rows,
+        { landscape: true, repeatColumns: [0, 1] },
+      )
+    }
+    showToast('success', `${agent.name}'s policy report exported.`)
+  }
+
   const handleRequestMerge = async (sourceId: string, targetId: string, reason: string) => {
     const source = staff.find(s => s.id === sourceId)
     const target = staff.find(s => s.id === targetId)
@@ -385,6 +417,9 @@ export default function Staff({ showToast }: Props) {
                   <td>
                     <ActionMenu items={[
                       { label: 'Edit', onClick: () => openEdit(s) },
+                      { label: 'Export Report — Excel', onClick: () => void handleExportAgentReport(s, 'xlsx') },
+                      { label: 'Export Report — CSV', onClick: () => void handleExportAgentReport(s, 'csv') },
+                      { label: 'Export Report — PDF', onClick: () => void handleExportAgentReport(s, 'pdf') },
                       { label: s.active ? 'Suspend' : 'Reactivate', onClick: () => toggleActive(s.id), hidden: !!s.mergedInto },
                       { label: 'Reconcile / Approvals', onClick: () => setShowGovernance(true) },
                     ]} />
