@@ -5,7 +5,7 @@ import { db } from '../lib/db'
 import { formatDate } from '../lib/dateUtils'
 import { supabase } from '../lib/supabase'
 import { exportPolicyReport, getPolicyReportPdfBase64, exportToExcel, exportToCsv, exportReportToPdf } from '../lib/exportUtils'
-import { treatyRows, treatyHeaders, type TreatyPeriodKind } from '../lib/treatyReport'
+import { POLICY_DUMP_HEADERS, policyDumpRows } from '../lib/policyDumpReport'
 import { policyBillablePremium, billableHeadCount } from '../lib/premium'
 import { toIsoDate } from '../lib/dateUtils'
 import { notifyPolicyRegistered, notifyRegistrationFailed } from '../lib/signupNotifications'
@@ -221,35 +221,36 @@ export default function Policies({ showToast, setActivePanel, initialCategory }:
     return { client, category: category ?? '' }
   }
 
-  const handleTreatyExport = async (format: 'xlsx' | 'csv' | 'pdf') => {
+  const handlePolicyDumpExport = async (format: 'xlsx' | 'csv' | 'pdf') => {
     setExporting(true)
     try {
-      // The holder's ID/DOB live on the client row — fetched on
-      // demand so a page that never exports never pays for the join.
-      const { data: clients } = await db.clients.list()
-      const byId = new Map((clients ?? []).map(c => [c.id, c]))
-      const rows = treatyRows(filtered, byId)
-      // Agriculture premiums are annual and packages are a negotiated
-      // term — the heading has to say that or the reinsurer reads a term
-      // figure as monthly. A mixed book gets the neutral label.
-      const periodKinds = new Set<TreatyPeriodKind>(filtered.map(p => isPackagePolicy(p) ? 'term' : isAgri(p) ? 'annual' : 'monthly'))
-      const headers = treatyHeaders(periodKinds.size === 1 ? [...periodKinds][0] : 'mixed')
-      const base = `policy-report-${toIsoDate(new Date())}`
-      if (format === 'xlsx') {
-        await exportToExcel(`${base}.xlsx`, 'Policy Report', headers, rows)
-      } else if (format === 'csv') {
-        exportToCsv(`${base}.csv`, headers, rows.map(r => r.map(String)))
-      } else {
-        // These columns can't fit one landscape page — overflow flows to a
-        // second page set. NAME and Surname both repeat on every set so
-        // every half still identifies the person (a single repeat column
-        // put PERIOD in the visual surname position — the page-40 bug).
-        await exportReportToPdf(`${base}.pdf`, 'Policy Report',
-          `Generated ${formatDate(new Date())} by Motions IMS`, [], headers, rows, { landscape: true, repeatColumns: [0, 1] })
+      // This dump ignores the page filters: the office asked for the full
+      // system book, including archived terms, in the operational layout.
+      const [policiesRes, clientsRes] = await Promise.all([
+        db.policies.list(),
+        db.clients.list(),
+      ])
+      if (policiesRes.error || !policiesRes.data || clientsRes.error || !clientsRes.data) {
+        showToast('error', policiesRes.error ?? clientsRes.error ?? 'Could not load the complete policy book.')
+        return
       }
-      showToast('success', `Policy report exported — ${filtered.length} policies.`)
+      const byId = new Map(clientsRes.data.map(c => [c.id, c]))
+      const rows = policyDumpRows(policiesRes.data, byId)
+      const headers = [...POLICY_DUMP_HEADERS]
+      const base = `all-policies-${toIsoDate(new Date())}`
+      if (format === 'xlsx') {
+        await exportToExcel(`${base}.xlsx`, 'All Policies', headers, rows)
+      } else if (format === 'csv') {
+        exportToCsv(`${base}.csv`, headers, rows)
+      } else {
+        await exportReportToPdf(`${base}.pdf`, 'All Policies',
+          `Generated ${formatDate(new Date())} by Motions IMS`,
+          [{ label: 'Policies', value: String(policiesRes.data.length) }],
+          headers, rows, { landscape: true, repeatColumns: [0, 1] })
+      }
+      showToast('success', `All policies exported — ${policiesRes.data.length} policies.`)
     } catch {
-      showToast('error', 'Failed to export the policy report.')
+      showToast('error', 'Failed to export the all-policies report.')
     }
     setExporting(false)
   }
@@ -578,12 +579,11 @@ export default function Policies({ showToast, setActivePanel, initialCategory }:
             Summary by Product
           </button>
         </div>
-        {/* The reinsurer's treaty layout — one row per insured head,
-            fixed formats (d-MMM-yyyy dates, canonical IDs) so month-to-
-            month submissions diff cleanly. */}
+        {/* Operational all-policy dump — every policy in the system,
+            regardless of the filters currently applied to the table. */}
         <div className="action-menu" style={{ position: 'relative' }}>
           <button type="button" className="btn btn-ghost" disabled={exporting} onClick={() => setExportOpen(o => !o)}>
-            {exporting ? 'Exporting…' : 'Export Policy Report ▾'}
+            {exporting ? 'Exporting…' : 'Export All Policies ▾'}
           </button>
           {exportOpen && (
             <>
@@ -591,7 +591,7 @@ export default function Policies({ showToast, setActivePanel, initialCategory }:
               <div className="profile-dropdown" style={{ minWidth: 170 }}>
                 {([['xlsx', 'Excel (.xlsx)'], ['csv', 'CSV (.csv)'], ['pdf', 'PDF (.pdf)']] as const).map(([f, label]) => (
                   <button key={f} type="button" className="dropdown-item" style={{ width: '100%', border: 'none', background: 'none', cursor: 'pointer' }}
-                    onClick={() => { setExportOpen(false); void handleTreatyExport(f) }}>
+                    onClick={() => { setExportOpen(false); void handlePolicyDumpExport(f) }}>
                     {label}
                   </button>
                 ))}
