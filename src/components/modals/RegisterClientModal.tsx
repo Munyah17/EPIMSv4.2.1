@@ -54,11 +54,29 @@ export default function RegisterClientModal({ onClose, onSave, existingClients }
   // ID and DOB are the person's identity to the insurer — a claim
   // against a client without both cannot be verified. Never optional.
   if (!dob) missing.push({ key: 'dob', label: 'Date of Birth' })
-  // National ID is unique — warn before the database has to.
+  // Client identity is checked inside the policyholder chain only: the same
+  // person may also be staff/agent, but not two client records. National ID
+  // is authoritative; matching phone/email, or name+DOB, flags likely
+  // duplicate person records instead of silently splitting their history.
+  const digits = (value?: string) => (value ?? '').replace(/\D/g, '')
+  const cleanName = (value?: string) => (value ?? '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
   const duplicateNatId = nationalId.trim()
     ? existingClients?.find(c => cleanNationalIdInput(c.nationalId) === cleanNationalIdInput(nationalId))
     : undefined
+  const duplicatePhone = phone.trim()
+    ? existingClients?.find(c => c.phone && digits(c.phone) === digits(phone))
+    : undefined
+  const duplicateEmail = email.trim()
+    ? existingClients?.find(c => c.email && c.email.trim().toLowerCase() === email.trim().toLowerCase())
+    : undefined
+  const duplicateNameDob = name.trim() && dob
+    ? existingClients?.find(c => cleanName(c.name) === cleanName(name) && c.dob === dob)
+    : undefined
   if (duplicateNatId) missing.push({ key: 'nationalId', label: 'National ID', hint: `Already registered to ${duplicateNatId.name}` })
+  else if (duplicatePhone) missing.push({ key: 'phone', label: 'Phone Number', hint: `Already registered to ${duplicatePhone.name}` })
+  else if (duplicateEmail) missing.push({ key: 'email', label: 'Email Address', hint: `Already registered to ${duplicateEmail.name}` })
+  else if (duplicateNameDob) missing.push({ key: 'name', label: 'Full Name', hint: `Already registered as ${duplicateNameDob.name} with the same date of birth` })
+  const duplicateIdentity = duplicateNatId ?? duplicatePhone ?? duplicateEmail ?? duplicateNameDob
   if (portalPassword && portalPassword.length < 8) missing.push({ key: 'portalPassword', label: 'Portal Password', hint: 'Minimum 8 characters' })
   if (portalPassword && !email.trim()) missing.push({ key: 'portalPassword', label: 'Portal Password', hint: 'Portal login needs an email — enter one above or leave this empty' })
 
@@ -88,12 +106,17 @@ export default function RegisterClientModal({ onClose, onSave, existingClients }
         </div>
         <div className="modal-body">
           <ValidationSummary missing={missing} attempted={attempted} />
+          {duplicateIdentity && (
+            <div className="info-banner info-banner-warning" style={{ marginBottom: 14 }}>
+              Possible duplicate client: {duplicateIdentity.name} already exists in the client register.
+            </div>
+          )}
           <div className="form-row">
             <div className="form-group" id={fieldId('name')}>
               <label>Full Name *</label>
               <input className={invalidClass(missing, attempted, 'name')} placeholder="e.g. John Doe" value={name} onChange={e => setName(e.target.value)} />
             </div>
-            <div className="form-group">
+            <div className="form-group" id={fieldId('email')} style={isMissing(missing, attempted, 'email') ? { outline: '1px solid var(--danger)', borderRadius: 7, outlineOffset: 2 } : undefined}>
               <label>Email Address</label>
               <input type="email" className="form-control" placeholder="john@email.com" value={email} onChange={e => setEmail(e.target.value)} />
             </div>

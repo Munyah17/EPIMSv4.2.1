@@ -189,7 +189,8 @@ function toProfile(r: Record<string, unknown>): AppUser {
     id:          r.id as string,
     name:        r.name as string,
     username:    (r.username as string | null) ?? undefined,
-    email:       (r.email as string) ?? '',
+    email:       ((r.contact_email as string | null) ?? (((r.email as string | null) ?? '').match(/\.motions\.local$/i) ? '' : ((r.email as string | null) ?? ''))),
+    contactEmail: (r.contact_email as string | null) ?? undefined,
     role:        r.role as AppUser['role'],
     department:  (r.department as string) ?? '',
     phone:       r.phone as string | undefined,
@@ -2019,6 +2020,8 @@ export const staff = {
         error: null,
         referralCode: body?.referralCode as string | undefined,
         referralLink: body?.referralLink as string | undefined,
+        signInName: body?.signInName as string | undefined,
+        internalSignInEmail: body?.internalSignInEmail === true,
         warnings: Array.isArray(body?.warnings) ? body.warnings as string[] : [],
       }
     } catch (e) {
@@ -2038,9 +2041,15 @@ export const staff = {
     const row: Record<string, unknown> = {}
     if (updates.name        !== undefined) row.name        = updates.name
     if (updates.username    !== undefined) row.username    = updates.username?.trim() || null
-    // Sign-in identity is the full name: any edit that changes the name
-    // without an explicit username keeps the two identical.
-    else if (updates.name   !== undefined) row.username    = updates.name?.trim() || null
+    // Keep display name and sign-in name in step only when they were in
+    // step already. A cross-role account can legitimately carry
+    // "Name (Agent)" / "Name (Client)" aliases that must not be flattened.
+    else if (updates.name   !== undefined) {
+      const { data: current } = await supabase.from('profiles').select('name, username').eq('id', id).maybeSingle()
+      if (current?.username && String(current.username).toLowerCase() === String(current.name ?? '').toLowerCase()) {
+        row.username = updates.name?.trim() || null
+      }
+    }
     if (updates.role        !== undefined) row.role        = updates.role
     if (updates.department  !== undefined) row.department  = updates.department
     if (updates.phone       !== undefined) row.phone       = updates.phone ?? null
@@ -2152,8 +2161,8 @@ export const staff = {
         body: JSON.stringify({ id: staffId, email }),
       })
       const body = await res.json().catch(() => ({}))
-      if (!res.ok) return { error: body?.error ?? `Failed to update the sign-in email (HTTP ${res.status}).` }
-      return { error: null }
+      if (!res.ok) return { error: body?.error ?? `Failed to update the sign-in email (HTTP ${res.status}).`, contactOnly: false }
+      return { error: null, contactOnly: body?.contactOnly === true }
     } catch (e) {
       return { error: `Could not reach the server: ${e}` }
     }

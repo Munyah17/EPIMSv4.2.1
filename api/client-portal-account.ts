@@ -1,5 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { serviceClient, requireSession } from './_lib/sessionAuth.js'
+import { chooseSignInName, internalAuthEmail } from './_lib/accountIdentity.js'
+import { auditLog } from './_lib/audit.js'
 
 /**
  * POST /api/client-portal-account { clientId, password }
@@ -16,12 +18,14 @@ import { serviceClient, requireSession } from './_lib/sessionAuth.js'
  * email is normalised to lowercase here because that RLS comparison is
  * case-sensitive while auth lowercases every email it stores.
  *
- * Login identifier: the client signs in with that email OR their full
- * name — resolve_login_email maps profile name → email.
+ * Login identifier: the client signs in with that email or their unique
+ * sign-in name — normally their full name, or a "(Client)" alias when the
+ * same person has an account in another role chain.
  *
- * Safety: if the email already backs a non-policyholder account we
- * refuse — resetting it would hand a client-record edit control of a
- * staff login.
+ * Safety: only the policyholder may own the real auth email because RLS
+ * depends on that match. If a staff/agent account already has it, that
+ * account is moved to an internal auth address and keeps the real address
+ * as contact_email; a role-suffixed sign-in name keeps both logins usable.
  */
 
 const CLIENT_MANAGER_ROLES = ['super_admin', 'admin', 'policy_admin', 'client_relations', 'agent']
@@ -77,21 +81,62 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   //      the client_id column existed.
   const { data: byClient } = await admin
     .from('profiles')
-    .select('id, role, email, client_id')
+    .select('id, name, role, email, client_id, username')
     .eq('client_id', client.id)
     .maybeSingle()
   const { data: byEmail } = byClient ? { data: null } : await admin
     .from('profiles')
-    .select('id, role, email, client_id')
+    .select('id, name, role, email, client_id, username')
     .eq('email', email)
     .maybeSingle()
-  const existing = byClient ?? byEmail
+  let existing = byClient ?? byEmail
 
   if (existing && existing.role !== 'policyholder') {
-    return res.status(409).json({
-      error: 'That email already belongs to a staff account — give the client a different email.',
-      code: 'EMAIL_IN_USE',
-    })
+    const { data: { user: owner } } = await admin.auth.admin.getUserById(existing.id)
+    if ((owner?.email ?? '').toLowerCase() === email) {
+      // The client must own the real email because policyholder RLS compares
+      // clients.email to auth.users.email. Move the other role's login to an
+      // internal address; its visible contact email stays unchanged.
+      const { error: contactSchemaError } = await admin.from('profiles').select('contact_email').limit(0)
+      if (contactSchemaError) {
+        return res.status(503).json({
+          error: 'Shared customer/staff email needs migration 20261119_003_cross_role_account_identities.sql first.',
+          code: 'MIGRATION_REQUIRED',
+        })
+      }
+      const aliasEmail = internalAuthEmail(existing.name ?? client.name, existing.role ?? 'staff')
+      const staffSignIn = existing.username
+        ? {}
+        : await chooseSignInName(admin, existing.name ?? client.name, existing.role ?? 'staff', { allowSameChainAlias: true, excludeProfileId: existing.id })
+      const { error: aliasError } = await admin.auth.admin.updateUserById(existing.id, {
+        email: aliasEmail,
+        email_confirm: true,
+      })
+      if (aliasError) return res.status(400).json({ error: aliasError.message, code: 'EMAIL_IN_USE' })
+      await admin.from('profiles').update({
+        email: aliasEmail,
+        contact_email: email,
+        ...(staffSignIn.username ? { username: staffSignIn.username } : {}),
+      }).eq('id', existing.id)
+      await auditLog({
+        operatorId: user!.id,
+        entityType: existing.role === 'agent' ? 'agent' : 'staff',
+        entityId: existing.id,
+        action: 'cross_role_contact_email_kept',
+        changes: { email: { old: email, new: aliasEmail }, contactEmail: { old: null, new: email } },
+        source: 'web',
+        notes: `Released ${email} for the matching client's policyholder login; this account now signs in with "${staffSignIn.username ?? existing.username ?? existing.name}".`,
+      })
+      existing = null
+    } else {
+      // profiles.email should mirror auth.users.email. If it no longer does,
+      // the staff account does not own this address and must not block the
+      // client's portal login. Repair the mirror while we're here.
+      if (owner?.email) {
+        await admin.from('profiles').update({ email: owner.email }).eq('id', existing.id)
+      }
+      existing = null
+    }
   }
 
   if (existing) {
@@ -108,8 +153,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Keep the sign-in name in step with the client record and make sure a
     // previously deactivated login can't stay off. client_id is adopted
     // only when unset — never steal the link from another client.
+    const missingSignIn = !existing.username
+    const chosen = missingSignIn
+      ? await chooseSignInName(admin, client.name, 'policyholder', { allowSameChainAlias: true, excludeProfileId: existing.id })
+      : {}
     await admin.from('profiles').update({
-      name: client.name, username: client.name, active: true, role: 'policyholder',
+      name: client.name, active: true, role: 'policyholder',
+      ...(missingSignIn ? { username: chosen.username ?? client.name } : {}),
       ...(existing.client_id ? {} : { client_id: client.id }),
     }).eq('id', existing.id)
     // Staff vouching for the account by resetting it is the human review the
@@ -123,6 +173,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(400).json({ error: 'A password is required to create a new portal account.' })
   }
 
+  const signIn = await chooseSignInName(admin, client.name, 'policyholder', { allowSameChainAlias: true })
   const { data: created, error: createError } = await admin.auth.admin.createUser({
     email,
     password,
@@ -137,7 +188,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // active and the client link aren't part of its INSERT, so set them
   // explicitly — same pattern create-account.ts uses for staff.
   const { error: profileError } = await admin.from('profiles').update({
-    username: client.name, active: true, client_id: client.id,
+    username: signIn.username ?? client.name, active: true, client_id: client.id,
   }).eq('id', created.user.id)
   // Fresh account, fresh start: any failed sign-ins logged against this
   // address (e.g. someone guessing it before it existed) shouldn't carry

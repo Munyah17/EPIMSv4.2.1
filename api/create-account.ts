@@ -10,6 +10,14 @@ import {
 } from './_lib/agentReferrals.js'
 import { logDelivery, sendEmailDirect, sendSmsAfrosoft } from './_lib/notify.js'
 import { auditLog } from './_lib/audit.js'
+import {
+  authEmailOwner,
+  chooseSignInName,
+  internalAuthEmail,
+  isInternalAuthEmail,
+  rolesInChain,
+  sameRoleChain,
+} from './_lib/accountIdentity.js'
 
 /**
  * Creates a real Supabase Auth user + profiles row — merges what used to be
@@ -50,9 +58,10 @@ interface CreateAccountBody {
   }
 }
 
-/** Sign-in identity is the person's full name or their email — nickname
- *  usernames ("Munyah", "Admin 3") were retired; the `username` column now
- *  stores the full name so resolve_login_email keeps working unchanged. */
+/** Sign-in identity is the person's unique display name or their email.
+ *  Cross-role identities may share the same personal name, so the login
+ *  username gains a role suffix instead of treating the account as a
+ *  duplicate. */
 
 const normalizeName = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()
 const normalizePhone = (value?: string) => (value ?? '').replace(/\D/g, '')
@@ -157,6 +166,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(403).json({ error: 'You do not have permission to edit staff accounts.' })
     }
 
+    // Alias-auth accounts sign in through an internal address and a
+    // role-suffixed name. Their visible email is contact data only, so an
+    // edit must not move auth.users.email or the sign-in stops resolving.
+    if (isInternalAuthEmail(target.email)) {
+      const { error: contactError } = await admin
+        .from('profiles')
+        .update({ contact_email: newEmail })
+        .eq('id', updateId)
+      if (contactError) return res.status(503).json({ error: `Could not update the contact email — run migration 20261119_003_cross_role_account_identities.sql first. ${contactError.message}` })
+      return res.status(200).json({ success: true, email: newEmail, contactOnly: true })
+    }
+
     const { error: emailError } = await admin.auth.admin.updateUserById(updateId, {
       email: newEmail,
       email_confirm: true,
@@ -175,15 +196,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(403).json({ error: 'You do not have permission to create staff accounts.' })
   }
 
+  // contact_email is introduced by migration 003. Ordinary onboarding keeps
+  // working before it runs; only an account that needs a contact/auth split
+  // is delayed with an explicit migration error.
+  const { error: contactColumnError } = await admin.from('profiles').select('contact_email').limit(0)
+  const contactEmailSupported = !contactColumnError
+
   let approvedDuplicateRequestId: string | null = null
   if (body.role === 'agent') {
     const wantedName = normalizeName(body.name)
     const wantedPhone = normalizePhone(body.phone)
+    const wantedEmail = body.email?.trim().toLowerCase() ?? ''
     const wantedNationalId = normalizeNationalId(body.agentProfile?.nationalId)
     const dedupeKey = [wantedName, wantedPhone, wantedNationalId].join('|')
 
     const [{ data: agentRows, error: agentsError }, { data: agentFiles, error: filesError }] = await Promise.all([
-      admin.from('profiles').select('id, name, email, phone, active').eq('role', 'agent'),
+      admin.from('profiles').select('*').eq('role', 'agent'),
       admin.from('agent_profiles').select('profile_id, national_id'),
     ])
     if (agentsError || filesError) {
@@ -197,9 +225,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     )
     const conflicts = (agentRows ?? []).filter(row => {
       const sameName = normalizeName(row.name ?? '') === wantedName
+      const sameEmail = !!wantedEmail && (((row.contact_email as string | null) ?? row.email) as string | null)?.toLowerCase() === wantedEmail
       const samePhone = !!wantedPhone && normalizePhone(row.phone as string | undefined) === wantedPhone
       const sameNationalId = !!wantedNationalId && nationalIdByProfile.get(row.id as string) === wantedNationalId
-      return sameName || samePhone || sameNationalId
+      return sameName || samePhone || sameNationalId || sameEmail
     })
 
     if (conflicts.length > 0) {
@@ -238,7 +267,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 conflicts: conflicts.map(c => ({
                   id: c.id,
                   name: c.name,
-                  email: c.email,
+                  email: (c as { contact_email?: string | null }).contact_email ?? c.email,
                   phone: c.phone,
                   active: c.active,
                 })),
@@ -271,8 +300,73 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  const authEmail = body.email?.trim().toLowerCase()
-    || `agent-${body.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 24)}-${Math.random().toString(36).slice(2, 8)}@agent.motions.local`
+  // Cross-role identity is legitimate: a customer can also be an agent or
+  // staff member. Only duplicates inside the same chain are suspicious.
+  if (body.role !== 'agent') {
+    const wantedName = normalizeName(body.name)
+    const wantedPhone = normalizePhone(body.phone)
+    const wantedEmail = body.email?.trim().toLowerCase() ?? ''
+    const { data: chainRows, error: chainError } = await admin
+      .from('profiles')
+      .select('*')
+      .in('role', rolesInChain(body.role))
+    if (chainError) {
+      return res.status(500).json({ error: 'Could not check for an existing account with the same identity.' })
+    }
+    const conflicts = (chainRows ?? []).filter(row => {
+      const sameEmail = !!wantedEmail && (((row.contact_email as string | null) ?? row.email) as string | null)?.toLowerCase() === wantedEmail
+      return normalizeName(row.name ?? '') === wantedName || sameEmail || (!!wantedPhone && normalizePhone(row.phone as string | undefined) === wantedPhone)
+    })
+    if (conflicts.length) {
+      return res.status(409).json({
+        error: `Possible duplicate ${body.role.replace(/_/g, ' ')} account found (${conflicts.map(c => c.name).join(', ')}). A customer account is allowed alongside this role, but not a second account in the same role chain.`,
+      })
+    }
+  }
+
+  // Supabase Auth requires globally unique emails. If this person's email
+  // already authenticates a customer account, the new staff/agent account
+  // receives an internal auth address while their real address is kept in
+  // profiles.contact_email. Sign-in is then by the unique role-suffixed name.
+  const requestedEmail = body.email?.trim().toLowerCase() ?? ''
+  let authEmail = requestedEmail || internalAuthEmail(body.name, body.role)
+  if (requestedEmail) {
+    const owner = await authEmailOwner(admin, requestedEmail)
+    if (owner && sameRoleChain(owner.role, body.role)) {
+      return res.status(409).json({ error: `That email already belongs to ${owner.name} in the same role chain.` })
+    }
+    // A matching client record must keep the email free for the eventual
+    // policyholder login — its RLS ownership check requires auth email ==
+    // clients.email. Staff/agent contact email goes in contact_email instead.
+    const { data: linkedClient } = await admin
+      .from('clients')
+      .select('id')
+      .eq('email', requestedEmail)
+      .limit(1)
+    if (owner || (linkedClient ?? []).length > 0) authEmail = internalAuthEmail(body.name, body.role)
+  }
+  if (requestedEmail && authEmail !== requestedEmail && !contactEmailSupported) {
+    return res.status(503).json({ error: 'Cross-role email sharing needs migration 20261119_003_cross_role_account_identities.sql first.' })
+  }
+
+  // An approved same-chain agent duplicate still needs a distinct sign-in
+  // name; an unapproved duplicate never reaches this point. Different chains
+  // may share a display name, so the alias carries the role.
+  const wantedUsername = body.username?.trim() || body.name.trim()
+  let signIn: { username?: string; conflict?: { name?: string | null; role?: string | null } }
+  try {
+    signIn = await chooseSignInName(admin, wantedUsername, body.role, {
+      allowSameChainAlias: body.role === 'agent' && !!approvedDuplicateRequestId,
+    })
+  } catch (e) {
+    return res.status(500).json({ error: e instanceof Error ? e.message : 'Could not choose a unique sign-in name.' })
+  }
+  if (signIn.conflict) {
+    return res.status(409).json({
+      error: `A ${String(signIn.conflict.role ?? '').replace(/_/g, ' ')} account already uses the sign-in name "${wantedUsername}". Duplicate accounts are only allowed across different role chains.`,
+    })
+  }
+  const username = signIn.username ?? wantedUsername
 
   const { data: created, error: createError } = await admin.auth.admin.createUser({
     email: authEmail,
@@ -294,11 +388,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     await admin.from('profiles').update({ phone: body.phone }).eq('id', created.user.id)
   }
 
-  const username = body.username?.trim() || body.name.trim()
   const extra: Record<string, unknown> = { username }
-  // The placeholder email backs the auth user only — it must never
-  // appear on the staff list as though it were the agent's address.
-  if (!body.email?.trim()) extra.email = null
+  // profiles.email stays equal to auth.users.email so resolve_login_email
+  // still returns the address Auth can authenticate. The person's reusable
+  // contact email lives beside it when it already belongs to another role.
+  if (requestedEmail && authEmail !== requestedEmail) extra.contact_email = requestedEmail
   if (isSystemRole) {
     // super_admin/admin get blanket-access sentinels (matching every other
     // system-tier account); tech_support starts with none, granted explicitly.
@@ -384,7 +478,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   return res.status(200).json({
     success: true,
-    profile: { ...profile, email: body.email?.trim() ?? null },
+    profile: {
+      ...profile,
+      email: requestedEmail || (isInternalAuthEmail(profile?.email as string | undefined) ? null : profile?.email),
+    },
+    signInName: username,
+    internalSignInEmail: authEmail !== requestedEmail,
     referralCode,
     referralLink,
     warnings: notificationWarnings,

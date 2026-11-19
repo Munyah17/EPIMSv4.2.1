@@ -129,6 +129,9 @@ export interface AppUser {
    *  `name`); nickname usernames were retired. resolve_login_email matches it. */
   username?: string
   email: string
+  /** Visible address when Auth needs an internal placeholder for a
+   *  cross-role account. `email` already maps this fallback for UI use. */
+  contactEmail?: string
   role: UserRole
   department: string
   phone?: string

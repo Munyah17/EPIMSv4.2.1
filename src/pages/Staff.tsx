@@ -117,9 +117,13 @@ export default function Staff({ showToast }: Props) {
       const oldEmail = (editStaff.email ?? '').trim().toLowerCase()
       if (newEmail !== oldEmail) {
         if (newEmail) {
-          const { error: emailError } = await db.staff.updateEmail(s.id, newEmail)
+          const { error: emailError, contactOnly } = await db.staff.updateEmail(s.id, newEmail)
           if (emailError) showToast('warning', `Details saved, but the sign-in email change failed: ${emailError}`)
-          else { data.email = newEmail; showToast('info', `Sign-in email updated to ${newEmail}.`) }
+          else {
+            data.email = newEmail
+            data.contactEmail = newEmail
+            showToast('info', contactOnly ? `Contact email updated to ${newEmail}. Their sign-in name remains ${data.username ?? data.name}.` : `Sign-in email updated to ${newEmail}.`)
+          }
         } else {
           showToast('warning', 'Details saved — but an account cannot lose its sign-in email, so the old address still applies.')
         }
@@ -127,7 +131,7 @@ export default function Staff({ showToast }: Props) {
       setStaff(prev => prev.map(x => x.id === data.id ? data : x))
       saved = data
     } else {
-      const { data, error, approvalRequestId, warnings } = await db.staff.create({
+      const { data, error, approvalRequestId, warnings, signInName, internalSignInEmail } = await db.staff.create({
         name: s.name, email: s.email, password, phone: s.phone, role: s.role, department: s.department,
         customRoleId: s.customRoleId, permissions: s.permissions,
         agentProfile: agentInput ? { nationalId: agentInput.nationalId } : undefined,
@@ -145,6 +149,12 @@ export default function Staff({ showToast }: Props) {
       setStaff(prev => [...prev, data])
       saved = data
       warnings?.forEach(message => showToast('warning', message))
+      if (signInName && signInName.toLowerCase() !== s.name.toLowerCase()) {
+        showToast('info', `${s.name}'s display name is shared with another account. Their sign-in name is "${signInName}".`)
+      }
+      if (internalSignInEmail) {
+        showToast('info', `${s.email || s.name}'s email is already used by another account type, so they must sign in with "${signInName ?? s.name}".`)
+      }
     }
     // The agent file follows the role — an agent without one has no
     // contract, no territory, no payout rails on record.
